@@ -38,25 +38,25 @@ export interface TelescopeStore {
   /**
    * Record one entry from a watcher's {@link RecordInput}, filling in `id`,
    * `sequence`, `createdAt` and resolving `traceId`/`origin` from context when the
-   * caller omits them. Returns the persisted {@link Entry}.
+   * caller omits them. Resolves to the persisted {@link Entry}.
    */
-  record<TContent>(input: RecordInput<TContent>): Entry<TContent>;
+  record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>>;
 
   /** Fetch a single entry by id, or `null` when absent. */
-  get(id: string): Entry | null;
+  get(id: string): Promise<Entry | null>;
 
   /** List entries matching `query`, newest-first. */
-  list(query?: EntryQuery): Entry[];
+  list(query?: EntryQuery): Promise<Entry[]>;
 
   /** Total number of stored entries. */
-  count(): number;
+  count(): Promise<number>;
 
   /**
    * Delete entries older than `olderThan`. When `keepLast` is set, the newest N of
-   * the matched-and-doomed entries are retained. Returns the number deleted.
+   * the matched-and-doomed entries are retained. Resolves to the number deleted.
    */
-  prune(olderThan: Date, keepLast?: number): number;
+  prune(olderThan: Date, keepLast?: number): Promise<number>;
 
   /** Delete every stored entry. */
-  clear(): void;
+  clear(): Promise<void>;
 }

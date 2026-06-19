@@ -1,0 +1,61 @@
+{
+  "name": "@agora/telescope-lucid",
+  "version": "0.1.0",
+  "description": "A persistent, SQL-backed TelescopeStore for @agora/telescope built on AdonisJS Lucid — telescope entries survive restarts and stay queryable from your database (sqlite/Postgres/MySQL).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavideCarvalho/adonis-telescope.git",
+    "directory": "packages/lucid"
+  },
+  "author": "Davi Carvalho <davi@goflip.ai>",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": ["dist/", "stubs/", "README.md", "CHANGELOG.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agora/telescope": "workspace:^"
+  },
+  "peerDependencies": {
+    "@adonisjs/core": "^6.12.0",
+    "@adonisjs/lucid": "^21.0.0"
+  },
+  "devDependencies": {
+    "@adonisjs/core": "^6.17.0",
+    "@adonisjs/lucid": "^21.6.1",
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^20.0.0",
+    "better-sqlite3": "^12.0.0",
+    "luxon": "^3.4.4",
+    "typescript": "^5.4.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "keywords": [
+    "adonisjs",
+    "adonis",
+    "lucid",
+    "telescope",
+    "observability",
+    "diagnostics",
+    "sqlite",
+    "postgres",
+    "mysql",
+    "agora"
+  ]
+}

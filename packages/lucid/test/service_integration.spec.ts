@@ -1,10 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { InMemoryTelescopeStore } from '../src/in_memory_store.js';
-import { TelescopeService } from '../src/service.js';
+import { TelescopeService } from '@agora/telescope';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { LucidTelescopeStore } from '../src/lucid_store.js';
+import { type TestHarness, makeHarness } from './helpers.js';
 
-async function seed() {
-  const store = new InMemoryTelescopeStore();
-  const service = new TelescopeService(store);
+let harness: TestHarness;
+let store: LucidTelescopeStore;
+let service: TelescopeService;
+
+beforeEach(async () => {
+  harness = await makeHarness();
+  store = new LucidTelescopeStore(harness.lucid, { autoCreateTable: true });
+  service = new TelescopeService(store);
+
   await store.record({
     type: 'diagnostic',
     content: {},
@@ -32,12 +39,14 @@ async function seed() {
     tags: ['lib:mailer'],
     traceId: 't2',
   });
-  return { store, service };
-}
+});
 
-describe('TelescopeService', () => {
+afterEach(async () => {
+  await harness.cleanup();
+});
+
+describe('TelescopeService over LucidTelescopeStore (async end-to-end)', () => {
   it('lists and finds entries', async () => {
-    const { service } = await seed();
     expect(await service.count()).toBe(4);
     expect(await service.list({ type: 'request' })).toHaveLength(1);
     const id = (await service.list())[0]?.id as string;
@@ -46,27 +55,19 @@ describe('TelescopeService', () => {
   });
 
   it('byTrace returns all entries of a trace', async () => {
-    const { service } = await seed();
     expect(await service.byTrace('t1')).toHaveLength(3);
     expect(await service.byTrace('t2')).toHaveLength(1);
   });
 
   it('topFamilies ranks busiest grouping keys', async () => {
-    const { service } = await seed();
     const top = await service.topFamilies(10, 'diagnostic');
     expect(top[0]).toEqual({ key: 'billing:paid', count: 2 });
     expect(top.find((b) => b.key === 'mailer:sent')?.count).toBe(1);
   });
 
   it('topTags ranks common tags, honouring a prefix', async () => {
-    const { service } = await seed();
     const libs = await service.topTags(10, 'lib:');
     expect(libs.find((b) => b.key === 'lib:billing')?.count).toBe(2);
     expect(libs.every((b) => b.key.startsWith('lib:'))).toBe(true);
-  });
-
-  it('exposes the underlying store', async () => {
-    const { store, service } = await seed();
-    expect(service.telescopeStore).toBe(store);
   });
 });

@@ -3,7 +3,7 @@
   "changelog": ["@changesets/changelog-github", { "repo": "DavideCarvalho/adonis-telescope" }],
   "commit": false,
   "fixed": [],
-  "linked": [],
+  "linked": [["@agora/telescope", "@agora/telescope-lucid"]],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",

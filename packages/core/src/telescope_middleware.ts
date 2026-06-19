@@ -21,11 +21,15 @@ export default class TelescopeMiddleware {
     }
 
     const startedAt = Date.now();
+    const store = runtime.store;
     try {
       return await next();
     } finally {
+      // Post-response phase: record the now-complete request. Awaited so a slow
+      // store surfaces back-pressure here rather than leaking an unhandled
+      // rejection, but wrapped so observability can never break the request.
       try {
-        recordRequest(runtime.store, ctx as unknown as HttpContextLike, startedAt);
+        await recordRequest(store, ctx as unknown as HttpContextLike, startedAt);
       } catch {
         // Observability must never break the request it observes.
       }

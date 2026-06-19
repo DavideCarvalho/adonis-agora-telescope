@@ -27,13 +27,20 @@ export default class TelescopeProvider {
 
   register() {
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
-    const store: TelescopeStore = new InMemoryTelescopeStore({ maxEntries: config.maxEntries });
+    // Use the supplied store instance (e.g. `lucidTelescopeStore(db)`) when given,
+    // otherwise fall back to the built-in in-memory ring buffer.
+    const store: TelescopeStore =
+      config.store === 'memory'
+        ? new InMemoryTelescopeStore({ maxEntries: config.maxEntries })
+        : config.store;
     this.store = store;
 
-    // Bound by concrete class so consumers `inject()` them. The abstract
-    // `TelescopeStore` contract is resolved via `InMemoryTelescopeStore` here;
-    // a persistent store would register itself under the same class key.
-    this.app.container.singleton(InMemoryTelescopeStore, () => store as InMemoryTelescopeStore);
+    // Bound by concrete class so consumers `inject()` them. The in-memory default
+    // is also registered under `InMemoryTelescopeStore` for direct injection; the
+    // `TelescopeService` always resolves against whichever store is active.
+    if (store instanceof InMemoryTelescopeStore) {
+      this.app.container.singleton(InMemoryTelescopeStore, () => store);
+    }
     this.app.container.singleton(TelescopeService, () => new TelescopeService(store));
   }
 

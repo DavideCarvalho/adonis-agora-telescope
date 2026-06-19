@@ -107,7 +107,12 @@ export class DiagnosticsWatcher {
   private safeRecord(msg: unknown): void {
     try {
       if (!isDiagnosticEvent(msg)) return;
-      this.store.record(buildDiagnosticEntry(msg));
+      // This runs inside a synchronous `node:diagnostics_channel` subscriber, so we
+      // CANNOT await the now-async store. Fire-and-forget and swallow rejections —
+      // telescope must never break (or block) an emitting code path.
+      void this.store.record(buildDiagnosticEntry(msg)).catch((err) => {
+        console.error('DiagnosticsWatcher: failed to record diagnostic event:', err);
+      });
     } catch (err) {
       // NOT rethrown — telescope must never break an emitting code path.
       console.error('DiagnosticsWatcher: failed to record diagnostic event:', err);

@@ -30,6 +30,15 @@ function registerChannel(registry: DiagnosticsRegistry, name: string): void {
   for (const listener of registry.listeners) listener(name);
 }
 
+/**
+ * The watcher records via a fire-and-forget `void store.record(...)` (it runs
+ * inside a synchronous diagnostics_channel subscriber and cannot await). Flushing
+ * the microtask + macrotask queue lets that record settle before we assert.
+ */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 function envelope(over: Partial<DiagnosticEvent> = {}): DiagnosticEvent {
   return {
     v: 1,
@@ -53,7 +62,7 @@ describe('DiagnosticsWatcher', () => {
     delete (globalThis as Record<symbol, unknown>)[REGISTRY_KEY];
   });
 
-  it('records a publish on a channel registered BEFORE start', () => {
+  it('records a publish on a channel registered BEFORE start', async () => {
     const channelName = 'agora:billing:invoice-paid:before';
     registerChannel(registry, channelName);
 
@@ -62,8 +71,9 @@ describe('DiagnosticsWatcher', () => {
     watcher.start();
 
     diagnostics_channel.channel(channelName).publish(envelope());
+    await flush();
 
-    const entries = store.list({ type: DIAGNOSTIC_ENTRY_TYPE });
+    const entries = await store.list({ type: DIAGNOSTIC_ENTRY_TYPE });
     expect(entries).toHaveLength(1);
     const entry = entries[0];
     expect(entry?.familyHash).toBe('billing:invoice-paid');
@@ -74,7 +84,7 @@ describe('DiagnosticsWatcher', () => {
     watcher.stop();
   });
 
-  it('subscribes to a channel registered AFTER start (future channels)', () => {
+  it('subscribes to a channel registered AFTER start (future channels)', async () => {
     const store = new InMemoryTelescopeStore();
     const watcher = new DiagnosticsWatcher(store);
     watcher.start();
@@ -82,12 +92,13 @@ describe('DiagnosticsWatcher', () => {
     const channelName = 'agora:mailer:sent:after';
     registerChannel(registry, channelName);
     diagnostics_channel.channel(channelName).publish(envelope({ lib: 'mailer', event: 'sent' }));
+    await flush();
 
-    expect(store.list({ tag: 'lib:mailer' })).toHaveLength(1);
+    expect(await store.list({ tag: 'lib:mailer' })).toHaveLength(1);
     watcher.stop();
   });
 
-  it('ignores malformed envelopes', () => {
+  it('ignores malformed envelopes', async () => {
     const channelName = 'agora:bad:event';
     registerChannel(registry, channelName);
     const store = new InMemoryTelescopeStore();
@@ -96,12 +107,13 @@ describe('DiagnosticsWatcher', () => {
 
     diagnostics_channel.channel(channelName).publish({ not: 'an envelope' });
     diagnostics_channel.channel(channelName).publish(null);
+    await flush();
 
-    expect(store.count()).toBe(0);
+    expect(await store.count()).toBe(0);
     watcher.stop();
   });
 
-  it('stop unsubscribes so later publishes are not recorded', () => {
+  it('stop unsubscribes so later publishes are not recorded', async () => {
     const channelName = 'agora:billing:invoice-paid:stop';
     registerChannel(registry, channelName);
     const store = new InMemoryTelescopeStore();
@@ -109,23 +121,25 @@ describe('DiagnosticsWatcher', () => {
     watcher.start();
 
     diagnostics_channel.channel(channelName).publish(envelope());
-    expect(store.count()).toBe(1);
+    await flush();
+    expect(await store.count()).toBe(1);
 
     watcher.stop();
     diagnostics_channel.channel(channelName).publish(envelope());
-    expect(store.count()).toBe(1);
+    await flush();
+    expect(await store.count()).toBe(1);
   });
 
-  it('is a no-op when the diagnostics registry is absent', () => {
+  it('is a no-op when the diagnostics registry is absent', async () => {
     delete (globalThis as Record<symbol, unknown>)[REGISTRY_KEY];
     const store = new InMemoryTelescopeStore();
     const watcher = new DiagnosticsWatcher(store);
     expect(() => watcher.start()).not.toThrow();
     expect(() => watcher.stop()).not.toThrow();
-    expect(store.count()).toBe(0);
+    expect(await store.count()).toBe(0);
   });
 
-  it('start is idempotent (no double subscription)', () => {
+  it('start is idempotent (no double subscription)', async () => {
     const channelName = 'agora:billing:invoice-paid:idem';
     registerChannel(registry, channelName);
     const store = new InMemoryTelescopeStore();
@@ -134,7 +148,8 @@ describe('DiagnosticsWatcher', () => {
     watcher.start();
 
     diagnostics_channel.channel(channelName).publish(envelope());
-    expect(store.count()).toBe(1);
+    await flush();
+    expect(await store.count()).toBe(1);
     watcher.stop();
   });
 

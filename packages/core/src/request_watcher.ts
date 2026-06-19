@@ -1,4 +1,4 @@
-import { EntryType, type RecordInput } from './entry.js';
+import { type Entry, EntryType, type RecordInput } from './entry.js';
 import type { TelescopeStore } from './store.js';
 
 /** The recorded body of a `request` entry. */
@@ -40,14 +40,14 @@ export interface RecordRequestOptions {
  * The pure, framework-agnostic core of the HTTP request watcher: build a
  * `request` {@link RecordInput} from a (stubbable) HttpContext-like value and a
  * start timestamp, and record it. Kept out of the middleware so it is trivially
- * unit-testable with a plain object.
+ * unit-testable with a plain object. Resolves to the recorded {@link Entry}.
  */
-export function recordRequest(
+export async function recordRequest(
   store: TelescopeStore,
   ctx: HttpContextLike,
   startedAt: number,
   options: RecordRequestOptions = {},
-): RecordInput<RequestEntryContent> {
+): Promise<Entry<RequestEntryContent>> {
   const method = String(ctx.request.method()).toUpperCase();
   const url = stripQuery(ctx.request.url());
   const status = typeof ctx.response.statusCode === 'number' ? ctx.response.statusCode : null;
@@ -68,10 +68,10 @@ export function recordRequest(
     ...(options.traceId !== undefined ? { traceId: options.traceId } : {}),
   };
 
-  const recorded = store.record(input);
+  const recorded = await store.record(input);
   // Backfill the content trace id from whatever the store resolved (context).
   recorded.content.traceId = recorded.traceId;
-  return input;
+  return recorded;
 }
 
 /** Drop a `?query=string` suffix from a url. */

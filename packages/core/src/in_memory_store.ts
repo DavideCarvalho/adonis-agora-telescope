@@ -29,7 +29,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     this.maxEntries = max > 0 ? max : 1000;
   }
 
-  record<TContent>(input: RecordInput<TContent>): Entry<TContent> {
+  async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
     const traceId = input.traceId !== undefined ? input.traceId : currentTraceId();
     const origin: BatchOrigin = isBatchOrigin(input.origin) ? input.origin : 'manual';
     const entry: Entry<TContent> = {
@@ -52,11 +52,11 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     return entry;
   }
 
-  get(id: string): Entry | null {
+  async get(id: string): Promise<Entry | null> {
     return this.byId.get(id) ?? null;
   }
 
-  list(query: EntryQuery = {}): Entry[] {
+  async list(query: EntryQuery = {}): Promise<Entry[]> {
     const search = query.search?.toLowerCase();
     const results: Entry[] = [];
     // `entries` is already newest-first.
@@ -74,11 +74,11 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     return results;
   }
 
-  count(): number {
+  async count(): Promise<number> {
     return this.entries.length;
   }
 
-  prune(olderThan: Date, keepLast?: number): number {
+  async prune(olderThan: Date, keepLast?: number): Promise<number> {
     // Indices of the doomed entries (older than the cutoff), newest-first.
     const doomed: number[] = [];
     for (let i = 0; i < this.entries.length; i++) {
@@ -98,7 +98,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     return toDelete.length;
   }
 
-  clear(): void {
+  async clear(): Promise<void> {
     this.entries.length = 0;
     this.byId.clear();
   }

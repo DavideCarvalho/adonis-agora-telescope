@@ -33,6 +33,12 @@ describe('resolveConfig', () => {
     expect(c.watchers.has('request')).toBe(false);
     expect(c.watchers.has('diagnostics')).toBe(true);
   });
+
+  it('preserves a supplied store instance', () => {
+    const store = new InMemoryTelescopeStore();
+    const c = resolveConfig({ store });
+    expect(c.store).toBe(store);
+  });
 });
 
 describe('TelescopeMiddleware', () => {
@@ -54,7 +60,7 @@ describe('TelescopeMiddleware', () => {
     setTelescopeRuntime(store, true);
     const mw = new TelescopeMiddleware();
     await mw.handle(stubCtx() as never, async () => {});
-    expect(store.list({ type: 'request' })).toHaveLength(1);
+    expect(await store.list({ type: 'request' })).toHaveLength(1);
   });
 
   it('does not record when the request watcher is disabled', async () => {
@@ -62,7 +68,7 @@ describe('TelescopeMiddleware', () => {
     setTelescopeRuntime(store, false);
     const mw = new TelescopeMiddleware();
     await mw.handle(stubCtx() as never, async () => {});
-    expect(store.count()).toBe(0);
+    expect(await store.count()).toBe(0);
   });
 
   it('records even when the downstream handler throws, and re-throws', async () => {
@@ -74,7 +80,7 @@ describe('TelescopeMiddleware', () => {
         throw new Error('boom');
       }),
     ).rejects.toThrow('boom');
-    expect(store.list({ type: 'request' })).toHaveLength(1);
+    expect(await store.list({ type: 'request' })).toHaveLength(1);
   });
 });
 
@@ -82,7 +88,7 @@ describe('context accessor integration', () => {
   const KEY = Symbol.for('@agora/context:accessor');
   afterEach(() => delete (globalThis as Record<symbol, unknown>)[KEY]);
 
-  it('resolves the ambient traceId from @agora/context when present', () => {
+  it('resolves the ambient traceId from @agora/context when present', async () => {
     (globalThis as Record<symbol, unknown>)[KEY] = {
       traceId: () => 'ctx-trace',
       tenantId: () => undefined,
@@ -90,8 +96,8 @@ describe('context accessor integration', () => {
       get: () => undefined,
     };
     const store = new InMemoryTelescopeStore();
-    recordRequest(store, stubCtx(), Date.now());
-    const entry = store.list()[0];
+    await recordRequest(store, stubCtx(), Date.now());
+    const entry = (await store.list())[0];
     expect(entry?.traceId).toBe('ctx-trace');
     expect((entry?.content as { traceId: string | null }).traceId).toBe('ctx-trace');
   });

@@ -1,3 +1,5 @@
+import type { TelescopeStore } from './store.js';
+
 /** The set of watchers this headless slice ships. */
 export type WatcherName = 'request' | 'diagnostics';
 
@@ -13,11 +15,12 @@ export interface TelescopeConfig {
   enabled?: boolean;
 
   /**
-   * Which store backs telescope. `'memory'` is the only built-in (a bounded ring
-   * buffer). A persistent store (`@agora/telescope-lucid`, SQLite) is deferred —
-   * see DESIGN.md. Default `'memory'`.
+   * Which store backs telescope. `'memory'` (the default) is the built-in bounded
+   * ring buffer. Pass a {@link TelescopeStore} instance — e.g.
+   * `lucidTelescopeStore(db)` from `@agora/telescope-lucid` — for a persistent,
+   * cross-process backend. Default `'memory'`.
    */
-  store?: 'memory';
+  store?: 'memory' | TelescopeStore;
 
   /**
    * Hard cap on retained entries for the in-memory store. Oldest entries are
@@ -35,7 +38,7 @@ export interface TelescopeConfig {
 /** The fully-resolved config the provider acts on (no optionals). */
 export interface ResolvedTelescopeConfig {
   enabled: boolean;
-  store: 'memory';
+  store: 'memory' | TelescopeStore;
   maxEntries: number;
   watchers: Set<WatcherName>;
 }
