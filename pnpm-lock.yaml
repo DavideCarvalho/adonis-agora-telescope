@@ -33,6 +33,28 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@20.19.43)
 
+  packages/alerts:
+    dependencies:
+      '@agora/telescope':
+        specifier: workspace:^
+        version: link:../core
+    devDependencies:
+      '@adonisjs/assembler':
+        specifier: ^7.8.0
+        version: 7.8.2(typescript@5.9.3)
+      '@adonisjs/core':
+        specifier: ^6.17.0
+        version: 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@20.19.43)
+
   packages/core:
     devDependencies:
       '@adonisjs/assembler':
@@ -62,7 +84,7 @@ importers:
         version: 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
       '@adonisjs/lucid':
         specifier: ^21.6.1
-        version: 21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3)))(better-sqlite3@12.11.1)(luxon@3.7.2)
+        version: 21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(better-sqlite3@12.11.1)(luxon@3.7.2)
       '@types/better-sqlite3':
         specifier: ^7.6.0
         version: 7.6.13
@@ -102,7 +124,7 @@ importers:
         version: 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
       '@adonisjs/lucid':
         specifier: ^21.6.1
-        version: 21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3)))(better-sqlite3@12.11.1)(luxon@3.7.2)
+        version: 21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(better-sqlite3@12.11.1)(luxon@3.7.2)
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.43
@@ -2737,7 +2759,7 @@ snapshots:
       '@adonisjs/core': 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
       bentocache: 1.6.1(knex@3.2.10)
     optionalDependencies:
-      '@adonisjs/lucid': 21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3)))(better-sqlite3@12.11.1)(luxon@3.7.2)
+      '@adonisjs/lucid': 21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(better-sqlite3@12.11.1)(luxon@3.7.2)
     transitivePeerDependencies:
       - '@aws-sdk/client-dynamodb'
       - ioredis
@@ -2854,7 +2876,7 @@ snapshots:
       abstract-logging: 2.0.1
       pino: 10.3.1
 
-  '@adonisjs/lucid@21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3)))(better-sqlite3@12.11.1)(luxon@3.7.2)':
+  '@adonisjs/lucid@21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(better-sqlite3@12.11.1)(luxon@3.7.2)':
     dependencies:
       '@adonisjs/core': 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
       '@adonisjs/presets': 2.6.4(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))
