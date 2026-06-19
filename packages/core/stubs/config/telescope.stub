@@ -1,0 +1,34 @@
+{{{
+  exports({ to: app.configPath('telescope.ts') })
+}}}
+import { defineConfig } from '@agora/telescope'
+
+/**
+ * Configuration for `@agora/telescope`. Everything is optional — the defaults use
+ * the in-memory store with both watchers (`request` + `diagnostics`) enabled and a
+ * 1000-entry cap.
+ */
+export default defineConfig({
+  /**
+   * Master switch. Set to `false` to disable all recording (zero overhead).
+   */
+  // enabled: true,
+
+  /**
+   * Which store backs telescope. Only the in-memory ring buffer ships today; a
+   * persistent store is on the roadmap (see the package DESIGN.md).
+   */
+  // store: 'memory',
+
+  /**
+   * Hard cap on retained entries for the in-memory store.
+   */
+  // maxEntries: 1000,
+
+  /**
+   * Active watchers. Omit one to disable it.
+   *  - 'request'     — records each HTTP request (method, url, status, duration).
+   *  - 'diagnostics' — records every `agora:<lib>:<event>` diagnostics publish.
+   */
+  // watchers: ['request', 'diagnostics'],
+})
