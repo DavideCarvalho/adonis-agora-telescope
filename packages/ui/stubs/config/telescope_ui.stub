@@ -1,0 +1,40 @@
+{{{
+  exports({ to: app.configPath('telescope_ui.ts') })
+}}}
+import { defineConfig } from '@agora/telescope-ui'
+
+/**
+ * Configuration for `@agora/telescope-ui`. By default the dashboard mounts at
+ * `/telescope` and is reachable automatically outside production. In production it
+ * is denied unless you set a `token` / `basic` credential below, or supply your
+ * own `authorize` hook delegating to your app's auth.
+ */
+export default defineConfig({
+  /**
+   * Master switch. Set to `false` to register no routes at all.
+   */
+  // enabled: true,
+
+  /**
+   * URL prefix. The dashboard is served here; the JSON API lives at `<path>/api/*`.
+   */
+  // path: '/telescope',
+
+  /**
+   * Access-decision hook. Return `true` to allow the request, `false` to reject it
+   * (the guard answers 401 when no credential was presented, 403 when one was and
+   * was rejected). Delegate to your own app auth here, e.g.:
+   */
+  // authorize: (ctx) => ctx.auth?.user?.isAdmin === true,
+
+  /**
+   * Built-in credentials for the default policy (ignored when `authorize` is set).
+   * Gate a production dashboard without writing a hook:
+   *  - token: allow `Authorization: Bearer <token>` or `?token=<token>`
+   *  - basic: allow HTTP Basic auth
+   */
+  // credentials: {
+  //   token: env.get('TELESCOPE_UI_TOKEN'),
+  //   basic: { username: 'admin', password: env.get('TELESCOPE_UI_PASSWORD') },
+  // },
+})
