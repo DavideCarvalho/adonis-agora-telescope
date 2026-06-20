@@ -6,15 +6,10 @@
   "pages": [
     "index",
     "getting-started",
-    "---Concepts---",
     "concepts",
-    "---Dashboard---",
     "dashboard",
-    "---Packages---",
     "packages",
-    "---Guides---",
     "recipes",
-    "---Reference---",
     "reference"
   ]
 }
