@@ -1,5 +1,11 @@
 import type { ApplicationService } from '@adonisjs/core/types';
-import { TelescopeService, type TelescopeStore, getTelescopeRuntime } from '@agora/telescope';
+import {
+  type ExtensionContext,
+  TelescopeService,
+  type TelescopeStore,
+  getTelescopeRuntime,
+  resolveConfig as resolveTelescopeConfig,
+} from '@agora/telescope';
 import { TelescopeApi } from '../src/api.js';
 import { renderDashboard } from '../src/dashboard.js';
 import {
@@ -7,6 +13,7 @@ import {
   type TelescopeUiConfig,
   resolveConfig,
 } from '../src/define_config.js';
+import { ExtensionApi } from '../src/extension_api.js';
 import { enforceGuard } from '../src/guard.js';
 import type { UiHttpContext } from '../src/http.js';
 
@@ -97,6 +104,31 @@ export default class TelescopeUiProvider {
         return api.stats(ctx);
       })
       .as('telescope_ui.stats');
+
+    // Extension SDK surface (only when at least one extension contributed a registry at boot).
+    const registry = getTelescopeRuntime().registry;
+    if (registry) {
+      const extCtx: ExtensionContext = {
+        store,
+        container: { make: (token) => this.app.container.make(token as never) },
+        config: resolveTelescopeConfig(this.app.config.get('telescope', {})),
+      };
+      const extApi = new ExtensionApi(registry, extCtx);
+
+      router
+        .get(`${apiBase}/meta`, async (ctx: GuardedContext) => {
+          if (!(await enforceGuard(ctx, guard))) return;
+          return extApi.meta(ctx);
+        })
+        .as('telescope_ui.meta');
+
+      router
+        .get(`${apiBase}/ext/:ext/data/:provider`, async (ctx: GuardedContext) => {
+          if (!(await enforceGuard(ctx, guard))) return;
+          return extApi.data(ctx, String(ctx.params.ext), String(ctx.params.provider));
+        })
+        .as('telescope_ui.ext_data');
+    }
   }
 }
 
