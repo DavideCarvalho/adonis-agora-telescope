@@ -1,30 +1,33 @@
 ---
 title: Packages
-description: Every package in the @agora/telescope ecosystem — the headless core (with config-driven memory + Lucid storage drivers), per-technology watchers, the dashboard UI, alerts, and AI exception diagnosis — and what each one does.
+description: Everything ships as one package — @agora/telescope — exposing the headless core (with config-driven memory + Lucid storage drivers) plus opt-in subpaths for per-technology watchers, the dashboard UI, alerts, and AI exception diagnosis.
 ---
 
 import { Cards, Card } from 'fumadocs-ui/components/card'
 
-The ecosystem is a small set of focused packages. The **core** is enough on its own (it
-records and exposes a query API); everything else is additive and opt-in. Each package is
-wired with `node ace configure @agora/telescope-<name>` and configured from its own
-`config/*.ts` file.
+Telescope is **one published package, `@agora/telescope`**, following the first-party
+AdonisJS convention (like `@adonisjs/auth` exposing its guards): the core is enough on its
+own (it records and exposes a query API), and every other feature is an opt-in **subpath**
+of that same package. You install `@agora/telescope` once; `node ace configure
+@agora/telescope` wires the core and prompts which optional features to enable, registering
+the chosen `@agora/telescope/<feature>_provider` and publishing its `config/*.ts`.
 
-| Package                                                            | Entry / role                                                                 |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [`@agora/telescope`](/docs/telescope/packages/core)               | Core capture spine — request + exception + diagnostics watchers, the `Entry` model, the `TelescopeStore` contract, the [config-driven storage drivers](/docs/telescope/packages/storages) (`memory` + `lucid`), `TelescopeService`, and the extension SDK. |
-| [`@agora/telescope-watchers`](/docs/telescope/packages/watchers)  | Per-technology watchers — Lucid `query` (SQL, bindings, duration), `mail`, and `cache`. |
-| [`@agora/telescope-ui`](/docs/telescope/packages/ui)              | The self-contained dashboard + JSON API, behind an auth guard.              |
-| [`@agora/telescope-alerts`](/docs/telescope/packages/alerts)      | Alerting — new-exception / exception-rate rules → Slack, webhook, console, or custom channels. |
-| [`@agora/telescope-ai`](/docs/telescope/packages/ai)              | AI-assisted exception diagnosis via the Anthropic Claude API, cached by family. |
+| Subpath                                                           | Entry / role                                                                 |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [`@agora/telescope`](/docs/telescope/packages/core)              | Core capture spine — request + exception + diagnostics watchers, the `Entry` model, the `TelescopeStore` contract, the [config-driven storage drivers](/docs/telescope/packages/storages) (`memory` + `lucid`), `TelescopeService`, and the extension SDK. |
+| [`@agora/telescope/watchers`](/docs/telescope/packages/watchers) | Per-technology watchers — Lucid `query` (SQL, bindings, duration), `mail`, and `cache`. |
+| [`@agora/telescope/ui`](/docs/telescope/packages/ui)             | The self-contained dashboard + JSON API, behind an auth guard.              |
+| [`@agora/telescope/alerts`](/docs/telescope/packages/alerts)     | Alerting — new-exception / exception-rate rules → Slack, webhook, console, or custom channels. |
+| [`@agora/telescope/ai`](/docs/telescope/packages/ai)             | AI-assisted exception diagnosis via the Anthropic Claude API, cached by family. |
 
-All packages are version `0.1.0`, MIT, ESM-only, and require Node 20.6+ and
-`@adonisjs/core` `^6.12.0`.
+The package is version `0.1.0`, MIT, ESM-only, and requires Node 20.6+ and
+`@adonisjs/core` `^6.12.0`. Optional peers (`@adonisjs/lucid`, `@adonisjs/mail`,
+`@adonisjs/cache`, `@anthropic-ai/sdk`) are installed only for the features that use them.
 
 ## How they fit together
 
 The core publishes a live store on a cross-copy-stable global slot at boot. The watchers,
-UI, alerts, and AI packages all reach that **same** store through the slot — no dependency
+UI, alerts, and AI subpaths all reach that **same** store through the slot — no dependency
 injection, no inter-package wiring. The core has **zero** `@agora/*` dependencies; it
 reads [`@agora/context`](/docs/context) and [`@agora/diagnostics`](/docs/diagnostics)
 structurally and degrades gracefully when they're absent.

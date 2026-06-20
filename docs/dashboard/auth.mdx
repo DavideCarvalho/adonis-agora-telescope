@@ -39,7 +39,7 @@ requests through (and still denies everything else in production).
 
 ```ts title="config/telescope_ui.ts"
 import env from '#start/env'
-import { defineConfig } from '@agora/telescope-ui'
+import { defineConfig } from '@agora/telescope/ui'
 
 export default defineConfig({
   credentials: { token: env.get('TELESCOPE_UI_TOKEN') },
@@ -61,7 +61,7 @@ open 'http://app.example.com/telescope?token=s3cr3t'
 
 ```ts title="config/telescope_ui.ts"
 import env from '#start/env'
-import { defineConfig } from '@agora/telescope-ui'
+import { defineConfig } from '@agora/telescope/ui'
 
 export default defineConfig({
   credentials: {
@@ -87,7 +87,7 @@ or an injected user. Sync or async. When you set `authorize`, the built-in `cred
 gate is ignored (your hook is the whole policy).
 
 ```ts title="config/telescope_ui.ts"
-import { defineConfig } from '@agora/telescope-ui'
+import { defineConfig } from '@agora/telescope/ui'
 
 export default defineConfig({
   authorize: (ctx) => ctx.auth?.user?.isAdmin === true,

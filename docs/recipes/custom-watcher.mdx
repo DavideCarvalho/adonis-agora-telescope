@@ -11,11 +11,11 @@ exceptions, diagnostics, Lucid queries, mail and cache — but anything that emi
 
 ## The contract
 
-A watcher implements the tiny `Watcher` interface from `@agora/telescope-watchers`, over a
+A watcher implements the tiny `Watcher` interface from `@agora/telescope/watchers`, over a
 structural `EmitterLike` (a real `@adonisjs/events` emitter satisfies it):
 
 ```ts
-import type { Watcher, EmitterLike } from '@agora/telescope-watchers'
+import type { Watcher, EmitterLike } from '@agora/telescope/watchers'
 
 interface Watcher {
   readonly type: string                 // the telescope entry type you record under
@@ -42,7 +42,7 @@ Say you emit a `queue:processed` event when a background job finishes. Record ea
 
 ```ts title="app/telescope/queue_watcher.ts"
 import { EntryType, type RecordInput, currentTraceId } from '@agora/telescope'
-import { safeRecord, type Watcher, type EmitterLike } from '@agora/telescope-watchers'
+import { safeRecord, type Watcher, type EmitterLike } from '@agora/telescope/watchers'
 
 interface QueueProcessedEvent {
   queue: string
@@ -118,7 +118,7 @@ Start the watcher in a provider's `boot()` and stop it in `shutdown()`, resolvin
 application emitter from the container:
 
 ```ts title="providers/app_provider.ts"
-import type { EmitterLike } from '@agora/telescope-watchers'
+import type { EmitterLike } from '@agora/telescope/watchers'
 import { QueueWatcher } from '#telescope/queue_watcher'
 
 export default class AppProvider {
@@ -136,7 +136,7 @@ export default class AppProvider {
 ```
 
 <Callout type="info">
-You don't need to wire your watcher into `@agora/telescope-watchers`' config — that config
+You don't need to wire your watcher into `@agora/telescope/watchers`' config — that config
 only controls the *built-in* `query`/`mail`/`cache` watchers. A custom watcher is just a
 class you start yourself, recording through the same runtime store.
 </Callout>

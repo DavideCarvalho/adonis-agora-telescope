@@ -181,18 +181,18 @@ Lucid dialect (sqlite / Postgres / MySQL). See [Storage drivers](/docs/telescope
 ## Step 5 — Add per-technology watchers
 
 The core records requests, exceptions and diagnostics. To also record **every Lucid
-SQL query** (and optionally mail / cache events), add the watchers package:
+SQL query** (and optionally mail / cache events), enable the watchers feature — it ships
+inside `@agora/telescope`, so re-run configure and pick **Watchers**:
 
 ```sh
-npm i @agora/telescope-watchers
-node ace configure @agora/telescope-watchers
+node ace configure @agora/telescope   # pick "Watchers"
 ```
 
 By default only the verified Lucid `query` watcher runs. Enable mail and cache in
 `config/telescope_watchers.ts`:
 
 ```ts title="config/telescope_watchers.ts"
-import { defineConfig } from '@agora/telescope-watchers'
+import { defineConfig } from '@agora/telescope/watchers'
 
 export default defineConfig({
   watchers: ['query', 'mail', 'cache'],
@@ -211,9 +211,11 @@ See [Watchers](/docs/telescope/packages/watchers) for each watcher's recorded sh
 
 ## Step 6 — Mount the dashboard
 
+The dashboard is the `@agora/telescope/ui` subpath of the same package — re-run configure
+and pick **UI**:
+
 ```sh
-npm i @agora/telescope-ui
-node ace configure @agora/telescope-ui
+node ace configure @agora/telescope   # pick "UI"
 ```
 
 The dashboard mounts at `/telescope` and is reachable automatically **outside

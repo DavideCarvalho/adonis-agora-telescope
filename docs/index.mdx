@@ -25,10 +25,10 @@ three ways to read it back:
 
 - **A headless query API** — `TelescopeService` (`list`, `find`, `byTrace`,
   `topFamilies`, `topTags`). Read it from a controller, a test, or a script.
-- **A self-contained dashboard** — `@agora/telescope-ui` mounts an inline-HTML
-  console + JSON API behind an auth guard, no build step.
-- **Alerts & AI** — `@agora/telescope-alerts` pages you on a brand-new exception
-  family; `@agora/telescope-ai` turns an exception entry into a structured
+- **A self-contained dashboard** — the `@agora/telescope/ui` subpath mounts an
+  inline-HTML console + JSON API behind an auth guard, no build step.
+- **Alerts & AI** — `@agora/telescope/alerts` pages you on a brand-new exception
+  family; `@agora/telescope/ai` turns an exception entry into a structured
   root-cause diagnosis.
 
 ## How it's built
@@ -90,9 +90,10 @@ await telescope.topFamilies(10, 'diagnostic')         // busiest lib:event pairs
 
 ### Add the dashboard
 
+The dashboard is the `@agora/telescope/ui` subpath — re-run configure and pick **UI**:
+
 ```sh
-npm i @agora/telescope-ui
-node ace configure @agora/telescope-ui
+node ace configure @agora/telescope   # pick "UI"
 ```
 
 Open `http://localhost:3333/telescope`.
@@ -111,12 +112,12 @@ built-in [`lucid` storage driver](/docs/telescope/packages/storages).
 
 Once entries are flowing, the rest of the ecosystem reads them:
 
-- **Per-technology watchers** — [`@agora/telescope-watchers`](/docs/telescope/packages/watchers)
+- **Per-technology watchers** — [`@agora/telescope/watchers`](/docs/telescope/packages/watchers)
   records every Lucid `db:query` (SQL, bindings, duration), plus mail and cache events.
-- **Alerts** — [`@agora/telescope-alerts`](/docs/telescope/packages/alerts) polls the
+- **Alerts** — [`@agora/telescope/alerts`](/docs/telescope/packages/alerts) polls the
   store and fires a `new-exception` or `exception-rate` alert to Slack, a webhook, the
   console, or a custom channel.
-- **AI diagnosis** — [`@agora/telescope-ai`](/docs/telescope/packages/ai) feeds an
+- **AI diagnosis** — [`@agora/telescope/ai`](/docs/telescope/packages/ai) feeds an
   exception entry (plus its trace) to Claude and returns a cached cause + fix.
 - **Extensions** — a sibling lib contributes navigable entry types, declarative
   dashboard pages, and data providers through the
@@ -130,7 +131,7 @@ Once entries are flowing, the rest of the ecosystem reads them:
   <Card title="Storage" href="/docs/telescope/concepts/storage" description="The TelescopeStore contract, the in-memory default, and the Lucid adapter." />
   <Card title="Extensions" href="/docs/telescope/concepts/extensions" description="The declarative extension SPI — entry types, dashboards, data providers." />
   <Card title="Dashboard" href="/docs/telescope/dashboard" description="Mount the console, browse entries, and gate it for production." />
-  <Card title="Packages" href="/docs/telescope/packages" description="Every @agora/telescope-* package and what it does." />
+  <Card title="Packages" href="/docs/telescope/packages" description="Every @agora/telescope subpath and what it does." />
   <Card title="Alerts" href="/docs/telescope/packages/alerts" description="Page on new exception families via Slack, webhook, or a custom channel." />
   <Card title="AI exception diagnosis" href="/docs/telescope/packages/ai" description="Structured root-cause diagnosis of exceptions, cached by family." />
   <Card title="Configuration reference" href="/docs/telescope/reference/configuration" description="Every config key across every package, in one place." />

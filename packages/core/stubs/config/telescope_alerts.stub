@@ -1,0 +1,47 @@
+{{{
+  exports({ to: app.configPath('telescope_alerts.ts') })
+}}}
+import { defineConfig } from '@agora/telescope/alerts'
+
+/**
+ * Configuration for `@agora/telescope/alerts`. By default alerting is on, polls the
+ * telescope store every 30s for brand-new exception families, and logs each alert
+ * to the console. Add a Slack or generic webhook channel to ship alerts off-box.
+ */
+export default defineConfig({
+  /**
+   * Master switch. Set to `false` to disable alerting entirely.
+   */
+  // enabled: true,
+
+  /**
+   * Delivery destinations. Each fired alert is sent to every channel concurrently;
+   * one channel failing never blocks the others. Accepts declarative specs or
+   * pre-built channel objects (slackChannel/webhookChannel/customChannel).
+   */
+  // channels: [
+  //   { type: 'console' },
+  //   { type: 'slack', url: env.get('TELESCOPE_SLACK_WEBHOOK') },
+  //   { type: 'webhook', url: env.get('TELESCOPE_ALERT_WEBHOOK') },
+  // ],
+
+  /**
+   * Rules to evaluate.
+   *  - { type: 'new-exception', window } — page the first time an exception family
+   *    is seen within `window` (and again after it elapses / on resolve).
+   *  - { type: 'exception-rate', window, threshold } — page when >= threshold
+   *    exceptions are recorded in the trailing `window`.
+   */
+  // rules: [{ type: 'new-exception', window: '1h' }],
+
+  /**
+   * External dashboard URL — when set, Slack alerts include a deep link to the entry.
+   */
+  // dashboardUrl: 'https://telescope.example.com/',
+
+  /**
+   * Poll cadence and re-notify cooldown (duration strings).
+   */
+  // every: '30s',
+  // cooldown: '15m',
+})

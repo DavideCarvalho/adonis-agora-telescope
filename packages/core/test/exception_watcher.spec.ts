@@ -7,8 +7,8 @@ import {
   recordException,
   recordExceptionInStore,
 } from '../src/exception_watcher.js';
-import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import { resetTelescopeRuntime, setTelescopeRuntime } from '../src/registry.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 
 describe('exceptionFamilyHash', () => {
   it('groups identical errors thrown from the same site', () => {

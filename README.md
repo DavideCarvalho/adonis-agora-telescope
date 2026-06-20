@@ -6,10 +6,9 @@
 > happened on trace `X`?".
 
 This is the AdonisJS port of the [aviary](https://github.com/DavideCarvalho?tab=repositories)
-`nestjs-telescope` library — deliberately scoped to a **usable headless core**.
-There is no UI yet: telescope records into a store and exposes a query API. The
-dashboard, AI diagnosers, alerts, OTel export and per-tech watchers are
-[deferred](#deferred-roadmap) (see [`DESIGN.md`](./DESIGN.md)).
+`nestjs-telescope` library. The **headless core** records into a store and exposes a
+query API; the dashboard, per-technology watchers, AI diagnosers and alerts ship as
+**opt-in subpaths of this same package** (see [Optional features](#optional-features)).
 
 ## Install
 
@@ -18,8 +17,23 @@ npm i @agora/telescope
 node ace configure @agora/telescope
 ```
 
-`configure` registers the provider, plugs `TelescopeMiddleware` onto the `server`
-middleware stack (the HTTP request watcher), and publishes `config/telescope.ts`.
+`configure` registers the core provider, plugs `TelescopeMiddleware` onto the `server`
+middleware stack (the HTTP request watcher), publishes `config/telescope.ts`, and then
+prompts you for which [optional features](#optional-features) to enable — registering
+each chosen provider and publishing its config.
+
+## Optional features
+
+Everything is **one published package, `@agora/telescope`**. Each feature is a subpath,
+following the first-party AdonisJS convention (`@adonisjs/auth`'s guards). You install
+only the optional peers for the features you actually use.
+
+| Subpath | Provider subpath | What | Optional peers |
+|---|---|---|---|
+| [`@agora/telescope/watchers`](./docs/packages/watchers.mdx) | `@agora/telescope/watchers_provider` | records Lucid SQL queries (`db:query`), mail-sent and cache events | `@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache` |
+| [`@agora/telescope/ui`](./docs/packages/ui.mdx) | `@agora/telescope/ui_provider` | self-contained web dashboard + JSON API behind an auth guard | — |
+| [`@agora/telescope/ai`](./docs/packages/ai.mdx) | `@agora/telescope/ai_provider` | Claude-powered exception diagnosis | `@anthropic-ai/sdk` |
+| [`@agora/telescope/alerts`](./docs/packages/alerts.mdx) | `@agora/telescope/alerts_provider` | new-exception alerts to Slack / webhook / console | — |
 
 ## What it records
 
@@ -108,17 +122,14 @@ stub) and run `node ace migration:run`. Every store implements the same
 `TelescopeStore` contract (`record` / `get` / `list` / `count` / `prune` / `clear`);
 a custom backend implements the same contract and is passed as a `store` instance.
 
-## Deferred roadmap
+## Roadmap
 
-The NestJS original is 18 packages. This port ships the headless core; the rest is
-planned, not built (see [`DESIGN.md`](./DESIGN.md) for rationale):
+The NestJS original is 18 packages. This port ships the headless core plus the
+[optional feature subpaths](#optional-features) above (UI, watchers, AI, alerts).
+Still planned, not built (see [`DESIGN.md`](./DESIGN.md) for rationale):
 
-- **A UI dashboard** — the obvious next step; reads the existing query API.
-- A Lucid **query watcher** (records SQL as `query` entries) — the persistent
-  Lucid/SQLite **store** already ships in core as the `lucid` driver (see Storage).
-- Per-tech watchers: bullmq / mikro-orm / typeorm / prisma / redis / sqs /
-  schedule / mail / cache.
-- AI diagnosers, alerts (`new-exception` etc.), OTel export.
+- More per-tech watchers: bullmq / mikro-orm / typeorm / prisma / redis / sqs / schedule.
+- OTel export.
 
 ## The Agora ecosystem
 

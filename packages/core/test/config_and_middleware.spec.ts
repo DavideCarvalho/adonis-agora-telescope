@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveConfig } from '../src/define_config.js';
-import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import {
   getTelescopeRuntime,
   resetTelescopeRuntime,
   setTelescopeRuntime,
 } from '../src/registry.js';
 import { type HttpContextLike, recordRequest } from '../src/request_watcher.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import TelescopeMiddleware from '../src/telescope_middleware.js';
 
 function stubCtx(): HttpContextLike {

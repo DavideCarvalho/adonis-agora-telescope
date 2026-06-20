@@ -1,7 +1,7 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import type { TelescopeStore } from '../store.js';
-import type { InMemoryStoreOptions } from './memory.js';
 import type { LucidDatabaseLike, LucidStoreOptions } from './lucid.js';
+import type { InMemoryStoreOptions } from './memory.js';
 
 /**
  * Runtime context a {@link StoreProvider} receives when the telescope provider builds the
@@ -63,9 +63,7 @@ export const storage = {
     return async () => {
       const { InMemoryTelescopeStore } = await import('./memory.js');
       const maxEntries = config.limit ?? config.maxEntries;
-      return new InMemoryTelescopeStore(
-        maxEntries !== undefined ? { maxEntries } : {},
-      );
+      return new InMemoryTelescopeStore(maxEntries !== undefined ? { maxEntries } : {});
     };
   },
 
@@ -77,9 +75,7 @@ export const storage = {
 
       // Bind to a single connection client when named, else the Database facade. Both
       // satisfy the structural LucidDatabaseLike surface the store consumes.
-      const client = config.connection
-        ? db.connection(config.connection)
-        : db;
+      const client = config.connection ? db.connection(config.connection) : db;
       const { connection: _connection, ...storeOptions } = config;
       return new LucidTelescopeStore(client as unknown as LucidDatabaseLike, storeOptions);
     };

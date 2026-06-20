@@ -2,17 +2,55 @@ import type Configure from '@adonisjs/core/commands/configure';
 import { stubsRoot } from './stubs/main.js';
 
 /**
+ * The opt-in features of `@agora/telescope`, each shipped as a subpath of this one
+ * package. `configure` always wires the core; these are offered on top.
+ */
+const FEATURES = [
+  {
+    name: 'watchers',
+    message: 'Watchers — record Lucid queries, mail and cache events',
+    provider: '@agora/telescope/watchers_provider',
+    configStub: 'config/telescope_watchers.stub',
+  },
+  {
+    name: 'ui',
+    message: 'UI — web dashboard + JSON API at /telescope',
+    provider: '@agora/telescope/ui_provider',
+    configStub: 'config/telescope_ui.stub',
+  },
+  {
+    name: 'ai',
+    message: 'AI — Claude-powered exception diagnosis',
+    provider: '@agora/telescope/ai_provider',
+    configStub: 'config/telescope_ai.stub',
+  },
+  {
+    name: 'alerts',
+    message: 'Alerts — notify Slack / webhook on new exception families',
+    provider: '@agora/telescope/alerts_provider',
+    configStub: 'config/telescope_alerts.stub',
+  },
+] as const;
+
+type FeatureName = (typeof FEATURES)[number]['name'];
+
+/**
  * `node ace configure @agora/telescope` — auto-wires the package:
  *
- * 1. registers the service provider in `adonisrc.ts`;
+ * 1. registers the core service provider in `adonisrc.ts`;
  * 2. registers {@link TelescopeMiddleware} on the `server` middleware stack;
- * 3. publishes `config/telescope.ts` from a stub;
- * 4. publishes the `lucid` store migration so switching `store: 'lucid'` only needs
- *    `node ace migration:run` (the `memory` default ignores it).
+ * 3. publishes `config/telescope.ts` and the `lucid` store migration (so switching
+ *    `store: 'lucid'` only needs `node ace migration:run`; the `memory` default
+ *    ignores it);
+ * 4. offers the optional features (watchers / ui / ai / alerts) — each is a subpath
+ *    of this same package. The selected ones get their provider registered in
+ *    `adonisrc.ts` (`@agora/telescope/<feature>_provider`) and their config stub
+ *    published, folding in what used to be each sub-package's own `configure`.
  */
 export async function configure(command: Configure) {
   const codemods = await command.createCodemods();
 
+  // — core —
   await codemods.updateRcFile((rcFile) => {
     rcFile.addProvider('@agora/telescope/telescope_provider');
   });
@@ -25,4 +63,26 @@ export async function configure(command: Configure) {
     'database/migrations/create_telescope_entries_table.stub',
     {},
   );
+
+  // — optional features (subpaths of this same package) —
+  let selected: FeatureName[];
+  try {
+    selected = await command.prompt.multiple(
+      'Select the optional telescope features to enable',
+      FEATURES.map((feature) => ({ name: feature.name, message: feature.message })),
+    );
+  } catch {
+    // Non-interactive runs (CI / --no-interactive) get the core only; features can be
+    // enabled later by re-running configure or wiring the providers by hand.
+    selected = [];
+  }
+
+  for (const feature of FEATURES) {
+    if (!selected.includes(feature.name)) continue;
+
+    await codemods.updateRcFile((rcFile) => {
+      rcFile.addProvider(feature.provider);
+    });
+    await codemods.makeUsingStub(stubsRoot, feature.configStub, {});
+  }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@agora/telescope",
   "version": "0.1.0",
-  "description": "Laravel Telescope-style headless observability for AdonisJS — records HTTP requests and every Agora diagnostics event as queryable entries.",
+  "description": "Laravel Telescope-style headless observability for AdonisJS — records HTTP requests and every Agora diagnostics event as queryable entries, plus opt-in subpaths for per-technology watchers, a web dashboard, AI exception diagnosis, and alerting.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -32,24 +32,77 @@
       "types": "./dist/configure.d.ts",
       "import": "./dist/configure.js",
       "default": "./dist/configure.js"
+    },
+    "./watchers": {
+      "types": "./dist/src/watchers/index.d.ts",
+      "import": "./dist/src/watchers/index.js",
+      "default": "./dist/src/watchers/index.js"
+    },
+    "./watchers_provider": {
+      "types": "./dist/providers/telescope_watchers_provider.d.ts",
+      "import": "./dist/providers/telescope_watchers_provider.js",
+      "default": "./dist/providers/telescope_watchers_provider.js"
+    },
+    "./ui": {
+      "types": "./dist/src/ui/index.d.ts",
+      "import": "./dist/src/ui/index.js",
+      "default": "./dist/src/ui/index.js"
+    },
+    "./ui_provider": {
+      "types": "./dist/providers/telescope_ui_provider.d.ts",
+      "import": "./dist/providers/telescope_ui_provider.js",
+      "default": "./dist/providers/telescope_ui_provider.js"
+    },
+    "./ai": {
+      "types": "./dist/src/ai/index.d.ts",
+      "import": "./dist/src/ai/index.js",
+      "default": "./dist/src/ai/index.js"
+    },
+    "./ai_provider": {
+      "types": "./dist/providers/telescope_ai_provider.d.ts",
+      "import": "./dist/providers/telescope_ai_provider.js",
+      "default": "./dist/providers/telescope_ai_provider.js"
+    },
+    "./alerts": {
+      "types": "./dist/src/alerts/index.d.ts",
+      "import": "./dist/src/alerts/index.js",
+      "default": "./dist/src/alerts/index.js"
+    },
+    "./alerts_provider": {
+      "types": "./dist/providers/telescope_alerts_provider.d.ts",
+      "import": "./dist/providers/telescope_alerts_provider.js",
+      "default": "./dist/providers/telescope_alerts_provider.js"
     }
   },
   "files": ["dist/", "README.md", "CHANGELOG.md"],
   "//sideEffects": "registry.ts publishes the telescope runtime handle on a Symbol.for() global slot at import time — process-global state a bundler told sideEffects:false could tree-shake. The rest is pure.",
   "sideEffects": ["**/registry.js", "**/registry.ts"],
   "scripts": {
-    "build": "tsc -p tsconfig.json && pnpm run copy:stubs",
-    "copy:stubs": "mkdir -p dist/stubs/config dist/stubs/database/migrations && cp stubs/config/telescope.stub dist/stubs/config/telescope.stub && cp stubs/database/migrations/create_telescope_entries_table.stub dist/stubs/database/migrations/create_telescope_entries_table.stub",
+    "build": "tsc -p tsconfig.json && pnpm run copy:stubs && pnpm run copy:assets",
+    "copy:stubs": "mkdir -p dist/stubs/config dist/stubs/database/migrations && cp stubs/config/telescope.stub dist/stubs/config/telescope.stub && cp stubs/config/telescope_watchers.stub dist/stubs/config/telescope_watchers.stub && cp stubs/config/telescope_ui.stub dist/stubs/config/telescope_ui.stub && cp stubs/config/telescope_ai.stub dist/stubs/config/telescope_ai.stub && cp stubs/config/telescope_alerts.stub dist/stubs/config/telescope_alerts.stub && cp stubs/database/migrations/create_telescope_entries_table.stub dist/stubs/database/migrations/create_telescope_entries_table.stub",
+    "copy:assets": "mkdir -p dist/src/ui && cp src/ui/dashboard.html dist/src/ui/dashboard.html",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
     "@adonisjs/core": "^6.12.0",
-    "@adonisjs/lucid": "^21.0.0"
+    "@adonisjs/lucid": "^21.0.0",
+    "@adonisjs/mail": "^9.0.0",
+    "@adonisjs/cache": "^1.0.0",
+    "@anthropic-ai/sdk": "^0.32.0"
   },
   "peerDependenciesMeta": {
     "@adonisjs/lucid": {
+      "optional": true
+    },
+    "@adonisjs/mail": {
+      "optional": true
+    },
+    "@adonisjs/cache": {
+      "optional": true
+    },
+    "@anthropic-ai/sdk": {
       "optional": true
     }
   },
@@ -57,6 +110,7 @@
     "@adonisjs/assembler": "^7.8.0",
     "@adonisjs/core": "^6.17.0",
     "@adonisjs/lucid": "^21.6.1",
+    "@anthropic-ai/sdk": "^0.32.0",
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^20.0.0",
     "better-sqlite3": "^12.0.0",

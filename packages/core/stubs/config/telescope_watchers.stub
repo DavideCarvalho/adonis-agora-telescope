@@ -1,0 +1,28 @@
+{{{
+  exports({ to: app.configPath('telescope_watchers.ts') })
+}}}
+import { defineConfig } from '@agora/telescope/watchers'
+
+/**
+ * Configuration for `@agora/telescope/watchers`. By default only the Lucid
+ * `query` watcher is enabled — its `db:query` event is verified against the
+ * installed `@adonisjs/lucid` types. The `mail` and `cache` watchers are opt-in.
+ */
+export default defineConfig({
+  /**
+   * Master switch. Set to `false` to start no per-technology watcher.
+   */
+  // enabled: true,
+
+  /**
+   * Active watchers. Omit one to disable it.
+   *  - 'query' — records every Lucid SQL query (sql, bindings, duration, connection).
+   *  - 'mail'  — records every email sent (mail:sent).
+   *  - 'cache' — records @adonisjs/cache hit/miss/write/delete events.
+   *
+   * Note: the 'mail' and 'cache' event contracts are best-effort — those packages
+   * are not present in this repo, so their event names/payloads could not be
+   * verified against their types. See the package README.
+   */
+  // watchers: ['query'],
+})

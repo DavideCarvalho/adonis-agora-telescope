@@ -3,15 +3,7 @@
   "changelog": ["@changesets/changelog-github", { "repo": "DavideCarvalho/adonis-telescope" }],
   "commit": false,
   "fixed": [],
-  "linked": [
-    [
-      "@agora/telescope",
-      "@agora/telescope-watchers",
-      "@agora/telescope-alerts",
-      "@agora/telescope-ui",
-      "@agora/telescope-ai"
-    ]
-  ],
+  "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",

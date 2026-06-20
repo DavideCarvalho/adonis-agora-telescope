@@ -33,54 +33,14 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@20.19.43)
 
-  packages/ai:
-    dependencies:
-      '@agora/telescope':
-        specifier: workspace:^
-        version: link:../core
-    devDependencies:
-      '@adonisjs/assembler':
-        specifier: ^7.8.0
-        version: 7.8.2(typescript@5.9.3)
-      '@adonisjs/core':
-        specifier: ^6.17.0
-        version: 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
-      '@anthropic-ai/sdk':
-        specifier: ^0.32.0
-        version: 0.32.1
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.43
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.6(@types/node@20.19.43)
-
-  packages/alerts:
-    dependencies:
-      '@agora/telescope':
-        specifier: workspace:^
-        version: link:../core
-    devDependencies:
-      '@adonisjs/assembler':
-        specifier: ^7.8.0
-        version: 7.8.2(typescript@5.9.3)
-      '@adonisjs/core':
-        specifier: ^6.17.0
-        version: 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.43
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.6(@types/node@20.19.43)
-
   packages/core:
+    dependencies:
+      '@adonisjs/cache':
+        specifier: ^1.0.0
+        version: 1.3.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(@adonisjs/lucid@21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(better-sqlite3@12.11.1)(luxon@3.7.2))(knex@3.2.10(better-sqlite3@12.11.1))
+      '@adonisjs/mail':
+        specifier: ^9.0.0
+        version: 9.2.2(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(@types/node@20.19.43)(edge.js@6.5.1)(luxon@3.7.2)
     devDependencies:
       '@adonisjs/assembler':
         specifier: ^7.8.0
@@ -91,6 +51,9 @@ importers:
       '@adonisjs/lucid':
         specifier: ^21.6.1
         version: 21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(better-sqlite3@12.11.1)(luxon@3.7.2)
+      '@anthropic-ai/sdk':
+        specifier: ^0.32.0
+        version: 0.32.1
       '@types/better-sqlite3':
         specifier: ^7.6.0
         version: 7.6.13
@@ -103,59 +66,6 @@ importers:
       luxon:
         specifier: ^3.4.4
         version: 3.7.2
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.6(@types/node@20.19.43)
-
-  packages/ui:
-    dependencies:
-      '@agora/telescope':
-        specifier: workspace:^
-        version: link:../core
-    devDependencies:
-      '@adonisjs/assembler':
-        specifier: ^7.8.0
-        version: 7.8.2(typescript@5.9.3)
-      '@adonisjs/core':
-        specifier: ^6.17.0
-        version: 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.43
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.0.0
-        version: 3.2.6(@types/node@20.19.43)
-
-  packages/watchers:
-    dependencies:
-      '@adonisjs/cache':
-        specifier: ^1.0.0
-        version: 1.3.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(@adonisjs/lucid@21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(luxon@3.7.2))(knex@3.2.10)
-      '@adonisjs/mail':
-        specifier: ^9.0.0
-        version: 9.2.2(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(@types/node@20.19.43)(edge.js@6.5.1)(luxon@3.7.2)
-      '@agora/telescope':
-        specifier: workspace:^
-        version: link:../core
-    devDependencies:
-      '@adonisjs/assembler':
-        specifier: ^7.8.0
-        version: 7.8.2(typescript@5.9.3)
-      '@adonisjs/core':
-        specifier: ^6.17.0
-        version: 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
-      '@adonisjs/lucid':
-        specifier: ^21.6.1
-        version: 21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(better-sqlite3@12.11.1)(luxon@3.7.2)
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.43
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -2847,11 +2757,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@adonisjs/cache@1.3.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(@adonisjs/lucid@21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(luxon@3.7.2))(knex@3.2.10)':
+  '@adonisjs/cache@1.3.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(@adonisjs/lucid@21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(better-sqlite3@12.11.1)(luxon@3.7.2))(knex@3.2.10(better-sqlite3@12.11.1))':
     dependencies:
       '@adonisjs/assembler': 7.8.2(typescript@5.9.3)
       '@adonisjs/core': 6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1)
-      bentocache: 1.6.1(knex@3.2.10)
+      bentocache: 1.6.1(knex@3.2.10(better-sqlite3@12.11.1))
     optionalDependencies:
       '@adonisjs/lucid': 21.8.2(@adonisjs/assembler@7.8.2(typescript@5.9.3))(@adonisjs/core@6.21.0(@adonisjs/assembler@7.8.2(typescript@5.9.3))(edge.js@6.5.1))(better-sqlite3@12.11.1)(luxon@3.7.2)
     transitivePeerDependencies:
@@ -3842,7 +3752,7 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  bentocache@1.6.1(knex@3.2.10):
+  bentocache@1.6.1(knex@3.2.10(better-sqlite3@12.11.1)):
     dependencies:
       '@boringnode/bus': 0.9.0
       '@julr/utils': 1.9.0

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import { TelescopeService } from '../src/service.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 
 async function seed() {
   const store = new InMemoryTelescopeStore();

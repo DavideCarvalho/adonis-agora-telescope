@@ -13,16 +13,16 @@ builds a `RecordInput`, and hands it to the store. The store stamps it into an
 ## Watchers
 
 A watcher is anything that turns a runtime event into entries. Telescope ships its
-core watchers in `@agora/telescope` and more in `@agora/telescope-watchers`:
+core watchers in `@agora/telescope` and more in the `@agora/telescope/watchers` subpath:
 
-| Watcher                | Package                      | Entry type   | Records                                              |
+| Watcher                | Subpath                      | Entry type   | Records                                              |
 | ---------------------- | ---------------------------- | ------------ | --------------------------------------------------- |
 | Request                | `@agora/telescope`           | `request`    | Each inbound HTTP request — method, url, status, duration. |
 | Exception              | `@agora/telescope`           | `exception`  | Any error thrown by the HTTP pipeline (auto), or recorded manually. |
 | Diagnostics            | `@agora/telescope`           | `diagnostic` | Every `agora:<lib>:<event>` publish.                 |
-| Lucid query            | `@agora/telescope-watchers`  | `query`      | Each `db:query` — SQL, bindings, duration, connection. |
-| Mail                   | `@agora/telescope-watchers`  | `mail`       | Each `mail:sent` — mailer, from, to, subject.        |
-| Cache                  | `@agora/telescope-watchers`  | `cache`      | `@adonisjs/cache` hit / miss / write / delete / clear. |
+| Lucid query            | `@agora/telescope/watchers`  | `query`      | Each `db:query` — SQL, bindings, duration, connection. |
+| Mail                   | `@agora/telescope/watchers`  | `mail`       | Each `mail:sent` — mailer, from, to, subject.        |
+| Cache                  | `@agora/telescope/watchers`  | `cache`      | `@adonisjs/cache` hit / miss / write / delete / clear. |
 
 The built-in request watcher runs as **server middleware**; the diagnostics watcher
 is started by the core provider at boot; the per-technology watchers subscribe to the

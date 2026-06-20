@@ -1,53 +1,57 @@
 ---
-title: "@agora/telescope-ai"
-description: AI-assisted exception diagnosis for Telescope — turns an exception entry (plus its related trace entries) into a structured cause/fix/confidence diagnosis via the Anthropic Claude API, cached by exception family hash so the same error is never diagnosed twice.
+title: "@agora/telescope/ai"
+description: AI-assisted exception diagnosis subpath of @agora/telescope — turns an exception entry (plus its related trace entries) into a structured cause/fix/confidence diagnosis via the Anthropic Claude API, cached by exception family hash so the same error is never diagnosed twice.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import { Callout } from 'fumadocs-ui/components/callout'
 
-When an exception lands in Telescope, this package can hand it (and the other entries from
-its trace) to Claude and get back a structured root-cause diagnosis — a likely cause, a
-concrete fix, and a confidence level — cached by the exception's family hash so each error
-family is diagnosed once.
+When an exception lands in Telescope, the **`@agora/telescope/ai`** subpath can hand it (and
+the other entries from its trace) to Claude and get back a structured root-cause diagnosis —
+a likely cause, a concrete fix, and a confidence level — cached by the exception's family
+hash so each error family is diagnosed once.
 
 ## Install
+
+AI diagnosis ships inside the one `@agora/telescope` package. Add the Anthropic SDK (an
+optional peer) and enable the feature when configuring telescope:
 
 <Tabs items={['npm', 'pnpm', 'yarn']}>
   <Tab value="npm">
 
 ```sh
-npm i @agora/telescope-ai @anthropic-ai/sdk
-node ace configure @agora/telescope-ai
+npm i @agora/telescope @anthropic-ai/sdk
+node ace configure @agora/telescope   # then pick "AI" at the prompt
 ```
 
 </Tab>
   <Tab value="pnpm">
 
 ```sh
-pnpm add @agora/telescope-ai @anthropic-ai/sdk
-node ace configure @agora/telescope-ai
+pnpm add @agora/telescope @anthropic-ai/sdk
+node ace configure @agora/telescope   # then pick "AI" at the prompt
 ```
 
 </Tab>
   <Tab value="yarn">
 
 ```sh
-yarn add @agora/telescope-ai @anthropic-ai/sdk
-node ace configure @agora/telescope-ai
+yarn add @agora/telescope @anthropic-ai/sdk
+node ace configure @agora/telescope   # then pick "AI" at the prompt
 ```
 
 </Tab>
 </Tabs>
 
-`@anthropic-ai/sdk` is a peer (the host owns the version). `configure` registers the
-provider and publishes `config/telescope_ai.ts`.
+`@anthropic-ai/sdk` is an **optional peer** (the host owns the version) — install it only if
+you enable AI. Selecting **AI** registers `@agora/telescope/ai_provider` and publishes
+`config/telescope_ai.ts`.
 
 ## Configuration
 
 ```ts title="config/telescope_ai.ts"
 import env from '#start/env'
-import { defineConfig } from '@agora/telescope-ai'
+import { defineConfig } from '@agora/telescope/ai'
 
 export default defineConfig({
   apiKey: env.get('ANTHROPIC_API_KEY'),
@@ -80,7 +84,7 @@ when disabled (its `diagnose` is then a no-op returning `null`), so you can `inj
 without a null check.
 
 ```ts
-import { TelescopeAiDiagnoser } from '@agora/telescope-ai'
+import { TelescopeAiDiagnoser } from '@agora/telescope/ai'
 import { TelescopeService } from '@agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)

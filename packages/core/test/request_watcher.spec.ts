@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EntryType } from '../src/entry.js';
-import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import { type HttpContextLike, recordRequest } from '../src/request_watcher.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 
 function stubCtx(method: string, url: string, statusCode?: number): HttpContextLike {
   return {
