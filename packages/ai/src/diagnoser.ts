@@ -1,17 +1,6 @@
-/**
- * The shape of an `exception` telescope entry's content, mirrored from
- * `@agora/telescope`'s `ExceptionEntryContent`. Re-declared structurally here so
- * the prompt builder and tests can refer to it without importing a value, and so
- * a diagnosis can be built from any entry whose content matches this shape.
- */
-export interface ExceptionEntryContent {
-  name: string;
-  message: string;
-  stack: string | null;
-  method: string | null;
-  url: string | null;
-  traceId: string | null;
-}
+// Re-export the canonical exception content shape from the core package (the
+// AI package already depends on @agora/telescope), so the two never drift.
+export type { ExceptionEntryContent } from '@agora/telescope';
 
 /** A diagnosis confidence level, as returned by the model. */
 export type DiagnosisConfidence = 'high' | 'medium' | 'low';

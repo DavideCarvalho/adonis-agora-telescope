@@ -67,8 +67,11 @@ export class Alerter {
     if (!this.deps.alerts.enabled) return;
     const nowMs = this.now();
     try {
+      // Record each exception at its OWN event time (not poll time), so the
+      // rate window reflects when errors actually happened. The poller feeds
+      // entries oldest-first, so timestamps stay ascending for the cutoff shift.
       for (const entry of exceptionEntries) {
-        this.recentExceptions.push(nowMs);
+        this.recentExceptions.push(entry.createdAt.getTime());
       }
       await this.evaluateNewException(exceptionEntries, nowMs);
       await this.evaluateExceptionRate(nowMs);
@@ -96,13 +99,23 @@ export class Alerter {
     const result = this.findRule('new-exception');
     if (result === null) return;
     const windowMs = durationToMs(result.rule.window);
+    // Count occurrences per family once (O(n)) instead of re-scanning the batch
+    // per entry (O(n²)). This is the count within this poll batch.
+    const occurrencesByFamily = new Map<string, number>();
+    for (const entry of entries) {
+      if (entry.familyHash === null) continue;
+      occurrencesByFamily.set(
+        entry.familyHash,
+        (occurrencesByFamily.get(entry.familyHash) ?? 0) + 1,
+      );
+    }
     for (const entry of entries) {
       if (entry.familyHash === null) continue;
       const isNew = this.tracker.observe(entry.familyHash, nowMs, windowMs);
       if (!isNew) continue;
       if (this.familyInCooldown(entry.familyHash, nowMs)) continue;
       this.lastFiredFamily.set(entry.familyHash, nowMs);
-      const occurrences = entries.filter((e) => e.familyHash === entry.familyHash).length;
+      const occurrences = occurrencesByFamily.get(entry.familyHash) ?? 1;
       await this.dispatch(this.buildNewExceptionPayload(result.rule, entry, occurrences, nowMs));
     }
   }
