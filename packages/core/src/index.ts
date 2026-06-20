@@ -27,6 +27,17 @@ export type {
   RecordRequestOptions,
   RequestEntryContent,
 } from './request_watcher.js';
+export {
+  buildExceptionInput,
+  recordException,
+  recordExceptionInStore,
+} from './exception_watcher.js';
+export type {
+  ExceptionEntryContent,
+  RecordExceptionContext,
+} from './exception_watcher.js';
+export { exceptionFamilyHash } from './exception_family_hash.js';
+export type { ExceptionFamilyParts } from './exception_family_hash.js';
 
 // — config —
 export { defineConfig, resolveConfig } from './define_config.js';

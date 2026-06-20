@@ -82,6 +82,37 @@ describe('TelescopeMiddleware', () => {
     ).rejects.toThrow('boom');
     expect(await store.list({ type: 'request' })).toHaveLength(1);
   });
+
+  it('auto-captures an exception entry on a throwing handler with request context', async () => {
+    const store = new InMemoryTelescopeStore();
+    setTelescopeRuntime(store, true);
+    const mw = new TelescopeMiddleware();
+    await expect(
+      mw.handle(
+        {
+          request: { method: () => 'POST', url: () => '/orders?token=x' },
+          response: { statusCode: 500 },
+        } as never,
+        async () => {
+          throw new TypeError('handler failed');
+        },
+      ),
+    ).rejects.toThrow('handler failed');
+
+    const exceptions = await store.list({ type: 'exception' });
+    expect(exceptions).toHaveLength(1);
+    const content = exceptions[0]?.content as {
+      name: string;
+      message: string;
+      method: string | null;
+      url: string | null;
+    };
+    expect(content.name).toBe('TypeError');
+    expect(content.message).toBe('handler failed');
+    expect(content.method).toBe('POST');
+    expect(content.url).toBe('/orders');
+    expect(exceptions[0]?.familyHash).not.toBeNull();
+  });
 });
 
 describe('context accessor integration', () => {

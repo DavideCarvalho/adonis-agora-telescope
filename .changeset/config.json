@@ -9,7 +9,8 @@
       "@agora/telescope-lucid",
       "@agora/telescope-watchers",
       "@agora/telescope-alerts",
-      "@agora/telescope-ui"
+      "@agora/telescope-ui",
+      "@agora/telescope-ai"
     ]
   ],
   "access": "public",
