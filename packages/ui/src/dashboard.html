@@ -127,12 +127,77 @@
       .empty, .error { padding: 40px 20px; text-align: center; color: var(--muted); }
       .error { color: var(--red); }
       .tagline .badge { margin-right: 4px; margin-bottom: 4px; }
+
+      /* — extension dashboards — */
+      nav.tabs { display: flex; gap: 4px; }
+      nav.tabs button {
+        background: transparent;
+        border: 1px solid transparent;
+        border-bottom: 2px solid transparent;
+        border-radius: 6px 6px 0 0;
+        color: var(--muted);
+        padding: 6px 12px;
+      }
+      nav.tabs button:hover { color: var(--text); }
+      nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+      .dash { padding: 16px 20px; overflow: auto; height: calc(100% - 53px); }
+      .dash-section { margin-bottom: 24px; }
+      .dash-section h3 {
+        margin: 0 0 10px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .grid { display: grid; gap: 12px; }
+      .grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+      .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+      .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+      @media (max-width: 900px) { .grid { grid-template-columns: 1fr !important; } }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+        min-height: 96px;
+        display: flex;
+        flex-direction: column;
+      }
+      .card .card-title { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+      .card .big {
+        font-size: 30px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.1;
+      }
+      .card .big.ok { color: var(--green); }
+      .card .big.warn { color: var(--yellow); }
+      .card .big.bad { color: var(--red); }
+      .card .delta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+      .card .delta.up { color: var(--green); }
+      .card .delta.down { color: var(--red); }
+      .card table { font-size: 12.5px; }
+      .card th, .card td { padding: 5px 8px; }
+      .card td a { color: var(--accent); text-decoration: none; }
+      .card td a:hover { text-decoration: underline; }
+      .barlist { display: flex; flex-direction: column; gap: 6px; }
+      .barlist .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 12.5px; }
+      .barlist .track { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+      .barlist .track > span { display: block; height: 100%; background: var(--accent); }
+      .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+      .legend .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+      .markers { display: flex; gap: 14px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+      .markers b { color: var(--text); font-variant-numeric: tabular-nums; }
+      .card svg { display: block; width: 100%; }
+      .muted-pill { color: var(--muted); font-size: 12px; }
     </style>
   </head>
   <body>
     <header>
       <h1><span class="dot">●</span> Telescope</h1>
-      <div class="controls">
+      <nav class="tabs" id="tabs"></nav>
+      <div class="controls" id="entries-controls">
         <select id="type-filter" title="Filter by entry type">
           <option value="">all types</option>
           <option value="request">request</option>
@@ -168,6 +233,8 @@
       <aside id="detail"></aside>
     </div>
 
+    <div class="dash" id="dashboard-view" style="display: none"></div>
+
     <script>
       (function () {
         var API_BASE = '__TELESCOPE_API_BASE__';
@@ -181,9 +248,13 @@
           search: document.getElementById('search'),
           autorefresh: document.getElementById('autorefresh'),
           refresh: document.getElementById('refresh'),
+          tabs: document.getElementById('tabs'),
+          entriesControls: document.getElementById('entries-controls'),
+          dashboardView: document.getElementById('dashboard-view'),
         };
         var selectedId = null;
         var timer = null;
+        var activeTab = 'entries';
 
         function esc(s) {
           return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -295,6 +366,223 @@
           });
         }
 
+        // ---- extension dashboards (panel renderer) ----
+        var SERIES_COLORS = ['#3fb950', '#f85149', '#58a6ff', '#d29922', '#a78bfa'];
+
+        function fmtValue(v, format) {
+          if (v == null || (typeof v === 'number' && isNaN(v))) return '—';
+          if (format === 'percent') return (v * 100).toFixed(1) + '%';
+          if (format === 'duration') return v >= 1000 ? (v / 1000).toFixed(2) + 's' : Math.round(v) + 'ms';
+          if (format === 'rate') return Math.round(v * 10) / 10 + '/h';
+          if (typeof v === 'number') return String(Math.round(v * 100) / 100);
+          return String(v);
+        }
+        function thresholdClass(v, t) {
+          if (!t || v == null) return '';
+          if (t.direction === 'up-bad') return v >= t.bad ? 'bad' : v >= t.warn ? 'warn' : 'ok';
+          return v <= t.bad ? 'bad' : v <= t.warn ? 'warn' : 'ok';
+        }
+        function clsColor(cls) {
+          return cls === 'ok' ? 'var(--green)' : cls === 'warn' ? 'var(--yellow)' : cls === 'bad' ? 'var(--red)' : 'var(--accent)';
+        }
+        function fillLink(href, row) {
+          return href.replace(/\{(\w+)\}/g, function (_, k) {
+            return encodeURIComponent(row[k] == null ? '' : row[k]);
+          });
+        }
+        function sparkline(points) {
+          if (!points || !points.length) return '';
+          var w = 100, h = 24, max = Math.max.apply(null, points), min = Math.min.apply(null, points);
+          var span = max - min || 1, step = points.length > 1 ? w / (points.length - 1) : w;
+          var d = points
+            .map(function (p, i) {
+              return (i ? 'L' : 'M') + (i * step).toFixed(1) + ' ' + (h - ((p - min) / span) * (h - 4) - 2).toFixed(1);
+            })
+            .join(' ');
+          return '<svg viewBox="0 0 ' + w + ' ' + h + '" height="24" preserveAspectRatio="none"><path d="' + d + '" fill="none" stroke="var(--accent)" stroke-width="1.5"/></svg>';
+        }
+        function donut(segments) {
+          var total = segments.reduce(function (s, x) { return s + (x.value || 0); }, 0) || 1;
+          var r = 30, c = 2 * Math.PI * r, off = 0;
+          var rings = segments
+            .map(function (seg) {
+              var frac = (seg.value || 0) / total;
+              var dash = (frac * c).toFixed(2) + ' ' + (c - frac * c).toFixed(2);
+              var ring = '<circle r="' + r + '" cx="40" cy="40" fill="none" stroke="' + (seg.color || 'var(--accent)') + '" stroke-width="12" stroke-dasharray="' + dash + '" stroke-dashoffset="' + (-off * c).toFixed(2) + '" transform="rotate(-90 40 40)"/>';
+              off += frac;
+              return ring;
+            })
+            .join('');
+          return '<svg viewBox="0 0 80 80" height="90">' + rings + '</svg>';
+        }
+        function columns(rows, series, stacked) {
+          if (!rows.length) return '<div class="muted-pill">no data</div>';
+          var w = 100, h = 60, n = rows.length, bw = w / n, max = 1;
+          rows.forEach(function (r) {
+            var sum = stacked ? series.reduce(function (s, k) { return s + (r[k] || 0); }, 0) : Math.max.apply(null, series.map(function (k) { return r[k] || 0; }));
+            if (sum > max) max = sum;
+          });
+          var bars = rows
+            .map(function (r, i) {
+              var x = i * bw, y = h, out = '';
+              series.forEach(function (k, si) {
+                var bh = ((r[k] || 0) / max) * (h - 2);
+                y -= bh;
+                out += '<rect x="' + (x + 1).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (bw - 2).toFixed(1) + '" height="' + bh.toFixed(1) + '" fill="' + SERIES_COLORS[si % SERIES_COLORS.length] + '"/>';
+              });
+              return out;
+            })
+            .join('');
+          return '<svg viewBox="0 0 ' + w + ' ' + h + '" height="70" preserveAspectRatio="none">' + bars + '</svg>';
+        }
+        function histogram(buckets) {
+          if (!buckets.length) return '<div class="muted-pill">no data</div>';
+          var w = 100, h = 60, n = buckets.length, bw = w / n;
+          var max = Math.max.apply(null, buckets.map(function (b) { return b.count || 0; })) || 1;
+          var bars = buckets
+            .map(function (b, i) {
+              var bh = ((b.count || 0) / max) * (h - 2);
+              return '<rect x="' + (i * bw + 1).toFixed(1) + '" y="' + (h - bh).toFixed(1) + '" width="' + (bw - 2).toFixed(1) + '" height="' + bh.toFixed(1) + '" fill="var(--accent)"/>';
+            })
+            .join('');
+          return '<svg viewBox="0 0 ' + w + ' ' + h + '" height="70" preserveAspectRatio="none">' + bars + '</svg>';
+        }
+        function barList(items) {
+          if (!items.length) return '<div class="muted-pill">no data</div>';
+          var max = Math.max.apply(null, items.map(function (i) { return i.value || 0; })) || 1;
+          return '<div class="barlist">' + items
+            .map(function (it) {
+              var pct = (((it.value || 0) / max) * 100).toFixed(0);
+              return '<div class="row"><span>' + esc(it.label) + '</span><b>' + esc(it.value) + '</b></div><div class="track"><span style="width:' + pct + '%"></span></div>';
+            })
+            .join('') + '</div>';
+        }
+        function panelTable(panel, data) {
+          var cols = panel.columns || [], rows = data.rows || [];
+          if (!rows.length) return '<div class="muted-pill">no data</div>';
+          var head = '<tr>' + cols.map(function (c) { return '<th>' + esc(c.label) + '</th>'; }).join('') + '</tr>';
+          var body = rows
+            .map(function (row) {
+              return '<tr>' + cols
+                .map(function (c) {
+                  var cell = esc(row[c.key] == null ? '' : row[c.key]);
+                  if (c.link && c.link.href) {
+                    var tgt = c.link.external ? ' target="_blank" rel="noopener"' : '';
+                    cell = '<a href="' + esc(fillLink(c.link.href, row)) + '"' + tgt + '>' + cell + '</a>';
+                  }
+                  return '<td>' + cell + '</td>';
+                })
+                .join('') + '</tr>';
+            })
+            .join('');
+          return '<table><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
+        }
+        function renderPanelBody(panel, data) {
+          if (panel.kind === 'stat') {
+            var cls = thresholdClass(data.value, panel.thresholds);
+            var delta = data.delta != null
+              ? '<div class="delta ' + (data.delta >= 0 ? 'up' : 'down') + '">' + (data.delta >= 0 ? '▲' : '▼') + ' ' + esc(fmtValue(Math.abs(data.delta), panel.format)) + '</div>'
+              : '';
+            var spark = panel.spark && data.spark ? sparkline(data.spark) : '';
+            return '<div class="big ' + cls + '">' + esc(fmtValue(data.value, panel.format)) + '</div>' + delta + spark;
+          }
+          if (panel.kind === 'gauge') {
+            var gcls = thresholdClass(data.value, panel.thresholds);
+            var max = panel.max != null ? panel.max : data.max != null ? data.max : 1;
+            var pct = max ? Math.max(0, Math.min(100, (data.value / max) * 100)) : 0;
+            return '<div class="big ' + gcls + '">' + esc(fmtValue(data.value, panel.format)) + '</div>' +
+              '<div style="height:6px;border-radius:3px;background:var(--panel-2);margin-top:10px;overflow:hidden"><span style="display:block;height:100%;width:' + pct.toFixed(0) + '%;background:' + clsColor(gcls) + '"></span></div>';
+          }
+          if (panel.kind === 'table') return panelTable(panel, data);
+          if (panel.kind === 'topN') return barList((data.items || []).slice(0, panel.limit || 8));
+          if (panel.kind === 'breakdown') {
+            var segs = data.segments || [];
+            var legend = '<div class="legend">' + segs
+              .map(function (s) { return '<span><span class="swatch" style="background:' + (s.color || 'var(--accent)') + '"></span>' + esc(s.label) + ' ' + esc(s.value) + '</span>'; })
+              .join('') + '</div>';
+            return donut(segs) + legend;
+          }
+          if (panel.kind === 'timeseries') return columns(data.rows || [], panel.series || [], panel.style === 'stacked');
+          if (panel.kind === 'distribution') {
+            var markers = (panel.markers || [])
+              .map(function (m) { return '<span>' + m + ' <b>' + esc(fmtValue(data[m], panel.format)) + '</b></span>'; })
+              .join('');
+            return histogram(data.buckets || []) + (markers ? '<div class="markers">' + markers + '</div>' : '');
+          }
+          return '<div class="muted-pill">unsupported panel: ' + esc(panel.kind) + '</div>';
+        }
+        function panelCard(panel) {
+          var card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = '<div class="card-title">' + esc(panel.title) + '</div><div class="muted-pill">Loading…</div>';
+          var binding = panel.data || {};
+          var provider = binding.provider || '';
+          var ext = provider.split('.')[0];
+          var url = API_BASE + '/ext/' + encodeURIComponent(ext) + '/data/' + encodeURIComponent(provider) + qs(binding.query || {});
+          fetchJson(url)
+            .then(function (res) {
+              card.innerHTML = '<div class="card-title">' + esc(panel.title) + '</div>' + renderPanelBody(panel, res.data || {});
+            })
+            .catch(function (err) {
+              card.innerHTML = '<div class="card-title">' + esc(panel.title) + '</div><div class="error">' + esc(err.message) + '</div>';
+            });
+          return card;
+        }
+        function renderDashboardSpec(spec) {
+          els.dashboardView.innerHTML = '';
+          var sections = spec.sections && spec.sections.length ? spec.sections : [{ panels: spec.panels || [], cols: 3 }];
+          sections.forEach(function (section) {
+            var secEl = document.createElement('div');
+            secEl.className = 'dash-section';
+            if (section.title) secEl.innerHTML = '<h3>' + esc(section.title) + '</h3>';
+            var grid = document.createElement('div');
+            grid.className = 'grid cols-' + (section.cols || 3);
+            (section.panels || []).forEach(function (panel) { grid.appendChild(panelCard(panel)); });
+            secEl.appendChild(grid);
+            els.dashboardView.appendChild(secEl);
+          });
+        }
+
+        function updateTabs() {
+          Array.prototype.forEach.call(els.tabs.querySelectorAll('button'), function (b) {
+            b.classList.toggle('active', b.getAttribute('data-tab') === activeTab);
+          });
+        }
+        function showEntries() {
+          activeTab = 'entries';
+          els.layout.style.display = '';
+          els.stats.style.display = '';
+          els.entriesControls.style.display = '';
+          els.dashboardView.style.display = 'none';
+          updateTabs();
+          load();
+        }
+        function showDashboard(spec) {
+          activeTab = spec.id;
+          els.layout.style.display = 'none';
+          els.stats.style.display = 'none';
+          els.entriesControls.style.display = 'none';
+          els.dashboardView.style.display = '';
+          updateTabs();
+          renderDashboardSpec(spec);
+        }
+        function buildTabs(dashboards) {
+          els.tabs.innerHTML = '';
+          var entriesBtn = document.createElement('button');
+          entriesBtn.setAttribute('data-tab', 'entries');
+          entriesBtn.textContent = 'Entries';
+          entriesBtn.addEventListener('click', showEntries);
+          els.tabs.appendChild(entriesBtn);
+          dashboards.forEach(function (d) {
+            var b = document.createElement('button');
+            b.setAttribute('data-tab', d.id);
+            b.textContent = d.label;
+            b.addEventListener('click', function () { showDashboard(d); });
+            els.tabs.appendChild(b);
+          });
+          updateTabs();
+        }
+
         function load() {
           var query = qs({ type: els.type.value, search: els.search.value.trim(), limit: 100 });
           fetchJson(API_BASE + '/entries' + query)
@@ -322,6 +610,14 @@
         els.type.addEventListener('change', load);
         els.refresh.addEventListener('click', load);
         els.autorefresh.addEventListener('change', function () { setAutoRefresh(els.autorefresh.checked); });
+
+        // Discover extension dashboards (entries-only when no extensions / the route is absent).
+        fetchJson(API_BASE + '/meta')
+          .then(function (res) {
+            var dashboards = (res.data && res.data.dashboards) || [];
+            if (dashboards.length) buildTabs(dashboards);
+          })
+          .catch(function () {});
 
         load();
       })();
