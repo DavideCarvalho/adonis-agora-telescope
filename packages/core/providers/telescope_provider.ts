@@ -1,8 +1,18 @@
 import type { ApplicationService } from '@adonisjs/core/types';
-import { type TelescopeConfig, resolveConfig } from '../src/define_config.js';
+import {
+  type ResolvedTelescopeConfig,
+  type TelescopeConfig,
+  resolveConfig,
+} from '../src/define_config.js';
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
+import { ExtensionRegistry } from '../src/extension/registry.js';
+import type { ExtensionContext } from '../src/extension/types.js';
 import { InMemoryTelescopeStore } from '../src/in_memory_store.js';
-import { resetTelescopeRuntime, setTelescopeRuntime } from '../src/registry.js';
+import {
+  resetTelescopeRuntime,
+  setTelescopeExtensionRegistry,
+  setTelescopeRuntime,
+} from '../src/registry.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 
@@ -59,6 +69,24 @@ export default class TelescopeProvider {
       watcher.start();
       this.diagnosticsWatcher = watcher;
     }
+
+    // Build the extension registry from `config.extensions` and publish it so the UI can serve each
+    // extension's dashboards + data providers. A collision (duplicate id/name) throws here, at boot.
+    setTelescopeExtensionRegistry(this.buildExtensionRegistry(config, store));
+  }
+
+  /** Construct the extension registry, giving each extension a context over the store + container. */
+  private buildExtensionRegistry(
+    config: ResolvedTelescopeConfig,
+    store: TelescopeStore,
+  ): ExtensionRegistry | null {
+    if (config.extensions.length === 0) return null;
+    const ctx: ExtensionContext = {
+      store,
+      container: { make: (token) => this.app.container.make(token as never) },
+      config,
+    };
+    return new ExtensionRegistry(config.extensions, ctx);
   }
 
   async shutdown() {

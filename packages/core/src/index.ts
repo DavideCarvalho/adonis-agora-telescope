@@ -39,6 +39,24 @@ export type {
 export { exceptionFamilyHash } from './exception_family_hash.js';
 export type { ExceptionFamilyParts } from './exception_family_hash.js';
 
+// — extension SDK —
+export { defineTelescopeExtension } from './extension/types.js';
+export type {
+  Column,
+  ContainerLike,
+  DashboardSection,
+  DashboardSpec,
+  DataBinding,
+  DataProvider,
+  ExtensionContext,
+  ExtensionEntryType,
+  LinkSpec,
+  Panel,
+  PanelThresholds,
+  TelescopeExtension,
+} from './extension/types.js';
+export { ExtensionRegistry } from './extension/registry.js';
+
 // — config —
 export { defineConfig, resolveConfig } from './define_config.js';
 export type {
@@ -51,6 +69,7 @@ export type {
 export {
   getTelescopeRuntime,
   resetTelescopeRuntime,
+  setTelescopeExtensionRegistry,
   setTelescopeRuntime,
 } from './registry.js';
 export type { TelescopeRuntime } from './registry.js';

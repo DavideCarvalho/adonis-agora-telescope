@@ -1,3 +1,4 @@
+import type { ExtensionRegistry } from './extension/registry.js';
 import type { TelescopeStore } from './store.js';
 
 /**
@@ -12,6 +13,8 @@ export interface TelescopeRuntime {
   store: TelescopeStore | null;
   /** Whether the request watcher should record. */
   requestWatcherEnabled: boolean;
+  /** The booted extension registry (entry types / dashboards / data providers), or `null`. */
+  registry: ExtensionRegistry | null;
 }
 
 const RUNTIME_KEY = Symbol.for('@agora/telescope:runtime');
@@ -20,6 +23,7 @@ const globalStore = globalThis as typeof globalThis & { [RUNTIME_KEY]?: Telescop
 const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   store: null,
   requestWatcherEnabled: false,
+  registry: null,
 };
 globalStore[RUNTIME_KEY] = runtime;
 
@@ -34,8 +38,14 @@ export function setTelescopeRuntime(store: TelescopeStore, requestWatcherEnabled
   runtime.requestWatcherEnabled = requestWatcherEnabled;
 }
 
+/** Publish the booted extension registry so the UI can serve its dashboards + providers. */
+export function setTelescopeExtensionRegistry(registry: ExtensionRegistry | null): void {
+  runtime.registry = registry;
+}
+
 /** Tear down the runtime (called by the provider at shutdown). */
 export function resetTelescopeRuntime(): void {
   runtime.store = null;
   runtime.requestWatcherEnabled = false;
+  runtime.registry = null;
 }

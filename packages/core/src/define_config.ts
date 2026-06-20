@@ -1,3 +1,4 @@
+import type { TelescopeExtension } from './extension/types.js';
 import type { TelescopeStore } from './store.js';
 
 /** The set of watchers this headless slice ships. */
@@ -33,6 +34,12 @@ export interface TelescopeConfig {
    * (`request` + `diagnostics`).
    */
   watchers?: WatcherName[];
+
+  /**
+   * Extensions contributed by sibling libs (e.g. `@agora/durable-telescope`) — each adds navigable
+   * entry types, dashboard pages, and the data providers those pages bind to. Default none.
+   */
+  extensions?: TelescopeExtension[];
 }
 
 /** The fully-resolved config the provider acts on (no optionals). */
@@ -41,6 +48,7 @@ export interface ResolvedTelescopeConfig {
   store: 'memory' | TelescopeStore;
   maxEntries: number;
   watchers: Set<WatcherName>;
+  extensions: TelescopeExtension[];
 }
 
 /**
@@ -64,5 +72,6 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     store: config.store ?? 'memory',
     maxEntries: config.maxEntries ?? 1000,
     watchers: new Set(watchers),
+    extensions: config.extensions ?? [],
   };
 }
