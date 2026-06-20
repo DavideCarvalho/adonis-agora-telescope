@@ -1,5 +1,6 @@
 import type { TelescopeExtension } from './extension/types.js';
 import type { TelescopeStore } from './store.js';
+import { type StoreProvider, storage } from './stores/factory.js';
 
 /** The set of watchers this headless slice ships. */
 export type WatcherName = 'request' | 'diagnostics';
@@ -16,16 +17,28 @@ export interface TelescopeConfig {
   enabled?: boolean;
 
   /**
-   * Which store backs telescope. `'memory'` (the default) is the built-in bounded
-   * ring buffer. Pass a {@link TelescopeStore} instance — e.g.
-   * `lucidTelescopeStore(db)` from `@agora/telescope-lucid` — for a persistent,
-   * cross-process backend. Default `'memory'`.
+   * Which store backs telescope. Three forms are accepted:
+   *
+   * - a **key of {@link stores}** (the idiomatic form) — e.g. `'memory'` or `'lucid'`,
+   *   selecting one of the drivers built with the {@link storage} factory;
+   * - the literal `'memory'` — the built-in ring buffer, even with no `stores` map;
+   * - a {@link TelescopeStore} instance — for a custom backend wired by hand.
+   *
+   * Default `'memory'`.
    */
-  store?: 'memory' | TelescopeStore;
+  store?: string | TelescopeStore;
 
   /**
-   * Hard cap on retained entries for the in-memory store. Oldest entries are
-   * evicted past this. Default 1000.
+   * Named store drivers, built with the {@link storage} factory. The active one is
+   * selected by {@link store}. Each factory returns a lazy thunk; its peer dependency
+   * (`@adonisjs/lucid` for `lucid`) is only imported when that driver is the active one.
+   */
+  stores?: Record<string, StoreProvider>;
+
+  /**
+   * Hard cap on retained entries for the in-memory store when selected by the bare
+   * `store: 'memory'` shorthand (no `stores` map). Oldest entries are evicted past
+   * this. Default 1000. Prefer `storage.memory({ limit })` in the `stores` map.
    */
   maxEntries?: number;
 
@@ -45,7 +58,8 @@ export interface TelescopeConfig {
 /** The fully-resolved config the provider acts on (no optionals). */
 export interface ResolvedTelescopeConfig {
   enabled: boolean;
-  store: 'memory' | TelescopeStore;
+  store: string | TelescopeStore;
+  stores: Record<string, StoreProvider>;
   maxEntries: number;
   watchers: Set<WatcherName>;
   extensions: TelescopeExtension[];
@@ -56,8 +70,15 @@ export interface ResolvedTelescopeConfig {
  * AdonisJS `defineConfig` convention.
  *
  * ```ts
- * import { defineConfig } from '@agora/telescope'
- * export default defineConfig({ maxEntries: 5000 })
+ * import { defineConfig, storage } from '@agora/telescope'
+ *
+ * export default defineConfig({
+ *   store: 'memory',
+ *   stores: {
+ *     memory: storage.memory({ limit: 1000 }),
+ *     lucid: storage.lucid({ connection: 'pg' }),
+ *   },
+ * })
  * ```
  */
 export function defineConfig(config: TelescopeConfig): TelescopeConfig {
@@ -70,8 +91,17 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
   return {
     enabled: config.enabled ?? true,
     store: config.store ?? 'memory',
+    stores: config.stores ?? {},
     maxEntries: config.maxEntries ?? 1000,
     watchers: new Set(watchers),
     extensions: config.extensions ?? [],
   };
 }
+
+export { storage };
+export type {
+  LucidStoreConfig,
+  MemoryStoreConfig,
+  StoreContext,
+  StoreProvider,
+} from './stores/factory.js';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EntryType } from '../src/entry.js';
-import { InMemoryTelescopeStore } from '../src/in_memory_store.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 
 function makeStore(max?: number) {
   return new InMemoryTelescopeStore(max !== undefined ? { maxEntries: max } : {});

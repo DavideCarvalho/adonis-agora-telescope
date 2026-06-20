@@ -1,0 +1,232 @@
+---
+title: Getting Started
+description: Install @agora/telescope, configure it into your AdonisJS app, read entries back from the headless API, then layer on persistent storage, per-technology watchers, and the dashboard.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+import { Step, Steps } from 'fumadocs-ui/components/steps'
+
+This walks you from a bare AdonisJS app to a fully instrumented one: requests,
+queries, exceptions and diagnostics events captured, queryable, and visible in a
+dashboard.
+
+## Prerequisites
+
+- **AdonisJS 6** (`@adonisjs/core` `^6.12.0`).
+- **Node 20.6+** (the diagnostics integration uses `node:diagnostics_channel`).
+- Optional but recommended: [`@agora/context`](/docs/context) for trace correlation
+  and [`@agora/diagnostics`](/docs/diagnostics) so library events flow into Telescope.
+
+---
+
+## Step 1 — Install the core
+
+<Steps>
+
+<Step>
+
+### Add the package
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm i @agora/telescope
+node ace configure @agora/telescope
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm add @agora/telescope
+node ace configure @agora/telescope
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn add @agora/telescope
+node ace configure @agora/telescope
+```
+
+</Tab>
+</Tabs>
+
+</Step>
+
+<Step>
+
+### What `configure` does
+
+`node ace configure @agora/telescope` runs codemods that:
+
+1. register `@agora/telescope/telescope_provider` in `adonisrc.ts`;
+2. register `TelescopeMiddleware` on the **server** middleware stack (so it wraps the
+   whole HTTP pipeline and observes the final response status);
+3. publish `config/telescope.ts`.
+
+</Step>
+
+</Steps>
+
+That is everything the core needs. With both default watchers on, every inbound
+request is recorded as a `request` entry, and every `agora:<lib>:<event>` diagnostics
+publish is recorded as a `diagnostic` entry.
+
+---
+
+## Step 2 — Configure (optional)
+
+The published `config/telescope.ts` is all-defaults — you only edit it to change
+behaviour:
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@agora/telescope'
+
+export default defineConfig({
+  enabled: true,                          // master switch
+  store: 'memory',                        // which driver in `stores` is active
+  stores: {
+    memory: storage.memory({ limit: 1000 }),   // bounded in-process ring buffer
+  },
+  watchers: ['request', 'diagnostics'],   // omit one to disable it
+})
+```
+
+| Key          | Default                       | What it does                                                              |
+| ------------ | ----------------------------- | ------------------------------------------------------------------------ |
+| `enabled`    | `true`                        | Master switch. `false` → records nothing, watchers stay dormant.         |
+| `store`      | `'memory'`                    | Which named driver in `stores` is active (or a `TelescopeStore` instance). |
+| `stores`     | `{}`                          | Named drivers built with the `storage` factory (`memory` / `lucid`).     |
+| `watchers`   | `['request', 'diagnostics']`  | Which built-in watchers run. Omit a name to disable it.                   |
+| `extensions` | `[]`                          | Extensions contributing entry types, dashboards, and data providers.     |
+
+See the [configuration reference](/docs/telescope/reference/configuration) for every key.
+
+---
+
+## Step 3 — Hit the headless API
+
+Telescope is headless first: the dashboard is optional, and everything it shows is
+served from `TelescopeService`. Resolve it from the container and read entries back.
+
+```ts title="app/controllers/inspector_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { TelescopeService } from '@agora/telescope'
+
+export default class InspectorController {
+  async index({ response }: HttpContext) {
+    const telescope = await this.app.container.make(TelescopeService)
+    return response.json(await telescope.list({ limit: 50 }))
+  }
+}
+```
+
+The full surface:
+
+| Method                                  | Returns                                                          |
+| --------------------------------------- | --------------------------------------------------------------- |
+| `list(query?)`                          | Entries matching the [`EntryQuery`](/docs/telescope/concepts/storage#querying), newest-first. |
+| `find(id)`                              | One `Entry`, or `null`.                                          |
+| `byTrace(traceId)`                      | Every entry recorded under a trace, newest-first.               |
+| `count()`                               | Total stored entries.                                           |
+| `topFamilies(limit?, type?)`            | Busiest groups by `familyHash` (e.g. busiest `lib:event` pairs).|
+| `topTags(limit?, prefix?)`              | Most common tags, optionally by prefix.                         |
+
+The `EntryQuery` composes filters with AND: `{ type, tag, familyHash, traceId, before, after, search, limit }`.
+
+```ts
+await telescope.list({ type: 'request', limit: 20 })
+await telescope.list({ tag: 'lib:billing', search: 'invoice' })
+await telescope.byTrace('abc123')
+await telescope.topFamilies(10, 'diagnostic')
+```
+
+---
+
+## Step 4 — Pick your storage
+
+The default `memory` driver is a bounded ring buffer — fast, dependency-free, and
+**lost on restart**. Great for dev and tests. For a store that survives restarts and
+is queryable straight from your database, switch to the built-in `lucid` driver. It
+needs `@adonisjs/lucid` (an optional peer, imported only when selected):
+
+```sh
+npm i @adonisjs/lucid
+node ace migration:run   # runs the migration configure already published
+```
+
+`node ace configure @agora/telescope` ships the `create_telescope_entries_table`
+migration alongside the config file. Then point the config at the `lucid` driver:
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@agora/telescope'
+
+export default defineConfig({
+  store: 'lucid',
+  stores: {
+    lucid: storage.lucid(),                  // or storage.lucid({ connection: 'pg' })
+  },
+})
+```
+
+The `lucid` driver implements the same `TelescopeStore` contract and works on every
+Lucid dialect (sqlite / Postgres / MySQL). See [Storage drivers](/docs/telescope/packages/storages).
+
+---
+
+## Step 5 — Add per-technology watchers
+
+The core records requests, exceptions and diagnostics. To also record **every Lucid
+SQL query** (and optionally mail / cache events), add the watchers package:
+
+```sh
+npm i @agora/telescope-watchers
+node ace configure @agora/telescope-watchers
+```
+
+By default only the verified Lucid `query` watcher runs. Enable mail and cache in
+`config/telescope_watchers.ts`:
+
+```ts title="config/telescope_watchers.ts"
+import { defineConfig } from '@agora/telescope-watchers'
+
+export default defineConfig({
+  watchers: ['query', 'mail', 'cache'],
+})
+```
+
+<Callout type="warn">
+Lucid only emits `db:query` when the connection's `debug` flag is on (or a `db:query`
+listener exists at report time). Subscribing the watcher is enough to make Lucid
+report; setting `debug: true` in your DB config guarantees it.
+</Callout>
+
+See [Watchers](/docs/telescope/packages/watchers) for each watcher's recorded shape and caveats.
+
+---
+
+## Step 6 — Mount the dashboard
+
+```sh
+npm i @agora/telescope-ui
+node ace configure @agora/telescope-ui
+```
+
+The dashboard mounts at `/telescope` and is reachable automatically **outside
+production**. In production it is denied unless you set a credential or supply an
+`authorize` hook. See [Dashboard auth](/docs/telescope/dashboard/auth).
+
+---
+
+## Next steps
+
+- [Capture & correlation](/docs/telescope/concepts/capture) — the mental model: watchers, the `Entry`, the diagnostics spine, trace correlation.
+- [Storage](/docs/telescope/concepts/storage) — the store contract, retention, and pruning.
+- [Dashboard tour](/docs/telescope/dashboard) — what the console shows and how to mount it.
+- [Alerts](/docs/telescope/packages/alerts) — page on new exception families.
+- [AI exception diagnosis](/docs/telescope/packages/ai) — structured root-cause analysis.
+- [Configuration reference](/docs/telescope/reference/configuration) — every key, every package.

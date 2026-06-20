@@ -1,0 +1,20 @@
+---
+title: Guides
+description: Task-oriented recipes for Telescope — write a custom watcher, implement a custom storage backend, build a dashboard extension, shape what gets captured with tags and redaction, correlate by request context, and add AI exception diagnosis.
+---
+
+Concept pages explain *how Telescope works*; these guides are *how to do a specific thing*.
+Each one is a worked example against the real APIs, ending with a short "how it works"
+dissection of the load-bearing lines.
+
+| Guide                                                                       | When you reach for it                                                |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [Custom watcher](/docs/telescope/recipes/custom-watcher)                    | A subsystem you want in Telescope that no built-in watcher covers.  |
+| [Custom storage adapter](/docs/telescope/recipes/custom-storage)            | You need a backend other than memory or Lucid (Mongo, Redis, …).   |
+| [Building an extension](/docs/telescope/recipes/building-an-extension)      | A sibling library should add its own dashboard page.                |
+| [Tags & redaction](/docs/telescope/recipes/tags-and-redaction)             | Shape what gets captured — extra tags, drop noise, scrub secrets.  |
+| [Request context](/docs/telescope/recipes/request-context)                  | Correlate entries to a user / trace and pivot on them.             |
+| [AI exception diagnosis](/docs/telescope/recipes/ai-exception-diagnosis)    | Turn an exception into a cause + fix with Claude.                  |
+
+Looking for a concept rather than a task? Start at
+[Capture & correlation](/docs/telescope/concepts/capture).

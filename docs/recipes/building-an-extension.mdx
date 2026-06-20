@@ -1,0 +1,143 @@
+---
+title: Building an extension
+description: Step-by-step — package a sibling library's observability into a Telescope extension that contributes a navigable entry type, server-side data providers, and a declarative dashboard page, then register it in config — with no React and nothing Telescope-internal.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+An [extension](/docs/telescope/concepts/extensions) lets a library add its own dashboard page
+to Telescope. This guide builds one for an imaginary `@agora/durable` workflow engine: a
+**Workflows** page with an active-runs stat and a recent-runs table. You won't write a
+single component or route.
+
+## 1. Define the extension
+
+An extension is a plain object — author it with `defineTelescopeExtension` for full
+inference, and wrap it in a factory so it can take options later.
+
+```ts title="packages/durable-telescope/src/extension.ts"
+import { defineTelescopeExtension } from '@agora/telescope'
+
+export function durableTelescopeExtension() {
+  return defineTelescopeExtension({
+    name: 'durable',     // unique id; also the namespace prefix for everything below
+  })
+}
+```
+
+## 2. Add an entry type
+
+The `entryTypes` hook makes the dashboard's type nav dynamic — a label and a dot color
+mapped to a backend filter value:
+
+```ts
+entryTypes: () => [
+  { id: 'durable', label: 'Workflows', dot: 'bg-amber-400' },
+],
+```
+
+## 3. Add data providers
+
+A `DataProvider` is a named server-side query a panel binds to. `resolve` gets the panel's
+query (merged with the request query string) plus the `ExtensionContext` — so it can read
+Telescope's own `store` *and* reach host services through `container`.
+
+```ts
+dataProviders: () => [
+  {
+    name: 'durable.activeRuns',
+    async resolve(_query, ctx) {
+      const engine = await ctx.container.make('durable.engine')
+      return { value: await engine.countActive() }      // stat shape
+    },
+  },
+  {
+    name: 'durable.recentRuns',
+    async resolve(query, ctx) {
+      const engine = await ctx.container.make('durable.engine')
+      const limit = Number(query?.limit ?? 20)
+      const runs = await engine.recent(limit)
+      return { rows: runs.map((r) => ({ runId: r.id, workflow: r.name, status: r.status })) }  // table shape
+    },
+  },
+],
+```
+
+The return shape must match the kind of the panel that binds to it (see the
+[panel IR table](/docs/telescope/concepts/extensions#the-panel-ir)): `stat` → `{ value, ... }`,
+`table` → `{ rows: [...] }`, and so on.
+
+## 4. Add a dashboard spec
+
+The `dashboards` hook returns declarative pages. Panels bind to your providers by name and
+declare how to draw the result; a table column can deep-link with a `{key}` template.
+
+```ts
+dashboards: () => [
+  {
+    id: 'durable.workflows',     // globally-unique; prefix with the extension name
+    label: 'Workflows',
+    sections: [
+      {
+        title: 'Overview',
+        cols: 3,
+        panels: [
+          { kind: 'stat', title: 'Active runs', data: { provider: 'durable.activeRuns' }, format: 'number' },
+        ],
+      },
+      {
+        title: 'Recent',
+        panels: [
+          {
+            kind: 'table',
+            title: 'Recent runs',
+            data: { provider: 'durable.recentRuns', query: { limit: 20 } },
+            columns: [
+              { key: 'runId', label: 'Run', link: { href: '/durable/runs/{runId}' } },
+              { key: 'workflow', label: 'Workflow' },
+              { key: 'status', label: 'Status' },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+],
+```
+
+## 5. Register it
+
+The host adds the factory to `config/telescope.ts`. The provider runs every hook once at
+boot and publishes the registry; the UI serves the page and its providers.
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@agora/telescope'
+import { durableTelescopeExtension } from '@agora/durable-telescope'
+
+export default defineConfig({
+  extensions: [durableTelescopeExtension()],
+})
+```
+
+The UI fetches `<path>/api/meta` for the contributed page + entry type, renders **Workflows**
+from the spec, and resolves each panel through `<path>/api/ext/durable/data/<provider>`.
+
+<Callout type="warn">
+Ids and provider names are **global** across all extensions and validated at boot — a
+collision throws, naming both owners. Prefix everything with your extension name
+(`durable.*`) and you'll never hit it. The `:ext` segment in the data URL must match the
+provider's owning extension, so one extension can't be addressed under another's name.
+</Callout>
+
+## What you didn't write
+
+No React component, no route registration, no auth check (the dashboard guard already covers
+the extension endpoints), no fetch/loading code, and nothing that imports Telescope
+internals. The spec is plain data; the generic UI renders it. That's the whole point of the
+SPI — a library ships *what to show*, not *how to show it*.
+
+<Callout type="info">
+Need richer data? Your provider's `resolve` has the full `ExtensionContext` — read recorded
+telescope entries via `ctx.store.list(...)` to aggregate over what Telescope already
+captured, and reach any host service via `ctx.container.make(...)`.
+</Callout>

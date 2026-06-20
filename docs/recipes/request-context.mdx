@@ -1,0 +1,108 @@
+---
+title: Request context
+description: Correlate Telescope entries to a request, a trace, a tenant, and a user via @agora/context — how trace correlation works, how to tag entries with the authenticated user, and how to reconstruct everything that happened on one trace.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+A single entry is a fact; a *trace* is a story. Telescope's correlation comes from
+[`@agora/context`](/docs/context): when it's present, every entry recorded during a request
+shares the request's trace id, so you can pull the whole story back with one call. This
+guide is how that wiring works and how to pivot on the user behind a request.
+
+## How correlation works
+
+`@agora/context` publishes a read-only accessor on a global slot. Telescope reads it
+**structurally** — no import, no dependency — and stamps each entry's `traceId` at record
+time:
+
+```ts
+interface ContextAccessor {
+  traceId(): string | undefined
+  tenantId(): string | undefined
+  userRef(): UserRef | undefined
+  get(): Record<string, unknown> | undefined
+}
+```
+
+The store calls `currentTraceId()` (which reads `accessor.traceId()`) whenever a watcher
+doesn't pass a trace explicitly. With `@agora/context` installed and its middleware running,
+that just works — the request watcher, query watcher, diagnostics watcher and exception
+capture all land on the same trace.
+
+<Callout type="info">
+With `@agora/context` absent, `currentTraceId()` returns `null` — entries are still recorded,
+just uncorrelated. Install and configure `@agora/context` to light up trace correlation
+across the whole ecosystem. See its [docs](/docs/context).
+</Callout>
+
+## Reconstruct one trace
+
+```ts
+import { TelescopeService } from '@agora/telescope'
+
+const telescope = await app.container.make(TelescopeService)
+
+// Everything that happened on this trace, newest-first:
+// the request entry, its queries, any diagnostics it published, the exception that ended it.
+const story = await telescope.byTrace('abc123')
+```
+
+`byTrace` is `list({ traceId })`. In the dashboard, the trace view does the same — click a
+trace id on any entry to see its siblings. This is the highest-value debugging move: a 500
+shows you the exception *and* the four queries that ran before it, all in order.
+
+## Tag entries with the authenticated user
+
+`@agora/context` carries the resolved user as `userRef()`. To make Telescope pivot on it,
+include a `user:<id>` tag when you record. The simplest place is your exception handler —
+and it's exactly the tag the [alerts package](/docs/telescope/packages/alerts#the-alert-payload)
+reads to attach a user to a `new-exception` alert.
+
+```ts title="app/exceptions/handler.ts"
+import { getContextAccessor, recordException } from '@agora/telescope'
+
+async report(error: unknown, ctx: HttpContext) {
+  const userId = getContextAccessor()?.userRef()?.id
+  recordException(error, { method: ctx.request.method(), url: ctx.request.url() })
+  // (record your own tagged entry, or add the tag in a custom watcher's build step)
+  return super.report(error, ctx)
+}
+```
+
+For full control over tags, record through a [custom watcher](/docs/telescope/recipes/custom-watcher)
+or a manual `record` call and add `user:<id>` to `tags`:
+
+```ts
+import { getContextAccessor } from '@agora/telescope'
+
+const user = getContextAccessor()?.userRef()
+const tags = [...(input.tags ?? []), ...(user ? [`user:${user.id}`] : [])]
+```
+
+### Find everything a user did
+
+```ts
+await telescope.list({ tag: 'user:42' })                    // every tagged entry for user 42
+await telescope.list({ tag: 'user:42', type: 'exception' }) // just their errors
+```
+
+The Slack alert channel surfaces this automatically: when a fired exception entry carries a
+`user:<id>` tag, the alert's **User** field is populated.
+
+## Tenant correlation
+
+`accessor.tenantId()` works the same way — add a `tenant:<id>` tag at record time (see
+[Tags & redaction](/docs/telescope/recipes/tags-and-redaction#add-custom-tags--tag-by-tenant))
+and `list({ tag: 'tenant:acme' })` scopes everything to one tenant. Combine filters to
+narrow: `list({ tag: 'tenant:acme', type: 'query', search: 'orders' })`.
+
+<Callout type="warn">
+Correlation is only as good as your context propagation. If a code path runs *outside* the
+request's async context (a detached `setTimeout`, an unawaited background task), `@agora/context`
+won't have a trace there and those entries record with `traceId: null`. Keep async work
+inside the request's context, or pass the trace explicitly to the record call.
+</Callout>
+
+> Related: [Capture & correlation](/docs/telescope/concepts/capture#trace-correlation) for the
+> mechanics, and [`@agora/context`](/docs/context) for the propagation layer itself.

@@ -1,0 +1,181 @@
+---
+title: "@agora/telescope-watchers"
+description: Per-technology watchers for Telescope — record every Lucid SQL query (sql, bindings, duration, connection), every email sent, and @adonisjs/cache hit/miss/write/delete events, each correlated to the active request trace.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+The core records requests, exceptions and diagnostics. This package adds the watchers that
+hook into specific AdonisJS subsystems through the event emitter — most importantly a
+**Lucid query watcher** that records every SQL statement, plus `mail` and `cache`
+watchers. Each records through the core's runtime store (no DI) and is fully guarded.
+
+## Install
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm i @agora/telescope-watchers
+node ace configure @agora/telescope-watchers
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm add @agora/telescope-watchers
+node ace configure @agora/telescope-watchers
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn add @agora/telescope-watchers
+node ace configure @agora/telescope-watchers
+```
+
+</Tab>
+</Tabs>
+
+`configure` registers the provider and publishes `config/telescope_watchers.ts`. No
+middleware is registered — the provider resolves the application emitter at boot and
+subscribes each enabled watcher to it.
+
+## Configuration
+
+```ts title="config/telescope_watchers.ts"
+import { defineConfig } from '@agora/telescope-watchers'
+
+export default defineConfig({
+  enabled: true,
+  watchers: ['query'],   // default: the verified Lucid query watcher only
+})
+```
+
+| Key        | Default     | Description                                                              |
+| ---------- | ----------- | ---------------------------------------------------------------------- |
+| `enabled`  | `true`      | Master switch; `false` starts no per-technology watcher.              |
+| `watchers` | `['query']` | Which watchers run — any of `'query'`, `'mail'`, `'cache'`.           |
+
+Only the Lucid `query` watcher is on by default — it's the one whose event contract is
+verified against the installed `@adonisjs/lucid` types. `mail` and `cache` are opt-in.
+
+<Callout type="info">
+The provider also accepts the watchers config under a `watchers_config` key on the main
+`config/telescope.ts`, falling back to defaults — but a dedicated
+`config/telescope_watchers.ts` is the published, recommended path.
+</Callout>
+
+---
+
+## Query watcher
+
+The headline watcher. It subscribes to Lucid's `db:query` event (the same one
+`db.prettyPrint` consumes) and records each SQL statement as a `query` entry, correlated
+to the active request trace.
+
+```ts
+interface QueryEntryContent {
+  sql: string
+  bindings: unknown[]
+  durationMs: number | null      // from Lucid's process.hrtime() tuple
+  connection: string             // e.g. 'primary'
+  method: string | null          // 'select', 'insert', ...
+  inTransaction: boolean | null
+  traceId: string | null
+}
+```
+
+Tags: `connection:<name>`, `method:<method>`, and `model:<model>` when Lucid reports them.
+The `familyHash` is a `queryFamilyHash(sql)` — the SQL normalized to a template (literals
+replaced by `?`, whitespace collapsed) and FNV-1a hashed — so every execution of
+`select * from users where id = ?` rolls up into one family regardless of the id.
+
+<Callout type="warn">
+Lucid only emits `db:query` when the connection's `debug` flag is on **or** a `db:query`
+listener exists at query-report time. Subscribing this watcher is enough to make Lucid
+report; setting `debug: true` in your `config/database.ts` connection guarantees it.
+</Callout>
+
+---
+
+## Mail watcher
+
+Records every email sent via `@adonisjs/mail`'s `mail:sent` event.
+
+```ts
+interface MailEntryContent {
+  mailer: string | null    // e.g. 'smtp'
+  from: string | null
+  to: string[]
+  subject: string | null
+  traceId: string | null
+}
+```
+
+Tagged `mailer:<name>`; `familyHash` is the mailer name. It reads the composed message
+defensively — `@adonisjs/mail` carries it as a `Message` instance (`toJSON()` → envelope)
+or a plain object, and the watcher handles both, degrading to `null`/`[]` for anything
+missing.
+
+<Callout type="warn">
+`@adonisjs/mail` is not installed in this repository, so the `mail:sent` payload shape
+could not be verified against its types. The watcher reads every field defensively, but
+treat the recorded shape as best-effort and verify against your installed mail version.
+</Callout>
+
+---
+
+## Cache watcher
+
+Records `@adonisjs/cache` activity — one `cache` entry per hit / miss / write / delete /
+clear event.
+
+```ts
+interface CacheEntryContent {
+  operation: 'hit' | 'miss' | 'write' | 'delete' | 'clear'
+  key: string | null
+  store: string | null     // e.g. 'redis'
+  traceId: string | null
+}
+```
+
+Tagged `cache:<operation>` and `store:<store>`; `familyHash` is `operation:key` (or just
+`operation` when no key). The default event-name → operation map is exported as
+`CACHE_EVENTS` (`cache:hit`, `cache:miss`, `cache:written`, `cache:deleted`,
+`cache:cleared`).
+
+<Callout type="warn">
+`@adonisjs/cache` is not installed in this repository, so these event names and payloads
+could not be verified against its types. They follow the documented `cache:*` convention
+but are best-effort. If a future version diverges, pass a custom map to the
+`CacheWatcher` constructor.
+</Callout>
+
+---
+
+## Building your own watcher
+
+Every watcher implements the same tiny `Watcher` contract over a structural `EmitterLike`:
+
+```ts
+interface Watcher {
+  readonly type: string
+  start(emitter: EmitterLike): void   // subscribe
+  stop(): void                        // fully unsubscribe
+}
+```
+
+Record through the exported `safeRecord(input, source)` helper — it resolves the runtime
+store, backfills the active trace id, and swallows every failure so your watcher can never
+break the path it observes. The [custom watcher guide](/docs/telescope/recipes/custom-watcher)
+walks through a full example.
+
+## Peer dependencies
+
+`@adonisjs/lucid`, `@adonisjs/mail` and `@adonisjs/cache` are all **optional** peers —
+install only the ones whose watcher you enable. With none installed the package still loads;
+the watchers simply have nothing to subscribe to.

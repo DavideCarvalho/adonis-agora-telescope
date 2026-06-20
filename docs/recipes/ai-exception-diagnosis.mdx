@@ -1,0 +1,140 @@
+---
+title: AI exception diagnosis
+description: Add Claude-powered root-cause diagnosis of Telescope exceptions — install and configure @agora/telescope-ai, diagnose an exception with its trace context, read the cached cause/fix/confidence, and plug in a custom diagnosis cache.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+When an exception lands, `@agora/telescope-ai` can hand it (and the rest of its trace) to
+Claude and get back a structured diagnosis — a likely cause, a concrete fix, and a confidence
+level — cached so each error family is diagnosed once. This guide wires it up and uses it.
+
+## Install
+
+```sh
+npm i @agora/telescope-ai @anthropic-ai/sdk
+node ace configure @agora/telescope-ai
+```
+
+`@anthropic-ai/sdk` is a peer. `configure` registers the provider and publishes
+`config/telescope_ai.ts`.
+
+## Configure
+
+The API key comes from the environment, never source control. Add it to `.env` and validate
+it in `start/env.ts`:
+
+```ts title="start/env.ts"
+export default await Env.create(new URL('../', import.meta.url), {
+  ANTHROPIC_API_KEY: Env.schema.string.optional(),
+})
+```
+
+```ts title="config/telescope_ai.ts"
+import env from '#start/env'
+import { defineConfig } from '@agora/telescope-ai'
+
+export default defineConfig({
+  apiKey: env.get('ANTHROPIC_API_KEY'),
+  // model: 'claude-sonnet-4-6',   // default; use claude-opus-4-8 or claude-haiku-4-5-20251001
+  // maxTokens: 1024,
+})
+```
+
+<Callout type="warn">
+With no key resolved the diagnoser is **disabled** — `diagnose` returns `null` and never
+calls the API. So the package is safe to ship with no key in environments where you don't
+want it active.
+</Callout>
+
+## Diagnose an exception
+
+The provider binds `TelescopeAiDiagnoser` into the container (even when disabled — its
+`diagnose` is then a no-op), so you can inject it unconditionally. Pull an exception entry,
+gather its trace for context, and diagnose:
+
+```ts title="app/controllers/diagnose_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { TelescopeService } from '@agora/telescope'
+import { TelescopeAiDiagnoser } from '@agora/telescope-ai'
+
+export default class DiagnoseController {
+  async show({ params, response }: HttpContext) {
+    const telescope = await this.app.container.make(TelescopeService)
+    const diagnoser = await this.app.container.make(TelescopeAiDiagnoser)
+
+    const entry = await telescope.find(params.id)
+    if (!entry || entry.type !== 'exception') {
+      return response.notFound({ error: 'Not an exception entry' })
+    }
+
+    const related = entry.traceId ? await telescope.byTrace(entry.traceId) : []
+    const diagnosis = await diagnoser.diagnose(entry as any, { related })
+
+    return response.json(diagnosis)
+    // → { cause, fix, confidence: 'high' | 'medium' | 'low', model, cached } | null
+  }
+}
+```
+
+Passing `related` (the other entries from the same trace — queries, the request, diagnostics)
+gives the model the surrounding context; it skips sibling exceptions and clips each summary
+to keep the prompt bounded.
+
+## What it does under the hood
+
+1. **Cache first.** If the exception's `familyHash` was diagnosed before (and you didn't pass
+   `force: true`), the cached result comes back instantly with `cached: true` — no API call,
+   no tokens.
+2. **One Claude call.** Otherwise it builds a prompt (exception name/message, route, trace,
+   stack clipped to the top 25 frames, related-entry summaries) and calls the Messages API
+   once.
+3. **Defensive parse.** It extracts the first balanced JSON object from the response
+   (surviving markdown fences and stray prose) into `{ cause, fix, confidence }`.
+4. **Cache + return.** The result is cached by family hash.
+
+<Callout type="info">
+Diagnosis never throws into your code: disabled → `null`; an API or parse failure is logged
+and resolves to `null`. So you can call it straight from a request path without a try/catch.
+</Callout>
+
+## Force a fresh diagnosis
+
+Cached results are great until the underlying code changed and you want a re-read:
+
+```ts
+const fresh = await diagnoser.diagnose(entry, { related, force: true })
+// bypasses the cache, calls the API again, and overwrites the cached entry
+```
+
+## Cross-process cache
+
+The default cache is a per-process LRU (500 families, 24h TTL). For a fleet that should share
+diagnoses, supply a Redis/DB-backed `DiagnosisStore` to `createDiagnoser`:
+
+```ts title="app/telescope/diagnoser.ts"
+import { createDiagnoser, resolveConfig, type DiagnosisStore } from '@agora/telescope-ai'
+
+const redisCache: DiagnosisStore = {
+  get: (familyHash) => /* read from redis, parse, TTL-check */ null,
+  set: (familyHash, diagnosis) => { /* write to redis with a TTL */ },
+}
+
+export const diagnoser = createDiagnoser(
+  resolveConfig({ apiKey: process.env.ANTHROPIC_API_KEY }),
+  { cache: redisCache },
+)
+// returns null when disabled / no key, so guard before use
+```
+
+`DiagnosisStore` is just `get(familyHash) → Diagnosis | null` and `set(familyHash,
+diagnosis)`. Now a family diagnosed on one pod is served from cache on all of them.
+
+## Privacy
+
+The exception's name, message, stack (top 25 frames), route/trace, and the JSON content of
+related trace entries are sent to Anthropic. Nothing is sent when AI is disabled or keyless.
+If recorded `content` (query bindings, request data) may hold secrets, scrub it upstream —
+see [Tags & redaction](/docs/telescope/recipes/tags-and-redaction#redact-before-recording).
+
+> Full package reference: [`@agora/telescope-ai`](/docs/telescope/packages/ai).

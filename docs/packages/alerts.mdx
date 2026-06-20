@@ -1,0 +1,188 @@
+---
+title: "@agora/telescope-alerts"
+description: Alerting for Telescope — detect brand-new exception families (and re-occurrences after resolve) and exception-rate spikes from recorded entries, then fan rich alerts out to Slack, a generic webhook, the console, or any custom channel.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Capturing exceptions is half the job — you also want to *know* when a new one appears. This
+package polls the Telescope store for `exception` entries, evaluates alerting rules over
+them, and dispatches a rich payload to every configured channel: a new error family pages
+you, a spike pages you, and a re-occurrence after you thought it was fixed pages you again.
+
+## Install
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm i @agora/telescope-alerts
+node ace configure @agora/telescope-alerts
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm add @agora/telescope-alerts
+node ace configure @agora/telescope-alerts
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn add @agora/telescope-alerts
+node ace configure @agora/telescope-alerts
+```
+
+</Tab>
+</Tabs>
+
+`configure` registers the provider and publishes `config/telescope_alerts.ts`.
+
+## How it hooks in (polling)
+
+The headless core does not expose a "new entry" event, and this package intentionally does
+**not** modify core. Instead the provider starts an `ExceptionPoller` that reads the
+telescope store on an interval (default 30s) for `exception` entries recorded since the
+previous poll — a high-water mark on `createdAt` — and feeds them to the `Alerter`.
+
+<Callout type="info">
+The store resolves through the core's runtime slot (the same handle the watchers record
+through) — no DI. The poll timer is `unref`'d, so alerting never keeps the process alive on
+its own, and a store failure during a poll is logged and retried, not thrown. The poller
+starts from "now" at boot, so it never alerts on the whole pre-existing backlog.
+</Callout>
+
+This requires that `exception` entries are actually being recorded — which they are as soon
+as the core's request middleware is wired (it auto-captures HTTP exceptions), or whenever
+you call `recordException` manually.
+
+## Configuration
+
+```ts title="config/telescope_alerts.ts"
+import env from '#start/env'
+import { defineConfig } from '@agora/telescope-alerts'
+
+export default defineConfig({
+  channels: [
+    { type: 'slack', url: env.get('TELESCOPE_SLACK_WEBHOOK') },
+  ],
+  rules: [{ type: 'new-exception', window: '1h' }],
+  dashboardUrl: 'https://telescope.example.com/',
+  every: '30s',
+  cooldown: '15m',
+})
+```
+
+| Key            | Default                  | Description                                                            |
+| -------------- | ------------------------ | --------------------------------------------------------------------- |
+| `enabled`      | `true`                   | Master switch.                                                        |
+| `channels`     | `[{ type: 'console' }]`  | Delivery destinations (specs or channel objects).                     |
+| `rules`        | `[{ type: 'new-exception', window: '1h' }]` | Rules to evaluate.                                |
+| `dashboardUrl` | _unset_                  | External dashboard URL — Slack alerts deep-link to the entry.         |
+| `every`        | `'30s'`                  | Poll cadence (duration string).                                       |
+| `cooldown`     | `'15m'`                  | Per-rule / per-family re-notify suppression.                          |
+| `instanceId`   | `'telescope'`            | Reporting instance id carried on every payload.                       |
+
+<Callout type="warn">
+Durations are normalized at boot and an unparseable one (`'15min'`, a typo) **throws** —
+fail-closed, so a bad window surfaces at startup rather than silently never firing. Valid
+units: `ms`, `s`, `m`, `h`, `d`.
+</Callout>
+
+## Rules
+
+```ts
+type AlertRule =
+  | { type: 'new-exception'; window: string }
+  | { type: 'exception-rate'; window: string; threshold: number }
+```
+
+- **`new-exception`** — fires the *first* time an exception's `familyHash` is seen within
+  `window` (a genuinely new error family), and again if the family re-appears after the
+  window elapses, or after an explicit `alerter.resolveFamily(hash)` — the "resolved →
+  re-occurred" signal.
+- **`exception-rate`** — fires when `>= threshold` exception entries land in the trailing
+  `window`.
+
+Both are rate-limited by `cooldown` (per-rule for rate, per-family for new-exception).
+
+### Deduplication
+
+The `new-exception` rule's only state is a `NewExceptionTracker` — a bounded in-memory map
+(default cap **10,000** families, oldest-evicted) of family → last-seen. It's per-process
+by design: in a multi-replica deployment the same family may be reported new once per pod
+(a documented v1 caveat). The `window` check discards stale last-seen times, so it doubles
+as the re-occurrence detector.
+
+## Channels
+
+Each fired alert fans out to **every** channel concurrently; one channel failing never
+blocks the others, and a per-channel failure is warn-logged (rate-limited by channel name)
+rather than thrown into the host.
+
+| Channel                            | Sends                                                                        |
+| ---------------------------------- | --------------------------------------------------------------------------- |
+| `{ type: 'slack', url, options? }` | Block Kit JSON to a Slack incoming webhook — severity header, fielded context (route/method/status/user/occurrences), a truncated stack, and an "Open in Telescope" deep link when `dashboardUrl` is set. |
+| `{ type: 'webhook', url }`         | The raw `AlertPayload` as JSON.                                             |
+| `{ type: 'console' }`              | A one-line summary (the zero-config default).                              |
+| `customChannel(fn, name?)`         | An arbitrary async sink — email, PagerDuty, SNS, …                         |
+
+HTTP channels use the global `fetch`, race every request against a 5s abort timeout, and
+treat a non-2xx response as a failure.
+
+```ts title="config/telescope_alerts.ts"
+import env from '#start/env'
+import { defineConfig, slackChannel, customChannel } from '@agora/telescope-alerts'
+
+export default defineConfig({
+  channels: [
+    slackChannel(env.get('TELESCOPE_SLACK_WEBHOOK'), { username: 'Telescope', iconEmoji: ':rotating_light:' }),
+    customChannel(async (alert) => { await pagerduty.trigger(alert) }, 'pagerduty'),
+  ],
+})
+```
+
+## The alert payload
+
+Every channel receives the same `AlertPayload`:
+
+```ts
+interface AlertPayload {
+  rule: AlertRule
+  value: number          // measured value that crossed the threshold (occurrences, or count)
+  threshold: number      // the rule threshold (1 for new-exception)
+  firedAt: string        // ISO-8601
+  instanceId: string
+  exception?: {          // present for new-exception; absent for rate rules
+    familyHash: string
+    class: string
+    message: string
+    stack: string | null
+    route: string | null
+    method: string | null
+    statusCode: number | null
+    user: string | null   // from a `user:<id>` tag, when present
+    occurrences: number
+    entryId: string       // for the dashboard deep link
+  }
+  dashboardUrl?: string
+}
+```
+
+The `exception` context is read generically from the exception entry (`class`/`name`,
+`message`, `stack`, `route`/`uri`/`url`, `method`, `statusCode`/`status`, and a `user:<id>`
+tag), so it works with any source of exception entries.
+
+## Notable exports
+
+- Channels: `slackChannel`, `webhookChannel`, `consoleChannel`, `customChannel`; types
+  `AlertChannel`, `ChannelFetch`, `ConsoleSink`.
+- `formatSlackMessage`; types `SlackMessage`, `SlackChannelOptions`.
+- `Alerter`, `ExceptionPoller`, `NewExceptionTracker`, `DEFAULT_MAX_FAMILIES`.
+- `durationToMs`; `defineConfig`, `resolveConfig`, `DEFAULT_RULES`.
+- Types: `AlertRule`, `AlertPayload`, `ExceptionAlertContext`, `ResolvedAlerts`,
+  `ChannelSpec`, `ChannelConfig`, `TelescopeAlertsConfig`.

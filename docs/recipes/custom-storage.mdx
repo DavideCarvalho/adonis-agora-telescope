@@ -1,0 +1,164 @@
+---
+title: Custom storage adapter
+description: Implement the TelescopeStore contract against any backend — a full MongoDB-backed store covering record, get, list with every EntryQuery filter, count, prune with keepLast, and clear, plus the trace/origin resolution every store owes its callers.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+The in-memory and Lucid stores are two implementations of one small interface. To put
+entries in Mongo, Redis, ClickHouse, or anywhere else, implement the same six methods and
+pass an instance as `store`. This guide builds a MongoDB store.
+
+## The contract
+
+```ts
+import type { TelescopeStore, Entry, RecordInput, EntryQuery } from '@agora/telescope'
+
+interface TelescopeStore {
+  record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>>
+  get(id: string): Promise<Entry | null>
+  list(query?: EntryQuery): Promise<Entry[]>      // always newest-first
+  count(): Promise<number>
+  prune(olderThan: Date, keepLast?: number): Promise<number>
+  clear(): Promise<void>
+}
+```
+
+Two responsibilities are easy to miss and the same in every store:
+
+- **`record` resolves `traceId` / `origin`.** When the caller omits `traceId`, read it from
+  `currentTraceId()`; when `origin` isn't a valid `BatchOrigin`, default to `'manual'`.
+- **`list` is newest-first and AND-composes every set `EntryQuery` field.**
+
+## Full example — a Mongo-backed store
+
+```ts title="app/telescope/mongo_store.ts"
+import { randomUUID } from 'node:crypto'
+import type { Collection } from 'mongodb'
+import {
+  type TelescopeStore, type Entry, type RecordInput, type EntryQuery,
+  type BatchOrigin, currentTraceId, isBatchOrigin,
+} from '@agora/telescope'
+
+export class MongoTelescopeStore implements TelescopeStore {
+  private sequence = 0
+  constructor(private readonly col: Collection) {}
+
+  async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
+    const traceId = input.traceId !== undefined ? input.traceId : currentTraceId()
+    const origin: BatchOrigin = isBatchOrigin(input.origin) ? input.origin : 'manual'
+    const entry: Entry<TContent> = {
+      id: randomUUID(),
+      type: input.type,
+      familyHash: input.familyHash ?? null,
+      content: input.content,
+      tags: input.tags ?? [],
+      sequence: this.sequence++,
+      durationMs: input.durationMs ?? null,
+      origin,
+      traceId,
+      createdAt: new Date(),
+    }
+    await this.col.insertOne({ ...entry, createdAtMs: entry.createdAt.getTime() })
+    return entry
+  }
+
+  async get(id: string): Promise<Entry | null> {
+    const doc = await this.col.findOne({ id })
+    return doc ? hydrate(doc) : null
+  }
+
+  async list(query: EntryQuery = {}): Promise<Entry[]> {
+    const filter: Record<string, unknown> = {}
+    if (query.type !== undefined) filter.type = query.type
+    if (query.tag !== undefined) filter.tags = query.tag                 // array contains
+    if (query.familyHash !== undefined) filter.familyHash = query.familyHash
+    if (query.traceId !== undefined) filter.traceId = query.traceId
+    if (query.before !== undefined) filter.createdAtMs = { ...(filter.createdAtMs as object), $lt: query.before.getTime() }
+    if (query.after !== undefined) filter.createdAtMs = { ...(filter.createdAtMs as object), $gt: query.after.getTime() }
+    if (query.search !== undefined) {
+      const rx = new RegExp(escapeRegExp(query.search), 'i')
+      filter.$or = [{ tags: rx }, { contentText: rx }]                   // see note below
+    }
+    let cursor = this.col.find(filter).sort({ createdAtMs: -1, sequence: -1 })
+    if (query.limit !== undefined) cursor = cursor.limit(query.limit)
+    return (await cursor.toArray()).map(hydrate)
+  }
+
+  async count(): Promise<number> {
+    return this.col.countDocuments()
+  }
+
+  async prune(olderThan: Date, keepLast?: number): Promise<number> {
+    const cutoff = olderThan.getTime()
+    if (keepLast === undefined) {
+      return (await this.col.deleteMany({ createdAtMs: { $lt: cutoff } })).deletedCount ?? 0
+    }
+    const doomed = await this.col.find({ createdAtMs: { $lt: cutoff } })
+      .sort({ createdAtMs: -1, sequence: -1 }).project({ id: 1 }).toArray()
+    const ids = doomed.slice(keepLast).map((d) => d.id)
+    if (ids.length === 0) return 0
+    return (await this.col.deleteMany({ id: { $in: ids } })).deletedCount ?? 0
+  }
+
+  async clear(): Promise<void> {
+    await this.col.deleteMany({})
+  }
+}
+
+function hydrate(doc: Record<string, unknown>): Entry {
+  return {
+    id: String(doc.id), type: String(doc.type),
+    familyHash: (doc.familyHash as string | null) ?? null,
+    content: doc.content, tags: Array.isArray(doc.tags) ? (doc.tags as string[]) : [],
+    sequence: Number(doc.sequence), durationMs: (doc.durationMs as number | null) ?? null,
+    origin: isBatchOrigin(doc.origin) ? doc.origin : 'manual',
+    traceId: (doc.traceId as string | null) ?? null,
+    createdAt: new Date(Number(doc.createdAtMs)),
+  }
+}
+
+function escapeRegExp(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+```
+
+## How it works — the load-bearing lines
+
+- **`traceId` / `origin` resolution in `record`** mirrors the built-in stores exactly:
+  `input.traceId !== undefined ? input.traceId : currentTraceId()` (so an explicit `null`
+  is respected, and an omitted one reads context), and `isBatchOrigin(input.origin) ? ... :
+  'manual'`. Skip this and trace correlation silently breaks.
+- **`createdAtMs` as an integer** makes `before`/`after`/`prune` integer comparisons and the
+  newest-first sort stable — the same choice the Lucid store makes. Sorting by
+  `createdAtMs desc, sequence desc` gives a deterministic order even when two entries share a
+  millisecond.
+- **`prune` with `keepLast`** finds the doomed (older-than-cutoff) ids newest-first, drops
+  the first `keepLast`, and deletes the rest — so you can keep "the most recent N regardless
+  of age".
+
+<Callout type="warn">
+`search` must match the entry's serialized `content`. Mongo can't regex a nested object
+directly, so persist a flattened `contentText: JSON.stringify(content)` alongside `content`
+on `record` and regex that — the same "search over JSON text" approach the Lucid store uses.
+</Callout>
+
+## Wiring it in
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@agora/telescope'
+import { MongoTelescopeStore } from '#telescope/mongo_store'
+import { entriesCollection } from '#telescope/mongo'
+
+export default defineConfig({
+  store: new MongoTelescopeStore(entriesCollection),
+})
+```
+
+The core provider uses your instance instead of the in-memory store, and everything
+downstream — `TelescopeService`, the dashboard, alerts, AI — works against it unchanged,
+because they all only know the contract.
+
+<Callout type="info">
+The contract is intentionally minimal — no rollups, no cursors. If your backend has
+cheap server-side aggregation, you can compute `topFamilies`/`topTags` there, but the
+default `TelescopeService` already derives them from `list`, so it's optional.
+</Callout>

@@ -1,7 +1,7 @@
 {{{
   exports({ to: app.configPath('telescope.ts') })
 }}}
-import { defineConfig } from '@agora/telescope'
+import { defineConfig, storage } from '@agora/telescope'
 
 /**
  * Configuration for `@agora/telescope`. Everything is optional — the defaults use
@@ -15,15 +15,24 @@ export default defineConfig({
   // enabled: true,
 
   /**
-   * Which store backs telescope. Only the in-memory ring buffer ships today; a
-   * persistent store is on the roadmap (see the package DESIGN.md).
+   * Which named store backs telescope. The active driver is selected by `store`
+   * and built from the `stores` map below.
    */
-  // store: 'memory',
+  store: 'memory',
 
   /**
-   * Hard cap on retained entries for the in-memory store.
+   * Named store drivers, built with the `storage` factory. Each is a lazy thunk —
+   * its peer dependency is only imported when that driver is the active one.
+   *
+   * To persist entries across restarts, install `@adonisjs/lucid`, publish the
+   * migration (`node ace make:migration create_telescope_entries_table`, copying the
+   * body from this package's stub) or pass `autoCreateTable: true`, switch
+   * `store` to `'lucid'`, and uncomment the lucid driver:
    */
-  // maxEntries: 1000,
+  stores: {
+    memory: storage.memory({ limit: 1000 }),
+    // lucid: storage.lucid({ connection: 'pg' }),
+  },
 
   /**
    * Active watchers. Omit one to disable it.

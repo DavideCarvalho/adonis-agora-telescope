@@ -1,0 +1,156 @@
+---
+title: Tags & redaction
+description: Shape what Telescope captures — how tags and family hashes are assigned, how to add your own tags and grouping, how to redact sensitive values before they're recorded, and how to drop or sample noisy entries with a wrapping store.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Telescope records a lot by default. This guide is about controlling it: adding searchable
+tags, scrubbing secrets *before* they hit the store, and dropping or sampling noise. The
+core doesn't ship a config-driven redaction hook — instead you shape capture at the two
+points you control: the **watcher** that builds an entry, and the **store** it records into.
+
+## How tags and grouping work today
+
+Every built-in watcher assigns tags and a `familyHash` from the event it sees:
+
+| Entry        | Tags                                                  | familyHash                  |
+| ------------ | ---------------------------------------------------- | --------------------------- |
+| `request`    | `method:<M>`, `status:<code>`                        | (none)                      |
+| `exception`  | `exception:<name>`, `method:<M>`                     | `name:message:topFrame`     |
+| `diagnostic` | `lib:<lib>`, `event:<event>`, `trace:<id>`           | `lib:event`                 |
+| `query`      | `connection:<c>`, `method:<m>`, `model:<model>`      | SQL template hash           |
+| `mail`       | `mailer:<name>`                                       | mailer name                 |
+| `cache`      | `cache:<op>`, `store:<store>`                         | `op:key`                    |
+
+Tags are what `list({ tag })` and the dashboard search filter on; `familyHash` is what
+`topFamilies()` rolls up. You add your own by recording your own entries.
+
+## Add custom tags — tag by tenant
+
+A [custom watcher](/docs/telescope/recipes/custom-watcher) (or any `recordException` /
+manual `record` call) can add whatever tags you want. To pivot Telescope on tenant, include
+a `tenant:<id>` tag when you record:
+
+```ts title="app/telescope/tenant_tags.ts"
+import { EntryType, type RecordInput, currentTraceId } from '@agora/telescope'
+import { getContextAccessor } from '@agora/telescope'
+
+export function withTenantTag<T>(input: RecordInput<T>): RecordInput<T> {
+  const tenant = getContextAccessor()?.tenantId()
+  if (tenant === undefined) return input
+  return { ...input, tags: [...(input.tags ?? []), `tenant:${tenant}`] }
+}
+```
+
+### How it works
+
+`getContextAccessor()` is the structural reader for [`@agora/context`](/docs/context) — the
+same slot the store reads `traceId` from. It exposes `tenantId()`, `userRef()` and `get()`
+too. Adding a `tenant:<id>` tag at record time makes `list({ tag: 'tenant:acme' })` and the
+dashboard's tag filter answer "everything that happened for this tenant".
+
+```ts
+await telescope.list({ tag: 'tenant:acme', type: 'exception' })
+```
+
+## Redact before recording
+
+The store persists `content` as-is, and the dashboard / AI diagnoser read it back — so the
+right place to scrub a secret is **before** it becomes an entry. Wrap the build step:
+
+```ts title="app/telescope/redact.ts"
+const SENSITIVE = new Set(['password', 'token', 'secret', 'authorization', 'apiKey'])
+
+export function redact(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redact)
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = SENSITIVE.has(k.toLowerCase()) ? '[redacted]' : redact(v)
+    }
+    return out
+  }
+  return value
+}
+```
+
+Apply it where you build a custom entry's `content` (or to query bindings before recording
+a `query` entry in your own watcher):
+
+```ts
+safeRecord({ type: EntryType.Query, content: { sql, bindings: redact(bindings), ... } }, 'MyQueryWatcher')
+```
+
+<Callout type="warn">
+The built-in Lucid query watcher records bindings verbatim, and the request watcher records
+method/url/status (it does **not** capture request bodies or headers, so there's little to
+leak there). If you record sensitive payloads through a custom watcher, redact in that
+watcher — there is no central post-capture scrubber to fall back on.
+</Callout>
+
+## Drop or sample noise with a wrapping store
+
+To filter or sample *across all watchers* in one place, wrap your real store and decide in
+`record` whether to persist. Because everything records through the one `TelescopeStore`,
+this is the single choke point.
+
+```ts title="app/telescope/filtering_store.ts"
+import type { TelescopeStore, Entry, RecordInput, EntryQuery } from '@agora/telescope'
+
+export class FilteringStore implements TelescopeStore {
+  constructor(private readonly inner: TelescopeStore) {}
+
+  async record<T>(input: RecordInput<T>): Promise<Entry<T>> {
+    if (this.shouldDrop(input)) return this.synthetic(input)   // never persisted
+    if (this.shouldSample(input)) return this.synthetic(input) // sampled out
+    return this.inner.record(input)
+  }
+
+  private shouldDrop(input: RecordInput<unknown>): boolean {
+    // Drop health-check request noise.
+    const url = (input.content as { url?: string } | undefined)?.url
+    return input.type === 'request' && url === '/health'
+  }
+
+  private shouldSample(input: RecordInput<unknown>): boolean {
+    // Keep 10% of cache hits; keep everything else.
+    return input.tags?.includes('cache:hit') === true && Math.random() > 0.1
+  }
+
+  // delegate the rest unchanged
+  get(id: string) { return this.inner.get(id) }
+  list(q?: EntryQuery) { return this.inner.list(q) }
+  count() { return this.inner.count() }
+  prune(d: Date, k?: number) { return this.inner.prune(d, k) }
+  clear() { return this.inner.clear() }
+
+  private synthetic<T>(input: RecordInput<T>): Entry<T> {
+    return { id: 'dropped', type: input.type, familyHash: input.familyHash ?? null,
+      content: input.content, tags: input.tags ?? [], sequence: -1, durationMs: input.durationMs ?? null,
+      origin: 'manual', traceId: input.traceId ?? null, createdAt: new Date() }
+  }
+}
+```
+
+```ts title="config/telescope.ts"
+import { defineConfig, InMemoryTelescopeStore } from '@agora/telescope'
+import { FilteringStore } from '#telescope/filtering_store'
+
+export default defineConfig({
+  store: new FilteringStore(new InMemoryTelescopeStore({ maxEntries: 5000 })),
+})
+```
+
+### How it works
+
+`record` is the only write path, so wrapping it lets you drop (health checks, static
+assets), sample (high-volume cache hits), or rewrite (redact) uniformly — without touching a
+single watcher. Return a synthetic, non-persisted `Entry` for dropped/sampled inputs so the
+caller's `await store.record(...)` still resolves (watchers ignore the result anyway).
+
+<Callout type="info">
+For tail-style sampling — *keep everything that errored, sample the rest* — branch on the
+entry's tags in `shouldSample`: always persist `status:5xx`, `exception:*`, or `cache:miss`,
+and only sample the boring successes.
+</Callout>

@@ -1,0 +1,217 @@
+---
+title: Capture & correlation
+description: The mental model behind Telescope — what a watcher is, the uniform Entry shape every recording produces, the generic diagnostics spine that records all library events, exception auto-capture, and how trace correlation works without coupling to @agora/context.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Everything Telescope shows starts as a **capture**: a watcher observes something
+happening (a request finishing, a query running, a library publishing an event),
+builds a `RecordInput`, and hands it to the store. The store stamps it into an
+`Entry`. This page is the model that ties those pieces together.
+
+## Watchers
+
+A watcher is anything that turns a runtime event into entries. Telescope ships its
+core watchers in `@agora/telescope` and more in `@agora/telescope-watchers`:
+
+| Watcher                | Package                      | Entry type   | Records                                              |
+| ---------------------- | ---------------------------- | ------------ | --------------------------------------------------- |
+| Request                | `@agora/telescope`           | `request`    | Each inbound HTTP request — method, url, status, duration. |
+| Exception              | `@agora/telescope`           | `exception`  | Any error thrown by the HTTP pipeline (auto), or recorded manually. |
+| Diagnostics            | `@agora/telescope`           | `diagnostic` | Every `agora:<lib>:<event>` publish.                 |
+| Lucid query            | `@agora/telescope-watchers`  | `query`      | Each `db:query` — SQL, bindings, duration, connection. |
+| Mail                   | `@agora/telescope-watchers`  | `mail`       | Each `mail:sent` — mailer, from, to, subject.        |
+| Cache                  | `@agora/telescope-watchers`  | `cache`      | `@adonisjs/cache` hit / miss / write / delete / clear. |
+
+The built-in request watcher runs as **server middleware**; the diagnostics watcher
+is started by the core provider at boot; the per-technology watchers subscribe to the
+AdonisJS event emitter. They all share one rule:
+
+<Callout type="warn">
+**A watcher must never break the thing it observes.** Every recording path is
+fire-and-forget and fully guarded — a missing store, a throwing `record`, or a
+rejected promise is swallowed (and warn-logged), never thrown into the request,
+query, or send it is watching.
+</Callout>
+
+## The Entry
+
+Every capture, regardless of source, becomes the same shape — that uniformity is
+what lets one store, one query API, and one dashboard handle requests, queries,
+exceptions and arbitrary library events alike.
+
+```ts
+interface Entry<TContent = unknown> {
+  id: string
+  type: string                  // 'request' | 'diagnostic' | 'query' | 'exception' | ...
+  familyHash: string | null     // stable grouping key — "the same kind of thing"
+  content: TContent             // type-specific payload
+  tags: string[]                // searchable labels, e.g. 'lib:billing', 'status:500'
+  sequence: number              // monotonic record order within this process
+  durationMs: number | null     // operation duration, when known
+  origin: BatchOrigin           // 'http' | 'queue' | 'schedule' | 'cli' | 'manual'
+  traceId: string | null        // active trace id at record time
+  createdAt: Date
+}
+```
+
+A watcher does not build a full `Entry`; it builds a `RecordInput` (just `type`,
+`content`, and optional `familyHash` / `tags` / `durationMs` / `traceId` / `origin`).
+The store fills in `id`, `sequence`, `createdAt`, and resolves `traceId` / `origin`
+from context when omitted.
+
+The built-in `EntryType` constant names the recorded types — `Request`, `Diagnostic`,
+`Query`, `Exception`, `Mail`, `Cache` — plus reserved values (`Job`, `Redis`, `Event`,
+`Log`) so a future watcher records under a stable, already-documented type without a
+breaking change.
+
+### familyHash — grouping "the same thing"
+
+`familyHash` is what makes `topFamilies()` and the dashboard's "busiest events" and
+exception groupings work. Two entries share a family when they are the same *kind* of
+thing:
+
+- **Diagnostics** group by `lib:event` (`billing:invoice-paid`).
+- **Queries** group by SQL template — the same query with literals replaced by `?`,
+  FNV-1a hashed, so every execution of `select * from users where id = ?` rolls up
+  regardless of the id.
+- **Exceptions** group by `name:message:topStackFrame` — see below.
+
+## Exception capture
+
+The request middleware does double duty: besides recording the `request` entry, it
+catches any error the downstream pipeline throws, records it as an `exception` entry,
+then **re-throws the original error untouched**. You get exception capture with zero
+app changes.
+
+```ts
+interface ExceptionEntryContent {
+  name: string             // error class (TypeError, Error, ...)
+  message: string
+  stack: string | null
+  method: string | null    // when recorded inside a request
+  url: string | null
+  traceId: string | null
+}
+```
+
+The exception family hash deliberately includes the **top stack frame**:
+
+```ts
+exceptionFamilyHash({ name, message, stack })  // → `${name}:${message}:${topFrame}`
+```
+
+<Callout type="info">
+Why the top frame? `name` + `message` alone over-groups (the same generic message
+from unrelated call sites collapses into one family), while a host that embeds ids in
+messages under-groups. Pinning to the first frame is the pragmatic middle ground used
+by most error trackers — the same key the [alerts](/docs/telescope/packages/alerts)
+`new-exception` dedup and the [AI diagnoser](/docs/telescope/packages/ai) cache rely
+on, so it must be deterministic across processes.
+</Callout>
+
+### Manual capture for non-HTTP paths
+
+Queue workers, ace commands, and your `app/exceptions/handler.ts` aren't wrapped by
+the middleware. Capture there with `recordException` — it reads the active store from
+the runtime slot (no DI), is a no-op when Telescope is off, and **never throws**:
+
+```ts title="app/exceptions/handler.ts"
+import { recordException } from '@agora/telescope'
+
+async report(error: unknown, ctx: HttpContext) {
+  recordException(error, { method: ctx.request.method(), url: ctx.request.url() })
+  return super.report(error, ctx)
+}
+```
+
+## The diagnostics watcher
+
+This is the keystone of the whole ecosystem. Rather than a bespoke watcher per
+library, **one** `DiagnosticsWatcher` records every event any `@agora/*` library
+emits through [`@agora/diagnostics`](/docs/diagnostics) — one `diagnostic` entry per
+`agora:<lib>:<event>` publish — so a library that adopts diagnostics appears in
+Telescope with no Telescope-specific code.
+
+A recorded diagnostic preserves the producer's envelope verbatim:
+
+```ts
+interface DiagnosticEntryContent {
+  v: number | null         // envelope schema version (null on a legacy envelope)
+  lib: string              // 'billing'
+  event: string            // 'invoice-paid'
+  ts: number               // producer-stamped epoch millis
+  traceId: string | null
+  payload: unknown         // the library-defined payload, as-is
+}
+```
+
+It is tagged `lib:<lib>`, `event:<event>`, and `trace:<traceId>` (when present), and
+its `familyHash` is `lib:event` — so `topFamilies(10, 'diagnostic')` answers "what are
+the busiest event kinds?".
+
+### How it subscribes to current *and future* channels
+
+`node:diagnostics_channel` has no wildcard subscribe, so on `start()` the watcher:
+
+1. subscribes to every channel already registered, and
+2. registers a listener so any channel that appears **later** (a library's first emit)
+   is subscribed too.
+
+Subscribing also flips each producer's `channel.hasSubscribers` to `true` — which is
+exactly what makes `@agora/diagnostics` start building and publishing envelopes at all
+(zero overhead when nobody is listening).
+
+```text
+@agora/billing  ──publish──▶  agora:billing:invoice-paid  (node:diagnostics_channel)
+                                        │
+                                        ▼
+                              DiagnosticsWatcher.subscribe
+                                        │
+                                        ▼  buildDiagnosticEntry()
+                              TelescopeStore.record({ type: 'diagnostic', ... })
+```
+
+<Callout type="warn">
+The subscriber runs **synchronously** inside `node:diagnostics_channel`, but the store
+is async. The watcher fires-and-forgets the `record` and swallows rejections — it can
+never block or break the emitting code path.
+</Callout>
+
+## Cross-repo decoupling
+
+Telescope is a separate repo and has **no `@agora/*` dependencies** — a hard dep would
+couple release cadences and can't be resolved across repos. Instead it reads two
+cross-copy-stable global slots **structurally**, defining the shapes locally (mirrored,
+never imported):
+
+- **`Symbol.for('@agora/diagnostics:registry')`** → `{ channels, listeners }`. The
+  diagnostics watcher iterates `channels` for current names and adds to `listeners`
+  for future ones, then subscribes via the Node builtin.
+- **`Symbol.for('@agora/context:accessor')`** → the request's `traceId()` (plus
+  `tenantId()`, `userRef()`, `get()`). The store reads `traceId()` at record time.
+
+When those packages aren't installed, the readers return `undefined`: no trace
+correlation, no diagnostic entries — but the request watcher still works standalone.
+
+## Trace correlation
+
+When [`@agora/context`](/docs/context) is present, every entry recorded inside a
+request carries the request's `traceId`, and producers stamp diagnostics with the
+same id. That is what makes `byTrace(id)` reconstruct the whole story:
+
+```ts
+// Every entry recorded during one request — the request, its queries,
+// any diagnostics it published, and the exception that ended it.
+await telescope.byTrace('abc123')
+```
+
+The store resolves `traceId` at record time: a watcher may pass it explicitly (the
+diagnostics watcher carries the producer-resolved id, since the producer knows its
+emitting context best), otherwise the store reads `currentTraceId()` from the context
+accessor. A `null` trace simply means "no active context" — common for CLI and queue
+work.
+
+> Capture is the foundation; **[Storage](/docs/telescope/concepts/storage)** is where
+> those entries live and how you query them back.

@@ -1,0 +1,153 @@
+---
+title: "@agora/telescope-ai"
+description: AI-assisted exception diagnosis for Telescope — turns an exception entry (plus its related trace entries) into a structured cause/fix/confidence diagnosis via the Anthropic Claude API, cached by exception family hash so the same error is never diagnosed twice.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+When an exception lands in Telescope, this package can hand it (and the other entries from
+its trace) to Claude and get back a structured root-cause diagnosis — a likely cause, a
+concrete fix, and a confidence level — cached by the exception's family hash so each error
+family is diagnosed once.
+
+## Install
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm i @agora/telescope-ai @anthropic-ai/sdk
+node ace configure @agora/telescope-ai
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm add @agora/telescope-ai @anthropic-ai/sdk
+node ace configure @agora/telescope-ai
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn add @agora/telescope-ai @anthropic-ai/sdk
+node ace configure @agora/telescope-ai
+```
+
+</Tab>
+</Tabs>
+
+`@anthropic-ai/sdk` is a peer (the host owns the version). `configure` registers the
+provider and publishes `config/telescope_ai.ts`.
+
+## Configuration
+
+```ts title="config/telescope_ai.ts"
+import env from '#start/env'
+import { defineConfig } from '@agora/telescope-ai'
+
+export default defineConfig({
+  apiKey: env.get('ANTHROPIC_API_KEY'),
+  // model: 'claude-sonnet-4-6',
+  // maxTokens: 1024,
+})
+```
+
+| Key         | Default              | Description                                                          |
+| ----------- | -------------------- | ------------------------------------------------------------------ |
+| `enabled`   | `true`               | Master switch. With `false` (or no key) the diagnoser is a no-op.  |
+| `apiKey`    | _(from env)_         | Anthropic API key — `env.get('ANTHROPIC_API_KEY')`, never hardcoded.|
+| `model`     | `claude-sonnet-4-6`  | Claude model id.                                                    |
+| `maxTokens` | `1024`               | Hard cap on generated tokens per diagnosis.                        |
+
+<Callout type="warn">
+A configured-but-keyless install is treated as **disabled** — nothing ever calls the API
+without credentials. Add `ANTHROPIC_API_KEY` to your `.env` and validate it in
+`start/env.ts` (`ANTHROPIC_API_KEY: Env.schema.string.optional()`).
+</Callout>
+
+The default model is `claude-sonnet-4-6` (the best speed/intelligence balance for a short
+structured triage). Use `claude-opus-4-8` for the most capable diagnosis, or
+`claude-haiku-4-5-20251001` for the cheapest.
+
+## Use it
+
+The provider binds a `TelescopeAiDiagnoser` into the container — always resolvable, even
+when disabled (its `diagnose` is then a no-op returning `null`), so you can `inject` it
+without a null check.
+
+```ts
+import { TelescopeAiDiagnoser } from '@agora/telescope-ai'
+import { TelescopeService } from '@agora/telescope'
+
+const telescope = await app.container.make(TelescopeService)
+const diagnoser = await app.container.make(TelescopeAiDiagnoser)
+
+const exception = await telescope.find(entryId)         // an `exception` entry
+const related = await telescope.byTrace(exception.traceId ?? '')
+
+const diagnosis = await diagnoser.diagnose(exception, { related })
+// → { cause, fix, confidence: 'high' | 'medium' | 'low', model, cached } | null
+```
+
+`diagnose(entry, options?)`:
+
+- `options.related` — other entries from the same trace (queries, the request,
+  diagnostics). They're summarized into the prompt as extra context; exception entries are
+  skipped, and each summary is clipped to 500 chars.
+- `options.force` — bypass the cache and force a fresh API call (still caches the result).
+
+The returned `Diagnosis` carries `cached: true` when served from the cache.
+
+## How it works
+
+1. **Cache check.** If the entry's `familyHash` was already diagnosed (and `force` isn't
+   set), the cached diagnosis is returned immediately — no API call.
+2. **Prompt build.** A system prompt frames Claude as a senior engineer triaging a
+   production exception and pins the output to a strict JSON object (`cause` / `fix` /
+   `confidence`). The user message carries the exception name + message, route, trace id,
+   a stack clipped to the top 25 frames, and the related-entry summaries.
+3. **Call + parse.** It calls the Claude Messages API once, then defensively extracts the
+   first balanced `{...}` (surviving markdown fences and stray prose) and parses it,
+   tolerating missing fields.
+4. **Cache write.** The result is cached by family hash and returned.
+
+<Callout type="info">
+**Caching.** The default cache is a bounded, TTL'd in-process LRU — up to 500 families,
+24h TTL, oldest-evicted at the cap, expired-on-read. So re-diagnosing the same error never
+burns tokens. Swap in a Redis/DB-backed `DiagnosisStore` (via `createDiagnoser`) for
+cross-process sharing.
+</Callout>
+
+## Safe by construction
+
+Diagnosis never throws into your code. Disabled or no client → `null`. A model call or a
+parse failure is logged and resolves to `null` rather than propagating. A missing family
+hash just skips the cache. So you can call `diagnose` straight from an error path without
+guarding it.
+
+## Privacy
+
+The exception's name, message, stack (top 25 frames), route/trace id, and the JSON content
+of related trace entries are sent to the Anthropic API. Nothing else leaves the process,
+and nothing is sent at all when AI is disabled or no key is configured. Be mindful that
+recorded `content` (e.g. query bindings, request data) may contain sensitive values — shape
+what gets captured upstream if that's a concern.
+
+## Notable exports
+
+- `TelescopeAiDiagnoser` — the diagnoser; types `TelescopeAiDiagnoserOptions`,
+  `DiagnoseOptions`, `AnthropicMessagesClient`.
+- `createDiagnoser(config, options?)` — build a diagnoser from resolved config (constructs
+  the real Anthropic client; returns `null` when disabled).
+- `DiagnosisCache`, `DEFAULT_DIAGNOSIS_CACHE_MAX`, `DEFAULT_DIAGNOSIS_TTL_MS`; type
+  `DiagnosisStore`.
+- `parseDiagnosis`, `normalizeConfidence`; types `Diagnosis`, `DiagnosisConfidence`.
+- `buildUserPrompt`, `SYSTEM_PROMPT`, `STACK_FRAME_LIMIT`; type `RelatedEntrySummary`.
+- `defineConfig`, `resolveConfig`, `DEFAULT_MODEL`, `DEFAULT_MAX_TOKENS`.
+
+> For a task-oriented walkthrough, see the
+> [AI exception diagnosis](/docs/telescope/recipes/ai-exception-diagnosis) guide.

@@ -1,0 +1,153 @@
+---
+title: "@agora/telescope"
+description: The headless core — the request, exception and diagnostics watchers, the uniform Entry model, the TelescopeStore contract and in-memory ring buffer, the TelescopeService query API, the extension SDK, and the structural readers for context and diagnostics.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+The core is the only package you strictly need. It records inbound requests, captures
+exceptions, records every Agora diagnostics event, stores them in a bounded in-memory
+buffer, and exposes a headless query API — plus the contracts (`TelescopeStore`, the
+extension SDK) the rest of the ecosystem builds on.
+
+## Install
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm i @agora/telescope
+node ace configure @agora/telescope
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm add @agora/telescope
+node ace configure @agora/telescope
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn add @agora/telescope
+node ace configure @agora/telescope
+```
+
+</Tab>
+</Tabs>
+
+`configure` registers `@agora/telescope/telescope_provider`, plugs `TelescopeMiddleware`
+onto the **server** middleware stack, and publishes `config/telescope.ts`.
+
+## Built-in watchers
+
+| Watcher       | Type         | How it runs                          | Records                                         |
+| ------------- | ------------ | ------------------------------------ | ----------------------------------------------- |
+| Request       | `request`    | `server` middleware                  | method, url (no query string), status, durationMs, traceId |
+| Exception     | `exception`  | auto, in the request middleware      | name, message, stack, method, url, traceId      |
+| Diagnostics   | `diagnostic` | `DiagnosticsWatcher`, started at boot | every `agora:<lib>:<event>` publish envelope    |
+
+The request and exception watchers come from the same middleware: it records the request
+in a `finally`, and catches + records any thrown error before re-throwing it untouched.
+The diagnostics watcher subscribes to every Agora channel (current and future). See
+[Capture & correlation](/docs/telescope/concepts/capture) for the full mechanics.
+
+### Manual exception capture
+
+For non-HTTP code (queue workers, ace commands, your exception handler), call
+`recordException` — it reads the runtime store with no DI, is a no-op when Telescope is
+off, and never throws:
+
+```ts
+import { recordException } from '@agora/telescope'
+
+await recordException(error, { method: 'POST', url: '/checkout' })
+```
+
+## Configuration
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@agora/telescope'
+
+export default defineConfig({
+  enabled: true,
+  store: 'memory',
+  stores: {
+    memory: storage.memory({ limit: 1000 }),
+    // lucid: storage.lucid({ connection: 'pg' }),
+  },
+  watchers: ['request', 'diagnostics'],
+  extensions: [],
+})
+```
+
+| Key          | Default                       | Description                                                            |
+| ------------ | ----------------------------- | --------------------------------------------------------------------- |
+| `enabled`    | `true`                        | Master switch; `false` records nothing and starts no watcher.         |
+| `store`      | `'memory'`                    | Which named driver in `stores` is active, or a `TelescopeStore` instance. |
+| `stores`     | `{}`                          | Named [storage drivers](/docs/telescope/packages/storages) (`storage.memory` / `storage.lucid`). |
+| `watchers`   | `['request', 'diagnostics']`  | Which built-in watchers run.                                          |
+| `extensions` | `[]`                          | [Extensions](/docs/telescope/concepts/extensions) to register at boot. |
+
+## Headless API
+
+`TelescopeService` is bound into the container, resolving against whichever store the
+provider builds at boot from `config/telescope.ts`.
+
+```ts
+import { TelescopeService } from '@agora/telescope'
+
+const telescope = await app.container.make(TelescopeService)
+```
+
+| Method                       | Returns                                                       |
+| ---------------------------- | ------------------------------------------------------------ |
+| `list(query?)`               | Entries matching an `EntryQuery`, newest-first.              |
+| `find(id)`                   | One `Entry`, or `null`.                                       |
+| `byTrace(traceId)`           | Every entry on a trace, newest-first.                        |
+| `count()`                    | Total stored entries.                                        |
+| `topFamilies(limit?, type?)` | Busiest groups by `familyHash` — returns `{ key, count }[]`. |
+| `topTags(limit?, prefix?)`   | Most common tags — returns `{ key, count }[]`.               |
+| `telescopeStore`             | The underlying `TelescopeStore` (advanced).                  |
+
+## Notable exports
+
+The package surface, grouped:
+
+- **Entry model** — `EntryType`, `isBatchOrigin`; types `Entry`, `RecordInput`,
+  `BatchOrigin`, `BuiltinEntryType`.
+- **Storage** — the `storage` factory (`storage.memory` / `storage.lucid`),
+  `InMemoryTelescopeStore`, `LucidTelescopeStore`, `createTelescopeTable`,
+  `createTableStatements`, `DEFAULT_TABLE_NAME`; types `TelescopeStore`, `EntryQuery`,
+  `StoreProvider`, `MemoryStoreConfig`, `LucidStoreConfig`, `InMemoryStoreOptions`,
+  `LucidStoreOptions`.
+- **Query API** — `TelescopeService`; type `CountBucket`.
+- **Watchers** — `DiagnosticsWatcher`, `buildDiagnosticEntry`, `DIAGNOSTIC_ENTRY_TYPE`,
+  `recordRequest`, `recordException`, `recordExceptionInStore`, `buildExceptionInput`,
+  `exceptionFamilyHash`.
+- **Extension SDK** — `defineTelescopeExtension`, `ExtensionRegistry`, and the spec types
+  (`TelescopeExtension`, `DashboardSpec`, `Panel`, `DataProvider`, …).
+- **Config** — `defineConfig`, `resolveConfig`, the `storage` factory; types
+  `TelescopeConfig`, `ResolvedTelescopeConfig`, `WatcherName`, `StoreProvider`,
+  `StoreContext`.
+- **Runtime (advanced)** — `getTelescopeRuntime`, `setTelescopeRuntime`,
+  `resetTelescopeRuntime`, `setTelescopeExtensionRegistry`.
+- **Structural readers** — `currentTraceId`, `getContextAccessor`,
+  `getDiagnosticsRegistry`, `isDiagnosticEvent`.
+
+<Callout type="info">
+The runtime exports (`getTelescopeRuntime`, …) are how the other packages reach the live
+store without DI. You rarely need them in app code — `inject(TelescopeService)` is the
+normal path — but they're public for advanced integrations and custom watchers.
+</Callout>
+
+## Decoupling
+
+The core depends only on `@adonisjs/core` (a peer). It reads
+[`@agora/context`](/docs/context) and [`@agora/diagnostics`](/docs/diagnostics)
+structurally through global `Symbol.for(...)` slots, so it adds no hard dependency on
+either and works (with reduced features) when they aren't installed.

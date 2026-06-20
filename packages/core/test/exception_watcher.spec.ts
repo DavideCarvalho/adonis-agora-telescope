@@ -7,7 +7,7 @@ import {
   recordException,
   recordExceptionInStore,
 } from '../src/exception_watcher.js';
-import { InMemoryTelescopeStore } from '../src/in_memory_store.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import { resetTelescopeRuntime, setTelescopeRuntime } from '../src/registry.js';
 
 describe('exceptionFamilyHash', () => {

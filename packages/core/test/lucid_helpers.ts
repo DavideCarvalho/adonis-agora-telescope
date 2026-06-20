@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Emitter } from '@adonisjs/core/events';
 import { Logger } from '@adonisjs/core/logger';
 import { Database } from '@adonisjs/lucid/database';
-import type { LucidDatabaseLike } from '../src/lucid_store.js';
+import type { LucidDatabaseLike } from '../src/stores/lucid.js';
 
 /**
  * Build a standalone Lucid `Database` ("using Lucid outside an app") against a

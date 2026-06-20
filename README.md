@@ -68,22 +68,45 @@ correlation, no diagnostic entries) — the request watcher still works standalo
 `config/telescope.ts`:
 
 ```ts
-import { defineConfig } from '@agora/telescope'
+import { defineConfig, storage } from '@agora/telescope'
 
 export default defineConfig({
   enabled: true,                          // master switch
-  store: 'memory',                        // bounded in-process ring buffer
-  maxEntries: 1000,                       // eviction cap
+  store: 'memory',                        // which driver in `stores` is active
+  stores: {
+    memory: storage.memory({ limit: 1000 }),   // bounded in-process ring buffer
+    // lucid: storage.lucid({ connection: 'pg' }), // persistent SQL store
+  },
   watchers: ['request', 'diagnostics'],   // omit one to disable it
 })
 ```
 
 ## Storage
 
-The built-in store is `InMemoryTelescopeStore` — a bounded ring buffer (great for
-dev/tests, lost on restart). It implements the `TelescopeStore` contract
-(`record` / `get` / `list` / `count` / `prune` / `clear`); a persistent store
-implements the same contract.
+Storage is a **config-driven driver**, built with the `storage` factory and selected
+by `store`. Two drivers ship in the box:
+
+- **`memory`** — `InMemoryTelescopeStore`, a bounded ring buffer (great for dev/tests,
+  lost on restart). `storage.memory({ limit })`.
+- **`lucid`** — `LucidTelescopeStore`, a persistent, SQL-backed store on
+  [`@adonisjs/lucid`](https://lucid.adonisjs.com) (sqlite / Postgres / MySQL), so
+  entries survive restarts. `storage.lucid({ connection })`. `@adonisjs/lucid` is an
+  **optional peer** — imported lazily only when the `lucid` driver is selected.
+
+```ts
+import { defineConfig, storage } from '@agora/telescope'
+
+export default defineConfig({
+  store: 'lucid',
+  stores: { lucid: storage.lucid() },
+})
+```
+
+The `lucid` driver needs a table — publish the migration with
+`node ace configure @agora/telescope` (it ships the `create_telescope_entries_table`
+stub) and run `node ace migration:run`. Every store implements the same
+`TelescopeStore` contract (`record` / `get` / `list` / `count` / `prune` / `clear`);
+a custom backend implements the same contract and is passed as a `store` instance.
 
 ## Deferred roadmap
 
@@ -91,8 +114,8 @@ The NestJS original is 18 packages. This port ships the headless core; the rest 
 planned, not built (see [`DESIGN.md`](./DESIGN.md) for rationale):
 
 - **A UI dashboard** — the obvious next step; reads the existing query API.
-- **`@agora/telescope-lucid`** — a Lucid query watcher (records SQL as `query`
-  entries) **and** a persistent Lucid/SQLite store.
+- A Lucid **query watcher** (records SQL as `query` entries) — the persistent
+  Lucid/SQLite **store** already ships in core as the `lucid` driver (see Storage).
 - Per-tech watchers: bullmq / mikro-orm / typeorm / prisma / redis / sqs /
   schedule / mail / cache.
 - AI diagnosers, alerts (`new-exception` etc.), OTel export.

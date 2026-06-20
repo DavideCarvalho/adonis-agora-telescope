@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveConfig } from '../src/define_config.js';
-import { InMemoryTelescopeStore } from '../src/in_memory_store.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import {
   getTelescopeRuntime,
   resetTelescopeRuntime,

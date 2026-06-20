@@ -1,0 +1,119 @@
+---
+title: Performance
+description: Why capture doesn't slow the app it observes — request recording sits in a finally block off the response path, watchers are fire-and-forget, the in-memory store is bounded, and every recording is guarded so a failing store can never break or block a hot path.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Observability is only worth running if it is cheap. Telescope's design makes capture
+close to free on the hot path and hard-bounds its own memory, so leaving it on in
+production is a deliberate, safe choice rather than a risk.
+
+## Recording never breaks the path it observes
+
+This is the load-bearing invariant behind every watcher. The request middleware records
+in a `finally` block and wraps it; the diagnostics and per-technology watchers
+fire-and-forget into the async store and swallow rejections:
+
+```ts
+// telescope_middleware.ts — the request watcher shell
+try {
+  return await next()
+} catch (error) {
+  try { await recordExceptionInStore(store, error, { ... }) } catch { /* swallow */ }
+  throw error                         // original error, untouched
+} finally {
+  try { await recordRequest(store, ctx, startedAt) } catch { /* swallow */ }
+}
+```
+
+<Callout type="warn">
+**A failing store can never break a request.** The exception capture re-throws the
+*original* error (it can't mask it), and the request recording lives in a `finally` that
+swallows any failure. The same guarantee holds for every other watcher: a thrown or
+rejected `record` is caught and warn-logged, never propagated.
+</Callout>
+
+## Request capture is off the response path
+
+The request entry is recorded in the middleware's `finally` — i.e. **after** `next()` has
+produced the response. The recording is `await`ed (so a slow store surfaces back-pressure
+here rather than leaking an unhandled rejection), but it happens once the response has
+already been computed, so it does not sit between the controller and the client on the
+happy path.
+
+## Watchers are zero-overhead when nobody listens
+
+The diagnostics integration is opt-in *by subscription*. `@agora/diagnostics` only builds
+and publishes an envelope when a channel `hasSubscribers`. If the diagnostics watcher is
+disabled (or `@agora/diagnostics` isn't installed), producers skip the work entirely —
+there is no envelope construction, no publish, nothing. Turning the watcher on is what
+flips `hasSubscribers` and starts the flow.
+
+Likewise, when Telescope is disabled or not booted, the runtime store slot is `null`, and
+every recording path short-circuits:
+
+```ts
+const runtime = getTelescopeRuntime()
+if (!runtime.store || !runtime.requestWatcherEnabled) {
+  return next()   // true no-op — no timestamp, no allocation
+}
+```
+
+## The query watcher is microseconds, on the hot path
+
+The Lucid query watcher is the only watcher that runs synchronously inside a hot path
+(the `db:query` emitter callback). It does the minimum there: a structural type check, an
+hrtime-tuple → ms conversion, a small object build, and a fire-and-forget `record`. The
+store write happens asynchronously, off the query's critical path.
+
+<Callout type="info">
+Lucid only emits `db:query` when `debug` is on (or a listener exists at report time), so
+when query capture is off you pay nothing — Lucid doesn't even build the event. When it's
+on, the per-query cost is a few microseconds of synchronous work plus an async store
+write that the query never waits on.
+</Callout>
+
+## Bounded memory
+
+The `memory` driver is a **ring buffer with a hard cap** (`storage.memory({ limit })`,
+default 1000). Past the cap, the oldest entries are evicted on every `record`, so the
+buffer's memory footprint is bounded no matter how long the process runs or how hard
+it's hammered:
+
+```text
+heap ≈ limit × avg(entry size)
+```
+
+Raise `limit` for more history, lower it to shrink the footprint. There is no
+unbounded growth mode.
+
+The AI diagnoser and the alerts tracker are similarly bounded: the
+[diagnosis cache](/docs/telescope/packages/ai#caching) is a TTL'd LRU capped at 500
+families, and the [`new-exception` tracker](/docs/telescope/packages/alerts#deduplication)
+is a count-capped map (default 10,000 families) — so a host that throws a long tail of
+unique error families can't grow either without limit.
+
+## Persistent storage and reads
+
+The [Lucid store](/docs/telescope/packages/storages) keeps `created_at` as an integer and
+indexes the hot read columns (`created_at`, `type`, `trace_id`, `family_hash`), so the
+common queries — recent entries, one trace, one type — are index scans, not table scans.
+It never auto-evicts on `record` (that would add a query per write); bound it by running
+[`prune` on a schedule](/docs/telescope/concepts/storage#retention-and-pruning) instead.
+
+## Alerts polling is unref'd
+
+The alerts package reads the store on an interval rather than hooking core, and its timer
+is `unref`'d — so it never keeps the process alive on its own, and a store failure during
+a poll is logged and retried on the next tick, not thrown.
+
+## Turning it off
+
+The cheapest path of all: `enabled: false` in `config/telescope.ts` clears the runtime
+slot at boot, the middleware becomes a true no-op, and no watcher starts. Per-package
+master switches (`telescope_watchers`, `telescope_ui`, `telescope_alerts`, `telescope_ai`)
+let you disable any layer independently — e.g. capture in production but no dashboard.
+
+> Cheap capture is half the story; **[Storage](/docs/telescope/concepts/storage)** covers
+> how to keep history bounded over time.

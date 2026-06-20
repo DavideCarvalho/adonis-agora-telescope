@@ -1,0 +1,20 @@
+{
+  "title": "Telescope",
+  "root": true,
+  "icon": "Telescope",
+  "description": "Laravel Telescope-style observability for AdonisJS — watchers, a queryable entry store, a self-contained dashboard, alerts, and AI exception diagnosis.",
+  "pages": [
+    "index",
+    "getting-started",
+    "---Concepts---",
+    "concepts",
+    "---Dashboard---",
+    "dashboard",
+    "---Packages---",
+    "packages",
+    "---Guides---",
+    "recipes",
+    "---Reference---",
+    "reference"
+  ]
+}

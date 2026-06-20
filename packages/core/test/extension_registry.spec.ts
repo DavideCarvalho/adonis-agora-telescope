@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveConfig } from '../src/define_config.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import type { ExtensionContext, TelescopeExtension } from '../src/extension/types.js';
-import { InMemoryTelescopeStore } from '../src/in_memory_store.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 
 function ctx(): ExtensionContext {
   const store = new InMemoryTelescopeStore();

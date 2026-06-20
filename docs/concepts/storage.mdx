@@ -1,0 +1,186 @@
+---
+title: Storage
+description: The TelescopeStore contract every watcher records through and the query API reads from — the config-driven driver model (the in-memory ring buffer and the SQL-backed Lucid store), the EntryQuery filter model, retention and pruning.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+A store is the one thing that sits between *capture* and *query*: watchers `record`
+into it, `TelescopeService` reads out of it. Telescope defines a single small contract
+for it, ships two drivers selected from config, and lets you swap in a custom one
+without touching anything else.
+
+## The TelescopeStore contract
+
+Every store — the built-in ring buffer, the Lucid driver, or one you write — implements
+the same six methods:
+
+```ts
+interface TelescopeStore {
+  record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>>
+  get(id: string): Promise<Entry | null>
+  list(query?: EntryQuery): Promise<Entry[]>      // always newest-first
+  count(): Promise<number>
+  prune(olderThan: Date, keepLast?: number): Promise<number>
+  clear(): Promise<void>
+}
+```
+
+`record` is the only write path. It fills in `id`, `sequence`, `createdAt`, and
+resolves `traceId` / `origin` from the ambient context when the caller omits them, then
+returns the persisted `Entry`. Everything else is a read or a maintenance operation.
+
+<Callout type="info">
+This is the trimmed Adonis port of aviary's NestJS `StorageProvider` — no opaque
+keyset cursors and no built-in rollup tables. The `EntryQuery` uses a simple
+`before` / `after` / `limit` instead. Aggregates (`topFamilies`, `topTags`) are computed
+in `TelescopeService` over `list`, which is plenty for the in-memory and single-node
+SQL stores this ships with.
+</Callout>
+
+## Choosing a driver
+
+Storage is **config-driven**. Build named drivers with the `storage` factory and pick
+the active one with `store`:
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@agora/telescope'
+
+export default defineConfig({
+  store: 'memory',
+  stores: {
+    memory: storage.memory({ limit: 1000 }),
+    lucid: storage.lucid({ connection: 'pg' }),
+  },
+})
+```
+
+Each factory returns a lazy thunk — listing it in `stores` costs nothing, and a driver's
+peer dependency (`@adonisjs/lucid` for `lucid`) is only imported when it is the *active*
+one. Two drivers ship in the box: `memory` and `lucid`.
+
+## Querying
+
+`list` (and therefore `TelescopeService.list`) takes an `EntryQuery`. Every set field
+is an AND predicate, so they compose; results are always newest-first.
+
+```ts
+interface EntryQuery {
+  type?: string        // 'request', 'diagnostic', 'query', 'exception', ...
+  tag?: string         // exact tag match, e.g. 'lib:billing'
+  familyHash?: string  // exact grouping key
+  traceId?: string     // entries on one trace
+  before?: Date        // strictly older than (keyset-ish pagination)
+  after?: Date         // newer than
+  search?: string      // case-insensitive substring over JSON content + tags
+  limit?: number       // cap returned entries
+}
+```
+
+`search` matches against the entry's JSON-serialized `content` **and** its `tags`, so a
+request matches by url, a diagnostic by event, a query by SQL — all from one box.
+
+```ts
+await telescope.list({ type: 'query', search: 'users', limit: 50 })
+await telescope.list({ tag: 'status:500', after: oneHourAgo })
+await telescope.list({ familyHash: 'billing:invoice-paid' })
+```
+
+## The memory driver
+
+`storage.memory({ limit })` (the default `store: 'memory'`) is `InMemoryTelescopeStore` —
+a **bounded ring buffer**:
+
+- Newest-first ordering (entries are `unshift`ed, so index 0 is the most recent).
+- An id index for O(1) `get`.
+- `search` over JSON content + tags.
+- A hard `limit` cap (default **1000**) — past it, the oldest entries are evicted so an
+  unbounded process can never OOM.
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@agora/telescope'
+
+export default defineConfig({
+  store: 'memory',
+  stores: {
+    memory: storage.memory({ limit: 5000 }),   // raise the cap; oldest beyond this are evicted
+  },
+})
+```
+
+<Callout type="warn">
+The memory driver is **lost on every restart** and is **per-process** (each worker keeps
+its own buffer). It is ideal for development and tests, and a reasonable default for a
+single long-lived process — but for production, durable, cross-query storage, use the
+`lucid` driver below.
+</Callout>
+
+## The lucid driver
+
+`storage.lucid({ connection? })` is the production storage answer — a SQL-backed
+`TelescopeStore` on AdonisJS Lucid, so entries survive restarts and stay queryable from
+your database on any Lucid dialect (sqlite / Postgres / MySQL). `@adonisjs/lucid` is an
+**optional peer**, imported lazily only when this driver is selected.
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@agora/telescope'
+
+export default defineConfig({
+  store: 'lucid',
+  stores: {
+    lucid: storage.lucid(),                  // or storage.lucid({ connection: 'pg' })
+  },
+})
+```
+
+It implements the exact same contract, so `TelescopeService`, the dashboard, alerts and
+the AI diagnoser all work against it unchanged. A few design notes:
+
+- `content` and `tags` are stored as **JSON text** and round-tripped on read — portable
+  across every dialect.
+- `created_at` is stored as **epoch milliseconds** (a plain integer), so newest-first
+  ordering and age-based pruning are driver-agnostic integer comparisons — no timezone
+  or string-format ambiguity.
+- `sequence` is seeded from `MAX(sequence)` on first use, so it keeps climbing
+  monotonically across restarts.
+- Indexes back the hot read paths (`created_at`, `type`, `trace_id`, `family_hash`).
+
+The driver needs a table. `node ace configure @agora/telescope` publishes the
+`create_telescope_entries_table` migration; run `node ace migration:run`. See
+[Storage drivers](/docs/telescope/packages/storages) for the schema, migration, and options.
+
+## Retention and pruning
+
+No store auto-prunes by age on its own (eviction in the memory driver is by count, not
+time). To bound a persistent store, call `prune` on a schedule:
+
+```ts
+// Delete everything older than 7 days.
+const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+await store.prune(cutoff)
+
+// ...but always keep the newest 500 of the doomed set, regardless of age.
+await store.prune(cutoff, 500)
+```
+
+`prune(olderThan, keepLast?)` deletes entries older than `olderThan`; when `keepLast`
+is set, the newest N of the *matched-and-doomed* entries are retained. It returns the
+number deleted. Wire it into an `@adonisjs/scheduler` job (or a cron) for hands-off
+retention.
+
+## Writing your own store
+
+Implement the six-method contract and pass an instance to `store`. A Mongo, Redis, or
+ClickHouse store is just `record` + `list` + the maintenance methods. The
+[custom storage guide](/docs/telescope/recipes/custom-storage) walks through a full
+implementation.
+
+```ts
+import { defineConfig } from '@agora/telescope'
+import { MyMongoStore } from '#telescope/mongo_store'
+
+export default defineConfig({ store: new MyMongoStore(mongo) })
+```
+
+> A store decides *where* entries live. **[Extensions](/docs/telescope/concepts/extensions)**
+> decide what *new things* the dashboard can show.

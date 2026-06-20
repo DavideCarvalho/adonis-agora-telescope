@@ -1,0 +1,160 @@
+---
+title: Storage drivers
+description: Telescope's config-driven storage — the in-memory ring buffer and the SQL-backed Lucid driver built into the core with the storage factory, plus the Lucid migration, JSON-text columns, integer epoch timestamps, and per-driver options.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Storage is **not a separate package** — it lives in `@agora/telescope` as a config-driven
+driver, selected in `config/telescope.ts` with the `storage` factory. Two drivers ship:
+`memory` (the default, bounded ring buffer) and `lucid` (a persistent, SQL-backed store).
+Both implement the same `TelescopeStore` contract, so `TelescopeService`, the dashboard,
+alerts and the AI diagnoser all work against either one unchanged.
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@agora/telescope'
+
+export default defineConfig({
+  store: 'memory',
+  stores: {
+    memory: storage.memory({ limit: 1000 }),
+    lucid: storage.lucid({ connection: 'pg' }),
+  },
+})
+```
+
+Each factory returns a lazy thunk — its peer dependency is only imported when that driver
+is the active one. `storage.lucid` imports `@adonisjs/lucid` only when `store: 'lucid'`.
+
+## The memory driver
+
+`storage.memory({ limit })` is the zero-config default — a bounded in-process ring buffer.
+It is lost on restart and lives per-process; ideal for development and tests.
+
+| Option  | Default | Description                                                       |
+| ------- | ------- | --------------------------------------------------------------- |
+| `limit` | `1000`  | Hard cap on retained entries. Oldest evicted past it (ring buffer). |
+
+## The lucid driver
+
+`storage.lucid()` is the production answer: a `TelescopeStore` backed by AdonisJS Lucid,
+so entries persist and stay queryable straight from your database on any dialect
+(sqlite / Postgres / MySQL). `@adonisjs/lucid` is an **optional peer** of the core,
+imported lazily only when this driver is selected.
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@agora/telescope'
+
+export default defineConfig({
+  store: 'lucid',
+  stores: {
+    lucid: storage.lucid(),                  // default connection
+    // lucid: storage.lucid({ connection: 'pg', tableName: 'tscope' }),
+  },
+})
+```
+
+### Options
+
+| Option            | Default             | Description                                                     |
+| ----------------- | ------------------- | -------------------------------------------------------------- |
+| `connection`      | _(default)_         | `@adonisjs/lucid` connection name. Omit for the default one.   |
+| `tableName`       | `telescope_entries` | Table to read/write (override on a name collision).            |
+| `autoCreateTable` | `false`             | Run the DDL on first use (tests/scripts; prefer a migration).  |
+| `maxEntries`      | _unset_             | Advisory cap for scheduled `prune` trimming (no auto-evict).   |
+
+### Schema
+
+The `lucid` driver needs a table. `node ace configure @agora/telescope` publishes the
+migration stub alongside the config file:
+
+```sh
+node ace configure @agora/telescope   # publishes config/telescope.ts + the migration
+node ace migration:run
+```
+
+The published migration:
+
+```ts title="database/migrations/xxxx_create_telescope_entries_table.ts"
+import { BaseSchema } from '@adonisjs/lucid/schema'
+
+export default class extends BaseSchema {
+  protected tableName = 'telescope_entries'
+
+  async up() {
+    this.schema.createTable(this.tableName, (table) => {
+      table.string('id').primary().notNullable()
+      table.string('type').notNullable()
+      table.string('family_hash').nullable()
+      table.text('content').notNullable()
+      table.text('tags').notNullable()
+      table.integer('sequence').notNullable()
+      table.integer('duration_ms').nullable()
+      table.string('origin').notNullable()
+      table.string('trace_id').nullable()
+      table.bigInteger('created_at').notNullable()
+
+      table.index(['created_at'])
+      table.index(['type'])
+      table.index(['trace_id'])
+      table.index(['family_hash'])
+    })
+  }
+
+  async down() {
+    this.schema.dropTable(this.tableName)
+  }
+}
+```
+
+<Callout type="info">
+For tests and scripts, you can skip the migration: pass `autoCreateTable: true` (the store
+runs idempotent `CREATE TABLE IF NOT EXISTS` DDL on first use), or call the exported
+`createTelescopeTable(db)` helper directly. Production should still prefer the versioned
+migration.
+</Callout>
+
+### Programmatic API
+
+For tests, scripts, or a hand-wired store instance, the core also exports:
+
+- **`LucidTelescopeStore`** — implements the async `TelescopeStore` contract (`record` /
+  `get` / `list` / `count` / `prune` / `clear`).
+- **`createTelescopeTable(db, options?)`** — idempotent DDL helper.
+- **`createTableStatements(tableName?)`** — the raw `CREATE TABLE` + index statements.
+- **`DEFAULT_TABLE_NAME`** — `'telescope_entries'`.
+
+```ts
+import db from '@adonisjs/lucid/services/db'
+import { LucidTelescopeStore } from '@agora/telescope'
+
+const store = new LucidTelescopeStore(db, { tableName: 'tscope', autoCreateTable: true })
+```
+
+### Design notes
+
+- **Dialect-agnostic.** It uses Lucid's async query builder directly, so it works on every
+  dialect Lucid supports (sqlite / Postgres / MySQL) — no synchronous driver handle, no
+  dialect lock-in.
+- **JSON-text columns.** `content` and `tags` are stored as JSON text and round-tripped on
+  read — portable everywhere.
+- **Integer timestamps.** `created_at` is epoch milliseconds, so newest-first ordering and
+  age-based pruning are integer comparisons with no timezone/format ambiguity. `list`
+  orders by `created_at desc, sequence desc` as a deterministic tiebreaker.
+- **Monotonic sequence.** Seeded from `MAX(sequence)` on first use, so it keeps climbing
+  across restarts.
+- **Tag matching.** `tag` filters match the quoted token inside the JSON array text, so
+  `lib:bill` never matches `lib:billing`.
+
+<Callout type="warn">
+The store never auto-evicts on `record` (that would add a query per write). Bound table
+growth by running [`prune` on a schedule](/docs/telescope/concepts/storage#retention-and-pruning)
+— e.g. an `@adonisjs/scheduler` job calling `store.prune(cutoff, keepLast)`.
+</Callout>
+
+## Writing a different backend
+
+The two shipped drivers are two implementations of one small contract — a Mongo, Redis, or
+ClickHouse store is the same six methods, passed as a `store` instance. See the
+[custom storage guide](/docs/telescope/recipes/custom-storage).

@@ -1,0 +1,155 @@
+---
+title: Custom watcher
+description: Build your own Telescope watcher — implement the Watcher contract over the AdonisJS event emitter, record through the guarded safeRecord helper with trace correlation, and register it so it starts and stops with your app.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+A watcher turns a runtime event into Telescope entries. The built-ins cover requests,
+exceptions, diagnostics, Lucid queries, mail and cache — but anything that emits an event
+(or that you can wrap) can be a watcher. This guide builds one end to end.
+
+## The contract
+
+A watcher implements the tiny `Watcher` interface from `@agora/telescope-watchers`, over a
+structural `EmitterLike` (a real `@adonisjs/events` emitter satisfies it):
+
+```ts
+import type { Watcher, EmitterLike } from '@agora/telescope-watchers'
+
+interface Watcher {
+  readonly type: string                 // the telescope entry type you record under
+  start(emitter: EmitterLike): void     // subscribe; returns nothing
+  stop(): void                          // fully unsubscribe — never throws into the app
+}
+
+interface EmitterLike {
+  on(event: string, listener: (data: unknown) => void): () => void  // returns an unsubscribe fn
+}
+```
+
+`emitter.on(...)` returns an unsubscribe function (the real Adonis emitter, built on
+`emittery`, does exactly this) — keep it and call it in `stop()`.
+
+You record through `safeRecord(input, source)`, the guarded helper: it resolves the live
+runtime store, backfills the active `@agora/context` trace id when you don't set one, and
+swallows every failure so your watcher can never break the path it observes.
+
+## Example — a queue-job watcher
+
+Say you emit a `queue:processed` event when a background job finishes. Record each as a
+`job` entry (a reserved core type):
+
+```ts title="app/telescope/queue_watcher.ts"
+import { EntryType, type RecordInput, currentTraceId } from '@agora/telescope'
+import { safeRecord, type Watcher, type EmitterLike } from '@agora/telescope-watchers'
+
+interface QueueProcessedEvent {
+  queue: string
+  jobId: string
+  durationMs: number
+  failed: boolean
+}
+
+interface JobEntryContent {
+  queue: string
+  jobId: string
+  failed: boolean
+  durationMs: number
+  traceId: string | null
+}
+
+export class QueueWatcher implements Watcher {
+  readonly type = EntryType.Job
+  private unsubscribe: (() => void) | null = null
+
+  start(emitter: EmitterLike): void {
+    if (this.unsubscribe) return                 // idempotent
+    this.unsubscribe = emitter.on('queue:processed', (data) => this.handle(data))
+  }
+
+  stop(): void {
+    this.unsubscribe?.()
+    this.unsubscribe = null
+  }
+
+  private handle(data: unknown): void {
+    if (!isQueueEvent(data)) return              // validate defensively
+    safeRecord(buildJobEntry(data), 'QueueWatcher')
+  }
+}
+
+function isQueueEvent(data: unknown): data is QueueProcessedEvent {
+  return typeof data === 'object' && data !== null
+    && typeof (data as QueueProcessedEvent).queue === 'string'
+    && typeof (data as QueueProcessedEvent).jobId === 'string'
+}
+
+function buildJobEntry(event: QueueProcessedEvent): RecordInput<JobEntryContent> {
+  const traceId = currentTraceId()
+  return {
+    type: EntryType.Job,
+    familyHash: event.queue,                     // group by queue
+    durationMs: event.durationMs,
+    traceId,
+    tags: [`queue:${event.queue}`, ...(event.failed ? ['failed'] : [])],
+    content: { queue: event.queue, jobId: event.jobId, failed: event.failed, durationMs: event.durationMs, traceId },
+  }
+}
+```
+
+### How it works
+
+- **`type = EntryType.Job`** records under a stable, reserved core type, so it shows up in
+  the dashboard's type filter and works with `list({ type: 'job' })`.
+- **`isQueueEvent`** rejects anything that doesn't structurally match — a watcher must
+  tolerate junk on the channel without throwing.
+- **`safeRecord(..., 'QueueWatcher')`** does the dangerous part safely: a missing store, a
+  throwing `record`, or a rejected promise is caught and warn-logged with the source label,
+  never propagated into the job.
+- **`familyHash: event.queue`** makes `topFamilies(10, 'job')` answer "busiest queues", and
+  the `failed` tag makes `list({ tag: 'failed' })` a one-liner.
+- **`currentTraceId()`** correlates the job to whatever request enqueued it, when context
+  flows through.
+
+## Registering it
+
+Start the watcher in a provider's `boot()` and stop it in `shutdown()`, resolving the
+application emitter from the container:
+
+```ts title="providers/app_provider.ts"
+import type { EmitterLike } from '@agora/telescope-watchers'
+import { QueueWatcher } from '#telescope/queue_watcher'
+
+export default class AppProvider {
+  private watcher = new QueueWatcher()
+
+  async boot() {
+    const emitter = (await this.app.container.make('emitter')) as unknown as EmitterLike
+    this.watcher.start(emitter)
+  }
+
+  async shutdown() {
+    this.watcher.stop()
+  }
+}
+```
+
+<Callout type="info">
+You don't need to wire your watcher into `@agora/telescope-watchers`' config — that config
+only controls the *built-in* `query`/`mail`/`cache` watchers. A custom watcher is just a
+class you start yourself, recording through the same runtime store.
+</Callout>
+
+<Callout type="warn">
+Keep `start`/`stop` idempotent and make `stop` unsubscribe everything you subscribed. A
+watcher that double-subscribes records duplicate entries; one that leaks subscriptions
+keeps recording after shutdown.
+</Callout>
+
+## Wrapping something that doesn't emit
+
+No event to listen to? Wrap the call site and record around it — the same `safeRecord`
+applies. The only rule is the universal one: record in a way that can never change the
+behaviour or failure mode of the thing you're instrumenting (record in a `finally`, swallow
+your own errors, re-throw theirs untouched).

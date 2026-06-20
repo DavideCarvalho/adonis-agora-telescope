@@ -1,7 +1,7 @@
-import { TelescopeService } from '@agora/telescope';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LucidTelescopeStore } from '../src/lucid_store.js';
-import { type TestHarness, makeHarness } from './helpers.js';
+import { TelescopeService } from '../src/service.js';
+import { LucidTelescopeStore } from '../src/stores/lucid.js';
+import { type TestHarness, makeHarness } from './lucid_helpers.js';
 
 let harness: TestHarness;
 let store: LucidTelescopeStore;

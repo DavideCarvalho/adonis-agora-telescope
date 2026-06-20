@@ -1,0 +1,119 @@
+---
+title: Dashboard
+description: Mount the self-contained Telescope console — an inline-HTML dashboard plus a JSON API served from the headless TelescopeService, behind a configurable auth guard — browse entries by type, family and trace, and reach the same data programmatically.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+`@agora/telescope-ui` is a self-contained dashboard for browsing recorded entries. It
+mounts a single inline-HTML page and a small JSON API directly onto your app's router —
+no separate process, no build step, no front-end framework to install — all served from
+the headless [`TelescopeService`](/docs/telescope/getting-started#step-3--hit-the-headless-api)
+behind an [auth guard](/docs/telescope/dashboard/auth).
+
+## Mount it
+
+```sh
+npm i @agora/telescope-ui
+node ace configure @agora/telescope-ui
+```
+
+`configure` registers `@agora/telescope-ui/telescope_ui_provider` and publishes
+`config/telescope_ui.ts`. On boot the provider resolves the live store from the core's
+runtime slot (the same handle the watchers record through — no DI), and registers the
+routes under the configured prefix.
+
+Open `http://localhost:3333/telescope`.
+
+<Callout type="warn">
+The UI needs `@agora/telescope` to be enabled and booted — it reads the *same* store the
+core publishes. If the store isn't booted, the provider registers **no routes** (and
+warn-logs why) rather than crashing the host. So the dashboard simply won't exist until
+the core is running.
+</Callout>
+
+## What it shows
+
+The dashboard reads the JSON API and lays out:
+
+- **Entries, newest-first** — every captured `request`, `query`, `exception`,
+  `diagnostic`, `mail`, and `cache` entry, filterable by type, tag and free-text search.
+- **Per-entry detail** — the full type-specific `content` for one entry (the SQL +
+  bindings for a query, the stack for an exception, the envelope payload for a diagnostic).
+- **Traces** — every entry recorded under one trace id, so you can replay an entire
+  request's story: the request, its queries, the diagnostics it published, and the
+  exception that ended it.
+- **Stats** — total count, the busiest families (`topFamilies`), and the most common tags
+  (`topTags`).
+
+## The JSON API
+
+The dashboard is just a client of these endpoints; you can call them directly (curl, a
+script, your own front end). They mount under `<path>/api` and each runs the `authorize`
+guard first.
+
+| Endpoint                              | Returns                                                                    |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| `GET <path>/api/entries`              | List entries — `?type=`, `?tag=`, `?traceId=`, `?search=`, `?before=` (ISO), `?limit=` (capped at 500, default 50). Drops `content` for a compact `summary`. |
+| `GET <path>/api/entries/:id`          | One entry with its full `content`, or 404.                                 |
+| `GET <path>/api/trace/:traceId`       | Every entry under a trace, newest-first.                                   |
+| `GET <path>/api/stats`                | `{ count, topFamilies, topTags }`. `?limit=` caps each top-N; `?type=` scopes `topFamilies`. |
+
+When an [extension](/docs/telescope/concepts/extensions) is registered, two more appear:
+
+| Endpoint                                       | Returns                                                  |
+| ---------------------------------------------- | -------------------------------------------------------- |
+| `GET <path>/api/meta`                          | The dashboards + entry types contributed by every extension. |
+| `GET <path>/api/ext/:ext/data/:provider`       | One extension data provider's result (namespaced by owner). |
+
+Each list entry comes back as an `EntrySummary` — `id`, `type`, `familyHash`, `tags`,
+`traceId`, `durationMs`, `sequence`, `createdAt` (ISO), plus a derived one-line `summary`
+(e.g. `GET /users/42 → 200`, `billing:invoice-paid`, or an exception message).
+
+```sh
+curl 'http://localhost:3333/telescope/api/entries?type=exception&limit=20'
+curl 'http://localhost:3333/telescope/api/trace/abc123'
+curl 'http://localhost:3333/telescope/api/stats?type=diagnostic'
+```
+
+## Configuration
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@agora/telescope-ui'
+
+export default defineConfig({
+  enabled: true,           // false → register no routes at all
+  path: '/telescope',      // dashboard at the root, API at <path>/api/*
+  // authorize: (ctx) => ctx.auth?.user?.isAdmin === true,
+  // credentials: { token: env.get('TELESCOPE_UI_TOKEN') },
+})
+```
+
+| Key           | Default        | What it does                                                                 |
+| ------------- | -------------- | --------------------------------------------------------------------------- |
+| `enabled`     | `true`         | Master switch. `false` registers no routes — the dashboard does not exist.  |
+| `path`        | `/telescope`   | URL prefix. Normalized to a leading slash, no trailing slash.               |
+| `authorize`   | default policy | Access-decision hook. See [Dashboard auth](/docs/telescope/dashboard/auth). |
+| `credentials` | `{}`           | Built-in token / basic gate for the default policy.                         |
+
+<Callout type="info">
+Change `path` to something non-obvious (e.g. `/__telescope`) as defense in depth, but it
+is **not** a substitute for the `authorize` guard — covered next.
+</Callout>
+
+## Gating the dashboard
+
+By default the console is open outside production and denied in production unless you
+configure a credential or an `authorize` hook. The whole gate — token, HTTP Basic, a
+delegate-to-your-app-auth hook, and the 401-vs-403 behaviour — has its own page:
+
+> See **[Dashboard auth](/docs/telescope/dashboard/auth)**.
+
+## Build your own
+
+Because the data lives behind the documented JSON API, the shipped dashboard is optional.
+You can disable it (`enabled: false`) and build your own UI — an internal admin page, a
+Grafana panel hitting the endpoints, a CLI — against the same `<path>/api/*` surface, or
+read [`TelescopeService`](/docs/telescope/getting-started#step-3--hit-the-headless-api)
+directly from a controller. The dashboard is a convenience over a stable API, not a lock-in.

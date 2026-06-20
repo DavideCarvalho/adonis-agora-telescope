@@ -6,7 +6,7 @@ import {
   DiagnosticsWatcher,
   buildDiagnosticEntry,
 } from '../src/diagnostics_watcher.js';
-import { InMemoryTelescopeStore } from '../src/in_memory_store.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 
 const REGISTRY_KEY = Symbol.for('@agora/diagnostics:registry');
 

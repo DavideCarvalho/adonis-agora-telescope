@@ -7,8 +7,29 @@ export type { BatchOrigin, BuiltinEntryType, Entry, RecordInput } from './entry.
 
 // — storage —
 export type { EntryQuery, TelescopeStore } from './store.js';
-export { InMemoryTelescopeStore } from './in_memory_store.js';
-export type { InMemoryStoreOptions } from './in_memory_store.js';
+export { InMemoryTelescopeStore } from './stores/memory.js';
+export type { InMemoryStoreOptions } from './stores/memory.js';
+export {
+  createTableStatements,
+  createTelescopeTable,
+  DEFAULT_TABLE_NAME,
+  LucidTelescopeStore,
+} from './stores/lucid.js';
+export type {
+  CreateTableOptions,
+  LucidDatabaseLike,
+  LucidInsertBuilderLike,
+  LucidQueryBuilderLike,
+  LucidStoreOptions,
+  TelescopeColumns,
+} from './stores/lucid.js';
+export { storage } from './stores/factory.js';
+export type {
+  LucidStoreConfig,
+  MemoryStoreConfig,
+  StoreContext,
+  StoreProvider,
+} from './stores/factory.js';
 
 // — query API —
 export { TelescopeService } from './service.js';

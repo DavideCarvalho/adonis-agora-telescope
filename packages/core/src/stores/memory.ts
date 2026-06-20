@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { currentTraceId } from './context_accessor.js';
-import { type BatchOrigin, type Entry, type RecordInput, isBatchOrigin } from './entry.js';
-import type { EntryQuery, TelescopeStore } from './store.js';
+import { currentTraceId } from '../context_accessor.js';
+import { type BatchOrigin, type Entry, type RecordInput, isBatchOrigin } from '../entry.js';
+import type { EntryQuery, TelescopeStore } from '../store.js';
 
 /** Options for {@link InMemoryTelescopeStore}. */
 export interface InMemoryStoreOptions {
@@ -15,8 +15,8 @@ export interface InMemoryStoreOptions {
 /**
  * The default, dependency-free {@link TelescopeStore}: a bounded in-process ring
  * buffer. Ideal for development and tests; production deployments that need
- * cross-process or durable storage swap in a persistent store implementing the
- * same contract (deferred — see DESIGN.md).
+ * cross-process or durable storage swap in the `lucid` driver (or any store
+ * implementing the same contract).
  */
 export class InMemoryTelescopeStore implements TelescopeStore {
   private readonly maxEntries: number;

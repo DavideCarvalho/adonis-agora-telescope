@@ -1,0 +1,185 @@
+---
+title: Extensions
+description: The declarative extension SPI — how a sibling library contributes navigable entry types, declarative dashboard pages (the panel IR), and server-side data providers to Telescope without forking it or shipping any React.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+An extension lets a sibling library — say `@agora/durable` — add a first-class
+**Workflows** page to the Telescope dashboard, complete with stat cards, time series and
+tables backed by its own data, **without** `@agora/telescope` knowing anything about it
+and without the extension author writing a single line of React. It is the Adonis port
+of aviary's NestJS extension SPI.
+
+## The contract
+
+An extension is a plain object — usually returned by a factory so it can take options —
+with up to three hooks. Author it with `defineTelescopeExtension` for full inference:
+
+```ts
+import { defineTelescopeExtension } from '@agora/telescope'
+
+interface TelescopeExtension {
+  name: string                                              // unique id
+  entryTypes?(ctx: ExtensionContext): ExtensionEntryType[]  // navigable nav entries
+  dashboards?(ctx: ExtensionContext): DashboardSpec[]       // declarative pages
+  dataProviders?(ctx: ExtensionContext): DataProvider[]     // server-side queries
+}
+```
+
+You register extensions in `config/telescope.ts`; the provider runs every hook **once
+at boot**. Hooks are *multi* — every extension runs and results accumulate.
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@agora/telescope'
+import { durableTelescopeExtension } from '@agora/durable-telescope'
+
+export default defineConfig({
+  extensions: [durableTelescopeExtension()],
+})
+```
+
+### The ExtensionContext
+
+Every hook receives a read-only context — the Adonis replacement for NestJS's
+`ModuleRef`:
+
+```ts
+interface ExtensionContext {
+  readonly store: TelescopeStore   // read recorded entries for aggregation
+  readonly container: ContainerLike // resolve host services: await ctx.container.make(WorkflowEngine)
+  readonly config: ResolvedTelescopeConfig
+}
+```
+
+So a data provider can read Telescope's own entries *and* reach into the host app's
+services to compute whatever a panel needs.
+
+## Entry types
+
+An `entryTypes` hook makes the dashboard's entry-type navigation dynamic — each entry
+maps a backend `type`/`tag` filter to a nav label and a colored dot:
+
+```ts
+entryTypes: () => [
+  { id: 'durable', label: 'Workflows', dot: 'bg-amber-400' },
+]
+```
+
+## The panel IR
+
+A dashboard page is a `DashboardSpec` — a declarative description the UI renders. You
+never ship components; you describe panels and the UI draws them.
+
+```ts
+interface DashboardSpec {
+  id: string             // stable, globally-unique route id, e.g. 'durable.workflows'
+  label: string          // nav label
+  navGroup?: string      // optional nav grouping header
+  panels: Panel[]        // flat layout
+  sections?: DashboardSection[]  // sectioned layout (preferred for hierarchy)
+}
+```
+
+Each `Panel` binds to a named data provider and declares how to draw the result:
+
+| Panel kind     | Renders                          | Provider returns                                                         |
+| -------------- | -------------------------------- | ----------------------------------------------------------------------- |
+| `stat`         | A single number (+ optional spark, thresholds) | `{ value, delta?, deltaLabel?, spark? }`                  |
+| `timeseries`   | A line/area chart                | `{ rows: Array<{ label } & Record<string, number>> }`                   |
+| `topN`         | A ranked list                    | `{ items: Array<{ label, value, id? }> }`                               |
+| `table`        | A table (cells can deep-link)    | `{ rows: Array<Record<string, unknown>> }`                              |
+| `distribution` | A histogram with p50/p95/p99     | `{ buckets: Array<{ label, count }>, p50?, p95?, p99? }`                |
+| `gauge`        | A gauge with thresholds          | `{ value, min?, max? }`                                                  |
+| `breakdown`    | A donut/bar breakdown            | `{ segments: Array<{ label, value, color? }> }`                         |
+
+A panel references its data through a `DataBinding` — `{ provider, query? }` — where
+`provider` names a `DataProvider` and `query` is an opaque object passed through to it.
+Table columns can carry a `LinkSpec` (`{ href, external? }`) whose `href` is a template
+with `{key}` placeholders filled from the row — so a cell deep-links to a durable run,
+a Telescope trace, etc.
+
+### The dashboard-id convention
+
+Prefix ids with your extension name (`durable.workflows`, `durable.timeseries`). Ids and
+provider names are global across all extensions; the prefix keeps them collision-free and
+makes ownership obvious.
+
+## Data providers
+
+A `DataProvider` is a named server-side query a panel binds to:
+
+```ts
+interface DataProvider {
+  name: string   // referenced by a panel's DataBinding.provider
+  resolve(query: Record<string, unknown> | undefined, ctx: ExtensionContext): Promise<unknown>
+}
+```
+
+`resolve` receives the panel's `DataBinding.query` merged with the request query string,
+plus the same `ExtensionContext` (store + container). Its return shape must match the
+binding panel's kind (the table above). The UI's JSON API exposes providers at
+`<path>/api/ext/:ext/data/:provider`, namespaced by the **owning extension** — so one
+extension can never be addressed under another's name.
+
+## Collisions
+
+The registry validates everything **at boot** and fails closed:
+
+<Callout type="warn">
+Two extensions cannot contribute the same entry-type id, dashboard id, or provider name.
+A collision throws at boot, naming both owners — so drift is a loud startup error, not a
+confusing runtime mystery. Each accessor returns copies, and the registry tracks the
+owning extension so the HTTP layer can enforce the namespace.
+</Callout>
+
+## A minimal worked example
+
+```ts title="packages/durable-telescope/src/extension.ts"
+import { defineTelescopeExtension } from '@agora/telescope'
+
+export function durableTelescopeExtension() {
+  return defineTelescopeExtension({
+    name: 'durable',
+
+    entryTypes: () => [{ id: 'durable', label: 'Workflows', dot: 'bg-amber-400' }],
+
+    dataProviders: () => [
+      {
+        name: 'durable.activeRuns',
+        async resolve(_query, ctx) {
+          const engine = await ctx.container.make('durable.engine')
+          return { value: await engine.countActive() }
+        },
+      },
+    ],
+
+    dashboards: () => [
+      {
+        id: 'durable.workflows',
+        label: 'Workflows',
+        panels: [
+          {
+            kind: 'stat',
+            title: 'Active runs',
+            data: { provider: 'durable.activeRuns' },
+            format: 'number',
+          },
+        ],
+      },
+    ],
+  })
+}
+```
+
+The host adds `durableTelescopeExtension()` to `config/telescope.ts`. The UI fetches the
+contributed metadata from `<path>/api/meta`, renders the **Workflows** page from the
+spec, and resolves each panel through `<path>/api/ext/durable/data/durable.activeRuns`.
+
+<Callout type="info">
+What you did **not** write: a React component, a route, an auth check, a fetch hook, or
+anything Telescope-internal. The spec is data; the UI is generic.
+</Callout>
+
+> For a step-by-step build, see the
+> [Building an extension](/docs/telescope/recipes/building-an-extension) guide.

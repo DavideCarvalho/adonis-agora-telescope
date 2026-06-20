@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InMemoryTelescopeStore } from '../src/in_memory_store.js';
+import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import { TelescopeService } from '../src/service.js';
 
 async function seed() {

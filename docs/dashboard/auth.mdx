@@ -1,0 +1,145 @@
+---
+title: Dashboard auth
+description: How the Telescope dashboard is gated — the default allow-in-dev / deny-in-prod policy, the built-in token and HTTP Basic credentials, delegating to your own app auth with an authorize hook, and the 401-vs-403 fail-closed guard behaviour.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+The dashboard and its JSON API expose everything Telescope recorded — requests, queries,
+exception stacks, diagnostic payloads. That is exactly what you want for debugging and
+exactly what you must not leave open in production. Every route runs an **`authorize`
+guard** first; this page is how that guard works and how to wire it to your needs.
+
+## The default policy
+
+Out of the box, with no `authorize` and no `credentials` configured:
+
+- **Outside production** (`NODE_ENV !== 'production'`) → **allowed**. The dev dashboard
+  just works.
+- **In production** → **denied**, unless the request presents a configured credential.
+
+So a fresh install is usable locally and closed in production until you make a deliberate
+choice. The policy lives in `defaultAuthorize` and is what you get when you set neither a
+hook nor credentials.
+
+<Callout type="warn">
+"Deny in production" is the *default*, not a guarantee you can skip configuring. If you
+mount the dashboard in production, set a `token`/`basic` credential **or** an `authorize`
+hook. Never rely on an obscure `path` alone.
+</Callout>
+
+## Built-in credentials
+
+The simplest production gate: set a credential and the default policy lets matching
+requests through (and still denies everything else in production).
+
+<Tabs items={['Bearer token', 'HTTP Basic']}>
+<Tab value="Bearer token">
+
+```ts title="config/telescope_ui.ts"
+import env from '#start/env'
+import { defineConfig } from '@agora/telescope-ui'
+
+export default defineConfig({
+  credentials: { token: env.get('TELESCOPE_UI_TOKEN') },
+})
+```
+
+A request is allowed when it carries `Authorization: Bearer <token>` **or**
+`?token=<token>` matching the configured value. The compare is constant-time-ish so it
+doesn't trivially leak the secret's length.
+
+```sh
+curl -H 'Authorization: Bearer s3cr3t' http://app.example.com/telescope/api/entries
+# or, for opening the page in a browser:
+open 'http://app.example.com/telescope?token=s3cr3t'
+```
+
+</Tab>
+<Tab value="HTTP Basic">
+
+```ts title="config/telescope_ui.ts"
+import env from '#start/env'
+import { defineConfig } from '@agora/telescope-ui'
+
+export default defineConfig({
+  credentials: {
+    basic: { username: 'admin', password: env.get('TELESCOPE_UI_PASSWORD') },
+  },
+})
+```
+
+A request is allowed when it presents `Authorization: Basic <base64(user:pass)>` matching
+the configured pair. A browser surfaces a native login prompt on the `401` (the guard
+sends a `WWW-Authenticate` header).
+
+</Tab>
+</Tabs>
+
+You can set both `token` and `basic` — either matching one allows the request.
+
+## Delegate to your app's auth
+
+For real apps, gate the dashboard on your existing session/roles. Supply an `authorize`
+hook — it receives the (framework-light) HTTP context, so it can read headers, a session,
+or an injected user. Sync or async. When you set `authorize`, the built-in `credentials`
+gate is ignored (your hook is the whole policy).
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@agora/telescope-ui'
+
+export default defineConfig({
+  authorize: (ctx) => ctx.auth?.user?.isAdmin === true,
+})
+```
+
+```ts
+// Async — resolve a user and check a role.
+export default defineConfig({
+  async authorize(ctx) {
+    await ctx.auth?.check()
+    return ctx.auth?.user?.role === 'admin'
+  },
+})
+```
+
+<Callout type="info">
+The guard takes a deliberately minimal HTTP context (`request.qs()`, `request.header()`,
+and a `response`), and a real AdonisJS `HttpContext` satisfies it structurally — so the
+real `ctx` is passed straight through and your hook can reach `ctx.auth`, `ctx.session`,
+etc.
+</Callout>
+
+## Guard behaviour
+
+The guard translates an `authorize` decision into an HTTP outcome, distinguishing two
+denial cases so clients and browsers behave correctly:
+
+| Outcome                                                     | Status | Meaning                                            |
+| ---------------------------------------------------------- | ------ | -------------------------------------------------- |
+| `authorize` returned `true`                                | —      | Request proceeds to the handler.                   |
+| Denied, **no** credential presented                        | `401`  | "Authenticate" — sends `WWW-Authenticate` so a browser prompts. |
+| Denied, a credential **was** presented but rejected        | `403`  | "Forbidden" — wrong token/password.                |
+| `authorize` **threw**                                      | `403`  | Fail-closed — a buggy hook never accidentally opens the door. |
+
+"Presented a credential" means an `Authorization` header was present or a `?token=` was in
+the query string.
+
+<Callout type="warn">
+The guard runs on **every** route — the HTML page and every `/api/*` endpoint, including
+the extension surface. There is no unguarded endpoint, so you cannot accidentally leave
+the JSON API open while gating the page.
+</Callout>
+
+## Security notes
+
+- **Always gate production.** The default denies it, but a credential or hook is required
+  to actually use it there.
+- **Source secrets from the environment.** Use `env.get(...)` for tokens/passwords; never
+  hardcode them in `config/telescope_ui.ts`.
+- **`?token=` is convenient but leaky.** It can land in logs and browser history. Prefer
+  the `Authorization` header for anything but a quick manual open, and rotate the token if
+  it leaks.
+- **Obscure paths are defense in depth, not auth.** Changing `path` to `/__telescope`
+  raises the bar for a drive-by scan; it does not replace the guard.

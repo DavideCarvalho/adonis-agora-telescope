@@ -1,0 +1,12 @@
+{
+  "title": "Guides",
+  "pages": [
+    "index",
+    "custom-watcher",
+    "custom-storage",
+    "building-an-extension",
+    "tags-and-redaction",
+    "request-context",
+    "ai-exception-diagnosis"
+  ]
+}
