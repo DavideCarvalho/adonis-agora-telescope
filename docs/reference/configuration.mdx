@@ -28,6 +28,7 @@ export default defineConfig({
   },
   watchers: ['request', 'diagnostics'],
   extensions: [],
+  redact: { enabled: true, keys: [] },
 })
 ```
 
@@ -38,6 +39,15 @@ export default defineConfig({
 | `stores`     | `Record<string, StoreProvider>`  | `{}`                          | Named [storage drivers](/docs/telescope/packages/storages) built with the `storage` factory (`storage.memory` / `storage.lucid`). |
 | `watchers`   | `WatcherName[]`                  | `['request', 'diagnostics']`  | Which built-in watchers run. Omit a name to disable it.          |
 | `extensions` | `TelescopeExtension[]`           | `[]`                          | [Extensions](/docs/telescope/concepts/extensions) registered at boot. |
+| `redact`     | `{ enabled?, keys? }`            | `{ enabled: true, keys: [] }` | [Sensitive-data redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction) — masks sensitive keys in every entry's content before persistence. |
+
+<Callout type="warn">
+Redaction is **on by default**. Every entry's `content` is scrubbed at the store boundary —
+a built-in set of sensitive keys (`authorization`, `cookie`, `set-cookie`, `password`,
+`token`, `api_key`, `secret`, `client_secret`, `private_key`, …) is masked with `[REDACTED]`,
+case-insensitively, at any depth. Add your own with `redact: { keys: ['ssn'] }`, or disable
+it with `redact: { enabled: false }`. See [Built-in redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction).
+</Callout>
 
 <Callout type="info">
 Storage is config-driven: `store` picks one of the named drivers in `stores`. The `memory`

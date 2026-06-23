@@ -40,4 +40,17 @@ export default defineConfig({
    *  - 'diagnostics' — records every `agora:<lib>:<event>` diagnostics publish.
    */
   // watchers: ['request', 'diagnostics'],
+
+  /**
+   * Sensitive-data redaction. Every entry's content is scrubbed before it is
+   * persisted — a built-in set of sensitive keys (`authorization`, `cookie`,
+   * `password`, `token`, `api_key`, `secret`, `set-cookie`, …) is masked with
+   * `[REDACTED]`, case-insensitively, at any depth. ENABLED by default.
+   *
+   * Add your own keys, or disable redaction entirely:
+   */
+  // redact: {
+  //   enabled: true,
+  //   keys: ['ssn', 'credit_card'],
+  // },
 })

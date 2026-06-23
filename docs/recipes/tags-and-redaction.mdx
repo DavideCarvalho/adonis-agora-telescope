@@ -6,9 +6,10 @@ description: Shape what Telescope captures — how tags and family hashes are as
 import { Callout } from 'fumadocs-ui/components/callout'
 
 Telescope records a lot by default. This guide is about controlling it: adding searchable
-tags, scrubbing secrets *before* they hit the store, and dropping or sampling noise. The
-core doesn't ship a config-driven redaction hook — instead you shape capture at the two
-points you control: the **watcher** that builds an entry, and the **store** it records into.
+tags, scrubbing secrets *before* they hit the store, and dropping or sampling noise.
+Redaction is **on by default** — a config-driven, central scrubber masks sensitive keys in
+every entry before it is persisted — and you can extend it, or shape capture further at the
+two points you control: the **watcher** that builds an entry, and the **store** it records into.
 
 ## How tags and grouping work today
 
@@ -54,40 +55,61 @@ dashboard's tag filter answer "everything that happened for this tenant".
 await telescope.list({ tag: 'tenant:acme', type: 'exception' })
 ```
 
-## Redact before recording
+## Built-in redaction
 
-The store persists `content` as-is, and the dashboard / AI diagnoser read it back — so the
-right place to scrub a secret is **before** it becomes an entry. Wrap the build step:
-
-```ts title="app/telescope/redact.ts"
-const SENSITIVE = new Set(['password', 'token', 'secret', 'authorization', 'apiKey'])
-
-export function redact(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redact)
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = SENSITIVE.has(k.toLowerCase()) ? '[redacted]' : redact(v)
-    }
-    return out
-  }
-  return value
-}
-```
-
-Apply it where you build a custom entry's `content` (or to query bindings before recording
-a `query` entry in your own watcher):
+Telescope ships a **central, config-driven redaction scrubber that is on by default**. It is
+wired at the one boundary every watcher records through — the store's `record()` — so *no
+watcher can bypass it*. Before any entry is persisted, its `content` is deep-cloned and every
+sensitive key is masked with `[REDACTED]`, matched **case-insensitively at any depth**:
 
 ```ts
-safeRecord({ type: EntryType.Query, content: { sql, bindings: redact(bindings), ... } }, 'MyQueryWatcher')
+authorization · cookie · set-cookie · password · passwd · secret · token
+access_token · refresh_token · api-key · api_key · apikey · x-api-key
+client_secret · private_key
 ```
 
-<Callout type="warn">
-The built-in Lucid query watcher records bindings verbatim, and the request watcher records
-method/url/status (it does **not** capture request bodies or headers, so there's little to
-leak there). If you record sensitive payloads through a custom watcher, redact in that
-watcher — there is no central post-capture scrubber to fall back on.
+This covers the leak paths the built-in watchers had: the Lucid query watcher records
+bindings, the mail watcher records from/to/subject/context, and a custom watcher might record
+anything — all of them are scrubbed at the choke point.
+
+### Extend or disable it
+
+Add your own keys (merged with the defaults), or turn it off entirely, in `config/telescope.ts`:
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@agora/telescope'
+
+export default defineConfig({
+  redact: {
+    enabled: true,            // default; set false to persist content verbatim
+    keys: ['ssn', 'credit_card'], // extra keys, merged with the built-in set
+  },
+})
+```
+
+<Callout type="info">
+The clone is also **memory-bounded and cycle-safe**: it caps depth, string length, array
+length, and total nodes/bytes so a pathological mega-payload (a hydrated ORM graph, a huge
+base64 blob) can never balloon a single entry, and a self-referential object never throws —
+it becomes `[Circular]`.
 </Callout>
+
+### Redact ad-hoc
+
+The same `redact()` function is exported if you want to scrub a value yourself — e.g. before
+building a custom entry's `content`:
+
+```ts
+import { redact } from '@agora/telescope'
+
+safeRecord(
+  { type: EntryType.Query, content: { sql, bindings: redact(bindings) } },
+  'MyQueryWatcher',
+)
+```
+
+This is rarely needed — the central scrubber already runs on every entry — but it lets a
+custom watcher mask before recording (e.g. so the pre-redaction value never lives in memory).
 
 ## Drop or sample noise with a wrapping store
 

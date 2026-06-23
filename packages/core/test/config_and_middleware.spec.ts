@@ -39,6 +39,18 @@ describe('resolveConfig', () => {
     const c = resolveConfig({ store });
     expect(c.store).toBe(store);
   });
+
+  it('enables redaction with an empty extra-keys set by default', () => {
+    const c = resolveConfig();
+    expect(c.redact.enabled).toBe(true);
+    expect(c.redact.keys).toEqual([]);
+  });
+
+  it('respects redaction overrides', () => {
+    const c = resolveConfig({ redact: { enabled: false, keys: ['ssn'] } });
+    expect(c.redact.enabled).toBe(false);
+    expect(c.redact.keys).toEqual(['ssn']);
+  });
 });
 
 describe('TelescopeMiddleware', () => {

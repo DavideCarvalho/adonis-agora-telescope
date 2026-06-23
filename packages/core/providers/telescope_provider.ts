@@ -12,6 +12,7 @@ import {
   setTelescopeExtensionRegistry,
   setTelescopeRuntime,
 } from '../src/registry.js';
+import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
@@ -50,7 +51,7 @@ export default class TelescopeProvider {
 
   async boot() {
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
-    const store = await this.buildStore(config);
+    const store = this.applyRedaction(await this.buildStore(config), config);
     this.store = store;
 
     if (!config.enabled) {
@@ -90,6 +91,17 @@ export default class TelescopeProvider {
     throw new Error(
       `@agora/telescope: config.store is "${config.store}", but config.stores.${config.store} is not defined`,
     );
+  }
+
+  /**
+   * Wrap the built store with the CENTRAL redaction decorator so every entry's
+   * content is scrubbed before persistence — the single choke point every watcher
+   * records through (see {@link RedactingTelescopeStore}). Skipped only when
+   * `config.redact.enabled` is `false`.
+   */
+  private applyRedaction(store: TelescopeStore, config: ResolvedTelescopeConfig): TelescopeStore {
+    if (!config.redact.enabled) return store;
+    return new RedactingTelescopeStore(store, { keys: config.redact.keys });
   }
 
   /** Construct the extension registry, giving each extension a context over the store + container. */

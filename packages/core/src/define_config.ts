@@ -2,6 +2,25 @@ import type { TelescopeExtension } from './extension/types.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
 
+/**
+ * Sensitive-data redaction applied to EVERY entry's content before it is
+ * persisted. Defaults are on; supply `keys` to extend the masked set or
+ * `enabled: false` to opt out entirely.
+ */
+export interface RedactConfig {
+  /**
+   * Master switch for redaction. When `false`, content is persisted verbatim.
+   * Default `true`.
+   */
+  enabled?: boolean;
+  /**
+   * Extra sensitive key names to mask, merged with the built-in defaults
+   * (`authorization`, `cookie`, `password`, `token`, `api_key`, `secret`, …).
+   * Matched case-insensitively at any depth.
+   */
+  keys?: string[];
+}
+
 /** The set of watchers this headless slice ships. */
 export type WatcherName = 'request' | 'diagnostics';
 
@@ -53,6 +72,14 @@ export interface TelescopeConfig {
    * entry types, dashboard pages, and the data providers those pages bind to. Default none.
    */
   extensions?: TelescopeExtension[];
+
+  /**
+   * Sensitive-data redaction applied to every entry's content before persistence.
+   * Enabled by default with a built-in set of sensitive keys. Set
+   * `redact: { enabled: false }` to opt out, or `redact: { keys: [...] }` to mask
+   * additional keys.
+   */
+  redact?: RedactConfig;
 }
 
 /** The fully-resolved config the provider acts on (no optionals). */
@@ -63,6 +90,7 @@ export interface ResolvedTelescopeConfig {
   maxEntries: number;
   watchers: Set<WatcherName>;
   extensions: TelescopeExtension[];
+  redact: { enabled: boolean; keys: string[] };
 }
 
 /**
@@ -95,6 +123,10 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     maxEntries: config.maxEntries ?? 1000,
     watchers: new Set(watchers),
     extensions: config.extensions ?? [],
+    redact: {
+      enabled: config.redact?.enabled ?? true,
+      keys: config.redact?.keys ?? [],
+    },
   };
 }
 

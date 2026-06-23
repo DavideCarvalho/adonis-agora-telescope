@@ -81,10 +81,27 @@ export { ExtensionRegistry } from './extension/registry.js';
 // — config —
 export { defineConfig, resolveConfig } from './define_config.js';
 export type {
+  RedactConfig,
   ResolvedTelescopeConfig,
   TelescopeConfig,
   WatcherName,
 } from './define_config.js';
+
+// — redaction —
+export {
+  compileRedactSpec,
+  DEFAULT_MASK,
+  DEFAULT_REDACT_KEYS,
+  redact,
+  redactBounded,
+  redactBoundedWith,
+} from './redaction/redact.js';
+export type {
+  CompiledRedactSpec,
+  RedactBoundedResult,
+  RedactOptions,
+} from './redaction/redact.js';
+export { RedactingTelescopeStore } from './redaction/redacting_store.js';
 
 // — runtime (advanced) —
 export {
