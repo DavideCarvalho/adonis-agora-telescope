@@ -1,8 +1,11 @@
+import { EntryType } from '../entry.js';
 import type { Entry } from '../entry.js';
 import { MetricsService, type MetricsServiceOptions } from '../metrics/metrics_service.js';
+import type { RequestEntryContent } from '../request_watcher.js';
 import type { TelescopeService } from '../service.js';
 import type { EntryQuery } from '../store.js';
 import type { UiHttpContext, UiRequest } from './http.js';
+import { type ReplayOptions, type ReplayResult, replayRequest } from './request_replay.js';
 
 /** Default number of entries returned by the list endpoint when no `limit` is given. */
 const DEFAULT_LIMIT = 50;
@@ -17,12 +20,16 @@ const MAX_LIMIT = 500;
  */
 export class TelescopeApi {
   private readonly metrics: MetricsService;
+  /** Request-replay settings (additive). Replay is disabled unless `enabled`. */
+  private readonly replay: { enabled: boolean } & ReplayOptions;
 
   constructor(
     private readonly service: TelescopeService,
     metricsOptions: MetricsServiceOptions = {},
+    replayOptions: ({ enabled?: boolean } & ReplayOptions) | undefined = undefined,
   ) {
     this.metrics = new MetricsService(service.telescopeStore, metricsOptions);
+    this.replay = { enabled: false, ...replayOptions };
   }
 
   /**
@@ -156,6 +163,39 @@ export class TelescopeApi {
       .status(200)
       .header('content-type', 'application/json')
       .send({ data, meta: { traceId, count: data.length } });
+  }
+
+  // — request replay (additive: kept in its own region for trivial merges) —
+  /**
+   * `POST <path>/api/requests/:id/replay` — re-issue a captured `request` entry
+   * against the LOCAL server and report the outcome.
+   *
+   * This is a MUTATION (it actually hits the app, which may write), so it is
+   * DISABLED BY DEFAULT: when `replay.enabled` is false the endpoint answers
+   * `403` and never issues a call — mirroring the NestJS original's default-deny
+   * mutation gate. `404` when there is no `request` entry with that id. The full
+   * safety posture (same-origin only, credential stripping, bounded) lives in
+   * `src/ui/request_replay.ts`.
+   */
+  async replayRequest(ctx: UiHttpContext, id: string): Promise<unknown> {
+    if (!this.replay.enabled) {
+      return ctx.response
+        .status(403)
+        .send({ error: 'Request replay is disabled (set telescope_ui `replay.enabled: true`).' });
+    }
+    const entry = await this.service.find(id);
+    if (entry === null || entry.type !== EntryType.Request) {
+      return ctx.response.status(404).send({ error: 'No request entry with that id.' });
+    }
+    const { enabled: _enabled, ...replayOptions } = this.replay;
+    const result: ReplayResult = await replayRequest(
+      entry.content as RequestEntryContent,
+      replayOptions,
+    );
+    return ctx.response
+      .status(200)
+      .header('content-type', 'application/json')
+      .send({ data: result });
   }
 }
 

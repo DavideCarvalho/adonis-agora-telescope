@@ -5,6 +5,7 @@ export const VERSION = '0.1.0';
 export { defineConfig, resolveConfig, normalizePath, defaultAuthorize } from './define_config.js';
 export type {
   AuthorizeHook,
+  ReplayConfig,
   ResolvedTelescopeUiConfig,
   TelescopeUiConfig,
   UiCredentials,
@@ -27,6 +28,15 @@ export type { GuardResult } from './guard.js';
 // — JSON API —
 export { TelescopeApi, buildQuery, toSummary } from './api.js';
 export type { EntrySummary } from './api.js';
+
+// — request replay —
+export {
+  replayRequest,
+  REPLAY_BODY_CAP,
+  REPLAY_STRIPPED_HEADERS,
+  REPLAY_TIMEOUT_MS,
+} from './request_replay.js';
+export type { ReplayOptions, ReplayResult, ReplayTransport } from './request_replay.js';
 
 // — dashboard —
 export { renderDashboard } from './dashboard.js';
