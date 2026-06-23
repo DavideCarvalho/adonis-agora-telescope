@@ -101,6 +101,15 @@ export interface TelescopeConfig {
    * to flag a loop (default 3). Set `enabled: false` to disable detection.
    */
   nPlusOne?: NPlusOneConfig;
+
+  /**
+   * Live SSE streaming of newly-stored entries to the dashboard. When enabled
+   * (the default), the write path publishes each persisted entry — already
+   * redacted and post-sampling — to an in-process bus the `<path>/api/stream`
+   * route streams over Server-Sent Events. Zero overhead while no client is
+   * connected. Set `stream: { enabled: false }` to turn it off entirely.
+   */
+  stream?: StreamConfig;
 }
 
 /** N+1 detection configuration (see {@link TelescopeConfig.nPlusOne}). */
@@ -109,6 +118,12 @@ export interface NPlusOneConfig {
   enabled?: boolean;
   /** Minimum repetitions of one query template within a trace to flag a loop. Default 3. */
   threshold?: number;
+}
+
+/** Live-stream configuration (see {@link TelescopeConfig.stream}). */
+export interface StreamConfig {
+  /** Master switch for the SSE live-stream of entries. Default `true`. */
+  enabled?: boolean;
 }
 
 /** The fully-resolved config the provider acts on (no optionals). */
@@ -124,6 +139,8 @@ export interface ResolvedTelescopeConfig {
   sampling: SamplingConfig;
   /** Resolved N+1 detection settings. */
   nPlusOne: { enabled: boolean; threshold: number };
+  /** Resolved live-stream settings. */
+  stream: { enabled: boolean };
 }
 
 /**
@@ -164,6 +181,9 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     nPlusOne: {
       enabled: config.nPlusOne?.enabled ?? true,
       threshold: config.nPlusOne?.threshold ?? 3,
+    },
+    stream: {
+      enabled: config.stream?.enabled ?? true,
     },
   };
 }

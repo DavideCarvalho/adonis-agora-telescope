@@ -51,6 +51,14 @@ describe('resolveConfig', () => {
     expect(c.redact.enabled).toBe(false);
     expect(c.redact.keys).toEqual(['ssn']);
   });
+
+  it('enables the live stream by default', () => {
+    expect(resolveConfig().stream.enabled).toBe(true);
+  });
+
+  it('respects a disabled stream override', () => {
+    expect(resolveConfig({ stream: { enabled: false } }).stream.enabled).toBe(false);
+  });
 });
 
 describe('TelescopeMiddleware', () => {

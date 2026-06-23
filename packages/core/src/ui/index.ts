@@ -11,8 +11,14 @@ export type {
 } from './define_config.js';
 
 // — HTTP shapes (framework-light) —
-export { RecordingResponse, makeRequest } from './http.js';
-export type { UiHttpContext, UiRequest, UiResponse } from './http.js';
+export {
+  RecordingResponse,
+  RecordingSink,
+  formatSseFrame,
+  formatSseHeartbeat,
+  makeRequest,
+} from './http.js';
+export type { SseSink, UiHttpContext, UiRequest, UiResponse } from './http.js';
 
 // — auth guard —
 export { enforceGuard, runGuard } from './guard.js';

@@ -4,6 +4,7 @@ import type { ExtensionContext } from '../src/extension/types.js';
 import { getTelescopeRuntime } from '../src/registry.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
+import { streamEntries } from '../src/stream/stream_handler.js';
 import { TelescopeApi } from '../src/ui/api.js';
 import { renderDashboard } from '../src/ui/dashboard.js';
 import {
@@ -13,7 +14,7 @@ import {
 } from '../src/ui/define_config.js';
 import { ExtensionApi } from '../src/ui/extension_api.js';
 import { enforceGuard } from '../src/ui/guard.js';
-import type { UiHttpContext } from '../src/ui/http.js';
+import type { SseSink, UiHttpContext } from '../src/ui/http.js';
 
 /**
  * Wires `@adonis-agora/telescope/ui` into the AdonisJS application.
@@ -142,6 +143,34 @@ export default class TelescopeUiProvider {
       })
       .as('telescope_ui.metrics_n_plus_one');
 
+    // ───────────────────────── SSE live-stream (additive) ─────────────────────────
+    // New entries (already redacted + post-sampling) streamed to the dashboard as
+    // they arrive. Registered only when the entry-events bus is live (core
+    // `config.telescope.stream.enabled !== false`).
+    const entryEvents = getTelescopeRuntime().entryEvents;
+    if (entryEvents) {
+      router
+        .get(`${apiBase}/stream`, async (ctx: StreamContext) => {
+          if (!(await enforceGuard(ctx, guard))) return;
+          const raw = ctx.response.response;
+          raw.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            Connection: 'keep-alive',
+            'X-Accel-Buffering': 'no',
+          });
+          const sink: SseSink = {
+            write: (chunk) => raw.write(chunk),
+            onClose: (handler) => ctx.request.request.on('close', handler),
+          };
+          const session = streamEntries(entryEvents, sink);
+          // Hold the response open: never resolve/return a body. Cleanup runs on
+          // the socket 'close' event wired into the sink above.
+          ctx.response.response.on('close', () => session.close());
+        })
+        .as('telescope_ui.stream');
+    }
+
     // Extension SDK surface (only when at least one extension contributed a registry at boot).
     const registry = getTelescopeRuntime().registry;
     if (registry) {
@@ -172,6 +201,24 @@ export default class TelescopeUiProvider {
 /** The AdonisJS `HttpContext` slice the route handlers touch (structural). */
 interface GuardedContext extends UiHttpContext {
   params: Record<string, unknown>;
+}
+
+/**
+ * The AdonisJS `HttpContext` slice the SSE stream route needs: the raw Node
+ * request/response under `ctx.request.request` / `ctx.response.response`, used to
+ * write `text/event-stream` chunks and observe the socket `close` event.
+ */
+interface StreamContext extends UiHttpContext {
+  request: UiHttpContext['request'] & {
+    request: { on(event: 'close', handler: () => void): void };
+  };
+  response: UiHttpContext['response'] & {
+    response: {
+      writeHead(status: number, headers: Record<string, string>): void;
+      write(chunk: string): void;
+      on(event: 'close', handler: () => void): void;
+    };
+  };
 }
 
 function asMessage(err: unknown): string {

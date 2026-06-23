@@ -1,5 +1,6 @@
 import type { ExtensionRegistry } from './extension/registry.js';
 import type { TelescopeStore } from './store.js';
+import type { EntryEvents } from './stream/entry_events.js';
 
 /**
  * The live runtime telescope handles, published on a cross-copy-stable global slot
@@ -15,6 +16,12 @@ export interface TelescopeRuntime {
   requestWatcherEnabled: boolean;
   /** The booted extension registry (entry types / dashboards / data providers), or `null`. */
   registry: ExtensionRegistry | null;
+  /**
+   * The live SSE entry-events bus the store's write path publishes persisted
+   * entries to and the UI stream route subscribes to, or `null` when live
+   * streaming is disabled / not booted.
+   */
+  entryEvents: EntryEvents | null;
 }
 
 const RUNTIME_KEY = Symbol.for('@agora/telescope:runtime');
@@ -24,6 +31,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   store: null,
   requestWatcherEnabled: false,
   registry: null,
+  entryEvents: null,
 };
 globalStore[RUNTIME_KEY] = runtime;
 
@@ -43,9 +51,15 @@ export function setTelescopeExtensionRegistry(registry: ExtensionRegistry | null
   runtime.registry = registry;
 }
 
+/** Publish the SSE entry-events bus so the UI stream route can subscribe to it. */
+export function setTelescopeEntryEvents(entryEvents: EntryEvents | null): void {
+  runtime.entryEvents = entryEvents;
+}
+
 /** Tear down the runtime (called by the provider at shutdown). */
 export function resetTelescopeRuntime(): void {
   runtime.store = null;
   runtime.requestWatcherEnabled = false;
   runtime.registry = null;
+  runtime.entryEvents = null;
 }

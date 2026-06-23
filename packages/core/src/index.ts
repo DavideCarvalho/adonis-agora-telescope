@@ -84,9 +84,17 @@ export type {
   NPlusOneConfig,
   RedactConfig,
   ResolvedTelescopeConfig,
+  StreamConfig,
   TelescopeConfig,
   WatcherName,
 } from './define_config.js';
+
+// — live-stream (SSE entry-events pub/sub) —
+export { EntryEvents } from './stream/entry_events.js';
+export type { EntrySubscriber, Unsubscribe } from './stream/entry_events.js';
+export { StreamingTelescopeStore } from './stream/streaming_store.js';
+export { DEFAULT_HEARTBEAT_MS, streamEntries } from './stream/stream_handler.js';
+export type { StreamOptions, StreamSession } from './stream/stream_handler.js';
 
 // — sampling (tail-sampling on the write path) —
 export {
@@ -167,6 +175,7 @@ export { RedactingTelescopeStore } from './redaction/redacting_store.js';
 export {
   getTelescopeRuntime,
   resetTelescopeRuntime,
+  setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
   setTelescopeRuntime,
 } from './registry.js';

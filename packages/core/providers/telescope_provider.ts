@@ -10,6 +10,7 @@ import type { ExtensionContext } from '../src/extension/types.js';
 import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
 import {
   resetTelescopeRuntime,
+  setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
   setTelescopeRuntime,
 } from '../src/registry.js';
@@ -17,6 +18,8 @@ import { SamplingTelescopeStore } from '../src/sampling/sampling_store.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
+import { EntryEvents } from '../src/stream/entry_events.js';
+import { StreamingTelescopeStore } from '../src/stream/streaming_store.js';
 
 /**
  * Wires `@adonis-agora/telescope` into the AdonisJS application.
@@ -37,6 +40,7 @@ import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 export default class TelescopeProvider {
   private store: TelescopeStore | null = null;
   private diagnosticsWatcher: DiagnosticsWatcher | null = null;
+  private entryEvents: EntryEvents | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -52,8 +56,8 @@ export default class TelescopeProvider {
 
   async boot() {
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
-    const store = this.applySampling(
-      this.applyRedaction(await this.buildStore(config), config),
+    const store = this.applyStreaming(
+      this.applySampling(this.applyRedaction(await this.buildStore(config), config), config),
       config,
     );
     this.store = store;
@@ -64,6 +68,7 @@ export default class TelescopeProvider {
     }
 
     setTelescopeRuntime(store, config.watchers.has('request'));
+    setTelescopeEntryEvents(this.entryEvents);
 
     if (config.watchers.has('diagnostics')) {
       const watcher = new DiagnosticsWatcher(store);
@@ -119,6 +124,19 @@ export default class TelescopeProvider {
     return new SamplingTelescopeStore(store, config.sampling);
   }
 
+  /**
+   * Wrap the store with the OUTERMOST streaming decorator so each persisted entry
+   * — already redacted (inner) and post-sampling (this sees only entries that were
+   * stored) — is published to the SSE bus the UI stream route subscribes to.
+   * Skipped when `config.stream.enabled` is `false`. The decorator is a no-op while
+   * no client is connected, so it stays zero-overhead by default.
+   */
+  private applyStreaming(store: TelescopeStore, config: ResolvedTelescopeConfig): TelescopeStore {
+    if (!config.stream.enabled) return store;
+    this.entryEvents = new EntryEvents();
+    return new StreamingTelescopeStore(store, this.entryEvents);
+  }
+
   /** Construct the extension registry, giving each extension a context over the store + container. */
   private buildExtensionRegistry(
     config: ResolvedTelescopeConfig,
@@ -136,6 +154,8 @@ export default class TelescopeProvider {
   async shutdown() {
     this.diagnosticsWatcher?.stop();
     this.diagnosticsWatcher = null;
+    this.entryEvents?.clear();
+    this.entryEvents = null;
     resetTelescopeRuntime();
   }
 }
