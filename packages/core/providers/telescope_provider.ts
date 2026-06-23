@@ -7,12 +7,12 @@ import {
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import type { ExtensionContext } from '../src/extension/types.js';
+import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
 import {
   resetTelescopeRuntime,
   setTelescopeExtensionRegistry,
   setTelescopeRuntime,
 } from '../src/registry.js';
-import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';

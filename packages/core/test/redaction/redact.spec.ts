@@ -107,9 +107,12 @@ describe('redact', () => {
     });
 
     it('clips arrays longer than maxArrayLength and appends a marker', () => {
-      const result = redactBounded({ items: Array.from({ length: 50 }, (_, i) => i) }, {
-        maxArrayLength: 5,
-      });
+      const result = redactBounded(
+        { items: Array.from({ length: 50 }, (_, i) => i) },
+        {
+          maxArrayLength: 5,
+        },
+      );
       const out = result.value as { items: unknown[] };
       // 5 kept items + 1 trailing marker.
       expect(out.items).toHaveLength(6);
@@ -151,10 +154,7 @@ describe('redact', () => {
 
     it('does not treat a non-cyclic shared sibling reference as circular', () => {
       const shared = { token: 'x', label: 'shared' };
-      const out = redact({ a: shared, b: shared }) as Record<
-        string,
-        Record<string, string>
-      >;
+      const out = redact({ a: shared, b: shared }) as Record<string, Record<string, string>>;
       // Both siblings are fully cloned + masked; neither becomes [Circular].
       expect(out.a.token).toBe(DEFAULT_MASK);
       expect(out.b.token).toBe(DEFAULT_MASK);
