@@ -6,10 +6,13 @@ import {
   resolveConfig,
 } from '../src/watchers/define_config.js';
 import type { EmitterLike, Watcher } from '../src/watchers/emitter.js';
+import { EventsWatcher } from '../src/watchers/events_watcher.js';
 import { HttpClientWatcher } from '../src/watchers/http_client_watcher.js';
 import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 import { LucidQueryWatcher } from '../src/watchers/lucid_query_watcher.js';
 import { MailWatcher } from '../src/watchers/mail_watcher.js';
+import { QueueWatcher } from '../src/watchers/queue_watcher.js';
+import { RedisWatcher } from '../src/watchers/redis_watcher.js';
 
 /** A watcher with its own (emitter-less) lifecycle — `start()`/`stop()` with no
  *  emitter argument. The http-client and logs watchers tap the global `fetch`
@@ -17,6 +20,11 @@ import { MailWatcher } from '../src/watchers/mail_watcher.js';
 interface LifecycleWatcher {
   readonly type: string;
   stop(): void;
+}
+
+/** The structural slice of the core Emitter the events watcher needs: `onAny`. */
+interface EmitterWithOnAny {
+  onAny(listener: (event: unknown, data: unknown) => unknown): () => void;
 }
 
 /**
@@ -70,6 +78,57 @@ export default class TelescopeWatchersProvider {
     if (config.watchers.has('cache')) this.startWatcher(new CacheWatcher(), emitter);
     if (config.watchers.has('http-client')) this.startHttpClientWatcher();
     if (config.watchers.has('logs')) await this.startLogsWatcher();
+    if (config.watchers.has('queue')) this.startQueueWatcher();
+    if (config.watchers.has('events')) this.startEventsWatcher(emitter);
+    if (config.watchers.has('redis')) await this.startRedisWatcher();
+  }
+
+  /** Start the queue watcher: it taps the engine's `node:diagnostics_channel`
+   *  trace, so it needs no emitter and no container resolution. A no-op (nothing
+   *  publishes) when `@adonisjs/queue` is absent. */
+  private startQueueWatcher(): void {
+    const watcher = new QueueWatcher();
+    try {
+      watcher.start();
+      this.started.push(watcher);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`TelescopeWatchersProvider: failed to start queue watcher: ${message}`);
+    }
+  }
+
+  /** Start the events watcher: it taps the core Emitter via `onAny`. Degrades to a
+   *  no-op when the emitter has no `onAny`. */
+  private startEventsWatcher(emitter: EmitterLike): void {
+    const watcher = new EventsWatcher();
+    try {
+      watcher.start(emitter as unknown as EmitterWithOnAny);
+      this.started.push(watcher);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`TelescopeWatchersProvider: failed to start events watcher: ${message}`);
+    }
+  }
+
+  /** Start the redis watcher: it instruments the OPTIONAL `@adonisjs/redis`
+   *  manager resolved from the container. A missing peer / binding degrades to a
+   *  no-op (the watcher itself no-ops on a null manager). */
+  private async startRedisWatcher(): Promise<void> {
+    let manager: unknown = null;
+    try {
+      manager = await this.app.container.make('redis');
+    } catch {
+      // @adonisjs/redis not installed / not bound — the watcher no-ops on null.
+      manager = null;
+    }
+    const watcher = new RedisWatcher(manager);
+    try {
+      watcher.start();
+      this.started.push(watcher);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`TelescopeWatchersProvider: failed to start redis watcher: ${message}`);
+    }
   }
 
   /** Start the http-client watcher: it patches the global `fetch`, so it needs

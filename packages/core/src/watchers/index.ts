@@ -41,6 +41,35 @@ export type {
   LogsWatcherOptions,
 } from './logs_watcher.js';
 
+// — queue/jobs watcher (optional peer: @adonisjs/queue) —
+export { buildJobEntry, QUEUE_EXECUTE_CHANNEL, QueueWatcher } from './queue_watcher.js';
+export type {
+  AcquiredJobLike,
+  JobEntryContent,
+  JobExecuteMessageLike,
+  JobStatus,
+  QueueWatcherOptions,
+} from './queue_watcher.js';
+
+// — events watcher (core @adonisjs/core Emitter) —
+export {
+  buildEventEntry,
+  DEFAULT_IGNORED_EVENTS,
+  EventsWatcher,
+  hasOnAny,
+} from './events_watcher.js';
+export type { EmitterAnyLike, EventEntryContent } from './events_watcher.js';
+
+// — redis watcher (optional peer: @adonisjs/redis) —
+export { buildRedisEntry, RedisWatcher } from './redis_watcher.js';
+export type {
+  RedisClientLike,
+  RedisCommandLike,
+  RedisConnectionLike,
+  RedisEntryContent,
+  RedisManagerLike,
+} from './redis_watcher.js';
+
 // — config —
 export {
   DEFAULT_WATCHERS,

@@ -21,10 +21,21 @@ export default defineConfig({
    *  - 'cache'       — records @adonisjs/cache hit/miss/write/delete events.
    *  - 'http-client' — records every outbound fetch call (method, url, status, duration).
    *  - 'logs'        — records AdonisJS logger output (level, message, structured fields).
+   *  - 'queue'       — records @adonisjs/queue job executions (optional peer; engine
+   *                    diagnostics-channel trace). No-op when the peer is absent.
+   *  - 'events'      — records every event emitted through the core Emitter (onAny),
+   *                    with an ignore-list (db:query / mail:sent are excluded by default).
+   *  - 'redis'       — records @adonisjs/redis commands (optional peer; wraps the
+   *                    ioredis sendCommand). No-op when the peer is absent.
    *
-   * Note: the 'mail' and 'cache' event contracts are best-effort — those packages
-   * are not present in this repo, so their event names/payloads could not be
-   * verified against their types. See the package README.
+   * Note: the 'mail' / 'cache' / 'queue' / 'redis' event contracts are best-effort —
+   * those packages are not present in this repo, so their event names/payloads could
+   * not be verified against their types. See the package README.
+   *
+   * There is intentionally NO 'schedule' watcher: AdonisJS ships no first-party
+   * scheduler and community schedulers expose no event/hook surface to tap. In the
+   * Agora ecosystem, @adonis-agora/durable bridges scheduled/cron runs onto the
+   * diagnostics bus, which the diagnostics watcher already records.
    */
   // watchers: ['query'],
 })

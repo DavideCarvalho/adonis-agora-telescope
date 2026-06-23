@@ -1,5 +1,27 @@
+/**
+ * NOTE — no `'schedule'` watcher is shipped, intentionally. The NestJS original
+ * (`@dudousxd/nestjs-telescope`'s schedule package) wraps `@nestjs/schedule`'s
+ * `@Cron`/`@Interval`/`@Timeout` decorators via its `SchedulerRegistry`. AdonisJS
+ * has NO first-party scheduler, and the popular community schedulers
+ * (`adonisjs-scheduler` et al.) emit nothing on the app emitter and expose no
+ * lifecycle hooks — so a generic schedule watcher could only be built by inventing
+ * /wrapping a private API. It is therefore deliberately omitted. In the Agora
+ * ecosystem, `@adonis-agora/durable` already bridges its scheduled/cron + workflow
+ * run events onto the diagnostics bus, which the generic {@link DiagnosticsWatcher}
+ * records — so scheduled-run observability is covered there, not by a bespoke
+ * schedule watcher.
+ */
+
 /** The per-technology watchers this package ships. */
-export type WatcherName = 'query' | 'mail' | 'cache' | 'http-client' | 'logs';
+export type WatcherName =
+  | 'query'
+  | 'mail'
+  | 'cache'
+  | 'http-client'
+  | 'logs'
+  | 'queue'
+  | 'events'
+  | 'redis';
 
 /**
  * The shape of `config/telescope_watchers.ts`. Everything is optional: by default
@@ -20,6 +42,9 @@ export interface TelescopeWatchersConfig {
    *  - `'cache'` — records `@adonisjs/cache` hit/miss/write/delete events.
    *  - `'http-client'` — records every outbound `fetch` call.
    *  - `'logs'`  — records AdonisJS logger output as `log` entries.
+   *  - `'queue'` — records `@adonisjs/queue` job executions (optional peer).
+   *  - `'events'` — records every event emitted through the core Emitter.
+   *  - `'redis'` — records `@adonisjs/redis` commands (optional peer).
    */
   watchers?: WatcherName[];
 }
