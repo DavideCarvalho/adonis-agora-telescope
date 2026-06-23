@@ -1,4 +1,5 @@
 import type { TelescopeExtension } from './extension/types.js';
+import { type SamplingConfig, resolveSampling } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
 
@@ -80,6 +81,34 @@ export interface TelescopeConfig {
    * additional keys.
    */
   redact?: RedactConfig;
+
+  /**
+   * Tail-sampling applied on the WRITE path: a dropped entry is never persisted.
+   * Three forms are accepted:
+   *
+   * - a **bare number** (0–1) — a uniform keep-rate applied to every entry type
+   *   via the reserved `default` key (e.g. `sampling: 0.1` keeps 10%);
+   * - a **{@link SamplingConfig}** — per-type rates, each either a bare rate or a
+   *   `{ rate, keepErrors?, keepSlowMs? }` rule (tail-sampling: keep a fraction
+   *   but always retain errors / slow entries), with a reserved `default` rule;
+   * - omitted — record everything (rate 1), so behavior is unchanged when unset.
+   */
+  sampling?: number | SamplingConfig;
+
+  /**
+   * N+1 query-loop detection thresholds (read-only analysis over stored entries).
+   * `threshold` is the minimum repetitions of one query template within a trace
+   * to flag a loop (default 3). Set `enabled: false` to disable detection.
+   */
+  nPlusOne?: NPlusOneConfig;
+}
+
+/** N+1 detection configuration (see {@link TelescopeConfig.nPlusOne}). */
+export interface NPlusOneConfig {
+  /** Master switch for N+1 detection. Default `true`. */
+  enabled?: boolean;
+  /** Minimum repetitions of one query template within a trace to flag a loop. Default 3. */
+  threshold?: number;
 }
 
 /** The fully-resolved config the provider acts on (no optionals). */
@@ -91,6 +120,10 @@ export interface ResolvedTelescopeConfig {
   watchers: Set<WatcherName>;
   extensions: TelescopeExtension[];
   redact: { enabled: boolean; keys: string[] };
+  /** Normalized per-type sampling config; empty `{}` means record everything. */
+  sampling: SamplingConfig;
+  /** Resolved N+1 detection settings. */
+  nPlusOne: { enabled: boolean; threshold: number };
 }
 
 /**
@@ -126,6 +159,11 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     redact: {
       enabled: config.redact?.enabled ?? true,
       keys: config.redact?.keys ?? [],
+    },
+    sampling: resolveSampling(config.sampling),
+    nPlusOne: {
+      enabled: config.nPlusOne?.enabled ?? true,
+      threshold: config.nPlusOne?.threshold ?? 3,
     },
   };
 }

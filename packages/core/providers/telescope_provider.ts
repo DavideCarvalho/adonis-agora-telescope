@@ -13,6 +13,7 @@ import {
   setTelescopeExtensionRegistry,
   setTelescopeRuntime,
 } from '../src/registry.js';
+import { SamplingTelescopeStore } from '../src/sampling/sampling_store.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
@@ -51,7 +52,10 @@ export default class TelescopeProvider {
 
   async boot() {
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
-    const store = this.applyRedaction(await this.buildStore(config), config);
+    const store = this.applySampling(
+      this.applyRedaction(await this.buildStore(config), config),
+      config,
+    );
     this.store = store;
 
     if (!config.enabled) {
@@ -102,6 +106,17 @@ export default class TelescopeProvider {
   private applyRedaction(store: TelescopeStore, config: ResolvedTelescopeConfig): TelescopeStore {
     if (!config.redact.enabled) return store;
     return new RedactingTelescopeStore(store, { keys: config.redact.keys });
+  }
+
+  /**
+   * Wrap the store with the tail-sampling decorator so dropped entries are never
+   * persisted (and skip redaction work too, since this is the OUTERMOST wrap).
+   * Skipped entirely when no `sampling` config was supplied — the empty `{}`
+   * config keeps everything, so the decorator is omitted for zero overhead.
+   */
+  private applySampling(store: TelescopeStore, config: ResolvedTelescopeConfig): TelescopeStore {
+    if (Object.keys(config.sampling).length === 0) return store;
+    return new SamplingTelescopeStore(store, config.sampling);
   }
 
   /** Construct the extension registry, giving each extension a context over the store + container. */

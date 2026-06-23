@@ -1,4 +1,5 @@
 import type { Entry } from '../entry.js';
+import { MetricsService, type MetricsServiceOptions } from '../metrics/metrics_service.js';
 import type { TelescopeService } from '../service.js';
 import type { EntryQuery } from '../store.js';
 import type { UiHttpContext, UiRequest } from './http.js';
@@ -15,7 +16,14 @@ const MAX_LIMIT = 500;
  * the response. No DI, no router — trivially unit-testable with a plain object.
  */
 export class TelescopeApi {
-  constructor(private readonly service: TelescopeService) {}
+  private readonly metrics: MetricsService;
+
+  constructor(
+    private readonly service: TelescopeService,
+    metricsOptions: MetricsServiceOptions = {},
+  ) {
+    this.metrics = new MetricsService(service.telescopeStore, metricsOptions);
+  }
 
   /**
    * `GET <path>/api/entries` — list entries newest-first, with optional filters:
@@ -71,6 +79,88 @@ export class TelescopeApi {
       .header('content-type', 'application/json')
       .send({ data: { count, topFamilies, topTags } });
   }
+
+  /**
+   * `GET <path>/api/metrics/stats?type=&windowMs=&buckets=` — per-type analytics
+   * (latency percentiles, family/cache/status/exception breakdowns, throughput).
+   */
+  async metricsStats(ctx: UiHttpContext): Promise<unknown> {
+    const type = readString(ctx.request, 'type');
+    if (type === undefined) {
+      return ctx.response.status(400).send({ error: '`type` query parameter is required' });
+    }
+    const windowMs = readNumber(ctx.request, 'windowMs') ?? 3_600_000;
+    const buckets = readNumber(ctx.request, 'buckets');
+    try {
+      const data = await this.metrics.getStats({
+        type,
+        windowMs,
+        ...(buckets !== undefined ? { buckets } : {}),
+      });
+      return ctx.response.status(200).header('content-type', 'application/json').send({ data });
+    } catch (err) {
+      return ctx.response.status(400).send({ error: asMessage(err) });
+    }
+  }
+
+  /**
+   * `GET <path>/api/metrics/timeseries?windowMs=&buckets=&type=` — throughput
+   * over time (total + per-type per bucket).
+   */
+  async metricsTimeseries(ctx: UiHttpContext): Promise<unknown> {
+    const windowMs = readNumber(ctx.request, 'windowMs') ?? 3_600_000;
+    const buckets = readNumber(ctx.request, 'buckets');
+    const type = readString(ctx.request, 'type');
+    try {
+      const data = await this.metrics.getTimeseries({
+        windowMs,
+        ...(buckets !== undefined ? { buckets } : {}),
+        ...(type !== undefined ? { type } : {}),
+      });
+      return ctx.response.status(200).header('content-type', 'application/json').send({ data });
+    } catch (err) {
+      return ctx.response.status(400).send({ error: asMessage(err) });
+    }
+  }
+
+  /** `GET <path>/api/metrics/traces?limit=` — recent traces, newest-last-seen first. */
+  async metricsTraces(ctx: UiHttpContext): Promise<unknown> {
+    const limit = clampLimit(readNumber(ctx.request, 'limit') ?? 50);
+    const data = await this.metrics.getTraces(limit);
+    return ctx.response
+      .status(200)
+      .header('content-type', 'application/json')
+      .send({ data, meta: { count: data.length } });
+  }
+
+  /** `GET <path>/api/metrics/waterfall/:traceId` — span waterfall for one trace, or 404. */
+  async metricsWaterfall(ctx: UiHttpContext, traceId: string): Promise<unknown> {
+    const data = await this.metrics.getWaterfall(traceId);
+    if (data === null) {
+      return ctx.response.status(404).send({ error: 'Trace not found' });
+    }
+    return ctx.response
+      .status(200)
+      .header('content-type', 'application/json')
+      .send({ data, meta: { traceId } });
+  }
+
+  /**
+   * `GET <path>/api/metrics/n-plus-one/:traceId?threshold=` — N+1 query-loop
+   * patterns within a trace (loop attribution + wasted-time ranking).
+   */
+  async metricsNPlusOne(ctx: UiHttpContext, traceId: string): Promise<unknown> {
+    const threshold = readNumber(ctx.request, 'threshold');
+    const data = await this.metrics.getNPlusOne(traceId, threshold);
+    return ctx.response
+      .status(200)
+      .header('content-type', 'application/json')
+      .send({ data, meta: { traceId, count: data.length } });
+  }
+}
+
+function asMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**

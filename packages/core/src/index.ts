@@ -81,11 +81,71 @@ export { ExtensionRegistry } from './extension/registry.js';
 // — config —
 export { defineConfig, resolveConfig } from './define_config.js';
 export type {
+  NPlusOneConfig,
   RedactConfig,
   ResolvedTelescopeConfig,
   TelescopeConfig,
   WatcherName,
 } from './define_config.js';
+
+// — sampling (tail-sampling on the write path) —
+export {
+  isErrorEntry,
+  passesSampling,
+  resolveSampling,
+  samplingRates,
+} from './sampling/sampling.js';
+export type { SamplingConfig, SamplingRule } from './sampling/sampling.js';
+export { SamplingTelescopeStore } from './sampling/sampling_store.js';
+
+// — query analysis (N+1 detection) —
+export { detectNPlusOne, detectNPlusOnePatterns } from './query/n_plus_one.js';
+export type {
+  NPlusOneInsight,
+  NPlusOnePattern,
+  NPlusOnePatternOptions,
+} from './query/n_plus_one.js';
+
+// — metrics (stats / timeseries / percentiles / traces / waterfall) —
+export { MetricsService } from './metrics/metrics_service.js';
+export type {
+  MetricsServiceOptions,
+  StatsQuery,
+  TimeseriesQuery,
+} from './metrics/metrics_service.js';
+export {
+  estimateLatencyPercentiles,
+  percentile,
+  summarizeStats,
+} from './metrics/stats.js';
+export type {
+  CacheStats,
+  ExceptionGroupStats,
+  FamilyLatency,
+  LatencyPercentilesOverride,
+  LatencyStats,
+  StatsResult,
+  StatusBreakdown,
+  SummarizeStatsInput,
+} from './metrics/stats.js';
+export { bucketTimeseries } from './metrics/timeseries.js';
+export type { TimeseriesBucket, TimeseriesReport } from './metrics/timeseries.js';
+export { summarizeTraces } from './metrics/traces.js';
+export type { SummarizeTracesOptions, TraceSummary } from './metrics/traces.js';
+export { buildWaterfall } from './metrics/waterfall.js';
+export type { Waterfall, WaterfallSpan } from './metrics/waterfall.js';
+export {
+  buildHistogram,
+  emptyHistogram,
+  estimatePercentileFromHistogram,
+  HISTOGRAM_BUCKET_COUNT,
+  histogramBucketIndex,
+  incrementHistogram,
+  LATENCY_BOUNDARIES_MS,
+  mergeHistograms,
+  normalizeHistogram,
+  ROLLUP_BUCKET_MS,
+} from './metrics/rollup.js';
 
 // — redaction —
 export {

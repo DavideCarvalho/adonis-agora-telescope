@@ -58,8 +58,11 @@ export default class TelescopeUiProvider {
       return;
     }
 
+    const coreConfig = resolveTelescopeConfig(this.app.config.get('telescope', {}));
     const service = new TelescopeService(store);
-    const api = new TelescopeApi(service);
+    const api = new TelescopeApi(service, {
+      ...(coreConfig.nPlusOne.enabled ? { nPlusOneThreshold: coreConfig.nPlusOne.threshold } : {}),
+    });
     const apiBase = `${config.path}/api`;
 
     const router = await this.app.container.make('router');
@@ -102,6 +105,42 @@ export default class TelescopeUiProvider {
         return api.stats(ctx);
       })
       .as('telescope_ui.stats');
+
+    // Metrics analytics (stats/timeseries/percentiles/traces/waterfall) + N+1.
+    router
+      .get(`${apiBase}/metrics/stats`, async (ctx: GuardedContext) => {
+        if (!(await enforceGuard(ctx, guard))) return;
+        return api.metricsStats(ctx);
+      })
+      .as('telescope_ui.metrics_stats');
+
+    router
+      .get(`${apiBase}/metrics/timeseries`, async (ctx: GuardedContext) => {
+        if (!(await enforceGuard(ctx, guard))) return;
+        return api.metricsTimeseries(ctx);
+      })
+      .as('telescope_ui.metrics_timeseries');
+
+    router
+      .get(`${apiBase}/metrics/traces`, async (ctx: GuardedContext) => {
+        if (!(await enforceGuard(ctx, guard))) return;
+        return api.metricsTraces(ctx);
+      })
+      .as('telescope_ui.metrics_traces');
+
+    router
+      .get(`${apiBase}/metrics/waterfall/:traceId`, async (ctx: GuardedContext) => {
+        if (!(await enforceGuard(ctx, guard))) return;
+        return api.metricsWaterfall(ctx, String(ctx.params.traceId));
+      })
+      .as('telescope_ui.metrics_waterfall');
+
+    router
+      .get(`${apiBase}/metrics/n-plus-one/:traceId`, async (ctx: GuardedContext) => {
+        if (!(await enforceGuard(ctx, guard))) return;
+        return api.metricsNPlusOne(ctx, String(ctx.params.traceId));
+      })
+      .as('telescope_ui.metrics_n_plus_one');
 
     // Extension SDK surface (only when at least one extension contributed a registry at boot).
     const registry = getTelescopeRuntime().registry;
