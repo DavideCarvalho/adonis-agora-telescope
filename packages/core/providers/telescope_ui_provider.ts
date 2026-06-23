@@ -60,9 +60,20 @@ export default class TelescopeUiProvider {
 
     const coreConfig = resolveTelescopeConfig(this.app.config.get('telescope', {}));
     const service = new TelescopeService(store);
-    const api = new TelescopeApi(service, {
-      ...(coreConfig.nPlusOne.enabled ? { nPlusOneThreshold: coreConfig.nPlusOne.threshold } : {}),
-    });
+    const api = new TelescopeApi(
+      service,
+      {
+        ...(coreConfig.nPlusOne.enabled
+          ? { nPlusOneThreshold: coreConfig.nPlusOne.threshold }
+          : {}),
+      },
+      // Request replay (additive): off unless the host opts in via telescope_ui config.
+      {
+        enabled: config.replay.enabled,
+        ...(config.replay.port !== undefined ? { port: config.replay.port } : {}),
+        ...(config.replay.timeoutMs !== undefined ? { timeoutMs: config.replay.timeoutMs } : {}),
+      },
+    );
     const apiBase = `${config.path}/api`;
 
     const router = await this.app.container.make('router');
@@ -105,6 +116,16 @@ export default class TelescopeUiProvider {
         return api.stats(ctx);
       })
       .as('telescope_ui.stats');
+
+    // Request replay (additive): re-issue a captured request from the dashboard.
+    // A MUTATION, so it is a POST and is disabled by default (the handler answers
+    // 403 unless telescope_ui `replay.enabled` is set) on top of the read guard.
+    router
+      .post(`${apiBase}/requests/:id/replay`, async (ctx: GuardedContext) => {
+        if (!(await enforceGuard(ctx, guard))) return;
+        return api.replayRequest(ctx, String(ctx.params.id));
+      })
+      .as('telescope_ui.replay');
 
     // Metrics analytics (stats/timeseries/percentiles/traces/waterfall) + N+1.
     router

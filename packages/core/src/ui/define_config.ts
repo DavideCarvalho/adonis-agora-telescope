@@ -52,6 +52,30 @@ export interface TelescopeUiConfig {
    * is supplied). Lets you gate a production dashboard without writing a hook.
    */
   credentials?: UiCredentials;
+
+  // — request replay (additive: keep in its own region for trivial merges) —
+  /**
+   * Request REPLAY: re-issue a captured `request` entry against the LOCAL server
+   * from the dashboard. DISABLED BY DEFAULT — replaying re-runs a real request
+   * that may MUTATE state (a captured `POST`/`DELETE` runs again), so the host
+   * must opt in. When disabled, the replay endpoint answers `403`. See
+   * `src/ui/request_replay.ts` for the full safety posture (same-origin only,
+   * credential stripping, bounded, self-identifying).
+   */
+  replay?: ReplayConfig;
+}
+
+/** Request-replay configuration (see {@link TelescopeUiConfig.replay}). */
+export interface ReplayConfig {
+  /** Master switch for replay. Default `false` (safe: replay disabled). */
+  enabled?: boolean;
+  /**
+   * The local server port the replay targets (`127.0.0.1:<port>`). When omitted,
+   * the `PORT` env var is used, falling back to 3000.
+   */
+  port?: number;
+  /** Per-call timeout in ms. Default 30000. */
+  timeoutMs?: number;
 }
 
 /** The fully-resolved config the provider acts on (no optionals on the basics). */
@@ -61,6 +85,8 @@ export interface ResolvedTelescopeUiConfig {
   path: string;
   authorize: AuthorizeHook;
   credentials: UiCredentials;
+  /** Resolved request-replay settings (disabled by default). */
+  replay: { enabled: boolean; port?: number; timeoutMs?: number };
 }
 
 /**
@@ -159,5 +185,11 @@ export function resolveConfig(config: TelescopeUiConfig = {}): ResolvedTelescope
     path: normalizePath(config.path ?? '/telescope'),
     authorize: config.authorize ?? defaultAuthorize(credentials),
     credentials,
+    replay: {
+      // Safe default: replay is OFF unless the host explicitly enables it.
+      enabled: config.replay?.enabled ?? false,
+      ...(config.replay?.port !== undefined ? { port: config.replay.port } : {}),
+      ...(config.replay?.timeoutMs !== undefined ? { timeoutMs: config.replay.timeoutMs } : {}),
+    },
   };
 }
