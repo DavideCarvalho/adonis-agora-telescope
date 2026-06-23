@@ -1,10 +1,10 @@
 /** The per-technology watchers this package ships. */
-export type WatcherName = 'query' | 'mail' | 'cache';
+export type WatcherName = 'query' | 'mail' | 'cache' | 'http-client' | 'logs';
 
 /**
  * The shape of `config/telescope_watchers.ts`. Everything is optional: by default
  * only the Lucid `query` watcher is enabled (it is the one whose events are
- * verified against installed types), with `mail` and `cache` opt-in.
+ * verified against installed types), with the rest opt-in.
  */
 export interface TelescopeWatchersConfig {
   /**
@@ -18,6 +18,8 @@ export interface TelescopeWatchersConfig {
    *  - `'query'` — records every Lucid SQL query (`db:query`).
    *  - `'mail'`  — records every email sent (`mail:sent`).
    *  - `'cache'` — records `@adonisjs/cache` hit/miss/write/delete events.
+   *  - `'http-client'` — records every outbound `fetch` call.
+   *  - `'logs'`  — records AdonisJS logger output as `log` entries.
    */
   watchers?: WatcherName[];
 }

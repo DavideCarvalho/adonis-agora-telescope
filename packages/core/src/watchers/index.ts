@@ -20,6 +20,27 @@ export type { MailEntryContent, MailSentEventLike } from './mail_watcher.js';
 export { buildCacheEntry, CACHE_EVENTS, CacheWatcher } from './cache_watcher.js';
 export type { CacheEntryContent, CacheEventLike, CacheOperation } from './cache_watcher.js';
 
+// — http-client (outbound) watcher —
+export {
+  buildHttpClientEntry,
+  HttpClientWatcher,
+  markInternalFetch,
+} from './http_client_watcher.js';
+export type {
+  HttpClientEntryContent,
+  HttpClientWatcherOptions,
+} from './http_client_watcher.js';
+export { normalizeHttpTarget } from './normalize_http_target.js';
+
+// — logs watcher —
+export { buildLogEntry, extractLog, LOG_LEVELS, LogsWatcher } from './logs_watcher.js';
+export type {
+  LogEntryContent,
+  LoggerLike,
+  LogLevel,
+  LogsWatcherOptions,
+} from './logs_watcher.js';
+
 // — config —
 export {
   DEFAULT_WATCHERS,

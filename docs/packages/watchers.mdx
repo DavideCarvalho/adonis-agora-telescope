@@ -1,6 +1,6 @@
 ---
 title: "@agora/telescope/watchers"
-description: The watchers subpath of @agora/telescope — record every Lucid SQL query (sql, bindings, duration, connection), every email sent, and @adonisjs/cache hit/miss/write/delete events, each correlated to the active request trace.
+description: The watchers subpath of @agora/telescope — record every Lucid SQL query (sql, bindings, duration, connection), every email sent, @adonisjs/cache hit/miss/write/delete events, outbound fetch calls, and AdonisJS logger output, each correlated to the active request trace.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
@@ -62,7 +62,7 @@ export default defineConfig({
 | Key        | Default     | Description                                                              |
 | ---------- | ----------- | ---------------------------------------------------------------------- |
 | `enabled`  | `true`      | Master switch; `false` starts no per-technology watcher.              |
-| `watchers` | `['query']` | Which watchers run — any of `'query'`, `'mail'`, `'cache'`.           |
+| `watchers` | `['query']` | Which watchers run — any of `'query'`, `'mail'`, `'cache'`, `'http-client'`, `'logs'`. |
 
 Only the Lucid `query` watcher is on by default — it's the one whose event contract is
 verified against the installed `@adonisjs/lucid` types. `mail` and `cache` are opt-in.
@@ -157,6 +157,77 @@ Tagged `cache:<operation>` and `store:<store>`; `familyHash` is `operation:key` 
 could not be verified against its types. They follow the documented `cache:*` convention
 but are best-effort. If a future version diverges, pass a custom map to the
 `CacheWatcher` constructor.
+</Callout>
+
+---
+
+## HTTP-client watcher
+
+Records every **outbound** HTTP call as an `http-client` entry by wrapping the Node global
+`fetch`. Each call is timed; method, sanitized url, host, status and duration are captured
+and correlated to the active request trace.
+
+```ts
+interface HttpClientEntryContent {
+  method: string            // upper-cased, e.g. 'GET'
+  url: string               // userinfo stripped, sensitive query values masked
+  host: string | null       // e.g. 'api.stripe.com', null for a relative url
+  statusCode: number | null // null on a network (transport) failure
+  durationMs: number
+  traceId: string | null
+}
+```
+
+Tagged `http-client`, `host:<host>`, `failed` (5xx **or** network error — a 4xx is a valid
+response, not a transport failure) and `slow` (≥ `slowMs`, default 1000ms). The `familyHash`
+is the method + host + id-normalized path (e.g. `GET api.stripe.com/v1/charges/:id`), so
+calls to the same endpoint group regardless of ids.
+
+It never alters the host's call: it awaits the real `fetch`, records fire-and-forget, and
+always re-throws a network error. The wrapper is idempotent process-wide and `stop()`
+restores the original `fetch` on shutdown.
+
+<Callout type="info">
+The captured url is sanitized before storage — userinfo (`user:pass@`) is stripped and
+sensitive query-param **values** (`token`, `secret`, `api_key`, …) are masked. URL string
+leaves are out of reach of the central key-based redaction, so the watcher scrubs them
+itself; everything else in `content` still passes through the central redaction layer.
+Telescope's own internal outbound fetches (marked via `markInternalFetch`) are skipped, so
+the watcher never records — or recurses on — itself.
+</Callout>
+
+---
+
+## Logs watcher
+
+Records AdonisJS logger output as `log` entries, correlated to the active request trace.
+
+```ts
+interface LogEntryContent {
+  level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal'
+  message: string | null                  // null when the call carried only an object
+  context: Record<string, unknown> | null // bounded copy of the merging object's fields
+  traceId: string | null
+}
+```
+
+Tagged `log` and `log:<level>`; `familyHash` is `log:<level>`. The watcher reads pino's
+argument convention — `(message, …)` or `(mergingObject, message?, …)` — capturing the
+message string and a bounded slice (first 50 keys) of the merging object. Structured fields
+pass through the central redaction layer, so sensitive values (`password`, `token`, …) are
+masked. A `minLevel` option drops anything below the given level.
+
+Rather than monkey-patching a global or a prototype, the watcher **tees the level methods on
+the one logger instance resolved from the container** (`@adonisjs/logger`'s `Logger`): each
+teed method calls the original first (host output is untouched) then records. `stop()`
+restores the originals, so the tap fully unwinds on shutdown.
+
+<Callout type="info">
+Why instance-scoped teeing and not a pino transport: pino has no supported
+post-construction hook/transport for a *live* instance (transports/hooks are construction
+options), and telescope does not own the logger's construction. Teeing the resolved
+instance is the least-invasive option that captures logs written through the app logger,
+and it's fully reversible. A reentrancy guard prevents an infinite record→log→record loop.
 </Callout>
 
 ---

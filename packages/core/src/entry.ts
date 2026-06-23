@@ -19,6 +19,8 @@ export const EntryType = {
   Redis: 'redis',
   Event: 'event',
   Log: 'log',
+  /** An OUTBOUND HTTP call, recorded by the http-client watcher. */
+  HttpClient: 'http-client',
 } as const;
 
 export type BuiltinEntryType = (typeof EntryType)[keyof typeof EntryType];

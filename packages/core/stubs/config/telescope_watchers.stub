@@ -16,9 +16,11 @@ export default defineConfig({
 
   /**
    * Active watchers. Omit one to disable it.
-   *  - 'query' — records every Lucid SQL query (sql, bindings, duration, connection).
-   *  - 'mail'  — records every email sent (mail:sent).
-   *  - 'cache' — records @adonisjs/cache hit/miss/write/delete events.
+   *  - 'query'       — records every Lucid SQL query (sql, bindings, duration, connection).
+   *  - 'mail'        — records every email sent (mail:sent).
+   *  - 'cache'       — records @adonisjs/cache hit/miss/write/delete events.
+   *  - 'http-client' — records every outbound fetch call (method, url, status, duration).
+   *  - 'logs'        — records AdonisJS logger output (level, message, structured fields).
    *
    * Note: the 'mail' and 'cache' event contracts are best-effort — those packages
    * are not present in this repo, so their event names/payloads could not be

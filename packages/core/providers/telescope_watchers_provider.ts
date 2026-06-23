@@ -6,8 +6,18 @@ import {
   resolveConfig,
 } from '../src/watchers/define_config.js';
 import type { EmitterLike, Watcher } from '../src/watchers/emitter.js';
+import { HttpClientWatcher } from '../src/watchers/http_client_watcher.js';
+import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 import { LucidQueryWatcher } from '../src/watchers/lucid_query_watcher.js';
 import { MailWatcher } from '../src/watchers/mail_watcher.js';
+
+/** A watcher with its own (emitter-less) lifecycle — `start()`/`stop()` with no
+ *  emitter argument. The http-client and logs watchers tap the global `fetch`
+ *  and the logger instance respectively, not the event emitter. */
+interface LifecycleWatcher {
+  readonly type: string;
+  stop(): void;
+}
 
 /**
  * Wires `@agora/telescope/watchers` into the AdonisJS application.
@@ -22,7 +32,7 @@ import { MailWatcher } from '../src/watchers/mail_watcher.js';
  * disabled telescope all degrade to recording nothing.
  */
 export default class TelescopeWatchersProvider {
-  private readonly started: Watcher[] = [];
+  private readonly started: Array<Watcher | LifecycleWatcher> = [];
 
   constructor(protected app: ApplicationService) {}
 
@@ -58,6 +68,42 @@ export default class TelescopeWatchersProvider {
     if (config.watchers.has('query')) this.startWatcher(new LucidQueryWatcher(), emitter);
     if (config.watchers.has('mail')) this.startWatcher(new MailWatcher(), emitter);
     if (config.watchers.has('cache')) this.startWatcher(new CacheWatcher(), emitter);
+    if (config.watchers.has('http-client')) this.startHttpClientWatcher();
+    if (config.watchers.has('logs')) await this.startLogsWatcher();
+  }
+
+  /** Start the http-client watcher: it patches the global `fetch`, so it needs
+   *  no emitter and no container resolution. */
+  private startHttpClientWatcher(): void {
+    const watcher = new HttpClientWatcher();
+    try {
+      watcher.start();
+      this.started.push(watcher);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`TelescopeWatchersProvider: failed to start http-client watcher: ${message}`);
+    }
+  }
+
+  /** Start the logs watcher: it taps the application logger resolved from the
+   *  container (instance-scoped, reversible method tee — no global patching). */
+  private async startLogsWatcher(): Promise<void> {
+    let logger: LoggerLike;
+    try {
+      logger = (await this.app.container.make('logger')) as unknown as LoggerLike;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`TelescopeWatchersProvider: could not resolve the logger: ${message}`);
+      return;
+    }
+    const watcher = new LogsWatcher();
+    try {
+      watcher.start(logger);
+      this.started.push(watcher);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`TelescopeWatchersProvider: failed to start logs watcher: ${message}`);
+    }
   }
 
   /** Start one watcher, never letting a watcher's `start` break boot. */

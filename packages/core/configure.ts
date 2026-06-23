@@ -8,7 +8,7 @@ import { stubsRoot } from './stubs/main.js';
 const FEATURES = [
   {
     name: 'watchers',
-    message: 'Watchers — record Lucid queries, mail and cache events',
+    message: 'Watchers — record Lucid queries, mail, cache, outbound HTTP and logs',
     provider: '@agora/telescope/watchers_provider',
     configStub: 'config/telescope_watchers.stub',
   },
