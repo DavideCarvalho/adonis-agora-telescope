@@ -1,5 +1,5 @@
 /**
- * The built-in Telescope entry types shipped by `@agora/telescope`. Adapted from
+ * The built-in Telescope entry types shipped by `@adonis-agora/telescope`. Adapted from
  * the NestJS `nestjs-telescope` core, trimmed to the headless slice this package
  * actually records (request + diagnostic). The remaining values are reserved so a
  * future watcher (a Lucid query watcher, a mailer watcher, …) can record under a
@@ -80,7 +80,7 @@ export interface RecordInput<TContent = unknown> {
   familyHash?: string | null;
   tags?: string[];
   durationMs?: number | null;
-  /** Override the resolved trace id; defaults to the ambient `@agora/context`. */
+  /** Override the resolved trace id; defaults to the ambient `@adonis-agora/context`. */
   traceId?: string | null;
   /** Override the batch origin; defaults to `http` when a request is active. */
   origin?: BatchOrigin;

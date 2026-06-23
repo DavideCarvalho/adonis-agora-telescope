@@ -42,7 +42,7 @@ export interface LucidStoreConfig extends LucidStoreOptions {
  * The store factory namespace used in `config/telescope.ts`:
  *
  * ```ts
- * import { defineConfig, storage } from '@agora/telescope'
+ * import { defineConfig, storage } from '@adonis-agora/telescope'
  *
  * export default defineConfig({
  *   store: 'memory',

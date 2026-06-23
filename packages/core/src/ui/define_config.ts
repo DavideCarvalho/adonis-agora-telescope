@@ -68,7 +68,7 @@ export interface ResolvedTelescopeUiConfig {
  * AdonisJS `defineConfig` convention.
  *
  * ```ts
- * import { defineConfig } from '@agora/telescope/ui'
+ * import { defineConfig } from '@adonis-agora/telescope/ui'
  * export default defineConfig({ path: '/__telescope', authorize: (ctx) => true })
  * ```
  */

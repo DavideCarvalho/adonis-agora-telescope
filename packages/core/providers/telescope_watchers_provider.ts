@@ -20,12 +20,12 @@ interface LifecycleWatcher {
 }
 
 /**
- * Wires `@agora/telescope/watchers` into the AdonisJS application.
+ * Wires `@adonis-agora/telescope/watchers` into the AdonisJS application.
  *
  * - `boot()` reads `config/telescope_watchers.ts` (falling back to a `watchers`
  *   key on `config/telescope.ts`), resolves the application emitter from the
  *   container, and starts each enabled watcher against it. Each watcher records
- *   through `@agora/telescope`'s runtime store handle — no DI required.
+ *   through `@adonis-agora/telescope`'s runtime store handle — no DI required.
  * - `shutdown()` stops every started watcher (full unsubscribe).
  *
  * Watchers never throw into the app: a missing config, a missing emitter, or a

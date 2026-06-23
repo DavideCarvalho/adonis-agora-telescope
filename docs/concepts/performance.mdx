@@ -44,9 +44,9 @@ happy path.
 
 ## Watchers are zero-overhead when nobody listens
 
-The diagnostics integration is opt-in *by subscription*. `@agora/diagnostics` only builds
+The diagnostics integration is opt-in *by subscription*. `@adonis-agora/diagnostics` only builds
 and publishes an envelope when a channel `hasSubscribers`. If the diagnostics watcher is
-disabled (or `@agora/diagnostics` isn't installed), producers skip the work entirely —
+disabled (or `@adonis-agora/diagnostics` isn't installed), producers skip the work entirely —
 there is no envelope construction, no publish, nothing. Turning the watcher on is what
 flips `hasSubscribers` and starts the flow.
 

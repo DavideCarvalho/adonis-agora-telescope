@@ -25,7 +25,7 @@ export interface RecordExceptionContext {
   method?: string;
   /** Request url; the query string is stripped. */
   url?: string;
-  /** Override the trace id; defaults to the ambient `@agora/context`. */
+  /** Override the trace id; defaults to the ambient `@adonis-agora/context`. */
   traceId?: string | null;
   /** Override the batch origin; defaults to the store's resolution. */
   origin?: RecordInput['origin'];
@@ -81,7 +81,7 @@ export function buildExceptionInput(
  * Record an `exception` entry into `store` from a thrown value. The pure,
  * framework-agnostic core used by the request middleware. Resolves to the
  * recorded {@link Entry}; backfills the content trace id from whatever the store
- * resolved (the ambient `@agora/context`).
+ * resolved (the ambient `@adonis-agora/context`).
  */
 export async function recordExceptionInStore(
   store: TelescopeStore,
@@ -106,7 +106,7 @@ export async function recordExceptionInStore(
  *
  * ```ts
  * // app/exceptions/handler.ts
- * import { recordException } from '@agora/telescope'
+ * import { recordException } from '@adonis-agora/telescope'
  * async report(error: unknown, ctx: HttpContext) {
  *   recordException(error, { method: ctx.request.method(), url: ctx.request.url() })
  *   return super.report(error, ctx)

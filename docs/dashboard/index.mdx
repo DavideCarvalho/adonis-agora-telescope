@@ -6,7 +6,7 @@ description: Mount the self-contained Telescope console — an inline-HTML dashb
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import { Callout } from 'fumadocs-ui/components/callout'
 
-`@agora/telescope/ui` is a self-contained dashboard for browsing recorded entries. It
+`@adonis-agora/telescope/ui` is a self-contained dashboard for browsing recorded entries. It
 mounts a single inline-HTML page and a small JSON API directly onto your app's router —
 no separate process, no build step, no front-end framework to install — all served from
 the headless [`TelescopeService`](/docs/telescope/getting-started#step-3--hit-the-headless-api)
@@ -14,15 +14,15 @@ behind an [auth guard](/docs/telescope/dashboard/auth).
 
 ## Mount it
 
-The dashboard is the `@agora/telescope/ui` subpath of the one telescope package — re-run
+The dashboard is the `@adonis-agora/telescope/ui` subpath of the one telescope package — re-run
 configure and pick **UI**:
 
 ```sh
-npm i @agora/telescope
-node ace configure @agora/telescope   # pick "UI"
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # pick "UI"
 ```
 
-`configure` registers `@agora/telescope/ui_provider` and publishes
+`configure` registers `@adonis-agora/telescope/ui_provider` and publishes
 `config/telescope_ui.ts`. On boot the provider resolves the live store from the core's
 runtime slot (the same handle the watchers record through — no DI), and registers the
 routes under the configured prefix.
@@ -30,7 +30,7 @@ routes under the configured prefix.
 Open `http://localhost:3333/telescope`.
 
 <Callout type="warn">
-The UI needs `@agora/telescope` to be enabled and booted — it reads the *same* store the
+The UI needs `@adonis-agora/telescope` to be enabled and booted — it reads the *same* store the
 core publishes. If the store isn't booted, the provider registers **no routes** (and
 warn-logs why) rather than crashing the host. So the dashboard simply won't exist until
 the core is running.
@@ -83,7 +83,7 @@ curl 'http://localhost:3333/telescope/api/stats?type=diagnostic'
 ## Configuration
 
 ```ts title="config/telescope_ui.ts"
-import { defineConfig } from '@agora/telescope/ui'
+import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
   enabled: true,           // false → register no routes at all

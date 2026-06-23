@@ -12,7 +12,7 @@ pass an instance as `store`. This guide builds a MongoDB store.
 ## The contract
 
 ```ts
-import type { TelescopeStore, Entry, RecordInput, EntryQuery } from '@agora/telescope'
+import type { TelescopeStore, Entry, RecordInput, EntryQuery } from '@adonis-agora/telescope'
 
 interface TelescopeStore {
   record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>>
@@ -38,7 +38,7 @@ import type { Collection } from 'mongodb'
 import {
   type TelescopeStore, type Entry, type RecordInput, type EntryQuery,
   type BatchOrigin, currentTraceId, isBatchOrigin,
-} from '@agora/telescope'
+} from '@adonis-agora/telescope'
 
 export class MongoTelescopeStore implements TelescopeStore {
   private sequence = 0
@@ -144,7 +144,7 @@ on `record` and regex that — the same "search over JSON text" approach the Luc
 ## Wiring it in
 
 ```ts title="config/telescope.ts"
-import { defineConfig } from '@agora/telescope'
+import { defineConfig } from '@adonis-agora/telescope'
 import { MongoTelescopeStore } from '#telescope/mongo_store'
 import { entriesCollection } from '#telescope/mongo'
 

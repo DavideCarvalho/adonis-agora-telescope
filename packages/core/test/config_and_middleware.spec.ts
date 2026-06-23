@@ -131,7 +131,7 @@ describe('context accessor integration', () => {
   const KEY = Symbol.for('@agora/context:accessor');
   afterEach(() => delete (globalThis as Record<symbol, unknown>)[KEY]);
 
-  it('resolves the ambient traceId from @agora/context when present', async () => {
+  it('resolves the ambient traceId from @adonis-agora/context when present', async () => {
     (globalThis as Record<symbol, unknown>)[KEY] = {
       traceId: () => 'ctx-trace',
       tenantId: () => undefined,

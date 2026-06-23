@@ -1,8 +1,8 @@
 ---
-"@agora/telescope-ui": minor
+"@adonis-agora/telescope-ui": minor
 ---
 
-Initial release of the web dashboard + JSON API for `@agora/telescope`. Mounts HTTP
+Initial release of the web dashboard + JSON API for `@adonis-agora/telescope`. Mounts HTTP
 routes in your AdonisJS app that serve a JSON API over the headless
 `TelescopeService` and a single, build-step-free HTML dashboard that consumes it,
 all behind a configurable auth guard. Ships:

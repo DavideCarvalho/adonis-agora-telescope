@@ -1,5 +1,5 @@
 ---
-title: "@agora/telescope"
+title: "@adonis-agora/telescope"
 description: The headless core — the request, exception and diagnostics watchers, the uniform Entry model, the TelescopeStore contract and in-memory ring buffer, the TelescopeService query API, the extension SDK, and the structural readers for context and diagnostics.
 ---
 
@@ -17,30 +17,30 @@ extension SDK) the rest of the ecosystem builds on.
   <Tab value="npm">
 
 ```sh
-npm i @agora/telescope
-node ace configure @agora/telescope
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope
 ```
 
 </Tab>
   <Tab value="pnpm">
 
 ```sh
-pnpm add @agora/telescope
-node ace configure @agora/telescope
+pnpm add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope
 ```
 
 </Tab>
   <Tab value="yarn">
 
 ```sh
-yarn add @agora/telescope
-node ace configure @agora/telescope
+yarn add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope
 ```
 
 </Tab>
 </Tabs>
 
-`configure` registers `@agora/telescope/telescope_provider`, plugs `TelescopeMiddleware`
+`configure` registers `@adonis-agora/telescope/telescope_provider`, plugs `TelescopeMiddleware`
 onto the **server** middleware stack, and publishes `config/telescope.ts`.
 
 ## Built-in watchers
@@ -63,7 +63,7 @@ For non-HTTP code (queue workers, ace commands, your exception handler), call
 off, and never throws:
 
 ```ts
-import { recordException } from '@agora/telescope'
+import { recordException } from '@adonis-agora/telescope'
 
 await recordException(error, { method: 'POST', url: '/checkout' })
 ```
@@ -71,7 +71,7 @@ await recordException(error, { method: 'POST', url: '/checkout' })
 ## Configuration
 
 ```ts title="config/telescope.ts"
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   enabled: true,
@@ -99,7 +99,7 @@ export default defineConfig({
 provider builds at boot from `config/telescope.ts`.
 
 ```ts
-import { TelescopeService } from '@agora/telescope'
+import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
 ```
@@ -148,6 +148,6 @@ normal path — but they're public for advanced integrations and custom watchers
 ## Decoupling
 
 The core depends only on `@adonisjs/core` (a peer). It reads
-[`@agora/context`](/docs/context) and [`@agora/diagnostics`](/docs/diagnostics)
+[`@adonis-agora/context`](/docs/context) and [`@adonis-agora/diagnostics`](/docs/diagnostics)
 structurally through global `Symbol.for(...)` slots, so it adds no hard dependency on
 either and works (with reduced features) when they aren't installed.

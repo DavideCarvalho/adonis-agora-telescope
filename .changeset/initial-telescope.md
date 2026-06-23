@@ -1,5 +1,5 @@
 ---
-"@agora/telescope": minor
+"@adonis-agora/telescope": minor
 ---
 
 Initial headless release: entry model, async `TelescopeStore` contract + in-memory
@@ -15,7 +15,7 @@ Storage is config-driven via the `storage` factory: `config/telescope.ts` lists
 named drivers under `stores` and selects the active one with `store`. Two drivers
 ship — `storage.memory({ limit })` (the bounded ring buffer) and `storage.lucid({ connection })`
 (a persistent, SQL-backed store on AdonisJS Lucid, absorbed from the former
-`@agora/telescope-lucid` package). `@adonisjs/lucid` is an optional peer dependency,
+`@adonis-agora/telescope-lucid` package). `@adonisjs/lucid` is an optional peer dependency,
 imported lazily only when the `lucid` driver is selected; `configure` also publishes
 the `create_telescope_entries_table` migration. `store` still also accepts the bare
 `'memory'` literal or a `TelescopeStore` instance for a hand-wired backend.

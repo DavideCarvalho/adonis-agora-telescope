@@ -49,7 +49,7 @@ export interface ResolvedTelescopeAiConfig {
  *
  * ```ts
  * import env from '#start/env'
- * import { defineConfig } from '@agora/telescope/ai'
+ * import { defineConfig } from '@adonis-agora/telescope/ai'
  * export default defineConfig({ apiKey: env.get('ANTHROPIC_API_KEY') })
  * ```
  */

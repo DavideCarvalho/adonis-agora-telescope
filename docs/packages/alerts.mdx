@@ -1,50 +1,50 @@
 ---
-title: "@agora/telescope/alerts"
-description: Alerting subpath of @agora/telescope — detect brand-new exception families (and re-occurrences after resolve) and exception-rate spikes from recorded entries, then fan rich alerts out to Slack, a generic webhook, the console, or any custom channel.
+title: "@adonis-agora/telescope/alerts"
+description: Alerting subpath of @adonis-agora/telescope — detect brand-new exception families (and re-occurrences after resolve) and exception-rate spikes from recorded entries, then fan rich alerts out to Slack, a generic webhook, the console, or any custom channel.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import { Callout } from 'fumadocs-ui/components/callout'
 
 Capturing exceptions is half the job — you also want to *know* when a new one appears. The
-**`@agora/telescope/alerts`** subpath polls the Telescope store for `exception` entries,
+**`@adonis-agora/telescope/alerts`** subpath polls the Telescope store for `exception` entries,
 evaluates alerting rules over them, and dispatches a rich payload to every configured
 channel: a new error family pages you, a spike pages you, and a re-occurrence after you
 thought it was fixed pages you again.
 
 ## Install
 
-Alerting ships inside the one `@agora/telescope` package. Enable it when configuring
+Alerting ships inside the one `@adonis-agora/telescope` package. Enable it when configuring
 telescope:
 
 <Tabs items={['npm', 'pnpm', 'yarn']}>
   <Tab value="npm">
 
 ```sh
-npm i @agora/telescope
-node ace configure @agora/telescope   # then pick "Alerts" at the prompt
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "Alerts" at the prompt
 ```
 
 </Tab>
   <Tab value="pnpm">
 
 ```sh
-pnpm add @agora/telescope
-node ace configure @agora/telescope   # then pick "Alerts" at the prompt
+pnpm add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "Alerts" at the prompt
 ```
 
 </Tab>
   <Tab value="yarn">
 
 ```sh
-yarn add @agora/telescope
-node ace configure @agora/telescope   # then pick "Alerts" at the prompt
+yarn add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "Alerts" at the prompt
 ```
 
 </Tab>
 </Tabs>
 
-Selecting **Alerts** registers `@agora/telescope/alerts_provider` and publishes
+Selecting **Alerts** registers `@adonis-agora/telescope/alerts_provider` and publishes
 `config/telescope_alerts.ts`.
 
 ## How it hooks in (polling)
@@ -69,7 +69,7 @@ you call `recordException` manually.
 
 ```ts title="config/telescope_alerts.ts"
 import env from '#start/env'
-import { defineConfig } from '@agora/telescope/alerts'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
 
 export default defineConfig({
   channels: [
@@ -141,7 +141,7 @@ treat a non-2xx response as a failure.
 
 ```ts title="config/telescope_alerts.ts"
 import env from '#start/env'
-import { defineConfig, slackChannel, customChannel } from '@agora/telescope/alerts'
+import { defineConfig, slackChannel, customChannel } from '@adonis-agora/telescope/alerts'
 
 export default defineConfig({
   channels: [

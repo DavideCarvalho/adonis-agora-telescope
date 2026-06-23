@@ -31,7 +31,7 @@ export interface EntryQuery {
  * The storage abstraction Telescope records through and the headless query API
  * reads from. Adapted from `nestjs-telescope`'s `StorageProvider`, trimmed to the
  * headless slice (no rollups, keyset cursors, or family-seen alerting — those are
- * deferred, see DESIGN.md). A future `@agora/telescope-lucid` / SQLite store
+ * deferred, see DESIGN.md). A future `@adonis-agora/telescope-lucid` / SQLite store
  * implements this same contract.
  */
 export interface TelescopeStore {

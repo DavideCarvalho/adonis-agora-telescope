@@ -18,7 +18,7 @@ import type { TelescopeStore } from '../src/store.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 
 /**
- * Wires `@agora/telescope` into the AdonisJS application.
+ * Wires `@adonis-agora/telescope` into the AdonisJS application.
  *
  * - `register()` binds {@link TelescopeService} into the container, resolving against
  *   whichever store the provider builds at boot, so controllers can `inject()` it.
@@ -31,7 +31,7 @@ import { InMemoryTelescopeStore } from '../src/stores/memory.js';
  * - `shutdown()` stops the watcher and clears the runtime slot.
  *
  * The request watcher itself runs as `server` middleware, which
- * `node ace configure @agora/telescope` registers on the `server` stack.
+ * `node ace configure @adonis-agora/telescope` registers on the `server` stack.
  */
 export default class TelescopeProvider {
   private store: TelescopeStore | null = null;
@@ -89,7 +89,7 @@ export default class TelescopeProvider {
     }
 
     throw new Error(
-      `@agora/telescope: config.store is "${config.store}", but config.stores.${config.store} is not defined`,
+      `@adonis-agora/telescope: config.store is "${config.store}", but config.stores.${config.store} is not defined`,
     );
   }
 

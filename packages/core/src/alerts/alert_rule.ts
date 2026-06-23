@@ -2,7 +2,7 @@ import type { AlertChannel } from './alert_channel.js';
 
 /**
  * A single alerting rule. Ported (trimmed) from the aviary telescope core. This
- * Adonis port focuses on the two rules the headless `@agora/telescope` store can
+ * Adonis port focuses on the two rules the headless `@adonis-agora/telescope` store can
  * back today:
  *
  * - `new-exception`  — fires the FIRST time an exception's `familyHash` is seen

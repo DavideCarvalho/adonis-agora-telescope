@@ -1,18 +1,18 @@
 ---
 title: Request context
-description: Correlate Telescope entries to a request, a trace, a tenant, and a user via @agora/context — how trace correlation works, how to tag entries with the authenticated user, and how to reconstruct everything that happened on one trace.
+description: Correlate Telescope entries to a request, a trace, a tenant, and a user via @adonis-agora/context — how trace correlation works, how to tag entries with the authenticated user, and how to reconstruct everything that happened on one trace.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout'
 
 A single entry is a fact; a *trace* is a story. Telescope's correlation comes from
-[`@agora/context`](/docs/context): when it's present, every entry recorded during a request
+[`@adonis-agora/context`](/docs/context): when it's present, every entry recorded during a request
 shares the request's trace id, so you can pull the whole story back with one call. This
 guide is how that wiring works and how to pivot on the user behind a request.
 
 ## How correlation works
 
-`@agora/context` publishes a read-only accessor on a global slot. Telescope reads it
+`@adonis-agora/context` publishes a read-only accessor on a global slot. Telescope reads it
 **structurally** — no import, no dependency — and stamps each entry's `traceId` at record
 time:
 
@@ -26,20 +26,20 @@ interface ContextAccessor {
 ```
 
 The store calls `currentTraceId()` (which reads `accessor.traceId()`) whenever a watcher
-doesn't pass a trace explicitly. With `@agora/context` installed and its middleware running,
+doesn't pass a trace explicitly. With `@adonis-agora/context` installed and its middleware running,
 that just works — the request watcher, query watcher, diagnostics watcher and exception
 capture all land on the same trace.
 
 <Callout type="info">
-With `@agora/context` absent, `currentTraceId()` returns `null` — entries are still recorded,
-just uncorrelated. Install and configure `@agora/context` to light up trace correlation
+With `@adonis-agora/context` absent, `currentTraceId()` returns `null` — entries are still recorded,
+just uncorrelated. Install and configure `@adonis-agora/context` to light up trace correlation
 across the whole ecosystem. See its [docs](/docs/context).
 </Callout>
 
 ## Reconstruct one trace
 
 ```ts
-import { TelescopeService } from '@agora/telescope'
+import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
 
@@ -54,13 +54,13 @@ shows you the exception *and* the four queries that ran before it, all in order.
 
 ## Tag entries with the authenticated user
 
-`@agora/context` carries the resolved user as `userRef()`. To make Telescope pivot on it,
+`@adonis-agora/context` carries the resolved user as `userRef()`. To make Telescope pivot on it,
 include a `user:<id>` tag when you record. The simplest place is your exception handler —
 and it's exactly the tag the [alerts package](/docs/telescope/packages/alerts#the-alert-payload)
 reads to attach a user to a `new-exception` alert.
 
 ```ts title="app/exceptions/handler.ts"
-import { getContextAccessor, recordException } from '@agora/telescope'
+import { getContextAccessor, recordException } from '@adonis-agora/telescope'
 
 async report(error: unknown, ctx: HttpContext) {
   const userId = getContextAccessor()?.userRef()?.id
@@ -74,7 +74,7 @@ For full control over tags, record through a [custom watcher](/docs/telescope/re
 or a manual `record` call and add `user:<id>` to `tags`:
 
 ```ts
-import { getContextAccessor } from '@agora/telescope'
+import { getContextAccessor } from '@adonis-agora/telescope'
 
 const user = getContextAccessor()?.userRef()
 const tags = [...(input.tags ?? []), ...(user ? [`user:${user.id}`] : [])]
@@ -99,10 +99,10 @@ narrow: `list({ tag: 'tenant:acme', type: 'query', search: 'orders' })`.
 
 <Callout type="warn">
 Correlation is only as good as your context propagation. If a code path runs *outside* the
-request's async context (a detached `setTimeout`, an unawaited background task), `@agora/context`
+request's async context (a detached `setTimeout`, an unawaited background task), `@adonis-agora/context`
 won't have a trace there and those entries record with `traceId: null`. Keep async work
 inside the request's context, or pass the trace explicitly to the record call.
 </Callout>
 
 > Related: [Capture & correlation](/docs/telescope/concepts/capture#trace-correlation) for the
-> mechanics, and [`@agora/context`](/docs/context) for the propagation layer itself.
+> mechanics, and [`@adonis-agora/context`](/docs/context) for the propagation layer itself.

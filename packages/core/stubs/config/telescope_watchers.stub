@@ -1,10 +1,10 @@
 {{{
   exports({ to: app.configPath('telescope_watchers.ts') })
 }}}
-import { defineConfig } from '@agora/telescope/watchers'
+import { defineConfig } from '@adonis-agora/telescope/watchers'
 
 /**
- * Configuration for `@agora/telescope/watchers`. By default only the Lucid
+ * Configuration for `@adonis-agora/telescope/watchers`. By default only the Lucid
  * `query` watcher is enabled — its `db:query` event is verified against the
  * installed `@adonisjs/lucid` types. The `mail` and `cache` watchers are opt-in.
  */

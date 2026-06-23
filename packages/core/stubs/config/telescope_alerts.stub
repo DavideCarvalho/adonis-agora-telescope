@@ -1,10 +1,10 @@
 {{{
   exports({ to: app.configPath('telescope_alerts.ts') })
 }}}
-import { defineConfig } from '@agora/telescope/alerts'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
 
 /**
- * Configuration for `@agora/telescope/alerts`. By default alerting is on, polls the
+ * Configuration for `@adonis-agora/telescope/alerts`. By default alerting is on, polls the
  * telescope store every 30s for brand-new exception families, and logs each alert
  * to the console. Add a Slack or generic webhook channel to ship alerts off-box.
  */

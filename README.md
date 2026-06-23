@@ -1,4 +1,4 @@
-# `@agora/telescope`
+# `@adonis-agora/telescope`
 
 > Laravel Telescope-style **headless** observability for **AdonisJS** — records
 > every HTTP request and every `agora:<lib>:<event>` diagnostics publish as a
@@ -13,8 +13,8 @@ query API; the dashboard, per-technology watchers, AI diagnosers and alerts ship
 ## Install
 
 ```sh
-npm i @agora/telescope
-node ace configure @agora/telescope
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope
 ```
 
 `configure` registers the core provider, plugs `TelescopeMiddleware` onto the `server`
@@ -24,23 +24,23 @@ each chosen provider and publishing its config.
 
 ## Optional features
 
-Everything is **one published package, `@agora/telescope`**. Each feature is a subpath,
+Everything is **one published package, `@adonis-agora/telescope`**. Each feature is a subpath,
 following the first-party AdonisJS convention (`@adonisjs/auth`'s guards). You install
 only the optional peers for the features you actually use.
 
 | Subpath | Provider subpath | What | Optional peers |
 |---|---|---|---|
-| [`@agora/telescope/watchers`](./docs/packages/watchers.mdx) | `@agora/telescope/watchers_provider` | records Lucid SQL queries (`db:query`), mail-sent and cache events | `@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache` |
-| [`@agora/telescope/ui`](./docs/packages/ui.mdx) | `@agora/telescope/ui_provider` | self-contained web dashboard + JSON API behind an auth guard | — |
-| [`@agora/telescope/ai`](./docs/packages/ai.mdx) | `@agora/telescope/ai_provider` | Claude-powered exception diagnosis | `@anthropic-ai/sdk` |
-| [`@agora/telescope/alerts`](./docs/packages/alerts.mdx) | `@agora/telescope/alerts_provider` | new-exception alerts to Slack / webhook / console | — |
+| [`@adonis-agora/telescope/watchers`](./docs/packages/watchers.mdx) | `@adonis-agora/telescope/watchers_provider` | records Lucid SQL queries (`db:query`), mail-sent and cache events | `@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache` |
+| [`@adonis-agora/telescope/ui`](./docs/packages/ui.mdx) | `@adonis-agora/telescope/ui_provider` | self-contained web dashboard + JSON API behind an auth guard | — |
+| [`@adonis-agora/telescope/ai`](./docs/packages/ai.mdx) | `@adonis-agora/telescope/ai_provider` | Claude-powered exception diagnosis | `@anthropic-ai/sdk` |
+| [`@adonis-agora/telescope/alerts`](./docs/packages/alerts.mdx) | `@adonis-agora/telescope/alerts_provider` | new-exception alerts to Slack / webhook / console | — |
 
 ## What it records
 
 | Watcher | Entry type | What |
 |---|---|---|
 | **request** | `request` | every inbound HTTP request — method, url, status, duration, traceId |
-| **diagnostics** | `diagnostic` | every `agora:<lib>:<event>` publish from any `@agora/*` library that uses `@agora/diagnostics` — one entry per event, grouped by `lib:event` |
+| **diagnostics** | `diagnostic` | every `agora:<lib>:<event>` publish from any `@adonis-agora/*` library that uses `@adonis-agora/diagnostics` — one entry per event, grouped by `lib:event` |
 
 The diagnostics watcher is the key integration: ONE generic watcher subscribes to
 **all** diagnostics channels (current and future) and records each publish — no
@@ -49,7 +49,7 @@ bespoke watcher per library.
 ## Query it
 
 ```ts
-import { TelescopeService } from '@agora/telescope'
+import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
 
@@ -62,9 +62,9 @@ telescope.find(entryId)
 
 Expose a tiny inspector endpoint with it, or just read it from a test.
 
-## Cross-repo decoupling (zero `@agora/*` deps)
+## Cross-repo decoupling (zero `@adonis-agora/*` deps)
 
-Telescope is a **separate repo** and does not depend on any `@agora/*` package. It
+Telescope is a **separate repo** and does not depend on any `@adonis-agora/*` package. It
 reads two cross-copy-stable global slots **structurally**:
 
 - `Symbol.for('@agora/diagnostics:registry')` — `{ channels, listeners }`. The
@@ -82,7 +82,7 @@ correlation, no diagnostic entries) — the request watcher still works standalo
 `config/telescope.ts`:
 
 ```ts
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   enabled: true,                          // master switch
@@ -108,7 +108,7 @@ by `store`. Two drivers ship in the box:
   **optional peer** — imported lazily only when the `lucid` driver is selected.
 
 ```ts
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   store: 'lucid',
@@ -117,7 +117,7 @@ export default defineConfig({
 ```
 
 The `lucid` driver needs a table — publish the migration with
-`node ace configure @agora/telescope` (it ships the `create_telescope_entries_table`
+`node ace configure @adonis-agora/telescope` (it ships the `create_telescope_entries_table`
 stub) and run `node ace migration:run`. Every store implements the same
 `TelescopeStore` contract (`record` / `get` / `list` / `count` / `prune` / `clear`);
 a custom backend implements the same contract and is passed as a `store` instance.
@@ -133,9 +133,9 @@ Still planned, not built (see [`DESIGN.md`](./DESIGN.md) for rationale):
 
 ## The Agora ecosystem
 
-Agora is the AdonisJS port of the aviary NestJS ecosystem. `@agora/telescope`
-composes with [`@agora/context`](https://github.com/DavideCarvalho/adonis-context)
-(trace correlation) and [`@agora/diagnostics`](https://github.com/DavideCarvalho/adonis-diagnostics)
+Agora is the AdonisJS port of the aviary NestJS ecosystem. `@adonis-agora/telescope`
+composes with [`@adonis-agora/context`](https://github.com/DavideCarvalho/adonis-context)
+(trace correlation) and [`@adonis-agora/diagnostics`](https://github.com/DavideCarvalho/adonis-diagnostics)
 (the events it records) — but depends on neither.
 
 ## License

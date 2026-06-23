@@ -2,13 +2,13 @@ import type { ResolvedTelescopeConfig } from '../define_config.js';
 import type { TelescopeStore } from '../store.js';
 
 /**
- * The published, versioned extension contract for `@agora/telescope`.
+ * The published, versioned extension contract for `@adonis-agora/telescope`.
  *
  * An extension is a plain object (usually returned by a factory so it can take options), registered
  * via `config/telescope.ts`'s `extensions: [...]`. The provider runs its hooks once at boot. Hooks
- * are **multi** (every extension runs; results accumulate). A sibling lib (e.g. `@agora/durable`)
+ * are **multi** (every extension runs; results accumulate). A sibling lib (e.g. `@adonis-agora/durable`)
  * contributes navigable entry types, declarative dashboard pages, and the server-side data providers
- * those pages bind to — without `@agora/telescope` knowing anything about it.
+ * those pages bind to — without `@adonis-agora/telescope` knowing anything about it.
  *
  * @remarks Semver 0.x — the shape may change until 1.0.
  */

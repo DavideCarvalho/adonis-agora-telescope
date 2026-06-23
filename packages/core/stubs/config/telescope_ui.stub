@@ -1,10 +1,10 @@
 {{{
   exports({ to: app.configPath('telescope_ui.ts') })
 }}}
-import { defineConfig } from '@agora/telescope/ui'
+import { defineConfig } from '@adonis-agora/telescope/ui'
 
 /**
- * Configuration for `@agora/telescope/ui`. By default the dashboard mounts at
+ * Configuration for `@adonis-agora/telescope/ui`. By default the dashboard mounts at
  * `/telescope` and is reachable automatically outside production. In production it
  * is denied unless you set a `token` / `basic` credential below, or supply your
  * own `authorize` hook delegating to your app's auth.

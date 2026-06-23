@@ -2,32 +2,32 @@ import type Configure from '@adonisjs/core/commands/configure';
 import { stubsRoot } from './stubs/main.js';
 
 /**
- * The opt-in features of `@agora/telescope`, each shipped as a subpath of this one
+ * The opt-in features of `@adonis-agora/telescope`, each shipped as a subpath of this one
  * package. `configure` always wires the core; these are offered on top.
  */
 const FEATURES = [
   {
     name: 'watchers',
     message: 'Watchers — record Lucid queries, mail, cache, outbound HTTP and logs',
-    provider: '@agora/telescope/watchers_provider',
+    provider: '@adonis-agora/telescope/watchers_provider',
     configStub: 'config/telescope_watchers.stub',
   },
   {
     name: 'ui',
     message: 'UI — web dashboard + JSON API at /telescope',
-    provider: '@agora/telescope/ui_provider',
+    provider: '@adonis-agora/telescope/ui_provider',
     configStub: 'config/telescope_ui.stub',
   },
   {
     name: 'ai',
     message: 'AI — Claude-powered exception diagnosis',
-    provider: '@agora/telescope/ai_provider',
+    provider: '@adonis-agora/telescope/ai_provider',
     configStub: 'config/telescope_ai.stub',
   },
   {
     name: 'alerts',
     message: 'Alerts — notify Slack / webhook on new exception families',
-    provider: '@agora/telescope/alerts_provider',
+    provider: '@adonis-agora/telescope/alerts_provider',
     configStub: 'config/telescope_alerts.stub',
   },
 ] as const;
@@ -35,7 +35,7 @@ const FEATURES = [
 type FeatureName = (typeof FEATURES)[number]['name'];
 
 /**
- * `node ace configure @agora/telescope` — auto-wires the package:
+ * `node ace configure @adonis-agora/telescope` — auto-wires the package:
  *
  * 1. registers the core service provider in `adonisrc.ts`;
  * 2. registers {@link TelescopeMiddleware} on the `server` middleware stack;
@@ -44,7 +44,7 @@ type FeatureName = (typeof FEATURES)[number]['name'];
  *    ignores it);
  * 4. offers the optional features (watchers / ui / ai / alerts) — each is a subpath
  *    of this same package. The selected ones get their provider registered in
- *    `adonisrc.ts` (`@agora/telescope/<feature>_provider`) and their config stub
+ *    `adonisrc.ts` (`@adonis-agora/telescope/<feature>_provider`) and their config stub
  *    published, folding in what used to be each sub-package's own `configure`.
  */
 export async function configure(command: Configure) {
@@ -52,10 +52,12 @@ export async function configure(command: Configure) {
 
   // — core —
   await codemods.updateRcFile((rcFile) => {
-    rcFile.addProvider('@agora/telescope/telescope_provider');
+    rcFile.addProvider('@adonis-agora/telescope/telescope_provider');
   });
 
-  await codemods.registerMiddleware('server', [{ path: '@agora/telescope/telescope_middleware' }]);
+  await codemods.registerMiddleware('server', [
+    { path: '@adonis-agora/telescope/telescope_middleware' },
+  ]);
 
   await codemods.makeUsingStub(stubsRoot, 'config/telescope.stub', {});
   await codemods.makeUsingStub(

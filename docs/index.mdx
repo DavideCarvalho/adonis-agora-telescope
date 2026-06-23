@@ -7,7 +7,7 @@ import { Callout } from 'fumadocs-ui/components/callout'
 import { Step, Steps } from 'fumadocs-ui/components/steps'
 import { Cards, Card } from 'fumadocs-ui/components/card'
 
-`@agora/telescope` is the AdonisJS port of the aviary NestJS `nestjs-telescope`
+`@adonis-agora/telescope` is the AdonisJS port of the aviary NestJS `nestjs-telescope`
 ecosystem. It records what just happened inside your app — each HTTP request, each
 SQL query, each exception, and every `agora:<lib>:<event>` diagnostics publish — as
 a uniform, queryable **entry**, so you can answer *"what happened on trace `X`?"*
@@ -25,10 +25,10 @@ three ways to read it back:
 
 - **A headless query API** — `TelescopeService` (`list`, `find`, `byTrace`,
   `topFamilies`, `topTags`). Read it from a controller, a test, or a script.
-- **A self-contained dashboard** — the `@agora/telescope/ui` subpath mounts an
+- **A self-contained dashboard** — the `@adonis-agora/telescope/ui` subpath mounts an
   inline-HTML console + JSON API behind an auth guard, no build step.
-- **Alerts & AI** — `@agora/telescope/alerts` pages you on a brand-new exception
-  family; `@agora/telescope/ai` turns an exception entry into a structured
+- **Alerts & AI** — `@adonis-agora/telescope/alerts` pages you on a brand-new exception
+  family; `@adonis-agora/telescope/ai` turns an exception entry into a structured
   root-cause diagnosis.
 
 ## How it's built
@@ -38,10 +38,10 @@ A few design choices run through every package:
 - **One generic diagnostics watcher.** Rather than a bespoke watcher per library,
   the [`DiagnosticsWatcher`](/docs/telescope/concepts/capture#the-diagnostics-watcher)
   subscribes to *every* `agora:<lib>:<event>` channel — current and future — and
-  records each publish. A library that adopts [`@agora/diagnostics`](/docs/diagnostics)
+  records each publish. A library that adopts [`@adonis-agora/diagnostics`](/docs/diagnostics)
   shows up in Telescope with zero Telescope-specific code.
-- **Zero `@agora/*` coupling.** Telescope is a separate repo with no dependency on
-  `@agora/context` or `@agora/diagnostics`. It reads them
+- **Zero `@adonis-agora/*` coupling.** Telescope is a separate repo with no dependency on
+  `@adonis-agora/context` or `@adonis-agora/diagnostics`. It reads them
   [structurally through global `Symbol.for(...)` slots](/docs/telescope/concepts/capture#cross-repo-decoupling)
   and degrades gracefully when they are absent.
 - **Observability never breaks the thing it observes.** Every recording path is
@@ -61,8 +61,8 @@ A few design choices run through every package:
 ### Install the core
 
 ```sh
-npm i @agora/telescope
-node ace configure @agora/telescope
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope
 ```
 
 `configure` registers the provider, plugs `TelescopeMiddleware` onto the `server`
@@ -75,7 +75,7 @@ middleware stack, and publishes `config/telescope.ts`.
 ### Make some requests, then read them back
 
 ```ts
-import { TelescopeService } from '@agora/telescope'
+import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
 
@@ -90,10 +90,10 @@ await telescope.topFamilies(10, 'diagnostic')         // busiest lib:event pairs
 
 ### Add the dashboard
 
-The dashboard is the `@agora/telescope/ui` subpath — re-run configure and pick **UI**:
+The dashboard is the `@adonis-agora/telescope/ui` subpath — re-run configure and pick **UI**:
 
 ```sh
-node ace configure @agora/telescope   # pick "UI"
+node ace configure @adonis-agora/telescope   # pick "UI"
 ```
 
 Open `http://localhost:3333/telescope`.
@@ -112,12 +112,12 @@ built-in [`lucid` storage driver](/docs/telescope/packages/storages).
 
 Once entries are flowing, the rest of the ecosystem reads them:
 
-- **Per-technology watchers** — [`@agora/telescope/watchers`](/docs/telescope/packages/watchers)
+- **Per-technology watchers** — [`@adonis-agora/telescope/watchers`](/docs/telescope/packages/watchers)
   records every Lucid `db:query` (SQL, bindings, duration), plus mail and cache events.
-- **Alerts** — [`@agora/telescope/alerts`](/docs/telescope/packages/alerts) polls the
+- **Alerts** — [`@adonis-agora/telescope/alerts`](/docs/telescope/packages/alerts) polls the
   store and fires a `new-exception` or `exception-rate` alert to Slack, a webhook, the
   console, or a custom channel.
-- **AI diagnosis** — [`@agora/telescope/ai`](/docs/telescope/packages/ai) feeds an
+- **AI diagnosis** — [`@adonis-agora/telescope/ai`](/docs/telescope/packages/ai) feeds an
   exception entry (plus its trace) to Claude and returns a cached cause + fix.
 - **Extensions** — a sibling lib contributes navigable entry types, declarative
   dashboard pages, and data providers through the
@@ -131,7 +131,7 @@ Once entries are flowing, the rest of the ecosystem reads them:
   <Card title="Storage" href="/docs/telescope/concepts/storage" description="The TelescopeStore contract, the in-memory default, and the Lucid adapter." />
   <Card title="Extensions" href="/docs/telescope/concepts/extensions" description="The declarative extension SPI — entry types, dashboards, data providers." />
   <Card title="Dashboard" href="/docs/telescope/dashboard" description="Mount the console, browse entries, and gate it for production." />
-  <Card title="Packages" href="/docs/telescope/packages" description="Every @agora/telescope subpath and what it does." />
+  <Card title="Packages" href="/docs/telescope/packages" description="Every @adonis-agora/telescope subpath and what it does." />
   <Card title="Alerts" href="/docs/telescope/packages/alerts" description="Page on new exception families via Slack, webhook, or a custom channel." />
   <Card title="AI exception diagnosis" href="/docs/telescope/packages/ai" description="Structured root-cause diagnosis of exceptions, cached by family." />
   <Card title="Configuration reference" href="/docs/telescope/reference/configuration" description="Every config key across every package, in one place." />

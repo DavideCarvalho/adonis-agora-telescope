@@ -5,9 +5,9 @@ description: The declarative extension SPI — how a sibling library contributes
 
 import { Callout } from 'fumadocs-ui/components/callout'
 
-An extension lets a sibling library — say `@agora/durable` — add a first-class
+An extension lets a sibling library — say `@adonis-agora/durable` — add a first-class
 **Workflows** page to the Telescope dashboard, complete with stat cards, time series and
-tables backed by its own data, **without** `@agora/telescope` knowing anything about it
+tables backed by its own data, **without** `@adonis-agora/telescope` knowing anything about it
 and without the extension author writing a single line of React. It is the Adonis port
 of aviary's NestJS extension SPI.
 
@@ -17,7 +17,7 @@ An extension is a plain object — usually returned by a factory so it can take 
 with up to three hooks. Author it with `defineTelescopeExtension` for full inference:
 
 ```ts
-import { defineTelescopeExtension } from '@agora/telescope'
+import { defineTelescopeExtension } from '@adonis-agora/telescope'
 
 interface TelescopeExtension {
   name: string                                              // unique id
@@ -31,8 +31,8 @@ You register extensions in `config/telescope.ts`; the provider runs every hook *
 at boot**. Hooks are *multi* — every extension runs and results accumulate.
 
 ```ts title="config/telescope.ts"
-import { defineConfig } from '@agora/telescope'
-import { durableTelescopeExtension } from '@agora/durable-telescope'
+import { defineConfig } from '@adonis-agora/telescope'
+import { durableTelescopeExtension } from '@adonis-agora/durable-telescope'
 
 export default defineConfig({
   extensions: [durableTelescopeExtension()],
@@ -136,7 +136,7 @@ owning extension so the HTTP layer can enforce the namespace.
 ## A minimal worked example
 
 ```ts title="packages/durable-telescope/src/extension.ts"
-import { defineTelescopeExtension } from '@agora/telescope'
+import { defineTelescopeExtension } from '@adonis-agora/telescope'
 
 export function durableTelescopeExtension() {
   return defineTelescopeExtension({

@@ -16,7 +16,7 @@ import { enforceGuard } from '../src/ui/guard.js';
 import type { UiHttpContext } from '../src/ui/http.js';
 
 /**
- * Wires `@agora/telescope/ui` into the AdonisJS application.
+ * Wires `@adonis-agora/telescope/ui` into the AdonisJS application.
  *
  * - `boot()` reads `config/telescope_ui.ts`, resolves the live telescope store
  *   from the core runtime slot (no DI — same handle the watchers record through),
@@ -52,7 +52,7 @@ export default class TelescopeUiProvider {
     }
     if (store === null) {
       console.warn(
-        'TelescopeUiProvider: telescope store is not booted (is @agora/telescope enabled?); ' +
+        'TelescopeUiProvider: telescope store is not booted (is @adonis-agora/telescope enabled?); ' +
           'dashboard routes not registered.',
       );
       return;

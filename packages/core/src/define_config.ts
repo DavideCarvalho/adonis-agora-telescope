@@ -68,7 +68,7 @@ export interface TelescopeConfig {
   watchers?: WatcherName[];
 
   /**
-   * Extensions contributed by sibling libs (e.g. `@agora/durable-telescope`) — each adds navigable
+   * Extensions contributed by sibling libs (e.g. `@adonis-agora/durable-telescope`) — each adds navigable
    * entry types, dashboard pages, and the data providers those pages bind to. Default none.
    */
   extensions?: TelescopeExtension[];
@@ -98,7 +98,7 @@ export interface ResolvedTelescopeConfig {
  * AdonisJS `defineConfig` convention.
  *
  * ```ts
- * import { defineConfig, storage } from '@agora/telescope'
+ * import { defineConfig, storage } from '@adonis-agora/telescope'
  *
  * export default defineConfig({
  *   store: 'memory',

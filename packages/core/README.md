@@ -1,16 +1,16 @@
-# `@agora/telescope`
+# `@adonis-agora/telescope`
 
 Laravel Telescope-style **headless** observability for AdonisJS — records every
 HTTP request and every `agora:<lib>:<event>` diagnostics publish as a queryable
 entry.
 
 ```sh
-npm i @agora/telescope
-node ace configure @agora/telescope
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope
 ```
 
 ```ts
-import { TelescopeService } from '@agora/telescope'
+import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
 telescope.list({ type: 'request', limit: 50 })

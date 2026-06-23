@@ -1,4 +1,4 @@
-# `@agora/telescope` — design
+# `@adonis-agora/telescope` — design
 
 A headless port of the `nestjs-telescope` observability library to AdonisJS. The
 NestJS original is **18 packages** (a UI dashboard, AI diagnosers, alerts, OTel,
@@ -22,7 +22,7 @@ core** and documents the rest as planned.
 
 ### Cross-repo decoupling via global Symbol slots
 
-Telescope is a separate repo and has **no `@agora/*` dependencies** (they can't be
+Telescope is a separate repo and has **no `@adonis-agora/*` dependencies** (they can't be
 resolved across repos, and a hard dep would couple their release cadences).
 Instead it reads two cross-copy-stable `globalThis[Symbol.for(...)]` slots
 **structurally**:
@@ -31,7 +31,7 @@ Instead it reads two cross-copy-stable `globalThis[Symbol.for(...)]` slots
   Set<(name) => void> }`. `node:diagnostics_channel` has no wildcard subscribe, so
   the watcher subscribes to every name in `channels` *and* registers a `listeners`
   callback to catch channels that appear later. Subscribing also flips each
-  producer's `channel.hasSubscribers`, which is what makes `@agora/diagnostics`
+  producer's `channel.hasSubscribers`, which is what makes `@adonis-agora/diagnostics`
   start building + publishing envelopes (zero overhead when nobody listens). The
   actual subscribe uses the Node builtin `node:diagnostics_channel` — no Agora
   import.
@@ -67,8 +67,8 @@ grouping the NestJS dashboard's "busiest events" panel used.
 | Deferred | Why / next step |
 |---|---|
 | **UI dashboard** | The obvious next step. The headless query API (`TelescopeService`) is exactly what it would read. |
-| **`@agora/telescope-lucid`** | (a) a query watcher that records Lucid SQL as `query` entries via Lucid's emitted events, and (b) a persistent `TelescopeStore` backed by a Lucid/SQLite table — the production storage answer. |
-| **Per-tech watchers** | bullmq / mikro-orm / typeorm / prisma / redis / sqs / schedule / mail / cache — most become trivial once they emit through `@agora/diagnostics` (the generic watcher already records them); only richer typed `content` needs bespoke code. |
+| **`@adonis-agora/telescope-lucid`** | (a) a query watcher that records Lucid SQL as `query` entries via Lucid's emitted events, and (b) a persistent `TelescopeStore` backed by a Lucid/SQLite table — the production storage answer. |
+| **Per-tech watchers** | bullmq / mikro-orm / typeorm / prisma / redis / sqs / schedule / mail / cache — most become trivial once they emit through `@adonis-agora/diagnostics` (the generic watcher already records them); only richer typed `content` needs bespoke code. |
 | **AI diagnosers** | LLM-assisted root-causing over recorded entries. |
 | **Alerts** | `new-exception` and family-seen dedup (needs an atomic `markFamilySeen` on the store contract). |
 | **OTel export** | Bridge entries / the diagnostics span channels to an OTel exporter. |
@@ -84,7 +84,7 @@ grouping the NestJS dashboard's "busiest events" panel used.
   start (future-channel discovery), malformed-envelope rejection, stop
   unsubscribes, registry-absent no-op, idempotent start, legacy-envelope mapping.
   The test installs a stand-in registry on the global slot and replicates
-  `@agora/diagnostics`' `registerChannel` contract, then publishes on a real
+  `@adonis-agora/diagnostics`' `registerChannel` contract, then publishes on a real
   `node:diagnostics_channel`.
 - **request watcher** — method/url/status/duration, query-string stripping,
   missing status, duration & traceId overrides.

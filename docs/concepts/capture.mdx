@@ -1,6 +1,6 @@
 ---
 title: Capture & correlation
-description: The mental model behind Telescope — what a watcher is, the uniform Entry shape every recording produces, the generic diagnostics spine that records all library events, exception auto-capture, and how trace correlation works without coupling to @agora/context.
+description: The mental model behind Telescope — what a watcher is, the uniform Entry shape every recording produces, the generic diagnostics spine that records all library events, exception auto-capture, and how trace correlation works without coupling to @adonis-agora/context.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout'
@@ -13,16 +13,16 @@ builds a `RecordInput`, and hands it to the store. The store stamps it into an
 ## Watchers
 
 A watcher is anything that turns a runtime event into entries. Telescope ships its
-core watchers in `@agora/telescope` and more in the `@agora/telescope/watchers` subpath:
+core watchers in `@adonis-agora/telescope` and more in the `@adonis-agora/telescope/watchers` subpath:
 
 | Watcher                | Subpath                      | Entry type   | Records                                              |
 | ---------------------- | ---------------------------- | ------------ | --------------------------------------------------- |
-| Request                | `@agora/telescope`           | `request`    | Each inbound HTTP request — method, url, status, duration. |
-| Exception              | `@agora/telescope`           | `exception`  | Any error thrown by the HTTP pipeline (auto), or recorded manually. |
-| Diagnostics            | `@agora/telescope`           | `diagnostic` | Every `agora:<lib>:<event>` publish.                 |
-| Lucid query            | `@agora/telescope/watchers`  | `query`      | Each `db:query` — SQL, bindings, duration, connection. |
-| Mail                   | `@agora/telescope/watchers`  | `mail`       | Each `mail:sent` — mailer, from, to, subject.        |
-| Cache                  | `@agora/telescope/watchers`  | `cache`      | `@adonisjs/cache` hit / miss / write / delete / clear. |
+| Request                | `@adonis-agora/telescope`           | `request`    | Each inbound HTTP request — method, url, status, duration. |
+| Exception              | `@adonis-agora/telescope`           | `exception`  | Any error thrown by the HTTP pipeline (auto), or recorded manually. |
+| Diagnostics            | `@adonis-agora/telescope`           | `diagnostic` | Every `agora:<lib>:<event>` publish.                 |
+| Lucid query            | `@adonis-agora/telescope/watchers`  | `query`      | Each `db:query` — SQL, bindings, duration, connection. |
+| Mail                   | `@adonis-agora/telescope/watchers`  | `mail`       | Each `mail:sent` — mailer, from, to, subject.        |
+| Cache                  | `@adonis-agora/telescope/watchers`  | `cache`      | `@adonisjs/cache` hit / miss / write / delete / clear. |
 
 The built-in request watcher runs as **server middleware**; the diagnostics watcher
 is started by the core provider at boot; the per-technology watchers subscribe to the
@@ -118,7 +118,7 @@ the middleware. Capture there with `recordException` — it reads the active sto
 the runtime slot (no DI), is a no-op when Telescope is off, and **never throws**:
 
 ```ts title="app/exceptions/handler.ts"
-import { recordException } from '@agora/telescope'
+import { recordException } from '@adonis-agora/telescope'
 
 async report(error: unknown, ctx: HttpContext) {
   recordException(error, { method: ctx.request.method(), url: ctx.request.url() })
@@ -129,8 +129,8 @@ async report(error: unknown, ctx: HttpContext) {
 ## The diagnostics watcher
 
 This is the keystone of the whole ecosystem. Rather than a bespoke watcher per
-library, **one** `DiagnosticsWatcher` records every event any `@agora/*` library
-emits through [`@agora/diagnostics`](/docs/diagnostics) — one `diagnostic` entry per
+library, **one** `DiagnosticsWatcher` records every event any `@adonis-agora/*` library
+emits through [`@adonis-agora/diagnostics`](/docs/diagnostics) — one `diagnostic` entry per
 `agora:<lib>:<event>` publish — so a library that adopts diagnostics appears in
 Telescope with no Telescope-specific code.
 
@@ -160,11 +160,11 @@ the busiest event kinds?".
    is subscribed too.
 
 Subscribing also flips each producer's `channel.hasSubscribers` to `true` — which is
-exactly what makes `@agora/diagnostics` start building and publishing envelopes at all
+exactly what makes `@adonis-agora/diagnostics` start building and publishing envelopes at all
 (zero overhead when nobody is listening).
 
 ```text
-@agora/billing  ──publish──▶  agora:billing:invoice-paid  (node:diagnostics_channel)
+@adonis-agora/billing  ──publish──▶  agora:billing:invoice-paid  (node:diagnostics_channel)
                                         │
                                         ▼
                               DiagnosticsWatcher.subscribe
@@ -181,7 +181,7 @@ never block or break the emitting code path.
 
 ## Cross-repo decoupling
 
-Telescope is a separate repo and has **no `@agora/*` dependencies** — a hard dep would
+Telescope is a separate repo and has **no `@adonis-agora/*` dependencies** — a hard dep would
 couple release cadences and can't be resolved across repos. Instead it reads two
 cross-copy-stable global slots **structurally**, defining the shapes locally (mirrored,
 never imported):
@@ -197,7 +197,7 @@ correlation, no diagnostic entries — but the request watcher still works stand
 
 ## Trace correlation
 
-When [`@agora/context`](/docs/context) is present, every entry recorded inside a
+When [`@adonis-agora/context`](/docs/context) is present, every entry recorded inside a
 request carries the request's `traceId`, and producers stamp diagnostics with the
 same id. That is what makes `byTrace(id)` reconstruct the whole story:
 

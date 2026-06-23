@@ -11,7 +11,7 @@ import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 const REGISTRY_KEY = Symbol.for('@agora/diagnostics:registry');
 
 /**
- * Stand-in for what `@agora/diagnostics` publishes on the global slot. The real
+ * Stand-in for what `@adonis-agora/diagnostics` publishes on the global slot. The real
  * package's `registerChannel(name)` adds to `channels` and notifies `listeners`;
  * we replicate that contract here so the watcher integrates exactly as in prod.
  */

@@ -1,12 +1,12 @@
 ---
-title: "@agora/telescope/watchers"
-description: The watchers subpath of @agora/telescope — record every Lucid SQL query (sql, bindings, duration, connection), every email sent, @adonisjs/cache hit/miss/write/delete events, outbound fetch calls, and AdonisJS logger output, each correlated to the active request trace.
+title: "@adonis-agora/telescope/watchers"
+description: The watchers subpath of @adonis-agora/telescope — record every Lucid SQL query (sql, bindings, duration, connection), every email sent, @adonisjs/cache hit/miss/write/delete events, outbound fetch calls, and AdonisJS logger output, each correlated to the active request trace.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import { Callout } from 'fumadocs-ui/components/callout'
 
-The core records requests, exceptions and diagnostics. The **`@agora/telescope/watchers`**
+The core records requests, exceptions and diagnostics. The **`@adonis-agora/telescope/watchers`**
 subpath adds the watchers that hook into specific AdonisJS subsystems through the event
 emitter — most importantly a **Lucid query watcher** that records every SQL statement, plus
 `mail` and `cache` watchers. Each records through the core's runtime store (no DI) and is
@@ -14,44 +14,44 @@ fully guarded.
 
 ## Install
 
-Everything lives in the one `@agora/telescope` package — there is nothing extra to install.
+Everything lives in the one `@adonis-agora/telescope` package — there is nothing extra to install.
 Enable the feature when configuring telescope:
 
 <Tabs items={['npm', 'pnpm', 'yarn']}>
   <Tab value="npm">
 
 ```sh
-npm i @agora/telescope
-node ace configure @agora/telescope   # then pick "Watchers" at the prompt
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "Watchers" at the prompt
 ```
 
 </Tab>
   <Tab value="pnpm">
 
 ```sh
-pnpm add @agora/telescope
-node ace configure @agora/telescope   # then pick "Watchers" at the prompt
+pnpm add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "Watchers" at the prompt
 ```
 
 </Tab>
   <Tab value="yarn">
 
 ```sh
-yarn add @agora/telescope
-node ace configure @agora/telescope   # then pick "Watchers" at the prompt
+yarn add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "Watchers" at the prompt
 ```
 
 </Tab>
 </Tabs>
 
-Selecting **Watchers** registers `@agora/telescope/watchers_provider` in `adonisrc.ts` and
+Selecting **Watchers** registers `@adonis-agora/telescope/watchers_provider` in `adonisrc.ts` and
 publishes `config/telescope_watchers.ts`. No middleware is registered — the provider
 resolves the application emitter at boot and subscribes each enabled watcher to it.
 
 ## Configuration
 
 ```ts title="config/telescope_watchers.ts"
-import { defineConfig } from '@agora/telescope/watchers'
+import { defineConfig } from '@adonis-agora/telescope/watchers'
 
 export default defineConfig({
   enabled: true,

@@ -1,5 +1,5 @@
 ---
-title: "@agora/telescope/ui"
+title: "@adonis-agora/telescope/ui"
 description: The self-contained Telescope dashboard subpath — an inline-HTML console plus a JSON API served from the headless TelescopeService and mounted onto your app's router behind a configurable auth guard, with no build step and no front-end framework.
 ---
 
@@ -13,37 +13,37 @@ behind a configurable [auth guard](/docs/telescope/dashboard/auth).
 
 ## Install
 
-The dashboard ships inside the one `@agora/telescope` package. Enable it when configuring
+The dashboard ships inside the one `@adonis-agora/telescope` package. Enable it when configuring
 telescope:
 
 <Tabs items={['npm', 'pnpm', 'yarn']}>
   <Tab value="npm">
 
 ```sh
-npm i @agora/telescope
-node ace configure @agora/telescope   # then pick "UI" at the prompt
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "UI" at the prompt
 ```
 
 </Tab>
   <Tab value="pnpm">
 
 ```sh
-pnpm add @agora/telescope
-node ace configure @agora/telescope   # then pick "UI" at the prompt
+pnpm add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "UI" at the prompt
 ```
 
 </Tab>
   <Tab value="yarn">
 
 ```sh
-yarn add @agora/telescope
-node ace configure @agora/telescope   # then pick "UI" at the prompt
+yarn add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "UI" at the prompt
 ```
 
 </Tab>
 </Tabs>
 
-Selecting **UI** registers `@agora/telescope/ui_provider` and publishes
+Selecting **UI** registers `@adonis-agora/telescope/ui_provider` and publishes
 `config/telescope_ui.ts`. Open `http://localhost:3333/telescope`.
 
 ## How it mounts
@@ -57,7 +57,7 @@ On boot the provider:
    the root, the JSON API under `<path>/api/*`, each behind the `authorize` guard.
 
 <Callout type="warn">
-If `@agora/telescope` isn't enabled/booted, the store slot is `null` and the provider
+If `@adonis-agora/telescope` isn't enabled/booted, the store slot is `null` and the provider
 registers **no routes** (warn-logged) rather than crashing — the dashboard simply doesn't
 exist until the core is running.
 </Callout>
@@ -81,7 +81,7 @@ shape and query parameters.
 ## Configuration
 
 ```ts title="config/telescope_ui.ts"
-import { defineConfig } from '@agora/telescope/ui'
+import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
   enabled: true,
@@ -102,7 +102,7 @@ export default defineConfig({
 
 The data lives behind the documented JSON API, so the shipped dashboard is optional.
 Disable it and point your own front end (an admin page, a Grafana panel, a CLI) at the same
-`<path>/api/*` endpoints, or read `TelescopeService` directly. The `@agora/telescope/ui`
+`<path>/api/*` endpoints, or read `TelescopeService` directly. The `@adonis-agora/telescope/ui`
 subpath also exports its framework-light building blocks — `TelescopeApi`,
 `renderDashboard`, the `enforceGuard` guard, and `toSummary` / `buildQuery` helpers — if you
 want to assemble a custom mount.

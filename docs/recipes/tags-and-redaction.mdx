@@ -34,8 +34,8 @@ manual `record` call) can add whatever tags you want. To pivot Telescope on tena
 a `tenant:<id>` tag when you record:
 
 ```ts title="app/telescope/tenant_tags.ts"
-import { EntryType, type RecordInput, currentTraceId } from '@agora/telescope'
-import { getContextAccessor } from '@agora/telescope'
+import { EntryType, type RecordInput, currentTraceId } from '@adonis-agora/telescope'
+import { getContextAccessor } from '@adonis-agora/telescope'
 
 export function withTenantTag<T>(input: RecordInput<T>): RecordInput<T> {
   const tenant = getContextAccessor()?.tenantId()
@@ -46,7 +46,7 @@ export function withTenantTag<T>(input: RecordInput<T>): RecordInput<T> {
 
 ### How it works
 
-`getContextAccessor()` is the structural reader for [`@agora/context`](/docs/context) — the
+`getContextAccessor()` is the structural reader for [`@adonis-agora/context`](/docs/context) — the
 same slot the store reads `traceId` from. It exposes `tenantId()`, `userRef()` and `get()`
 too. Adding a `tenant:<id>` tag at record time makes `list({ tag: 'tenant:acme' })` and the
 dashboard's tag filter answer "everything that happened for this tenant".
@@ -77,7 +77,7 @@ anything — all of them are scrubbed at the choke point.
 Add your own keys (merged with the defaults), or turn it off entirely, in `config/telescope.ts`:
 
 ```ts title="config/telescope.ts"
-import { defineConfig } from '@agora/telescope'
+import { defineConfig } from '@adonis-agora/telescope'
 
 export default defineConfig({
   redact: {
@@ -100,7 +100,7 @@ The same `redact()` function is exported if you want to scrub a value yourself �
 building a custom entry's `content`:
 
 ```ts
-import { redact } from '@agora/telescope'
+import { redact } from '@adonis-agora/telescope'
 
 safeRecord(
   { type: EntryType.Query, content: { sql, bindings: redact(bindings) } },
@@ -118,7 +118,7 @@ To filter or sample *across all watchers* in one place, wrap your real store and
 this is the single choke point.
 
 ```ts title="app/telescope/filtering_store.ts"
-import type { TelescopeStore, Entry, RecordInput, EntryQuery } from '@agora/telescope'
+import type { TelescopeStore, Entry, RecordInput, EntryQuery } from '@adonis-agora/telescope'
 
 export class FilteringStore implements TelescopeStore {
   constructor(private readonly inner: TelescopeStore) {}
@@ -156,7 +156,7 @@ export class FilteringStore implements TelescopeStore {
 ```
 
 ```ts title="config/telescope.ts"
-import { defineConfig, InMemoryTelescopeStore } from '@agora/telescope'
+import { defineConfig, InMemoryTelescopeStore } from '@adonis-agora/telescope'
 import { FilteringStore } from '#telescope/filtering_store'
 
 export default defineConfig({

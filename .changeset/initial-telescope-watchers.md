@@ -1,8 +1,8 @@
 ---
-"@agora/telescope-watchers": minor
+"@adonis-agora/telescope-watchers": minor
 ---
 
-Initial release of per-technology AdonisJS watchers for `@agora/telescope`. They
+Initial release of per-technology AdonisJS watchers for `@adonis-agora/telescope`. They
 subscribe to the application emitter and record framework activity as telescope
 entries through the core's runtime store handle (no DI). Ships:
 

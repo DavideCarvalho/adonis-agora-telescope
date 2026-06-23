@@ -1,8 +1,8 @@
 ---
-"@agora/telescope-alerts": minor
+"@adonis-agora/telescope-alerts": minor
 ---
 
-Initial release of alerting for `@agora/telescope`. Detects noteworthy events —
+Initial release of alerting for `@adonis-agora/telescope`. Detects noteworthy events —
 primarily new exception families (first-seen, or re-occurring after the window
 elapses / an explicit resolve) — and dispatches rich alerts to channels. Ships:
 

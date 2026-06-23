@@ -17,7 +17,7 @@ export interface ExceptionPollerDeps {
 }
 
 /**
- * The hook point. Telescope's headless `@agora/telescope` core does not expose a
+ * The hook point. Telescope's headless `@adonis-agora/telescope` core does not expose a
  * "new entry" event, so — by design, to avoid modifying core — this poller reads
  * the {@link TelescopeStore} on an interval for `exception` entries recorded since
  * the previous poll (a high-water-mark on `createdAt`) and feeds them to the

@@ -1,17 +1,17 @@
 /**
- * Structural reader for the `@agora/diagnostics` channel registry — WITHOUT
+ * Structural reader for the `@adonis-agora/diagnostics` channel registry — WITHOUT
  * importing it.
  *
- * `@agora/diagnostics` publishes its registry on the cross-copy-stable global slot
+ * `@adonis-agora/diagnostics` publishes its registry on the cross-copy-stable global slot
  * `Symbol.for('@agora/diagnostics:registry')`: `{ channels: Set<string>,
  * listeners: Set<(name: string) => void> }`. Telescope is a separate repo and
- * cannot depend on `@agora/diagnostics`, so the {@link DiagnosticsWatcher} reads
+ * cannot depend on `@adonis-agora/diagnostics`, so the {@link DiagnosticsWatcher} reads
  * this slot structurally to learn the current `agora:<lib>:<event>` channel names
  * and to be notified of future ones, then subscribes to each via the Node builtin
  * `node:diagnostics_channel` (which needs no import of the Agora package).
  */
 
-/** The registry shape `@agora/diagnostics` publishes on the global slot. */
+/** The registry shape `@adonis-agora/diagnostics` publishes on the global slot. */
 export interface DiagnosticsRegistry {
   /** Every channel name registered so far. */
   channels: Set<string>;
@@ -22,7 +22,7 @@ export interface DiagnosticsRegistry {
 const REGISTRY_KEY = Symbol.for('@agora/diagnostics:registry');
 
 /**
- * The registry `@agora/diagnostics` published, or `undefined` when the package is
+ * The registry `@adonis-agora/diagnostics` published, or `undefined` when the package is
  * not loaded. Returned WITHOUT creating a slot — telescope only ever reads.
  */
 export function getDiagnosticsRegistry(): DiagnosticsRegistry | undefined {
@@ -30,7 +30,7 @@ export function getDiagnosticsRegistry(): DiagnosticsRegistry | undefined {
 }
 
 /**
- * The envelope `@agora/diagnostics` publishes on each channel. Defined LOCALLY
+ * The envelope `@adonis-agora/diagnostics` publishes on each channel. Defined LOCALLY
  * (mirrors `DiagnosticEvent`) so telescope validates it structurally without an
  * import. `v` may be absent on legacy envelopes; `traceId` may be absent.
  */

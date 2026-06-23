@@ -17,7 +17,7 @@ fallback — but the dedicated, published config file per package is the recomme
 ## Core — `config/telescope.ts`
 
 ```ts
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   enabled: true,
@@ -60,7 +60,7 @@ The bare `store: 'memory'` shorthand still works with no `stores` map (uses `max
 ## Watchers — `config/telescope_watchers.ts`
 
 ```ts
-import { defineConfig } from '@agora/telescope/watchers'
+import { defineConfig } from '@adonis-agora/telescope/watchers'
 
 export default defineConfig({
   enabled: true,
@@ -83,7 +83,7 @@ Lucid only emits `db:query` when its connection `debug` is on. See
 ## Dashboard UI — `config/telescope_ui.ts`
 
 ```ts
-import { defineConfig } from '@agora/telescope/ui'
+import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
   enabled: true,
@@ -109,7 +109,7 @@ export default defineConfig({
 
 ```ts
 import env from '#start/env'
-import { defineConfig } from '@agora/telescope/alerts'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
 
 export default defineConfig({
   enabled: true,
@@ -143,7 +143,7 @@ Duration strings are validated at boot — an unparseable `every`/`cooldown`/`wi
 
 ```ts
 import env from '#start/env'
-import { defineConfig } from '@agora/telescope/ai'
+import { defineConfig } from '@adonis-agora/telescope/ai'
 
 export default defineConfig({
   apiKey: env.get('ANTHROPIC_API_KEY'),
@@ -160,23 +160,23 @@ export default defineConfig({
 | `maxTokens` | `number`  | `1024`               | Hard cap on generated tokens per diagnosis.                        |
 
 **Env:** `ANTHROPIC_API_KEY` (validate as `Env.schema.string.optional()`). See
-[`@agora/telescope/ai`](/docs/telescope/packages/ai).
+[`@adonis-agora/telescope/ai`](/docs/telescope/packages/ai).
 
 ## Providers registered by `configure`
 
-For reference, `node ace configure @agora/telescope` registers the core provider and — for
+For reference, `node ace configure @adonis-agora/telescope` registers the core provider and — for
 each optional feature you pick at the prompt — its provider in `adonisrc.ts`. Every provider
-is a subpath of the one `@agora/telescope` package:
+is a subpath of the one `@adonis-agora/telescope` package:
 
 | Feature   | Provider import path                     | Extra wiring                            |
 | --------- | ---------------------------------------- | --------------------------------------- |
-| core      | `@agora/telescope/telescope_provider`    | `TelescopeMiddleware` on `server` stack |
-| watchers  | `@agora/telescope/watchers_provider`     | —                                       |
-| ui        | `@agora/telescope/ui_provider`           | routes registered at boot               |
-| alerts    | `@agora/telescope/alerts_provider`       | —                                       |
-| ai        | `@agora/telescope/ai_provider`           | binds `TelescopeAiDiagnoser`            |
+| core      | `@adonis-agora/telescope/telescope_provider`    | `TelescopeMiddleware` on `server` stack |
+| watchers  | `@adonis-agora/telescope/watchers_provider`     | —                                       |
+| ui        | `@adonis-agora/telescope/ui_provider`           | routes registered at boot               |
+| alerts    | `@adonis-agora/telescope/alerts_provider`       | —                                       |
+| ai        | `@adonis-agora/telescope/ai_provider`           | binds `TelescopeAiDiagnoser`            |
 
 Storage is **not a separate package** — the `memory` and `lucid` drivers are built into
-`@agora/telescope` and selected in `config/telescope.ts`. `node ace configure @agora/telescope`
+`@adonis-agora/telescope` and selected in `config/telescope.ts`. `node ace configure @adonis-agora/telescope`
 also publishes the `create_telescope_entries_table` migration the `lucid` driver needs (run
 `node ace migration:run` after switching `store: 'lucid'`). See [Storage drivers](/docs/telescope/packages/storages).

@@ -6,7 +6,7 @@ description: Step-by-step — package a sibling library's observability into a T
 import { Callout } from 'fumadocs-ui/components/callout'
 
 An [extension](/docs/telescope/concepts/extensions) lets a library add its own dashboard page
-to Telescope. This guide builds one for an imaginary `@agora/durable` workflow engine: a
+to Telescope. This guide builds one for an imaginary `@adonis-agora/durable` workflow engine: a
 **Workflows** page with an active-runs stat and a recent-runs table. You won't write a
 single component or route.
 
@@ -16,7 +16,7 @@ An extension is a plain object — author it with `defineTelescopeExtension` for
 inference, and wrap it in a factory so it can take options later.
 
 ```ts title="packages/durable-telescope/src/extension.ts"
-import { defineTelescopeExtension } from '@agora/telescope'
+import { defineTelescopeExtension } from '@adonis-agora/telescope'
 
 export function durableTelescopeExtension() {
   return defineTelescopeExtension({
@@ -111,8 +111,8 @@ The host adds the factory to `config/telescope.ts`. The provider runs every hook
 boot and publishes the registry; the UI serves the page and its providers.
 
 ```ts title="config/telescope.ts"
-import { defineConfig } from '@agora/telescope'
-import { durableTelescopeExtension } from '@agora/durable-telescope'
+import { defineConfig } from '@adonis-agora/telescope'
+import { durableTelescopeExtension } from '@adonis-agora/durable-telescope'
 
 export default defineConfig({
   extensions: [durableTelescopeExtension()],

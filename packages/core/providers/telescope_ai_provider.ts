@@ -4,7 +4,7 @@ import { createDiagnoser } from '../src/ai/factory.js';
 import { TelescopeAiDiagnoser } from '../src/ai/telescope_ai_diagnoser.js';
 
 /**
- * Wires `@agora/telescope/ai` into the AdonisJS application.
+ * Wires `@adonis-agora/telescope/ai` into the AdonisJS application.
  *
  * - `register()` reads `config/telescope_ai.ts` (falling back to an `ai_config`
  *   key on `config/telescope.ts`), constructs a {@link TelescopeAiDiagnoser}

@@ -44,7 +44,7 @@ Storage is **config-driven**. Build named drivers with the `storage` factory and
 the active one with `store`:
 
 ```ts title="config/telescope.ts"
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   store: 'memory',
@@ -98,7 +98,7 @@ a **bounded ring buffer**:
   unbounded process can never OOM.
 
 ```ts title="config/telescope.ts"
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   store: 'memory',
@@ -123,7 +123,7 @@ your database on any Lucid dialect (sqlite / Postgres / MySQL). `@adonisjs/lucid
 **optional peer**, imported lazily only when this driver is selected.
 
 ```ts title="config/telescope.ts"
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   store: 'lucid',
@@ -145,7 +145,7 @@ the AI diagnoser all work against it unchanged. A few design notes:
   monotonically across restarts.
 - Indexes back the hot read paths (`created_at`, `type`, `trace_id`, `family_hash`).
 
-The driver needs a table. `node ace configure @agora/telescope` publishes the
+The driver needs a table. `node ace configure @adonis-agora/telescope` publishes the
 `create_telescope_entries_table` migration; run `node ace migration:run`. See
 [Storage drivers](/docs/telescope/packages/storages) for the schema, migration, and options.
 
@@ -176,7 +176,7 @@ ClickHouse store is just `record` + `list` + the maintenance methods. The
 implementation.
 
 ```ts
-import { defineConfig } from '@agora/telescope'
+import { defineConfig } from '@adonis-agora/telescope'
 import { MyMongoStore } from '#telescope/mongo_store'
 
 export default defineConfig({ store: new MyMongoStore(mongo) })

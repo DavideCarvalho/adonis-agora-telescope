@@ -2,10 +2,10 @@
   exports({ to: app.configPath('telescope_ai.ts') })
 }}}
 import env from '#start/env'
-import { defineConfig } from '@agora/telescope/ai'
+import { defineConfig } from '@adonis-agora/telescope/ai'
 
 /**
- * Configuration for `@agora/telescope/ai`. Diagnosis is on when an Anthropic API
+ * Configuration for `@adonis-agora/telescope/ai`. Diagnosis is on when an Anthropic API
  * key resolves from the environment; with no key the diagnoser is a safe no-op.
  *
  * Add `ANTHROPIC_API_KEY` to your `.env` and validate it in `start/env.ts`:

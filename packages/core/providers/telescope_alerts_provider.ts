@@ -6,7 +6,7 @@ import { getTelescopeRuntime } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
 
 /**
- * Wires `@agora/telescope/alerts` into the AdonisJS application.
+ * Wires `@adonis-agora/telescope/alerts` into the AdonisJS application.
  *
  * - `boot()` reads `config/telescope_alerts.ts` (falling back to an
  *   `alerts_config` key on `config/telescope.ts`), resolves the live telescope

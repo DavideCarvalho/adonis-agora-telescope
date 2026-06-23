@@ -1,10 +1,10 @@
 {{{
   exports({ to: app.configPath('telescope.ts') })
 }}}
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 /**
- * Configuration for `@agora/telescope`. Everything is optional — the defaults use
+ * Configuration for `@adonis-agora/telescope`. Everything is optional — the defaults use
  * the in-memory store with both watchers (`request` + `diagnostics`) enabled and a
  * 1000-entry cap.
  */

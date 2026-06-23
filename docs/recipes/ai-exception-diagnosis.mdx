@@ -1,22 +1,22 @@
 ---
 title: AI exception diagnosis
-description: Add Claude-powered root-cause diagnosis of Telescope exceptions — install and configure the @agora/telescope/ai subpath, diagnose an exception with its trace context, read the cached cause/fix/confidence, and plug in a custom diagnosis cache.
+description: Add Claude-powered root-cause diagnosis of Telescope exceptions — install and configure the @adonis-agora/telescope/ai subpath, diagnose an exception with its trace context, read the cached cause/fix/confidence, and plug in a custom diagnosis cache.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout'
 
-When an exception lands, `@agora/telescope/ai` can hand it (and the rest of its trace) to
+When an exception lands, `@adonis-agora/telescope/ai` can hand it (and the rest of its trace) to
 Claude and get back a structured diagnosis — a likely cause, a concrete fix, and a confidence
 level — cached so each error family is diagnosed once. This guide wires it up and uses it.
 
 ## Install
 
-AI diagnosis is the `@agora/telescope/ai` subpath of the one telescope package. Add the
+AI diagnosis is the `@adonis-agora/telescope/ai` subpath of the one telescope package. Add the
 Anthropic SDK (an optional peer) and pick **AI** when configuring telescope:
 
 ```sh
-npm i @agora/telescope @anthropic-ai/sdk
-node ace configure @agora/telescope   # pick "AI"
+npm i @adonis-agora/telescope @anthropic-ai/sdk
+node ace configure @adonis-agora/telescope   # pick "AI"
 ```
 
 `@anthropic-ai/sdk` is an optional peer. `configure` registers the provider and publishes
@@ -35,7 +35,7 @@ export default await Env.create(new URL('../', import.meta.url), {
 
 ```ts title="config/telescope_ai.ts"
 import env from '#start/env'
-import { defineConfig } from '@agora/telescope/ai'
+import { defineConfig } from '@adonis-agora/telescope/ai'
 
 export default defineConfig({
   apiKey: env.get('ANTHROPIC_API_KEY'),
@@ -58,8 +58,8 @@ gather its trace for context, and diagnose:
 
 ```ts title="app/controllers/diagnose_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
-import { TelescopeService } from '@agora/telescope'
-import { TelescopeAiDiagnoser } from '@agora/telescope/ai'
+import { TelescopeService } from '@adonis-agora/telescope'
+import { TelescopeAiDiagnoser } from '@adonis-agora/telescope/ai'
 
 export default class DiagnoseController {
   async show({ params, response }: HttpContext) {
@@ -116,7 +116,7 @@ The default cache is a per-process LRU (500 families, 24h TTL). For a fleet that
 diagnoses, supply a Redis/DB-backed `DiagnosisStore` to `createDiagnoser`:
 
 ```ts title="app/telescope/diagnoser.ts"
-import { createDiagnoser, resolveConfig, type DiagnosisStore } from '@agora/telescope/ai'
+import { createDiagnoser, resolveConfig, type DiagnosisStore } from '@adonis-agora/telescope/ai'
 
 const redisCache: DiagnosisStore = {
   get: (familyHash) => /* read from redis, parse, TTL-check */ null,
@@ -140,4 +140,4 @@ related trace entries are sent to Anthropic. Nothing is sent when AI is disabled
 If recorded `content` (query bindings, request data) may hold secrets, scrub it upstream —
 see [Tags & redaction](/docs/telescope/recipes/tags-and-redaction#redact-before-recording).
 
-> Full package reference: [`@agora/telescope/ai`](/docs/telescope/packages/ai).
+> Full package reference: [`@adonis-agora/telescope/ai`](/docs/telescope/packages/ai).

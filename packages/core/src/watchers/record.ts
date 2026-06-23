@@ -4,7 +4,7 @@ import { getTelescopeRuntime } from '../registry.js';
 import type { TelescopeStore } from '../store.js';
 
 /**
- * Resolve the active telescope store WITHOUT dependency injection. `@agora/telescope`'s
+ * Resolve the active telescope store WITHOUT dependency injection. `@adonis-agora/telescope`'s
  * provider publishes the live store on a cross-copy-stable global slot at boot
  * (see its `registry.ts`); the request middleware records through that same handle.
  * Reusing it here lets these watchers record from inside synchronous emitter
@@ -21,7 +21,7 @@ export function resolveStore(): TelescopeStore | null {
  * fire-and-forget: a missing store, a throwing `record`, or a rejected promise can
  * never break (or block) the emit it is observing.
  *
- * The active `@agora/context` trace id is backfilled when the caller did not set
+ * The active `@adonis-agora/context` trace id is backfilled when the caller did not set
  * `traceId` explicitly, mirroring how the core watchers correlate entries.
  */
 export function safeRecord(input: RecordInput, source: string): void {

@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Install @agora/telescope, configure it into your AdonisJS app, read entries back from the headless API, then layer on persistent storage, per-technology watchers, and the dashboard.
+description: Install @adonis-agora/telescope, configure it into your AdonisJS app, read entries back from the headless API, then layer on persistent storage, per-technology watchers, and the dashboard.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
@@ -15,8 +15,8 @@ dashboard.
 
 - **AdonisJS 6** (`@adonisjs/core` `^6.12.0`).
 - **Node 20.6+** (the diagnostics integration uses `node:diagnostics_channel`).
-- Optional but recommended: [`@agora/context`](/docs/context) for trace correlation
-  and [`@agora/diagnostics`](/docs/diagnostics) so library events flow into Telescope.
+- Optional but recommended: [`@adonis-agora/context`](/docs/context) for trace correlation
+  and [`@adonis-agora/diagnostics`](/docs/diagnostics) so library events flow into Telescope.
 
 ---
 
@@ -32,24 +32,24 @@ dashboard.
   <Tab value="npm">
 
 ```sh
-npm i @agora/telescope
-node ace configure @agora/telescope
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope
 ```
 
 </Tab>
   <Tab value="pnpm">
 
 ```sh
-pnpm add @agora/telescope
-node ace configure @agora/telescope
+pnpm add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope
 ```
 
 </Tab>
   <Tab value="yarn">
 
 ```sh
-yarn add @agora/telescope
-node ace configure @agora/telescope
+yarn add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope
 ```
 
 </Tab>
@@ -61,9 +61,9 @@ node ace configure @agora/telescope
 
 ### What `configure` does
 
-`node ace configure @agora/telescope` runs codemods that:
+`node ace configure @adonis-agora/telescope` runs codemods that:
 
-1. register `@agora/telescope/telescope_provider` in `adonisrc.ts`;
+1. register `@adonis-agora/telescope/telescope_provider` in `adonisrc.ts`;
 2. register `TelescopeMiddleware` on the **server** middleware stack (so it wraps the
    whole HTTP pipeline and observes the final response status);
 3. publish `config/telescope.ts`.
@@ -84,7 +84,7 @@ The published `config/telescope.ts` is all-defaults — you only edit it to chan
 behaviour:
 
 ```ts title="config/telescope.ts"
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   enabled: true,                          // master switch
@@ -115,7 +115,7 @@ served from `TelescopeService`. Resolve it from the container and read entries b
 
 ```ts title="app/controllers/inspector_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
-import { TelescopeService } from '@agora/telescope'
+import { TelescopeService } from '@adonis-agora/telescope'
 
 export default class InspectorController {
   async index({ response }: HttpContext) {
@@ -159,11 +159,11 @@ npm i @adonisjs/lucid
 node ace migration:run   # runs the migration configure already published
 ```
 
-`node ace configure @agora/telescope` ships the `create_telescope_entries_table`
+`node ace configure @adonis-agora/telescope` ships the `create_telescope_entries_table`
 migration alongside the config file. Then point the config at the `lucid` driver:
 
 ```ts title="config/telescope.ts"
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   store: 'lucid',
@@ -182,17 +182,17 @@ Lucid dialect (sqlite / Postgres / MySQL). See [Storage drivers](/docs/telescope
 
 The core records requests, exceptions and diagnostics. To also record **every Lucid
 SQL query** (and optionally mail / cache events), enable the watchers feature — it ships
-inside `@agora/telescope`, so re-run configure and pick **Watchers**:
+inside `@adonis-agora/telescope`, so re-run configure and pick **Watchers**:
 
 ```sh
-node ace configure @agora/telescope   # pick "Watchers"
+node ace configure @adonis-agora/telescope   # pick "Watchers"
 ```
 
 By default only the verified Lucid `query` watcher runs. Enable mail and cache in
 `config/telescope_watchers.ts`:
 
 ```ts title="config/telescope_watchers.ts"
-import { defineConfig } from '@agora/telescope/watchers'
+import { defineConfig } from '@adonis-agora/telescope/watchers'
 
 export default defineConfig({
   watchers: ['query', 'mail', 'cache'],
@@ -211,11 +211,11 @@ See [Watchers](/docs/telescope/packages/watchers) for each watcher's recorded sh
 
 ## Step 6 — Mount the dashboard
 
-The dashboard is the `@agora/telescope/ui` subpath of the same package — re-run configure
+The dashboard is the `@adonis-agora/telescope/ui` subpath of the same package — re-run configure
 and pick **UI**:
 
 ```sh
-node ace configure @agora/telescope   # pick "UI"
+node ace configure @adonis-agora/telescope   # pick "UI"
 ```
 
 The dashboard mounts at `/telescope` and is reachable automatically **outside

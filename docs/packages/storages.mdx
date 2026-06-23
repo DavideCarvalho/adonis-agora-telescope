@@ -6,14 +6,14 @@ description: Telescope's config-driven storage — the in-memory ring buffer and
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import { Callout } from 'fumadocs-ui/components/callout'
 
-Storage is **not a separate package** — it lives in `@agora/telescope` as a config-driven
+Storage is **not a separate package** — it lives in `@adonis-agora/telescope` as a config-driven
 driver, selected in `config/telescope.ts` with the `storage` factory. Two drivers ship:
 `memory` (the default, bounded ring buffer) and `lucid` (a persistent, SQL-backed store).
 Both implement the same `TelescopeStore` contract, so `TelescopeService`, the dashboard,
 alerts and the AI diagnoser all work against either one unchanged.
 
 ```ts title="config/telescope.ts"
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   store: 'memory',
@@ -44,7 +44,7 @@ so entries persist and stay queryable straight from your database on any dialect
 imported lazily only when this driver is selected.
 
 ```ts title="config/telescope.ts"
-import { defineConfig, storage } from '@agora/telescope'
+import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
   store: 'lucid',
@@ -66,11 +66,11 @@ export default defineConfig({
 
 ### Schema
 
-The `lucid` driver needs a table. `node ace configure @agora/telescope` publishes the
+The `lucid` driver needs a table. `node ace configure @adonis-agora/telescope` publishes the
 migration stub alongside the config file:
 
 ```sh
-node ace configure @agora/telescope   # publishes config/telescope.ts + the migration
+node ace configure @adonis-agora/telescope   # publishes config/telescope.ts + the migration
 node ace migration:run
 ```
 
@@ -127,7 +127,7 @@ For tests, scripts, or a hand-wired store instance, the core also exports:
 
 ```ts
 import db from '@adonisjs/lucid/services/db'
-import { LucidTelescopeStore } from '@agora/telescope'
+import { LucidTelescopeStore } from '@adonis-agora/telescope'
 
 const store = new LucidTelescopeStore(db, { tableName: 'tscope', autoCreateTable: true })
 ```

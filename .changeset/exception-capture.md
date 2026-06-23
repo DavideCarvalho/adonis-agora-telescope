@@ -1,5 +1,5 @@
 ---
-"@agora/telescope": minor
+"@adonis-agora/telescope": minor
 ---
 
 Add exception capture. The request middleware now auto-records an `exception`
@@ -8,7 +8,7 @@ stack, request method/url, traceId, and a stable **family hash** grouping
 same-signature errors (name + message + top stack frame) — BEFORE re-throwing the
 original error untouched. Recording is fire-and-forget-safe: it never swallows the
 error and never lets observability break the request. This gives
-`@agora/telescope-alerts` `exception` entries to fire on with zero app changes.
+`@adonis-agora/telescope-alerts` `exception` entries to fire on with zero app changes.
 
 Also ships:
 

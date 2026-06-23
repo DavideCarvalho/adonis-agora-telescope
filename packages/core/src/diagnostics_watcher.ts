@@ -31,15 +31,15 @@ export interface DiagnosticEntryContent {
 }
 
 /**
- * The ONE generic watcher behind `@agora/telescope`'s diagnostics integration. It
- * records every event any `@agora/*` library emits through `@agora/diagnostics` —
+ * The ONE generic watcher behind `@adonis-agora/telescope`'s diagnostics integration. It
+ * records every event any `@adonis-agora/*` library emits through `@adonis-agora/diagnostics` —
  * one `diagnostic` entry per `agora:<lib>:<event>` publish — without a bespoke
  * watcher per library. This is the Agora equivalent of NestJS's
  * `@dudousxd/nestjs-diagnostics-telescope` extension.
  *
  * ## Cross-repo decoupling
- * Telescope CANNOT import `@agora/diagnostics`. Instead it reads the registry
- * `@agora/diagnostics` publishes on `Symbol.for('@agora/diagnostics:registry')`
+ * Telescope CANNOT import `@adonis-agora/diagnostics`. Instead it reads the registry
+ * `@adonis-agora/diagnostics` publishes on `Symbol.for('@agora/diagnostics:registry')`
  * (`{ channels, listeners }`) and subscribes to each channel via the Node builtin
  * `node:diagnostics_channel` — no Agora import needed.
  *
@@ -65,7 +65,7 @@ export class DiagnosticsWatcher {
 
   /**
    * Begin recording. Subscribes to every currently-registered channel and arms a
-   * listener for future ones. A no-op when `@agora/diagnostics` is not loaded
+   * listener for future ones. A no-op when `@adonis-agora/diagnostics` is not loaded
    * (the registry slot is absent) — telescope degrades gracefully.
    */
   start(): void {

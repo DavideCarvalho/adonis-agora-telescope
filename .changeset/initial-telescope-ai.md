@@ -1,8 +1,8 @@
 ---
-"@agora/telescope-ai": minor
+"@adonis-agora/telescope-ai": minor
 ---
 
-Initial release of AI-assisted diagnosis for `@agora/telescope`. Turns an
+Initial release of AI-assisted diagnosis for `@adonis-agora/telescope`. Turns an
 `exception` telescope entry (plus optionally other entries from the same trace)
 into a structured root-cause diagnosis via the Anthropic Claude API. Ships:
 
