@@ -53,4 +53,13 @@ export default defineConfig({
   //   enabled: true,
   //   keys: ['ssn', 'credit_card'],
   // },
+
+  /**
+   * Live SSE streaming of new entries to the dashboard. ENABLED by default and
+   * zero-overhead while no dashboard is connected. Set `enabled: false` to turn
+   * the `<telescope>/api/stream` endpoint off entirely.
+   */
+  // stream: {
+  //   enabled: true,
+  // },
 })

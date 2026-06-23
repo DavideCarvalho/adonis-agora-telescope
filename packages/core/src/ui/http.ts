@@ -60,6 +60,70 @@ export class RecordingResponse implements UiResponse {
   }
 }
 
+// ─────────────────────────────── SSE live-stream ───────────────────────────────
+// (additive: the Server-Sent-Events surface used by the live-stream route)
+
+/**
+ * The slice of an outbound HTTP response the SSE stream writes to: raw chunks plus
+ * a close handler. Framework-light so the stream handler is unit-testable with a
+ * plain in-memory sink (no running server). An Adonis `response.response` (the
+ * underlying Node `ServerResponse`) satisfies this structurally via
+ * `writeHead`/`write`/`end`/`on('close')`.
+ */
+export interface SseSink {
+  /** Write a raw chunk (a fully-formatted SSE frame) to the socket. */
+  write(chunk: string): void;
+  /** Register a one-shot client-disconnect handler; returns nothing. */
+  onClose(handler: () => void): void;
+}
+
+/**
+ * Format one Server-Sent-Events frame. `data` is JSON-encoded onto a single
+ * `data:` line; an optional `event` name is prefixed. Always terminated by the
+ * blank line that delimits SSE frames.
+ *
+ * ```text
+ * event: entry\n
+ * data: {"type":"request",...}\n
+ * \n
+ * ```
+ */
+export function formatSseFrame(data: unknown, event?: string): string {
+  const payload = JSON.stringify(data);
+  const prefix = event !== undefined ? `event: ${event}\n` : '';
+  return `${prefix}data: ${payload}\n\n`;
+}
+
+/** A comment-only SSE keep-alive line (ignored by clients, keeps the socket warm). */
+export function formatSseHeartbeat(): string {
+  return ': heartbeat\n\n';
+}
+
+/**
+ * A tiny in-memory {@link SseSink} for tests: captures every written frame and
+ * lets a test trigger the client-disconnect path via {@link RecordingSink.close}.
+ */
+export class RecordingSink implements SseSink {
+  readonly chunks: string[] = [];
+  closed = false;
+  private readonly closeHandlers: Array<() => void> = [];
+
+  write(chunk: string): void {
+    this.chunks.push(chunk);
+  }
+
+  onClose(handler: () => void): void {
+    this.closeHandlers.push(handler);
+  }
+
+  /** Simulate a client disconnect, firing every registered close handler once. */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    for (const handler of this.closeHandlers.splice(0)) handler();
+  }
+}
+
 /** Build a plain {@link UiRequest} from a method, query record, and headers. */
 export function makeRequest(
   method: string,
