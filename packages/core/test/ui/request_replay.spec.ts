@@ -56,6 +56,46 @@ describe('replayRequest', () => {
     expect(calls[0]?.url).toBe('http://127.0.0.1:3000/health');
   });
 
+  it('targets the live request port when provided (no explicit override)', async () => {
+    const { transport, calls } = fakeTransport();
+    await replayRequest(content({ url: '/users' }), { transport, requestPort: 4321 });
+    expect(calls[0]?.url).toBe('http://127.0.0.1:4321/users');
+  });
+
+  it('lets an explicit config port override the live request port', async () => {
+    const { transport, calls } = fakeTransport();
+    await replayRequest(content({ url: '/users' }), { transport, port: 9000, requestPort: 4321 });
+    expect(calls[0]?.url).toBe('http://127.0.0.1:9000/users');
+  });
+
+  it('falls back to the configured replay.port when no live request port is available', async () => {
+    const { transport, calls } = fakeTransport();
+    await replayRequest(content({ url: '/users' }), { transport, port: 7000 });
+    expect(calls[0]?.url).toBe('http://127.0.0.1:7000/users');
+  });
+
+  it('falls back to the PORT env when no port/requestPort is given', async () => {
+    vi.stubEnv('PORT', '5555');
+    try {
+      const { transport, calls } = fakeTransport();
+      await replayRequest(content({ url: '/users' }), { transport });
+      expect(calls[0]?.url).toBe('http://127.0.0.1:5555/users');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('falls back to the AdonisJS default port 3333 (not 3000) when nothing is provided', async () => {
+    vi.stubEnv('PORT', undefined);
+    try {
+      const { transport, calls } = fakeTransport();
+      await replayRequest(content({ url: '/users' }), { transport });
+      expect(calls[0]?.url).toBe('http://127.0.0.1:3333/users');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('forces the self-identifying x-telescope-replay header', async () => {
     const { transport, calls } = fakeTransport();
     await replayRequest(content(), { transport });

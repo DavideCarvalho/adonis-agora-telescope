@@ -124,7 +124,7 @@ export default class TelescopeUiProvider {
     router
       .post(`${apiBase}/requests/:id/replay`, async (ctx: GuardedContext) => {
         if (!(await enforceGuard(ctx, guard))) return;
-        return api.replayRequest(ctx, String(ctx.params.id));
+        return api.replayRequest(ctx, String(ctx.params.id), localPortOf(ctx));
       })
       .as('telescope_ui.replay');
 
@@ -244,4 +244,18 @@ interface StreamContext extends UiHttpContext {
 
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Read the incoming request's local TCP port — the port the dashboard is actually
+ * served on — off the raw Node socket (`ctx.request.request.socket.localPort`), so
+ * a replay targets the same live server it was triggered from rather than a guessed
+ * default. Returns `undefined` when the socket isn't reachable (e.g. a synthetic
+ * test context), leaving replay to fall back to the configured `replay.port`, then
+ * `PORT`, then 3333 (the AdonisJS default).
+ */
+function localPortOf(ctx: GuardedContext): number | undefined {
+  const port = (ctx as { request?: { request?: { socket?: { localPort?: unknown } } } }).request
+    ?.request?.socket?.localPort;
+  return typeof port === 'number' && port > 0 ? port : undefined;
 }

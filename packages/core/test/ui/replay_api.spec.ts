@@ -79,6 +79,32 @@ describe('TelescopeApi.replayRequest', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('targets the live request port supplied by the provider', async () => {
+    const id = await seedRequest(store);
+    let targeted = '';
+    const transport: ReplayTransport = async (url) => {
+      targeted = url;
+      return { status: 200, text: async () => 'ok' };
+    };
+    const api = new TelescopeApi(service, {}, { enabled: true, transport });
+    const { ctx: c } = ctx();
+    await api.replayRequest(c, id, 4321);
+    expect(targeted).toBe('http://127.0.0.1:4321/users');
+  });
+
+  it('lets the configured replay.port override the live request port', async () => {
+    const id = await seedRequest(store);
+    let targeted = '';
+    const transport: ReplayTransport = async (url) => {
+      targeted = url;
+      return { status: 200, text: async () => 'ok' };
+    };
+    const api = new TelescopeApi(service, {}, { enabled: true, port: 9000, transport });
+    const { ctx: c } = ctx();
+    await api.replayRequest(c, id, 4321);
+    expect(targeted).toBe('http://127.0.0.1:9000/users');
+  });
+
   it('replays against the injected transport and returns the outcome when enabled', async () => {
     const id = await seedRequest(store);
     const api = new TelescopeApi(

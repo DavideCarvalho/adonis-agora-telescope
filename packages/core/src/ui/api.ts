@@ -176,8 +176,12 @@ export class TelescopeApi {
    * mutation gate. `404` when there is no `request` entry with that id. The full
    * safety posture (same-origin only, credential stripping, bounded) lives in
    * `src/ui/request_replay.ts`.
+   *
+   * `requestPort` is the live dashboard request's local port (the provider reads it
+   * off the incoming socket). It lets the replay target the same server the
+   * dashboard is served from when the host hasn't pinned `replay.port`.
    */
-  async replayRequest(ctx: UiHttpContext, id: string): Promise<unknown> {
+  async replayRequest(ctx: UiHttpContext, id: string, requestPort?: number): Promise<unknown> {
     if (!this.replay.enabled) {
       return ctx.response
         .status(403)
@@ -188,10 +192,10 @@ export class TelescopeApi {
       return ctx.response.status(404).send({ error: 'No request entry with that id.' });
     }
     const { enabled: _enabled, ...replayOptions } = this.replay;
-    const result: ReplayResult = await replayRequest(
-      entry.content as RequestEntryContent,
-      replayOptions,
-    );
+    const result: ReplayResult = await replayRequest(entry.content as RequestEntryContent, {
+      ...replayOptions,
+      ...(requestPort !== undefined ? { requestPort } : {}),
+    });
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')

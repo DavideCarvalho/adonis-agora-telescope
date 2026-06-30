@@ -52,8 +52,15 @@ export interface ReplayOptions {
   /** Transport used to re-issue the call. Defaults to the global `fetch`,
    *  marked internal so the http-client watcher skips it. */
   transport?: ReplayTransport;
-  /** The local server port to target. Defaults to `PORT` env or 3000. */
+  /** Explicit local-server port override (from telescope_ui `replay.port`). When
+   *  set it wins over everything else — use it for reverse-proxy / non-standard
+   *  setups where the live socket port isn't the app's real port. */
   port?: number;
+  /** The port the live dashboard request arrived on (the server actually serving
+   *  the UI). Used when no explicit {@link port} override is configured so a replay
+   *  targets the same server it was triggered from. Falls back to `PORT` env, then
+   *  3333 (the AdonisJS default). */
+  requestPort?: number;
   /** Per-call timeout in ms. Default {@link REPLAY_TIMEOUT_MS}. */
   timeoutMs?: number;
   /** Time source; injectable for tests. Default `Date.now`. */
@@ -102,7 +109,7 @@ export async function replayRequest(
   const transport = options.transport ?? defaultTransport;
   const clock = options.clock ?? { now: () => Date.now() };
   const timeoutMs = options.timeoutMs ?? REPLAY_TIMEOUT_MS;
-  const port = resolvePort(options.port);
+  const port = resolvePort(options.port, options.requestPort);
 
   const path = content.url.startsWith('/') ? content.url : `/${content.url}`;
   const url = `http://127.0.0.1:${port}${path}`;
@@ -148,13 +155,24 @@ function buildReplayHeaders(): Record<string, string> {
   return { 'x-telescope-replay': '1' };
 }
 
-/** Resolve the local server port: explicit override, then `PORT` env, then 3000. */
-function resolvePort(explicit?: number): number {
-  if (typeof explicit === 'number' && Number.isFinite(explicit) && explicit > 0) {
-    return explicit;
-  }
+/**
+ * Resolve the local server port to target, in precedence order:
+ *   1. `explicit` — the configured `replay.port` override (wins when set).
+ *   2. `requestPort` — the live dashboard request's local port, so a replay hits
+ *      the same server it was triggered from.
+ *   3. the `PORT` env var.
+ *   4. `3333`, the AdonisJS conventional default (NOT 3000).
+ */
+function resolvePort(explicit?: number, requestPort?: number): number {
+  if (isUsablePort(explicit)) return explicit;
+  if (isUsablePort(requestPort)) return requestPort;
   const envPort = Number(process.env.PORT);
-  return Number.isFinite(envPort) && envPort > 0 ? envPort : 3000;
+  return Number.isFinite(envPort) && envPort > 0 ? envPort : 3333;
+}
+
+/** A finite, positive port number. */
+function isUsablePort(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
 /** The default transport: the global `fetch`, marked internal so the http-client
