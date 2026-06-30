@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 0.3.1
+
+### Patch Changes
+
+- [`67af460`](https://github.com/DavideCarvalho/adonis-telescope/commit/67af460cae249dfb852fa23c7e7b3b46715fdc88) - fix: request-replay targets the live request port (default 3333, not 3000)
+
 ## 0.3.0
 
 ### Minor Changes
