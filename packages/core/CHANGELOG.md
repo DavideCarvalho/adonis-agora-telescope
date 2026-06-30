@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 0.3.2
+
+### Patch Changes
+
+- [`42c5ec9`](https://github.com/DavideCarvalho/adonis-telescope/commit/42c5ec940b02e9ffae0473c2aec7d358388e34ab) - fix: sync VERSION literal via sync-version guard
+
 ## 0.3.1
 
 ### Patch Changes
