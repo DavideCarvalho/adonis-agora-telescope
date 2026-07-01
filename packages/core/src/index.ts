@@ -1,5 +1,5 @@
 /** Keep in sync with this package's `version` in package.json. */
-export const VERSION = '0.3.2';
+export const VERSION = '0.3.3';
 
 // — entry model —
 export { EntryType, isBatchOrigin } from './entry.js';

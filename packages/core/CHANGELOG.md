@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 0.3.3
+
+### Patch Changes
+
+- fix: sync VERSION across sub-entry barrels (ui/watchers/ai/alerts) and make sync-version.mjs walk every .ts under src/ so --check guards the nested literals against re-drift
+
 ## 0.3.2
 
 ### Patch Changes
