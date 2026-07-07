@@ -14,6 +14,7 @@ export {
   createTelescopeTable,
   DEFAULT_TABLE_NAME,
   LucidTelescopeStore,
+  SCHEMA_META_TABLE_NAME,
 } from './stores/lucid.js';
 export type {
   CreateTableOptions,

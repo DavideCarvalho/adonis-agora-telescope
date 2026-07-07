@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
 import { type BatchOrigin, type Entry, type RecordInput, isBatchOrigin } from '../entry.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
@@ -62,6 +62,62 @@ export function createTableStatements(tableName: string = DEFAULT_TABLE_NAME): s
     `CREATE INDEX IF NOT EXISTS "${tableName}_trace_id_idx" ON "${tableName}" ("trace_id")`,
     `CREATE INDEX IF NOT EXISTS "${tableName}_family_hash_idx" ON "${tableName}" ("family_hash")`,
   ];
+}
+
+// ── Schema fingerprint gate ──────────────────────────────────────────────────
+//
+// With `autoCreateTable`, `doInit` used to re-issue every `createTableStatements`
+// (a CREATE TABLE + four CREATE INDEX) on the first use of each fresh store —
+// harmless (`IF NOT EXISTS`) but five DDL round-trips of pure no-op in steady
+// state, on every boot / reconnect. The gate replaces that with: maintain a
+// `telescope_schema_meta` marker, read its one fingerprint row, and compare it
+// against one computed purely in memory from the DDL. When they match we SKIP the
+// create statements entirely; only an absent/mismatched fingerprint (fresh DB,
+// column/index change, or SCHEMA_REVISION bump) pays for the DDL, then re-caches.
+
+/**
+ * Hand-bump escape hatch for schema changes the fingerprint below can't see.
+ * Nothing today needs it — the `createTableStatements` array already encodes the
+ * whole table + index shape — but bumping this invalidates every stored
+ * fingerprint, forcing each process to re-run the (idempotent) DDL once.
+ */
+const SCHEMA_REVISION = 1;
+
+/**
+ * The marker table backing the fingerprint gate. One row PER owned entries table
+ * (keyed by that table's name, so two telescope tables in one database never
+ * clobber each other's marker) records the fingerprint of the schema the store
+ * last reconciled. Deliberately NOT fingerprinted itself, so its own shape can
+ * never invalidate the gate.
+ */
+export const SCHEMA_META_TABLE_NAME = 'telescope_schema_meta';
+
+/**
+ * `CREATE TABLE IF NOT EXISTS` DDL for the fingerprint marker table. Idempotent
+ * and introspection-free, portable across sqlite / Postgres / MySQL (quoted
+ * identifiers, portable types) — mirroring {@link createTableStatements}' style.
+ */
+function createSchemaMetaTableStatement(): string {
+  return `CREATE TABLE IF NOT EXISTS "${SCHEMA_META_TABLE_NAME}" (
+      "id" VARCHAR(255) PRIMARY KEY NOT NULL,
+      "fingerprint" VARCHAR(64) NOT NULL,
+      "applied_at" BIGINT NOT NULL
+    )`;
+}
+
+/**
+ * Pure, in-memory sha256 of the owned table's schema. The
+ * {@link createTableStatements} array IS the canonical schema definition here —
+ * it encodes the table name plus every column and index — so hashing it, folded
+ * with {@link SCHEMA_REVISION}, re-heals on any column/index/name change or a
+ * manual revision bump and matches byte-for-byte otherwise.
+ */
+function computeSchemaFingerprint(tableName: string): string {
+  const payload = JSON.stringify({
+    revision: SCHEMA_REVISION,
+    statements: createTableStatements(tableName),
+  });
+  return createHash('sha256').update(payload).digest('hex');
 }
 
 /**
@@ -263,9 +319,7 @@ export class LucidTelescopeStore implements TelescopeStore {
 
   private async doInit(): Promise<void> {
     if (this.autoCreateTable) {
-      for (const stmt of createTableStatements(this.tableName)) {
-        await this.db.rawQuery(stmt);
-      }
+      await this.reconcileSchema();
     }
     // Seed the in-process counter from the persisted maximum so sequence keeps
     // climbing monotonically across restarts.
@@ -276,6 +330,44 @@ export class LucidTelescopeStore implements TelescopeStore {
       .select('sequence');
     const max = maxRow.length > 0 ? toInt(maxRow[0]?.sequence) : -1;
     this.sequence = max + 1;
+  }
+
+  /**
+   * Fingerprint-gated table creation. Maintains the {@link SCHEMA_META_TABLE_NAME}
+   * marker, compares the stored fingerprint against one computed in memory from
+   * the DDL, and SKIPS re-issuing the (five-statement) CREATE TABLE + index DDL
+   * when they match. Only an absent/mismatched fingerprint (fresh DB, column/index
+   * change, or a {@link SCHEMA_REVISION} bump) runs the DDL, then re-caches.
+   */
+  private async reconcileSchema(): Promise<void> {
+    // (1) Idempotent, introspection-free marker table.
+    await this.db.rawQuery(createSchemaMetaTableStatement());
+    // (2) Read the stored fingerprint + (3) compute the expected one in memory.
+    const stored = await this.readStoredFingerprint();
+    const expected = computeSchemaFingerprint(this.tableName);
+    // (4) Steady state: identical fingerprint ⇒ skip the entries-table DDL.
+    if (stored === expected) return;
+    // (5) Absent/mismatch ⇒ (re)create the table + indexes, then re-cache.
+    for (const stmt of createTableStatements(this.tableName)) {
+      await this.db.rawQuery(stmt);
+    }
+    await this.writeStoredFingerprint(expected);
+  }
+
+  /** Reads this table's stored fingerprint, or null when the marker row is absent. */
+  private async readStoredFingerprint(): Promise<string | null> {
+    const row = await this.db.from(SCHEMA_META_TABLE_NAME).where('id', this.tableName).first();
+    return row && typeof row.fingerprint === 'string' ? row.fingerprint : null;
+  }
+
+  /** Upserts this table's marker row (delete + insert, portable across dialects). */
+  private async writeStoredFingerprint(fingerprint: string): Promise<void> {
+    await this.db.from(SCHEMA_META_TABLE_NAME).where('id', this.tableName).delete();
+    await this.db.table(SCHEMA_META_TABLE_NAME).insert({
+      id: this.tableName,
+      fingerprint,
+      applied_at: Date.now(),
+    });
   }
 }
 
