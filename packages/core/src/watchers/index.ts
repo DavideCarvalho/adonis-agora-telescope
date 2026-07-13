@@ -76,6 +76,40 @@ export type {
   RedisManagerLike,
 } from './redis_watcher.js';
 
+// — profiling watcher (user-driven timing spans; opt-in helpers) —
+export {
+  buildProfileEntry,
+  PROFILE_ENTRY_TYPE,
+  profile,
+  ProfilingWatcher,
+  startProfile,
+} from './profiling_watcher.js';
+export type {
+  CompletedProfile,
+  ProfileEntryContent,
+  ProfileMark,
+  ProfileSession,
+  ProfileStatus,
+  ProfilingWatcherOptions,
+} from './profiling_watcher.js';
+
+// — schedule watcher (scheduled-task runs; explicit wrapper integration) —
+export {
+  buildScheduleEntry,
+  recordScheduledRun,
+  SCHEDULED_TASK_ENTRY_TYPE,
+  ScheduleWatcher,
+  scheduleTask,
+} from './schedule_watcher.js';
+export type {
+  ScheduleEntryContent,
+  ScheduledRun,
+  ScheduledTaskOptions,
+  ScheduleKind,
+  ScheduleRunStatus,
+  ScheduleWatcherOptions,
+} from './schedule_watcher.js';
+
 // — config —
 export {
   DEFAULT_WATCHERS,
@@ -84,10 +118,14 @@ export {
 } from './define_config.js';
 export type {
   HttpClientWatcherConfig,
+  ProfilingWatcherConfig,
   QueryWatcherConfig,
   ResolvedHttpClientWatcherConfig,
+  ResolvedProfilingWatcherConfig,
   ResolvedQueryWatcherConfig,
+  ResolvedScheduleWatcherConfig,
   ResolvedTelescopeWatchersConfig,
+  ScheduleWatcherConfig,
   TelescopeWatchersConfig,
   WatcherName,
 } from './define_config.js';

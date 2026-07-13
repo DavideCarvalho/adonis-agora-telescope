@@ -22,6 +22,19 @@ export const EntryType = {
   /** An OUTBOUND HTTP call, recorded by the http-client watcher. */
   HttpClient: 'http-client',
   /**
+   * A user-instrumented profiling span — a timed code section (label, duration,
+   * nested marks) recorded by the profiling watcher's `profile()` / `startProfile()`
+   * helpers. Self-contained timing, not a V8 CPU capture.
+   */
+  Profile: 'profile',
+  /**
+   * A single scheduled-task run (name, cron/expression, duration, success/failure),
+   * recorded by the schedule watcher's `scheduleTask()` / `recordScheduledRun()`
+   * helpers. Distinct from a queue {@link EntryType.Job} so schedule health rolls
+   * up separately.
+   */
+  ScheduledTask: 'scheduled_task',
+  /**
    * A browser/client-reported error ingested via the public client-error
    * endpoint (`POST <path>`). Recorded through the normal pipeline with a
    * family-hash mirroring server exceptions and `failed`/`client`/`user:<id>`

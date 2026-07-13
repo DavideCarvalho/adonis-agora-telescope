@@ -27,15 +27,18 @@ export default defineConfig({
    *                    with an ignore-list (db:query / mail:sent are excluded by default).
    *  - 'redis'       — records @adonisjs/redis commands (optional peer; wraps the
    *                    ioredis sendCommand). No-op when the peer is absent.
+   *  - 'profiling'   — publishes the opt-in profile()/startProfile() timing-span
+   *                    helpers. Wrap a code section to record its label, duration
+   *                    and in-span marks. Zero cost until enabled AND used.
+   *  - 'schedule'    — publishes the opt-in scheduleTask()/recordScheduledRun()
+   *                    helpers. AdonisJS ships no scheduler event to tap, so this
+   *                    is EXPLICIT integration: wrap the closure you hand your
+   *                    scheduler with scheduleTask('name', fn), or call
+   *                    recordScheduledRun(...) from your own scheduler callback.
    *
    * Note: the 'mail' / 'cache' / 'queue' / 'redis' event contracts are best-effort —
    * those packages are not present in this repo, so their event names/payloads could
    * not be verified against their types. See the package README.
-   *
-   * There is intentionally NO 'schedule' watcher: AdonisJS ships no first-party
-   * scheduler and community schedulers expose no event/hook surface to tap. In the
-   * Agora ecosystem, @adonis-agora/durable bridges scheduled/cron runs onto the
-   * diagnostics bus, which the diagnostics watcher already records.
    */
   // watchers: ['query'],
 
@@ -70,5 +73,27 @@ export default defineConfig({
   //   ignoreHosts: [],
   //   // Record request/response body SIZES (bytes, never the bytes). Default false.
   //   captureBodies: false,
+  // },
+
+  /**
+   * Tuning for the 'profiling' watcher. Add 'profiling' to `watchers`, then wrap a
+   * code section with `profile('label', fn)` (or bracket it with `startProfile`) —
+   * both imported from '@adonis-agora/telescope/watchers'.
+   */
+  // profiling: {
+  //   // Spans at/above this many ms get a 'slow' tag. Default 100.
+  //   slowMs: 100,
+  //   // Spans below this many ms are discarded (too short to keep). Default 0.
+  //   minDurationMs: 0,
+  // },
+
+  /**
+   * Tuning for the 'schedule' watcher. Add 'schedule' to `watchers`, then wrap the
+   * closure you hand your scheduler with `scheduleTask('name', fn)` (or call
+   * `recordScheduledRun(...)`) — both from '@adonis-agora/telescope/watchers'.
+   */
+  // schedule: {
+  //   // Runs at/above this many ms get a 'slow' tag. Default 1000.
+  //   slowMs: 1000,
   // },
 })

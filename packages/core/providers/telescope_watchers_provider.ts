@@ -11,8 +11,10 @@ import { HttpClientWatcher } from '../src/watchers/http_client_watcher.js';
 import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 import { LucidQueryWatcher } from '../src/watchers/lucid_query_watcher.js';
 import { MailWatcher } from '../src/watchers/mail_watcher.js';
+import { ProfilingWatcher } from '../src/watchers/profiling_watcher.js';
 import { QueueWatcher } from '../src/watchers/queue_watcher.js';
 import { RedisWatcher } from '../src/watchers/redis_watcher.js';
+import { ScheduleWatcher } from '../src/watchers/schedule_watcher.js';
 
 /** A watcher with its own (emitter-less) lifecycle — `start()`/`stop()` with no
  *  emitter argument. The http-client watcher publishes an opt-in `instrumentFetch`
@@ -92,6 +94,40 @@ export default class TelescopeWatchersProvider {
     if (config.watchers.has('queue')) this.startQueueWatcher();
     if (config.watchers.has('events')) this.startEventsWatcher(emitter);
     if (config.watchers.has('redis')) await this.startRedisWatcher();
+    if (config.watchers.has('profiling')) this.startProfilingWatcher(config);
+    if (config.watchers.has('schedule')) this.startScheduleWatcher(config);
+  }
+
+  /** Start the profiling watcher: it publishes a config-backed default for the
+   *  opt-in `profile()` / `startProfile()` span helpers (no emitter, no global
+   *  patch). While unstarted those helpers are a zero-cost no-op. */
+  private startProfilingWatcher(config: ResolvedTelescopeWatchersConfig): void {
+    const watcher = new ProfilingWatcher({
+      slowMs: config.profiling.slowMs,
+      minDurationMs: config.profiling.minDurationMs,
+    });
+    try {
+      watcher.start();
+      this.started.push(watcher);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`TelescopeWatchersProvider: failed to start profiling watcher: ${message}`);
+    }
+  }
+
+  /** Start the schedule watcher: it publishes a config-backed default for the
+   *  opt-in `scheduleTask()` / `recordScheduledRun()` helpers (AdonisJS ships no
+   *  scheduler event to tap, so integration is explicit — no emitter, no global
+   *  patch). While unstarted those helpers are a zero-cost no-op. */
+  private startScheduleWatcher(config: ResolvedTelescopeWatchersConfig): void {
+    const watcher = new ScheduleWatcher({ slowMs: config.schedule.slowMs });
+    try {
+      watcher.start();
+      this.started.push(watcher);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`TelescopeWatchersProvider: failed to start schedule watcher: ${message}`);
+    }
   }
 
   /** Start the queue watcher: it taps the engine's `node:diagnostics_channel`
