@@ -79,16 +79,60 @@ export type {
 } from './extension/types.js';
 export { ExtensionRegistry } from './extension/registry.js';
 
+// — client-error ingestion (public front-end error endpoint) —
+export {
+  ClientErrorIngestor,
+  type ClientErrorHttpContext,
+  type ClientErrorIngestorDeps,
+  type ClientErrorRequest,
+  type ClientErrorResponse,
+  type ClientErrorsConfig,
+  ClientErrorRateLimiter,
+  type ClientErrorValidation,
+  type ClientExceptionContent,
+  DEFAULT_CLIENT_ERRORS_PATH,
+  DEFAULT_MAX_BODY_BYTES,
+  DEFAULT_MAX_TRACKED_IPS,
+  DEFAULT_RATE_LIMIT_PER_MINUTE,
+  resolveClientErrors,
+  type ResolvedClientErrorsConfig,
+  storeRecorder,
+  userIdentityTag,
+  validateClientErrorBody,
+} from './client_errors/index.js';
+
 // — config —
 export { defineConfig, resolveConfig } from './define_config.js';
 export type {
   NPlusOneConfig,
+  OverloadConfig,
+  PruneConfig,
   RedactConfig,
   ResolvedTelescopeConfig,
   StreamConfig,
   TelescopeConfig,
   WatcherName,
 } from './define_config.js';
+
+// — protective infrastructure (retention pruner + overload guard) —
+export { TelescopePruner } from './pruner.js';
+export type {
+  Clock,
+  PruneRun,
+  PruneTrigger,
+  PrunerDeps,
+  PrunerLogger,
+  ResolvedPruneConfig,
+} from './pruner.js';
+export { OverloadGuard } from './overload_guard.js';
+export type {
+  EventLoopDelayMonitor,
+  OverloadGuardDeps,
+  OverloadLogger,
+  PauseController,
+  ResolvedOverloadConfig,
+} from './overload_guard.js';
+export { setTelescopePaused } from './registry.js';
 
 // — live-stream (SSE entry-events pub/sub) —
 export { EntryEvents } from './stream/entry_events.js';

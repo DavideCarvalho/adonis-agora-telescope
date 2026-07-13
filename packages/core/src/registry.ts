@@ -22,6 +22,13 @@ export interface TelescopeRuntime {
    * streaming is disabled / not booted.
    */
   entryEvents: EntryEvents | null;
+  /**
+   * Overload-shed flag. While `true` (set by the overload guard when the event
+   * loop is lagging) every ingestion entry point — the request middleware and the
+   * watcher `safeRecord` helper — drops new entries so telescope can never amplify
+   * an incident. Reset to `false` on boot/shutdown and when load recovers.
+   */
+  paused: boolean;
 }
 
 const RUNTIME_KEY = Symbol.for('@agora/telescope:runtime');
@@ -32,6 +39,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   requestWatcherEnabled: false,
   registry: null,
   entryEvents: null,
+  paused: false,
 };
 globalStore[RUNTIME_KEY] = runtime;
 
@@ -56,10 +64,19 @@ export function setTelescopeEntryEvents(entryEvents: EntryEvents | null): void {
   runtime.entryEvents = entryEvents;
 }
 
+/**
+ * Toggle the overload-shed flag (called by the overload guard). While paused,
+ * every ingestion entry point drops new entries. Idempotent.
+ */
+export function setTelescopePaused(paused: boolean): void {
+  runtime.paused = paused;
+}
+
 /** Tear down the runtime (called by the provider at shutdown). */
 export function resetTelescopeRuntime(): void {
   runtime.store = null;
   runtime.requestWatcherEnabled = false;
   runtime.registry = null;
   runtime.entryEvents = null;
+  runtime.paused = false;
 }

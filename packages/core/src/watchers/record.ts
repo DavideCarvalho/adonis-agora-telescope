@@ -33,6 +33,9 @@ export function safeRecord(input: RecordInput, source: string): void {
     return;
   }
   if (!store) return;
+  // Honour the overload guard's shed flag: while paused, drop new entries so a
+  // lagging event loop is never made worse by telescope's own write path.
+  if (getTelescopeRuntime().paused) return;
 
   try {
     const resolved: RecordInput =

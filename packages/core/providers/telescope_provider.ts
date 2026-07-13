@@ -1,5 +1,10 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import {
+  ClientErrorIngestor,
+  type ClientErrorHttpContext,
+  storeRecorder,
+} from '../src/client_errors/index.js';
+import {
   type ResolvedTelescopeConfig,
   type TelescopeConfig,
   resolveConfig,
@@ -7,11 +12,15 @@ import {
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import type { ExtensionContext } from '../src/extension/types.js';
+import { OverloadGuard, type PauseController } from '../src/overload_guard.js';
+import { TelescopePruner } from '../src/pruner.js';
 import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
 import {
+  getTelescopeRuntime,
   resetTelescopeRuntime,
   setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
+  setTelescopePaused,
   setTelescopeRuntime,
 } from '../src/registry.js';
 import { SamplingTelescopeStore } from '../src/sampling/sampling_store.js';
@@ -41,6 +50,8 @@ export default class TelescopeProvider {
   private store: TelescopeStore | null = null;
   private diagnosticsWatcher: DiagnosticsWatcher | null = null;
   private entryEvents: EntryEvents | null = null;
+  private pruner: TelescopePruner | null = null;
+  private overloadGuard: OverloadGuard | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -79,6 +90,46 @@ export default class TelescopeProvider {
     // Build the extension registry from `config.extensions` and publish it so the UI can serve each
     // extension's dashboards + data providers. A collision (duplicate id/name) throws here, at boot.
     setTelescopeExtensionRegistry(this.buildExtensionRegistry(config, store));
+
+    // Protective infrastructure. The pruner runs only when a `prune` block was
+    // supplied; the overload guard is on by default (unref'd 1s sampler) and pauses
+    // ingestion through the runtime `paused` flag the middleware + watchers honour.
+    if (config.prune.enabled) {
+      this.pruner = new TelescopePruner(store, config.prune);
+      this.pruner.start();
+    }
+    if (config.overload.enabled) {
+      this.overloadGuard = new OverloadGuard(config.overload, runtimePauseController);
+      this.overloadGuard.start();
+    }
+
+    // Public client-error ingestion. Opt-in: the route is registered ONLY when
+    // enabled, so a disabled endpoint genuinely does not exist (a probe can't
+    // tell it is wired). Records through the same wrapped store as every watcher
+    // (redaction/sampling/streaming) and sheds while the overload guard pauses.
+    if (config.clientErrors.enabled) {
+      await this.registerClientErrors(store, config);
+    }
+  }
+
+  /**
+   * Register the `POST <path>` client-error ingestion route on the AdonisJS
+   * router, delegating to a {@link ClientErrorIngestor}. Idiomatic AdonisJS: a
+   * provider-registered route + `HttpContext` handler, not a NestJS controller.
+   */
+  private async registerClientErrors(
+    store: TelescopeStore,
+    config: ResolvedTelescopeConfig,
+  ): Promise<void> {
+    const ingestor = new ClientErrorIngestor({
+      config: config.clientErrors,
+      record: storeRecorder(store),
+      isPaused: () => getTelescopeRuntime().paused,
+    });
+    const router = await this.app.container.make('router');
+    router
+      .post(config.clientErrors.path, (ctx: ClientErrorHttpContext) => ingestor.handle(ctx))
+      .as('telescope.client_errors');
   }
 
   /**
@@ -152,6 +203,10 @@ export default class TelescopeProvider {
   }
 
   async shutdown() {
+    this.overloadGuard?.stop();
+    this.overloadGuard = null;
+    this.pruner?.stop();
+    this.pruner = null;
     this.diagnosticsWatcher?.stop();
     this.diagnosticsWatcher = null;
     this.entryEvents?.clear();
@@ -159,3 +214,16 @@ export default class TelescopeProvider {
     resetTelescopeRuntime();
   }
 }
+
+/**
+ * The overload guard's pause surface, backed by the global runtime `paused` flag
+ * every ingestion entry point (request middleware, watcher `safeRecord`) honours —
+ * so pausing sheds recording everywhere at once, with no DI wiring.
+ */
+const runtimePauseController: PauseController = {
+  pause: () => setTelescopePaused(true),
+  resume: () => setTelescopePaused(false),
+  get isPaused() {
+    return getTelescopeRuntime().paused;
+  },
+};

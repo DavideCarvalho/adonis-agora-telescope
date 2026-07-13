@@ -20,7 +20,9 @@ import { type HttpContextLike, recordRequest } from './request_watcher.js';
 export default class TelescopeMiddleware {
   async handle(ctx: HttpContext, next: NextFn) {
     const runtime = getTelescopeRuntime();
-    if (!runtime.store || !runtime.requestWatcherEnabled) {
+    // `runtime.paused` is the overload guard's shed flag: while set, skip recording
+    // entirely (request + auto-captured exception) so telescope can't amplify load.
+    if (!runtime.store || !runtime.requestWatcherEnabled || runtime.paused) {
       return next();
     }
 

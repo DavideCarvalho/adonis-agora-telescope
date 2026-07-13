@@ -1,7 +1,22 @@
+import { durationToMs } from './alerts/parse_duration.js';
+import {
+  type ClientErrorsConfig,
+  type ResolvedClientErrorsConfig,
+  resolveClientErrors,
+} from './client_errors/config.js';
 import type { TelescopeExtension } from './extension/types.js';
 import { type SamplingConfig, resolveSampling } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
+
+/** Default retention age for the pruner when `prune.after` is omitted. */
+const DEFAULT_PRUNE_AFTER = '24h';
+/** Default interval (ms) between scheduled prune cycles. */
+const DEFAULT_PRUNE_INTERVAL_MS = 60_000;
+/** Default p99 event-loop lag (ms) at which the overload guard sheds capture. */
+const DEFAULT_MAX_EVENT_LOOP_LAG_MS = 200;
+/** Default startup grace (ms) the overload guard discards before it can pause. */
+const DEFAULT_STARTUP_GRACE_MS = 5_000;
 
 /**
  * Sensitive-data redaction applied to EVERY entry's content before it is
@@ -110,6 +125,74 @@ export interface TelescopeConfig {
    * connected. Set `stream: { enabled: false }` to turn it off entirely.
    */
   stream?: StreamConfig;
+
+  /**
+   * Background retention: a pruner deletes stale entries on a timer so the store
+   * never grows without bound. OFF unless a `prune` block is supplied — omit it
+   * and the store is only bounded by its own cap (the memory ring buffer's
+   * `maxEntries`). Supply `prune: { after: '24h' }` to delete entries older than a
+   * cutoff, `keepLast` to also cap by count, and `intervalMs` to tune the cadence.
+   * See {@link PruneConfig}.
+   */
+  prune?: PruneConfig;
+
+  /**
+   * Overload protection: a guard samples the process event-loop delay and PAUSES
+   * ingestion when the p99 lag crosses a threshold, resuming once it recovers — so
+   * telescope can never amplify an incident. ON by default at a 200ms threshold;
+   * set `overload: false`-style `{ enabled: false }` to disable it. See
+   * {@link OverloadConfig}.
+   */
+  overload?: OverloadConfig;
+
+  /**
+   * Public front-end error ingestion: a `POST` endpoint browsers report
+   * client-side errors to, recorded as `client_exception` entries through the
+   * normal pipeline (family-hash, `failed`/`client`/`user:<id>` tags, sampling,
+   * prune, dashboard). DISABLED by default — a public, unauthenticated surface is
+   * opt-in; when off, no route is registered at all. Protected by a body byte
+   * cap, an in-memory per-IP token bucket, an optional `authorize` hook, and the
+   * overload guard's shed flag. See {@link ClientErrorsConfig}.
+   */
+  clientErrors?: ClientErrorsConfig;
+}
+
+/** Background-pruner configuration (see {@link TelescopeConfig.prune}). */
+export interface PruneConfig {
+  /**
+   * Master switch. Defaults to `true` whenever a `prune` block is present, so
+   * supplying `prune: { after: '24h' }` is enough to arm it; set `enabled: false`
+   * to keep the block for reference while disabling the timer.
+   */
+  enabled?: boolean;
+  /**
+   * Age cutoff: entries older than this are deleted each cycle. A raw ms number or
+   * a `<int><ms|s|m|h|d>` string (e.g. `'24h'`, `'7d'`). An unparseable value is a
+   * boot error, not a silent no-op. Default `'24h'`.
+   */
+  after?: number | string;
+  /**
+   * Count-based retention: keep at most the newest N of the entries a cycle would
+   * otherwise delete (the store's `keepLast`). Combine with `after` to bound by
+   * both age and count. Default unset (pure age-based pruning).
+   */
+  keepLast?: number;
+  /** How often a scheduled prune cycle runs, in ms. Default 60000. */
+  intervalMs?: number;
+}
+
+/** Overload-guard configuration (see {@link TelescopeConfig.overload}). */
+export interface OverloadConfig {
+  /** Master switch for overload protection. Default `true`. */
+  enabled?: boolean;
+  /** p99 event-loop lag (ms) at or above which capture pauses. Default 200. */
+  maxEventLoopLagMs?: number;
+  /**
+   * Startup grace (ms): leading sample windows discarded before the guard can
+   * pause, so the synchronous boot stall never trips it on a transient. Default
+   * 5000. Never negative.
+   */
+  startupGraceMs?: number;
 }
 
 /** N+1 detection configuration (see {@link TelescopeConfig.nPlusOne}). */
@@ -141,6 +224,25 @@ export interface ResolvedTelescopeConfig {
   nPlusOne: { enabled: boolean; threshold: number };
   /** Resolved live-stream settings. */
   stream: { enabled: boolean };
+  /**
+   * Resolved pruner settings. `afterMs`/`intervalMs` are always present (defaulted)
+   * so the pruner can act on them directly; it only runs when `enabled` is `true`,
+   * which is `false` unless a `prune` block was supplied.
+   */
+  prune: {
+    enabled: boolean;
+    afterMs: number;
+    keepLast?: number;
+    intervalMs: number;
+  };
+  /** Resolved overload-guard settings (always present; `enabled` defaults `true`). */
+  overload: {
+    enabled: boolean;
+    maxEventLoopLagMs: number;
+    startupGraceMs: number;
+  };
+  /** Resolved client-error ingestion settings (always present; `enabled` defaults `false`). */
+  clientErrors: ResolvedClientErrorsConfig;
 }
 
 /**
@@ -185,6 +287,29 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     stream: {
       enabled: config.stream?.enabled ?? true,
     },
+    prune: resolvePrune(config.prune),
+    overload: {
+      enabled: config.overload?.enabled ?? true,
+      maxEventLoopLagMs: config.overload?.maxEventLoopLagMs ?? DEFAULT_MAX_EVENT_LOOP_LAG_MS,
+      startupGraceMs: Math.max(0, config.overload?.startupGraceMs ?? DEFAULT_STARTUP_GRACE_MS),
+    },
+    clientErrors: resolveClientErrors(config.clientErrors),
+  };
+}
+
+/**
+ * Resolve the (optional) pruner block. Absent ⇒ disabled. Present ⇒ enabled
+ * unless `enabled: false`, with `after`/`intervalMs` defaulted. `after` is parsed
+ * here so a bad duration surfaces at boot (config resolution) rather than as a
+ * silent runtime skip.
+ */
+function resolvePrune(prune: TelescopeConfig['prune']): ResolvedTelescopeConfig['prune'] {
+  const enabled = prune ? (prune.enabled ?? true) : false;
+  return {
+    enabled,
+    afterMs: durationToMs(prune?.after ?? DEFAULT_PRUNE_AFTER),
+    ...(prune?.keepLast !== undefined ? { keepLast: prune.keepLast } : {}),
+    intervalMs: prune?.intervalMs ?? DEFAULT_PRUNE_INTERVAL_MS,
   };
 }
 

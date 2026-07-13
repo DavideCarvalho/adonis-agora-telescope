@@ -62,4 +62,29 @@ export default defineConfig({
   // stream: {
   //   enabled: true,
   // },
+
+  /**
+   * Background retention. A pruner deletes stale entries on a timer so the store
+   * never grows without bound. OFF unless this block is present — supply it to
+   * delete entries older than `after`, optionally capping by count with `keepLast`.
+   *  - after      — age cutoff: a ms number or `<int><ms|s|m|h|d>` (default '24h').
+   *  - keepLast   — keep at most the newest N of the entries a cycle would delete.
+   *  - intervalMs — how often a scheduled cycle runs (default 60000).
+   */
+  // prune: {
+  //   after: '24h',
+  //   // keepLast: 10000,
+  //   // intervalMs: 60_000,
+  // },
+
+  /**
+   * Overload protection. A guard samples the event-loop delay and PAUSES ingestion
+   * when the p99 lag crosses `maxEventLoopLagMs`, resuming once it recovers — so
+   * telescope can never amplify an incident. ENABLED by default at 200ms.
+   */
+  // overload: {
+  //   enabled: true,
+  //   maxEventLoopLagMs: 200,
+  //   startupGraceMs: 5_000,
+  // },
 })

@@ -21,6 +21,13 @@ export const EntryType = {
   Log: 'log',
   /** An OUTBOUND HTTP call, recorded by the http-client watcher. */
   HttpClient: 'http-client',
+  /**
+   * A browser/client-reported error ingested via the public client-error
+   * endpoint (`POST <path>`). Recorded through the normal pipeline with a
+   * family-hash mirroring server exceptions and `failed`/`client`/`user:<id>`
+   * tags, so it composes with dedup, prune, sampling, and the dashboard.
+   */
+  ClientException: 'client_exception',
 } as const;
 
 export type BuiltinEntryType = (typeof EntryType)[keyof typeof EntryType];

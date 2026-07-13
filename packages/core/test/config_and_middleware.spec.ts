@@ -3,6 +3,7 @@ import { resolveConfig } from '../src/define_config.js';
 import {
   getTelescopeRuntime,
   resetTelescopeRuntime,
+  setTelescopePaused,
   setTelescopeRuntime,
 } from '../src/registry.js';
 import { type HttpContextLike, recordRequest } from '../src/request_watcher.js';
@@ -59,6 +60,39 @@ describe('resolveConfig', () => {
   it('respects a disabled stream override', () => {
     expect(resolveConfig({ stream: { enabled: false } }).stream.enabled).toBe(false);
   });
+
+  it('leaves the pruner off by default, on with defaults once a block is present', () => {
+    expect(resolveConfig().prune.enabled).toBe(false);
+    const c = resolveConfig({ prune: { after: '7d', keepLast: 5 } });
+    expect(c.prune.enabled).toBe(true);
+    expect(c.prune.afterMs).toBe(7 * 86_400_000);
+    expect(c.prune.keepLast).toBe(5);
+    expect(c.prune.intervalMs).toBe(60_000);
+  });
+
+  it('keeps a prune block but honours enabled:false', () => {
+    expect(resolveConfig({ prune: { enabled: false, after: '1h' } }).prune.enabled).toBe(false);
+  });
+
+  it('throws at resolution on an unparseable prune duration', () => {
+    expect(() => resolveConfig({ prune: { after: 'soon' } })).toThrow(/Invalid duration/);
+  });
+
+  it('enables the overload guard by default at a 200ms threshold', () => {
+    const o = resolveConfig().overload;
+    expect(o.enabled).toBe(true);
+    expect(o.maxEventLoopLagMs).toBe(200);
+    expect(o.startupGraceMs).toBe(5_000);
+  });
+
+  it('respects overload overrides and clamps a negative grace to zero', () => {
+    const o = resolveConfig({
+      overload: { enabled: false, maxEventLoopLagMs: 500, startupGraceMs: -1 },
+    }).overload;
+    expect(o.enabled).toBe(false);
+    expect(o.maxEventLoopLagMs).toBe(500);
+    expect(o.startupGraceMs).toBe(0);
+  });
 });
 
 describe('TelescopeMiddleware', () => {
@@ -89,6 +123,19 @@ describe('TelescopeMiddleware', () => {
     const mw = new TelescopeMiddleware();
     await mw.handle(stubCtx() as never, async () => {});
     expect(await store.count()).toBe(0);
+  });
+
+  it('sheds recording while the overload guard has paused ingestion', async () => {
+    const store = new InMemoryTelescopeStore();
+    setTelescopeRuntime(store, true);
+    setTelescopePaused(true);
+    const mw = new TelescopeMiddleware();
+    let called = false;
+    await mw.handle(stubCtx() as never, async () => {
+      called = true;
+    });
+    expect(called).toBe(true); // the request itself still flows through
+    expect(await store.count()).toBe(0); // but nothing is recorded
   });
 
   it('records even when the downstream handler throws, and re-throws', async () => {
