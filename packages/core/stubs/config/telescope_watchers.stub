@@ -38,4 +38,19 @@ export default defineConfig({
    * diagnostics bus, which the diagnostics watcher already records.
    */
   // watchers: ['query'],
+
+  /**
+   * Tuning for the 'http-client' (outbound) watcher. Outbound HTTP is OPT-IN:
+   * AdonisJS has no single built-in client, so nothing is monkey-patched. Wrap a
+   * fetch with `instrumentFetch(fetch)` (from '@adonis-agora/telescope/watchers')
+   * and hand it to your client — it inherits the settings below.
+   */
+  // httpClient: {
+  //   // Outbound calls at/above this many ms get a 'slow' tag. Default 1000.
+  //   slowMs: 1000,
+  //   // Hosts (exact, case-insensitive; may include a port) whose calls are not recorded.
+  //   ignoreHosts: [],
+  //   // Record request/response body SIZES (bytes, never the bytes). Default false.
+  //   captureBodies: false,
+  // },
 })

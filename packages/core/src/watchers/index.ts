@@ -24,11 +24,13 @@ export type { CacheEntryContent, CacheEventLike, CacheOperation } from './cache_
 export {
   buildHttpClientEntry,
   HttpClientWatcher,
+  instrumentFetch,
   markInternalFetch,
 } from './http_client_watcher.js';
 export type {
   HttpClientEntryContent,
   HttpClientWatcherOptions,
+  OutgoingCall,
 } from './http_client_watcher.js';
 export { normalizeHttpTarget } from './normalize_http_target.js';
 
@@ -77,6 +79,8 @@ export {
   resolveConfig,
 } from './define_config.js';
 export type {
+  HttpClientWatcherConfig,
+  ResolvedHttpClientWatcherConfig,
   ResolvedTelescopeWatchersConfig,
   TelescopeWatchersConfig,
   WatcherName,

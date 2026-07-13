@@ -15,8 +15,9 @@ import { QueueWatcher } from '../src/watchers/queue_watcher.js';
 import { RedisWatcher } from '../src/watchers/redis_watcher.js';
 
 /** A watcher with its own (emitter-less) lifecycle — `start()`/`stop()` with no
- *  emitter argument. The http-client and logs watchers tap the global `fetch`
- *  and the logger instance respectively, not the event emitter. */
+ *  emitter argument. The http-client watcher publishes an opt-in `instrumentFetch`
+ *  default (no global patching); the logs watcher tees the logger instance —
+ *  neither taps the event emitter. */
 interface LifecycleWatcher {
   readonly type: string;
   stop(): void;
@@ -76,7 +77,7 @@ export default class TelescopeWatchersProvider {
     if (config.watchers.has('query')) this.startWatcher(new LucidQueryWatcher(), emitter);
     if (config.watchers.has('mail')) this.startWatcher(new MailWatcher(), emitter);
     if (config.watchers.has('cache')) this.startWatcher(new CacheWatcher(), emitter);
-    if (config.watchers.has('http-client')) this.startHttpClientWatcher();
+    if (config.watchers.has('http-client')) this.startHttpClientWatcher(config);
     if (config.watchers.has('logs')) await this.startLogsWatcher();
     if (config.watchers.has('queue')) this.startQueueWatcher();
     if (config.watchers.has('events')) this.startEventsWatcher(emitter);
@@ -131,10 +132,16 @@ export default class TelescopeWatchersProvider {
     }
   }
 
-  /** Start the http-client watcher: it patches the global `fetch`, so it needs
-   *  no emitter and no container resolution. */
-  private startHttpClientWatcher(): void {
-    const watcher = new HttpClientWatcher();
+  /** Wire the http-client watcher: it does NOT patch any global (Adonis has no
+   *  single built-in HTTP client). Instead it publishes a config-backed default
+   *  for the opt-in `instrumentFetch(fetch)` helper users wrap their client with,
+   *  so it needs no emitter and no container resolution. */
+  private startHttpClientWatcher(config: ResolvedTelescopeWatchersConfig): void {
+    const watcher = new HttpClientWatcher({
+      slowMs: config.httpClient.slowMs,
+      ignoreHosts: config.httpClient.ignoreHosts,
+      captureBodies: config.httpClient.captureBodies,
+    });
     try {
       watcher.start();
       this.started.push(watcher);
