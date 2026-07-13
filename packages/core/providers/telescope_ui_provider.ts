@@ -1,3 +1,4 @@
+import type { HttpContext } from '@adonisjs/core/http';
 import type { ApplicationService } from '@adonisjs/core/types';
 import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js';
 import type { ExtensionContext } from '../src/extension/types.js';
@@ -6,6 +7,12 @@ import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { TelescopeApi } from '../src/ui/api.js';
+import { performLogin } from '../src/ui/auth.js';
+import {
+  clearSessionCookie,
+  enforceDashboardAuth,
+  writeSessionCookie,
+} from '../src/ui/dashboard_auth.js';
 import {
   type ResolvedTelescopeUiConfig,
   type TelescopeUiConfig,
@@ -14,6 +21,7 @@ import {
 import { ExtensionApi } from '../src/ui/extension_api.js';
 import { enforceGuard } from '../src/ui/guard.js';
 import type { SseSink, UiHttpContext } from '../src/ui/http.js';
+import { renderLoginPage } from '../src/ui/login_page.js';
 
 /**
  * Wires `@adonis-agora/telescope/ui` into the AdonisJS application.
@@ -30,6 +38,9 @@ import type { SseSink, UiHttpContext } from '../src/ui/http.js';
  */
 export default class TelescopeUiProvider {
   constructor(protected app: ApplicationService) {}
+
+  /** Warn once so a throwing `login` hook doesn't spam the logs on every failed attempt. */
+  private warnedOnHookThrow = false;
 
   private resolve(): ResolvedTelescopeUiConfig {
     return resolveConfig(
@@ -89,6 +100,73 @@ export default class TelescopeUiProvider {
 
     const router = await this.app.container.make('router');
     const guard = config.authorize;
+    const auth = config.dashboardAuth;
+
+    // Composed guard: the existing `authorize` hook FIRST (writes 401/403 on denial), then — only
+    // when `dashboardAuth` is configured — the signed-session guard (a missing/invalid session on an
+    // API request is a plain 401). When `dashboardAuth` is omitted `auth` is null, so this is exactly
+    // `enforceGuard` and behavior is byte-for-byte unchanged.
+    const gate = async (ctx: UiHttpContext): Promise<boolean> => {
+      if (!(await enforceGuard(ctx, guard))) return false;
+      if (auth === null) return true;
+      return enforceDashboardAuth(ctx as unknown as HttpContext, auth, 'api', config.path);
+    };
+
+    // Built-in `dashboardAuth` login screen (opt-in). Registered ONLY when configured, so omitting
+    // `dashboardAuth` leaves route registration byte-for-byte as it was. These endpoints are public
+    // (behind NEITHER guard): they MINT/clear the session the guard checks for, and the login page
+    // must stay reachable while unauthenticated — including in production, where the default
+    // `authorize` hook would otherwise deny it.
+    if (auth !== null) {
+      const loginPath = `${config.path}/login`;
+      const logoutPath = `${config.path}/logout`;
+
+      // `GET <path>/login` → the server-rendered login page. A static route, so it takes precedence
+      // over the SPA's `<path>/*` wildcard in the AdonisJS router. `returnTo`/`error` are read
+      // client-side from the query (never server-echoed), so the body is a static template.
+      router
+        .get(loginPath, async (ctx: HttpContext) => {
+          ctx.response.header('content-type', 'text/html; charset=utf-8');
+          ctx.response.header('cache-control', 'no-store, must-revalidate');
+          return ctx.response.send(renderLoginPage(config.path));
+        })
+        .as('telescope_ui.login.page');
+
+      // `POST <path>/login` → verify credentials via the host `login` hook and mint the cookie.
+      // Uniform `401` on ANY failure (unknown user, wrong password, or a throwing hook) so there is
+      // no user-enumeration; a throwing hook is warn-logged once, never surfaced to the client.
+      router
+        .post(loginPath, async (ctx: HttpContext) => {
+          const outcome = await performLogin(auth, ctx.request.body(), config.path);
+          if (outcome.kind === 'bad-request') {
+            return ctx.response.status(400).json({ error: outcome.message });
+          }
+          if (outcome.kind === 'unauthorized') {
+            if (outcome.hookError !== undefined && !this.warnedOnHookThrow) {
+              this.warnedOnHookThrow = true;
+              const message =
+                outcome.hookError instanceof Error
+                  ? outcome.hookError.message
+                  : String(outcome.hookError);
+              const logger = await this.app.container.make('logger');
+              logger.warn(`dashboardAuth login hook threw; treating as denial. ${message}`);
+            }
+            return ctx.response.status(401).json({ error: outcome.message });
+          }
+          writeSessionCookie(ctx, auth, outcome.cookieValue);
+          return ctx.response.status(200).json({ redirectTo: outcome.redirectTo });
+        })
+        .as('telescope_ui.login.submit');
+
+      // `GET <path>/logout` → clear the cookie and redirect back to the login page. A plain GET
+      // (idempotent, only ever destroys the caller's own session) so a simple `<a href>` works.
+      router
+        .get(logoutPath, async (ctx: HttpContext) => {
+          clearSessionCookie(ctx);
+          return ctx.response.redirect().toPath(loginPath);
+        })
+        .as('telescope_ui.logout');
+    }
 
     // Dashboard page: served by the `@adonis-agora/telescope-ui` SPA provider (it mounts the built
     // Vite app at the prefix root, behind this same `authorize` guard). The legacy self-contained
@@ -99,28 +177,28 @@ export default class TelescopeUiProvider {
     // JSON API.
     router
       .get(`${apiBase}/entries`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.list(ctx);
       })
       .as('telescope_ui.entries');
 
     router
       .get(`${apiBase}/entries/:id`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.show(ctx, String(ctx.params.id));
       })
       .as('telescope_ui.entry');
 
     router
       .get(`${apiBase}/trace/:traceId`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.trace(ctx, String(ctx.params.traceId));
       })
       .as('telescope_ui.trace');
 
     router
       .get(`${apiBase}/stats`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.stats(ctx);
       })
       .as('telescope_ui.stats');
@@ -130,7 +208,7 @@ export default class TelescopeUiProvider {
     // 403 unless telescope_ui `replay.enabled` is set) on top of the read guard.
     router
       .post(`${apiBase}/requests/:id/replay`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.replayRequest(ctx, String(ctx.params.id), localPortOf(ctx));
       })
       .as('telescope_ui.replay');
@@ -138,35 +216,35 @@ export default class TelescopeUiProvider {
     // Metrics analytics (stats/timeseries/percentiles/traces/waterfall) + N+1.
     router
       .get(`${apiBase}/metrics/stats`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.metricsStats(ctx);
       })
       .as('telescope_ui.metrics_stats');
 
     router
       .get(`${apiBase}/metrics/timeseries`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.metricsTimeseries(ctx);
       })
       .as('telescope_ui.metrics_timeseries');
 
     router
       .get(`${apiBase}/metrics/traces`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.metricsTraces(ctx);
       })
       .as('telescope_ui.metrics_traces');
 
     router
       .get(`${apiBase}/metrics/waterfall/:traceId`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.metricsWaterfall(ctx, String(ctx.params.traceId));
       })
       .as('telescope_ui.metrics_waterfall');
 
     router
       .get(`${apiBase}/metrics/n-plus-one/:traceId`, async (ctx: GuardedContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        if (!(await gate(ctx))) return;
         return api.metricsNPlusOne(ctx, String(ctx.params.traceId));
       })
       .as('telescope_ui.metrics_n_plus_one');
@@ -175,7 +253,7 @@ export default class TelescopeUiProvider {
     if (coreConfig.pulse.enabled) {
       router
         .get(`${apiBase}/metrics/pulse`, async (ctx: GuardedContext) => {
-          if (!(await enforceGuard(ctx, guard))) return;
+          if (!(await gate(ctx))) return;
           return api.metricsPulse(ctx);
         })
         .as('telescope_ui.metrics_pulse');
@@ -189,7 +267,7 @@ export default class TelescopeUiProvider {
     if (entryEvents) {
       router
         .get(`${apiBase}/stream`, async (ctx: StreamContext) => {
-          if (!(await enforceGuard(ctx, guard))) return;
+          if (!(await gate(ctx))) return;
           const raw = ctx.response.response;
           raw.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -221,14 +299,14 @@ export default class TelescopeUiProvider {
 
       router
         .get(`${apiBase}/meta`, async (ctx: GuardedContext) => {
-          if (!(await enforceGuard(ctx, guard))) return;
+          if (!(await gate(ctx))) return;
           return extApi.meta(ctx);
         })
         .as('telescope_ui.meta');
 
       router
         .get(`${apiBase}/ext/:ext/data/:provider`, async (ctx: GuardedContext) => {
-          if (!(await enforceGuard(ctx, guard))) return;
+          if (!(await gate(ctx))) return;
           return extApi.data(ctx, String(ctx.params.ext), String(ctx.params.provider));
         })
         .as('telescope_ui.ext_data');

@@ -1,3 +1,8 @@
+import {
+  type DashboardAuthOptions,
+  type ResolvedDashboardAuth,
+  resolveDashboardAuth,
+} from './auth.js';
 import type { UiHttpContext } from './http.js';
 
 /**
@@ -53,6 +58,19 @@ export interface TelescopeUiConfig {
    */
   credentials?: UiCredentials;
 
+  /**
+   * Optional built-in login screen. When set, the provider mounts a server-rendered
+   * `GET <path>/login` page plus `POST <path>/login` / `GET <path>/logout`, and stamps a session
+   * guard on the dashboard: an unauthenticated page navigation is redirected (`302`) to the login
+   * page and an unauthenticated API request gets `401`. The signed session cookie is minted only by
+   * the host's {@link DashboardAuthOptions.login} hook.
+   *
+   * This is ADDITIVE and composes WITH {@link authorize} (both must pass) — it does not replace it.
+   * Omit it entirely to keep today's behavior byte-for-byte (no login/logout routes, no session
+   * guard). Missing `secret`/`login` fails closed at boot.
+   */
+  dashboardAuth?: DashboardAuthOptions;
+
   // — request replay (additive: keep in its own region for trivial merges) —
   /**
    * Request REPLAY: re-issue a captured `request` entry against the LOCAL server
@@ -85,6 +103,8 @@ export interface ResolvedTelescopeUiConfig {
   path: string;
   authorize: AuthorizeHook;
   credentials: UiCredentials;
+  /** Resolved built-in login config, or `null` when `dashboardAuth` is unconfigured. */
+  dashboardAuth: ResolvedDashboardAuth | null;
   /** Resolved request-replay settings (disabled by default). */
   replay: { enabled: boolean; port?: number; timeoutMs?: number };
 }
@@ -185,6 +205,9 @@ export function resolveConfig(config: TelescopeUiConfig = {}): ResolvedTelescope
     path: normalizePath(config.path ?? '/telescope'),
     authorize: config.authorize ?? defaultAuthorize(credentials),
     credentials,
+    // Validate + resolve now so a misconfigured secret/login fails closed at boot, not on the first
+    // login attempt. `null` when `dashboardAuth` is omitted (behavior unchanged).
+    dashboardAuth: resolveDashboardAuth(config.dashboardAuth),
     replay: {
       // Safe default: replay is OFF unless the host explicitly enables it.
       enabled: config.replay?.enabled ?? false,

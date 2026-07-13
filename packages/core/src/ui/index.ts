@@ -11,6 +11,40 @@ export type {
   UiCredentials,
 } from './define_config.js';
 
+// — built-in `dashboardAuth` login screen (optional; opt-in via `config/telescope_ui.ts`) —
+export {
+  resolveDashboardAuth,
+  performLogin,
+  readSession,
+  sanitizeReturnTo,
+  decideDashboardAuth,
+  SESSION_COOKIE_NAME,
+} from './auth.js';
+export type {
+  DashboardAuthOptions,
+  ResolvedDashboardAuth,
+  LoginHook,
+  LoginOutcome,
+  DashboardAuthDecision,
+} from './auth.js';
+export {
+  signSessionCookie,
+  verifySessionCookie,
+} from './session_cookie.js';
+export type {
+  DashboardSession,
+  DashboardSessionUser,
+  SignOptions,
+  VerifyOptions,
+} from './session_cookie.js';
+export { renderLoginPage } from './login_page.js';
+export {
+  readSessionCookie,
+  writeSessionCookie,
+  clearSessionCookie,
+  enforceDashboardAuth,
+} from './dashboard_auth.js';
+
 // — HTTP shapes (framework-light) —
 export {
   RecordingResponse,

@@ -1,8 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import {
   type AuthorizeHook,
+  type ResolvedDashboardAuth,
   type TelescopeUiConfig,
   type UiHttpContext,
+  enforceDashboardAuth,
   enforceGuard,
   resolveConfig as resolveUiConfig,
 } from '@adonis-agora/telescope/ui';
@@ -63,6 +65,10 @@ export default class TelescopeUiDashboardProvider {
     const mount = mountPathFor(path);
     const apiBase = apiBaseFor(path);
     const guard = uiConfig.authorize;
+    const auth = uiConfig.dashboardAuth;
+    // The built-in login page is registered by the core `telescope_ui` provider under the resolved
+    // `telescope_ui.path`; a page navigation with no valid session redirects there.
+    const loginBase = uiConfig.path;
 
     // Bare mount → canonical trailing slash so the SPA's relative `./assets/*` URLs resolve against
     // the mount directory rather than its parent.
@@ -70,7 +76,7 @@ export default class TelescopeUiDashboardProvider {
 
     // The SPA shell.
     router.get(`${mount}/`, async (ctx) => {
-      if (!(await this.gate(ctx, guard))) return;
+      if (!(await this.gate(ctx, guard, auth, loginBase))) return;
       await this.sendIndex(ctx, apiBase);
     });
 
@@ -78,7 +84,7 @@ export default class TelescopeUiDashboardProvider {
     // client-rendered console still boots on a deep link. The static `<mount>/api/*` routes the core
     // provider registers take precedence over this wildcard in the router.
     router.get(`${mount}/*`, async (ctx) => {
-      if (!(await this.gate(ctx, guard))) return;
+      if (!(await this.gate(ctx, guard, auth, loginBase))) return;
       const segments = safeAssetSegments(ctx.params['*']);
       if (segments === null) {
         return ctx.response.status(400).json({ error: 'bad asset path' });
@@ -88,11 +94,21 @@ export default class TelescopeUiDashboardProvider {
   }
 
   /**
-   * Run the core `authorize` guard, mirroring the JSON API routes. Returns `true` to proceed; on
-   * denial {@link enforceGuard} has already written the 401/403 body and this returns `false`.
+   * Run the composed dashboard guard, mirroring the JSON API routes: the `authorize` hook FIRST,
+   * then — only when `dashboardAuth` is configured — the signed-session guard in `page` mode (a
+   * page navigation with no valid session is redirected `302` to the login page). Returns `true` to
+   * proceed; on denial the guard has already written the response and this returns `false`. When
+   * `dashboardAuth` is omitted (`auth === null`) this is exactly the `authorize` guard, unchanged.
    */
-  private async gate(ctx: HttpContext, guard: AuthorizeHook): Promise<boolean> {
-    return enforceGuard(ctx as unknown as UiHttpContext, guard);
+  private async gate(
+    ctx: HttpContext,
+    guard: AuthorizeHook,
+    auth: ResolvedDashboardAuth | null,
+    loginBase: string,
+  ): Promise<boolean> {
+    if (!(await enforceGuard(ctx as unknown as UiHttpContext, guard))) return false;
+    if (auth === null) return true;
+    return enforceDashboardAuth(ctx, auth, 'page', loginBase);
   }
 
   /** Read `dist/spa/index.html`, inject the API base, and send it. */
