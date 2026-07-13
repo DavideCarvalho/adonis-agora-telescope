@@ -1,3 +1,5 @@
+import type { AnthropicMessagesClient } from './telescope_ai_diagnoser.js';
+
 /**
  * Default Claude model for diagnosis. Sonnet 4.6 is the best speed/intelligence
  * balance for a short structured triage; override with a more capable model
@@ -13,34 +15,66 @@ const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const DEFAULT_MAX_TOKENS = 1024;
 
 /**
+ * Default per-diagnosis wall-clock budget the coordinator enforces (ms). A slower
+ * model call loses the race and the caller (MCP tool / alert) proceeds without the
+ * AI note rather than hanging.
+ */
+const DEFAULT_TIMEOUT_MS = 8_000;
+
+/**
  * The shape of `config/telescope_ai.ts`. The API key is sourced from the
  * environment via the host's `env.get(...)` — never hardcoded — so it stays out of
  * source control.
  */
 export interface TelescopeAiConfig {
   /**
-   * Master switch. When `false` (or when no `apiKey` resolves), the diagnoser is a
-   * no-op: `diagnose` returns `null` and never calls the API. Default `true`.
+   * Master switch. When `false` (or when neither an `apiKey` nor a `client`
+   * resolves), the diagnoser is a no-op: `diagnose` returns `null` and never calls
+   * the API. Default `true`.
    */
   enabled?: boolean;
   /**
-   * The Anthropic API key, e.g. `env.get('ANTHROPIC_API_KEY')`. When absent the
-   * diagnoser is effectively disabled (no-op), so the package degrades safely with
-   * no key configured.
+   * The Anthropic API key, e.g. `env.get('ANTHROPIC_API_KEY')`. When absent (and no
+   * `client` is supplied) the diagnoser is effectively disabled (no-op), so the
+   * package degrades safely with no key configured.
    */
   apiKey?: string;
+  /**
+   * A host-supplied provider — any value matching {@link AnthropicMessagesClient}.
+   * When set, it is used verbatim (the `apiKey` is then ignored) so a host can wire
+   * its OWN model client without this package ever constructing the Anthropic SDK.
+   * This is the "provider hook" that keeps the LLM dependency optional.
+   */
+  client?: AnthropicMessagesClient;
   /** Claude model id. Default `claude-sonnet-4-6`. */
   model?: string;
   /** Hard cap on generated tokens per diagnosis. Default 1024. */
   maxTokens?: number;
+  /**
+   * How long a cached diagnosis stays fresh, in ms. Defaults to the diagnosis
+   * cache's own default (24h). A family is diagnosed once, then served from cache
+   * until this elapses.
+   */
+  cacheTtlMs?: number;
+  /**
+   * Per-diagnosis wall-clock timeout the coordinator enforces, in ms. `<= 0`
+   * disables it. Default 8000.
+   */
+  timeoutMs?: number;
 }
 
-/** The fully-resolved AI config the diagnoser acts on (no optionals). */
+/** The fully-resolved AI config the diagnoser/coordinator act on (no optionals). */
 export interface ResolvedTelescopeAiConfig {
   enabled: boolean;
   apiKey: string | null;
+  /** A host-supplied provider, or `null` to construct one from `apiKey`. */
+  client: AnthropicMessagesClient | null;
   model: string;
   maxTokens: number;
+  /** Cache TTL override in ms, or `null` to use the cache's default. */
+  cacheTtlMs: number | null;
+  /** Coordinator per-diagnosis timeout in ms. */
+  timeoutMs: number;
 }
 
 /**
@@ -61,14 +95,19 @@ export function defineConfig(config: TelescopeAiConfig): TelescopeAiConfig {
 export function resolveConfig(config: TelescopeAiConfig = {}): ResolvedTelescopeAiConfig {
   const apiKey =
     typeof config.apiKey === 'string' && config.apiKey.trim() !== '' ? config.apiKey : null;
+  const client = config.client ?? null;
   return {
-    // A configured-but-keyless install is treated as disabled so nothing ever
-    // calls the API without credentials.
-    enabled: (config.enabled ?? true) && apiKey !== null,
+    // A configured-but-provider-less install (no key AND no client) is treated as
+    // disabled so nothing ever calls a model without a way to reach one.
+    enabled: (config.enabled ?? true) && (apiKey !== null || client !== null),
     apiKey,
+    client,
     model: config.model ?? DEFAULT_MODEL,
     maxTokens: config.maxTokens ?? DEFAULT_MAX_TOKENS,
+    cacheTtlMs:
+      typeof config.cacheTtlMs === 'number' && config.cacheTtlMs > 0 ? config.cacheTtlMs : null,
+    timeoutMs: typeof config.timeoutMs === 'number' ? config.timeoutMs : DEFAULT_TIMEOUT_MS,
   };
 }
 
-export { DEFAULT_MODEL, DEFAULT_MAX_TOKENS };
+export { DEFAULT_MODEL, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT_MS };

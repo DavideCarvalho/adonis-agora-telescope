@@ -236,11 +236,23 @@ export { RedactingTelescopeStore } from './redaction/redacting_store.js';
 export {
   getTelescopeRuntime,
   resetTelescopeRuntime,
+  setTelescopeDiagnosisCoordinator,
   setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
   setTelescopeRuntime,
 } from './registry.js';
 export type { TelescopeRuntime } from './registry.js';
+
+// — AI diagnosis coordinator (wires the MCP tool + the alerter; SDK-free) —
+export {
+  DiagnosisCoordinator,
+  formatDiagnosisMarkdown,
+} from './ai/diagnosis_coordinator.js';
+export type {
+  DiagnoserLike,
+  DiagnosisCoordinatorOptions,
+  DiagnosisSummary,
+} from './ai/diagnosis_coordinator.js';
 
 // — MCP (Model Context Protocol) server — expose telemetry to a coding agent —
 export {

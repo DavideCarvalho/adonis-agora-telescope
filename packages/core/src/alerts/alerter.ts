@@ -1,6 +1,7 @@
 import type { Entry } from '../entry.js';
 import type { AlertChannel } from './alert_channel.js';
 import type {
+  AlertDiagnosis,
   AlertPayload,
   AlertRule,
   ExceptionAlertContext,
@@ -20,6 +21,14 @@ export interface AlerterDeps {
   maxFamilies?: number;
   /** Failure log sink. Defaults to `console.warn`. */
   logger?: (message: string) => void;
+  /**
+   * Optional AI probable-cause hook. When present, a `new-exception` alert awaits
+   * it (fail-safe / time-bounded by the caller — usually the diagnosis
+   * coordinator) and attaches the result to the payload's `diagnosis` field. Omit
+   * (the default) and alerts behave exactly as before, with no AI section. Must
+   * never throw; the alerter additionally guards it.
+   */
+  diagnose?: (entry: Entry) => Promise<AlertDiagnosis | null>;
 }
 
 /**
@@ -116,7 +125,25 @@ export class Alerter {
       if (this.familyInCooldown(entry.familyHash, nowMs)) continue;
       this.lastFiredFamily.set(entry.familyHash, nowMs);
       const occurrences = occurrencesByFamily.get(entry.familyHash) ?? 1;
-      await this.dispatch(this.buildNewExceptionPayload(result.rule, entry, occurrences, nowMs));
+      const payload = this.buildNewExceptionPayload(result.rule, entry, occurrences, nowMs);
+      // Optionally enrich with an AI probable-cause section when a diagnose hook is
+      // wired. The hook is expected to be fail-safe/time-bounded (the coordinator
+      // is); we guard it anyway so a diagnosis failure never blocks the alert.
+      const diagnosis = await this.safeDiagnose(entry);
+      if (diagnosis !== null) payload.diagnosis = diagnosis;
+      await this.dispatch(payload);
+    }
+  }
+
+  /** Run the optional diagnose hook, swallowing any failure to `null`. */
+  private async safeDiagnose(entry: Entry): Promise<AlertDiagnosis | null> {
+    const diagnose = this.deps.diagnose;
+    if (diagnose === undefined) return null;
+    try {
+      return await diagnose(entry);
+    } catch (error: unknown) {
+      this.logger(`Telescope alert diagnosis failed: ${asMessage(error)}`);
+      return null;
     }
   }
 

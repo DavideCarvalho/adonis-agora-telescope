@@ -16,6 +16,7 @@ export type { SlackChannelOptions, SlackMessage } from './slack_format.js';
 
 // — rules / payload —
 export type {
+  AlertDiagnosis,
   AlertMetric,
   AlertPayload,
   AlertRule,

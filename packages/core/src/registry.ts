@@ -1,3 +1,4 @@
+import type { DiagnosisCoordinator } from './ai/diagnosis_coordinator.js';
 import type { ExtensionRegistry } from './extension/registry.js';
 import type { TelescopeStore } from './store.js';
 import type { EntryEvents } from './stream/entry_events.js';
@@ -29,6 +30,13 @@ export interface TelescopeRuntime {
    * an incident. Reset to `false` on boot/shutdown and when load recovers.
    */
   paused: boolean;
+  /**
+   * The AI diagnosis coordinator published by the AI provider, or `null` when the
+   * AI feature is not installed. The MCP `diagnose_exception` tool and the alerter
+   * read it from here (no DI) to attach probable-cause analysis; when `null` — or
+   * when its `isConfigured()` is `false` — both degrade to their non-AI behaviour.
+   */
+  diagnosisCoordinator: DiagnosisCoordinator | null;
 }
 
 const RUNTIME_KEY = Symbol.for('@agora/telescope:runtime');
@@ -40,6 +48,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   registry: null,
   entryEvents: null,
   paused: false,
+  diagnosisCoordinator: null,
 };
 globalStore[RUNTIME_KEY] = runtime;
 
@@ -65,6 +74,17 @@ export function setTelescopeEntryEvents(entryEvents: EntryEvents | null): void {
 }
 
 /**
+ * Publish the AI diagnosis coordinator (called by the AI provider at register) so
+ * the MCP tool and the alerter can attach probable-cause analysis. Pass `null` to
+ * clear it (AI disabled / provider shutdown).
+ */
+export function setTelescopeDiagnosisCoordinator(
+  coordinator: DiagnosisCoordinator | null,
+): void {
+  runtime.diagnosisCoordinator = coordinator;
+}
+
+/**
  * Toggle the overload-shed flag (called by the overload guard). While paused,
  * every ingestion entry point drops new entries. Idempotent.
  */
@@ -79,4 +99,5 @@ export function resetTelescopeRuntime(): void {
   runtime.registry = null;
   runtime.entryEvents = null;
   runtime.paused = false;
+  runtime.diagnosisCoordinator = null;
 }

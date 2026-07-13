@@ -92,6 +92,28 @@ function clipStack(stack: string | null): string | null {
   return `${frames.slice(0, STACK_CHAR_LIMIT)}…`;
 }
 
+/** A Slack section `text` field is capped at 3000 chars; keep the AI note under it. */
+const DIAGNOSIS_CHAR_LIMIT = 2_800;
+
+/**
+ * Render the optional AI probable-cause summary as a Slack `mrkdwn` block body:
+ * a bold "Probable cause (AI)" label with confidence, the cause, and — when
+ * present — the suggested fix. Returns `null` when no diagnosis is attached, so
+ * the caller omits the block entirely (an alert with AI off looks exactly as
+ * before).
+ */
+function formatDiagnosis(diagnosis: AlertPayload['diagnosis']): string | null {
+  if (diagnosis === undefined) return null;
+  const cause = diagnosis.cause.trim();
+  const fix = diagnosis.fix.trim();
+  if (cause === '' && fix === '') return null;
+  const lines = [`*Probable cause (AI):* _${diagnosis.confidence} confidence_`];
+  if (cause !== '') lines.push(cause);
+  if (fix !== '') lines.push('', `*Suggested fix:* ${fix}`);
+  const text = lines.join('\n');
+  return text.length <= DIAGNOSIS_CHAR_LIMIT ? text : `${text.slice(0, DIAGNOSIS_CHAR_LIMIT)}…`;
+}
+
 /**
  * Build the deep link to the offending exception entry in the host's external
  * dashboard. Returns `null` when no `dashboardUrl` is configured or there is no
@@ -154,6 +176,11 @@ export function formatSlackMessage(
     { type: 'header', text: { type: 'plain_text', text: headerText, emoji: true } },
     { type: 'section', fields: contextFields },
   ];
+
+  const diagnosisText = formatDiagnosis(payload.diagnosis);
+  if (diagnosisText !== null) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: diagnosisText } });
+  }
 
   const stack = exception ? clipStack(exception.stack) : null;
   if (stack !== null) {

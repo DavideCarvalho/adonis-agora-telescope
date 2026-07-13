@@ -1,10 +1,13 @@
 import type { ApplicationService } from '@adonisjs/core/types';
+import type { ExceptionEntryContent } from '../src/ai/diagnoser.js';
 import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js';
+import type { Entry } from '../src/entry.js';
 import {
   type ResolvedTelescopeMcpConfig,
   type TelescopeMcpConfig,
   resolveConfig,
 } from '../src/mcp/define_config.js';
+import type { DiagnoseExceptionHook } from '../src/mcp/server.js';
 import { TelescopeMcpServer } from '../src/mcp/server.js';
 import { MetricsService } from '../src/metrics/metrics_service.js';
 import { getTelescopeRuntime } from '../src/registry.js';
@@ -73,9 +76,26 @@ export default class TelescopeMcpProvider {
     const metrics = new MetricsService(store, {
       ...(coreConfig.nPlusOne.enabled ? { nPlusOneThreshold: coreConfig.nPlusOne.threshold } : {}),
     });
+    // Wire the AI diagnosis hook when a configured coordinator is published in the
+    // runtime slot. When AI is off (no coordinator, or an inert one), NO hook is
+    // passed, so `diagnose_exception` reports "not configured" exactly as before.
+    const coordinator = getTelescopeRuntime().diagnosisCoordinator;
+    const diagnose: DiagnoseExceptionHook | undefined =
+      coordinator !== null && coordinator.isConfigured()
+        ? async (entry: Entry) => {
+            // Feed the same-trace siblings as extra context (already redacted).
+            const related =
+              entry.traceId !== null ? await service.byTrace(entry.traceId) : undefined;
+            return coordinator.diagnoseMarkdown(entry as Entry<ExceptionEntryContent>, {
+              ...(related !== undefined ? { related } : {}),
+            });
+          }
+        : undefined;
+
     const server = new TelescopeMcpServer(service, metrics, {
       tools: config.tools,
       serverInfo: { name: 'adonis-telescope', version: '0.4.0' },
+      ...(diagnose !== undefined ? { diagnose } : {}),
     });
 
     const router = await this.app.container.make('router');

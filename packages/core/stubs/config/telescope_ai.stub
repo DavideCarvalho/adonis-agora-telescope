@@ -33,4 +33,18 @@ export default defineConfig({
    * Hard cap on generated tokens per diagnosis. Default 1024.
    */
   // maxTokens: 1024,
+
+  /**
+   * How long a cached diagnosis stays fresh, in ms. A family is diagnosed once,
+   * then served from cache until this elapses. Defaults to 24h.
+   */
+  // cacheTtlMs: 24 * 60 * 60 * 1000,
+
+  /**
+   * Per-diagnosis wall-clock timeout, in ms, enforced by the diagnosis
+   * coordinator that backs the MCP `diagnose_exception` tool and the alerter's
+   * "Probable cause (AI)" section. A slower model call is abandoned (the caller
+   * proceeds without the AI note). Default 8000.
+   */
+  // timeoutMs: 8000,
 })

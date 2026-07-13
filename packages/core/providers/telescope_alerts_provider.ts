@@ -1,8 +1,10 @@
 import type { ApplicationService } from '@adonisjs/core/types';
+import type { ExceptionEntryContent } from '../src/ai/diagnoser.js';
 import { Alerter } from '../src/alerts/alerter.js';
 import { AlerterService } from '../src/alerts/alerter_service.js';
 import { type TelescopeAlertsConfig, resolveConfig } from '../src/alerts/define_config.js';
 import { ExceptionPoller } from '../src/alerts/exception_source.js';
+import type { Entry } from '../src/entry.js';
 import { MetricsService } from '../src/metrics/metrics_service.js';
 import { getTelescopeRuntime } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
@@ -55,7 +57,19 @@ export default class TelescopeAlertsProvider {
     }
     if (store === null) return;
 
-    const alerter = new Alerter({ alerts: config });
+    // Attach the AI probable-cause hook when a configured coordinator is published
+    // in the runtime slot. When AI is off, no hook is passed and alerts are
+    // exactly as before (no "Probable cause (AI)" section).
+    const coordinator = getTelescopeRuntime().diagnosisCoordinator;
+    const diagnose =
+      coordinator !== null && coordinator.isConfigured()
+        ? (entry: Entry) => coordinator.diagnoseSummary(entry as Entry<ExceptionEntryContent>)
+        : undefined;
+
+    const alerter = new Alerter({
+      alerts: config,
+      ...(diagnose !== undefined ? { diagnose } : {}),
+    });
     this.poller = new ExceptionPoller({
       store,
       alerter,

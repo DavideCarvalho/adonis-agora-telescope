@@ -28,6 +28,18 @@ export type { RelatedEntrySummary } from './prompt.js';
 // — factory (constructs the real Anthropic client) —
 export { createDiagnoser } from './factory.js';
 
+// — diagnosis coordinator (wires MCP + alerter) —
+export {
+  DEFAULT_TIMEOUT_MS,
+  DiagnosisCoordinator,
+  formatDiagnosisMarkdown,
+} from './diagnosis_coordinator.js';
+export type {
+  DiagnoserLike,
+  DiagnosisCoordinatorOptions,
+  DiagnosisSummary,
+} from './diagnosis_coordinator.js';
+
 // — config —
 export {
   DEFAULT_MAX_TOKENS,

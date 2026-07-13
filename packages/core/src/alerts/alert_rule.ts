@@ -90,6 +90,23 @@ export interface ExceptionAlertContext {
 }
 
 /**
+ * A compact AI probable-cause summary optionally attached to a `new-exception`
+ * alert by the {@link Alerter} when a diagnosis coordinator is configured. Kept
+ * structural (no dependency on the `ai` subpath) so alerting stays independent of
+ * whether AI is installed. Absent when AI is off or a diagnosis wasn't ready.
+ */
+export interface AlertDiagnosis {
+  /** Likely root cause — what failed and why. */
+  cause: string;
+  /** A concrete, actionable suggested fix. */
+  fix: string;
+  /** The model's confidence (`high` / `medium` / `low`). */
+  confidence: string;
+  /** The model id that produced the diagnosis. */
+  model: string;
+}
+
+/**
  * The shape delivered to every {@link AlertChannel} when a rule fires.
  */
 export interface AlertPayload {
@@ -112,6 +129,13 @@ export interface AlertPayload {
   metric?: AlertMetric;
   /** Rich context for `new-exception` alerts; absent for rate/metric rules. */
   exception?: ExceptionAlertContext;
+  /**
+   * AI probable-cause analysis, attached to a `new-exception` alert when a
+   * diagnosis coordinator is configured and produced a result within the grace
+   * window. Absent when AI is off or no diagnosis was ready. Channels render it as
+   * a "Probable cause (AI)" section; the raw webhook payload carries it verbatim.
+   */
+  diagnosis?: AlertDiagnosis;
   /** External dashboard URL when configured (lets channels build deep links). */
   dashboardUrl?: string;
 }
