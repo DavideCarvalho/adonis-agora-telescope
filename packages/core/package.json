@@ -63,6 +63,16 @@
       "import": "./dist/providers/telescope_ai_provider.js",
       "default": "./dist/providers/telescope_ai_provider.js"
     },
+    "./mcp": {
+      "types": "./dist/src/mcp/index.d.ts",
+      "import": "./dist/src/mcp/index.js",
+      "default": "./dist/src/mcp/index.js"
+    },
+    "./mcp_provider": {
+      "types": "./dist/providers/telescope_mcp_provider.d.ts",
+      "import": "./dist/providers/telescope_mcp_provider.js",
+      "default": "./dist/providers/telescope_mcp_provider.js"
+    },
     "./alerts": {
       "types": "./dist/src/alerts/index.d.ts",
       "import": "./dist/src/alerts/index.js",
@@ -86,7 +96,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs && pnpm run copy:assets",
-    "copy:stubs": "mkdir -p dist/stubs/config dist/stubs/database/migrations && cp stubs/config/telescope.stub dist/stubs/config/telescope.stub && cp stubs/config/telescope_watchers.stub dist/stubs/config/telescope_watchers.stub && cp stubs/config/telescope_ui.stub dist/stubs/config/telescope_ui.stub && cp stubs/config/telescope_ai.stub dist/stubs/config/telescope_ai.stub && cp stubs/config/telescope_alerts.stub dist/stubs/config/telescope_alerts.stub && cp stubs/database/migrations/create_telescope_entries_table.stub dist/stubs/database/migrations/create_telescope_entries_table.stub",
+    "copy:stubs": "mkdir -p dist/stubs/config dist/stubs/database/migrations && cp stubs/config/telescope.stub dist/stubs/config/telescope.stub && cp stubs/config/telescope_watchers.stub dist/stubs/config/telescope_watchers.stub && cp stubs/config/telescope_ui.stub dist/stubs/config/telescope_ui.stub && cp stubs/config/telescope_ai.stub dist/stubs/config/telescope_ai.stub && cp stubs/config/telescope_alerts.stub dist/stubs/config/telescope_alerts.stub && cp stubs/config/telescope_mcp.stub dist/stubs/config/telescope_mcp.stub && cp stubs/database/migrations/create_telescope_entries_table.stub dist/stubs/database/migrations/create_telescope_entries_table.stub",
     "copy:assets": "mkdir -p dist/src/ui && cp src/ui/dashboard.html dist/src/ui/dashboard.html",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",

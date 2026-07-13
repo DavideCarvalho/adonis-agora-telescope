@@ -242,6 +242,25 @@ export {
 } from './registry.js';
 export type { TelescopeRuntime } from './registry.js';
 
+// — MCP (Model Context Protocol) server — expose telemetry to a coding agent —
+export {
+  MCP_INTERNAL_ERROR,
+  MCP_METHOD_NOT_FOUND,
+  MCP_TOOL_NAMES,
+  MCP_TOOLS,
+  MCP_UNAUTHORIZED,
+  TelescopeMcpServer,
+} from './mcp/index.js';
+export type {
+  DiagnoseExceptionHook,
+  JsonRpcRequest,
+  McpToolName,
+  McpToolSpec,
+  ResolvedTelescopeMcpConfig,
+  TelescopeMcpConfig,
+  TelescopeMcpServerOptions,
+} from './mcp/index.js';
+
 // — structural ecosystem readers —
 export { currentTraceId, getContextAccessor } from './context_accessor.js';
 export type { ContextAccessor } from './context_accessor.js';

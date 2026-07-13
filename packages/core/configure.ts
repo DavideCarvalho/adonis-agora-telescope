@@ -30,6 +30,12 @@ const FEATURES = [
     provider: '@adonis-agora/telescope/alerts_provider',
     configStub: 'config/telescope_alerts.stub',
   },
+  {
+    name: 'mcp',
+    message: 'MCP — expose telemetry to a coding agent over the Model Context Protocol',
+    provider: '@adonis-agora/telescope/mcp_provider',
+    configStub: 'config/telescope_mcp.stub',
+  },
 ] as const;
 
 type FeatureName = (typeof FEATURES)[number]['name'];
