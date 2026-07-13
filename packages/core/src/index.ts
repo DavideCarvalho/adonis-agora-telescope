@@ -107,6 +107,7 @@ export type {
   NPlusOneConfig,
   OverloadConfig,
   PruneConfig,
+  PulseConfig,
   RedactConfig,
   ResolvedTelescopeConfig,
   StreamConfig,
@@ -181,6 +182,21 @@ export type {
   StatusBreakdown,
   SummarizeStatsInput,
 } from './metrics/stats.js';
+export { PulseService, PULSE_CARDS, summarizePulse } from './metrics/pulse.js';
+export type {
+  PulseCardName,
+  PulseExceptionGroup,
+  PulseHotspot,
+  PulseNPlusOne,
+  PulseOptions,
+  PulseQuery,
+  PulseRequestHealth,
+  PulseServiceOptions,
+  PulseSlowEntry,
+  PulseSummary,
+  PulseThroughput,
+  PulseUserLoad,
+} from './metrics/pulse.js';
 export { bucketTimeseries } from './metrics/timeseries.js';
 export type { TimeseriesBucket, TimeseriesReport } from './metrics/timeseries.js';
 export { summarizeTraces } from './metrics/traces.js';

@@ -74,6 +74,17 @@ export default class TelescopeUiProvider {
         ...(config.replay.port !== undefined ? { port: config.replay.port } : {}),
         ...(config.replay.timeoutMs !== undefined ? { timeoutMs: config.replay.timeoutMs } : {}),
       },
+      // Pulse rollup options from core `config.telescope.pulse`.
+      {
+        windowMs: coreConfig.pulse.windowMs,
+        topN: coreConfig.pulse.topN,
+        buckets: coreConfig.pulse.buckets,
+        slowRouteMs: coreConfig.pulse.slowRouteMs,
+        cards: coreConfig.pulse.cards,
+        ...(coreConfig.nPlusOne.enabled
+          ? { nPlusOneThreshold: coreConfig.nPlusOne.threshold }
+          : {}),
+      },
     );
     const apiBase = `${config.path}/api`;
 
@@ -163,6 +174,16 @@ export default class TelescopeUiProvider {
         return api.metricsNPlusOne(ctx, String(ctx.params.traceId));
       })
       .as('telescope_ui.metrics_n_plus_one');
+
+    // Pulse — aggregated health rollup. Registered only when enabled in core config.
+    if (coreConfig.pulse.enabled) {
+      router
+        .get(`${apiBase}/metrics/pulse`, async (ctx: GuardedContext) => {
+          if (!(await enforceGuard(ctx, guard))) return;
+          return api.metricsPulse(ctx);
+        })
+        .as('telescope_ui.metrics_pulse');
+    }
 
     // ───────────────────────── SSE live-stream (additive) ─────────────────────────
     // New entries (already redacted + post-sampling) streamed to the dashboard as

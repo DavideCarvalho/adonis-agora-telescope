@@ -5,6 +5,7 @@ import {
   resolveClientErrors,
 } from './client_errors/config.js';
 import type { TelescopeExtension } from './extension/types.js';
+import { PULSE_CARDS, type PulseCardName } from './metrics/pulse.js';
 import { type SamplingConfig, resolveSampling } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
@@ -118,6 +119,16 @@ export interface TelescopeConfig {
   nPlusOne?: NPlusOneConfig;
 
   /**
+   * Pulse — the aggregated "at a glance" health rollup (slowest entries, error
+   * rate, throughput, top exceptions, cache hit ratio, slow route/outgoing/job
+   * hotspots, N+1, load-by-user) computed on demand from stored entries. Enabled
+   * by default over a trailing 1h window with every card; set `enabled: false` to
+   * disable the `<path>/api/metrics/pulse` route, tune `windowMs`, or restrict
+   * `cards`. See {@link PulseConfig}.
+   */
+  pulse?: PulseConfig;
+
+  /**
    * Live SSE streaming of newly-stored entries to the dashboard. When enabled
    * (the default), the write path publishes each persisted entry — already
    * redacted and post-sampling — to an in-process bus the `<path>/api/stream`
@@ -203,6 +214,25 @@ export interface NPlusOneConfig {
   threshold?: number;
 }
 
+/** Pulse rollup configuration (see {@link TelescopeConfig.pulse}). */
+export interface PulseConfig {
+  /** Master switch for the pulse rollup + its route. Default `true`. */
+  enabled?: boolean;
+  /** Trailing window (ms) the rollup aggregates over. Default 3_600_000 (1h). */
+  windowMs?: number;
+  /** How many rows each top-N list returns. Default 5. */
+  topN?: number;
+  /** Throughput bucket count (clamped 1–500). Default 60. */
+  buckets?: number;
+  /** Min p99 (ms) for a route/outgoing family to count as a slow hotspot. Default 1000. */
+  slowRouteMs?: number;
+  /**
+   * Which cards to compute. Omit for all. `counts` and the window meta are always
+   * present; every other card can be toggled off to trim the payload.
+   */
+  cards?: PulseCardName[];
+}
+
 /** Live-stream configuration (see {@link TelescopeConfig.stream}). */
 export interface StreamConfig {
   /** Master switch for the SSE live-stream of entries. Default `true`. */
@@ -222,6 +252,15 @@ export interface ResolvedTelescopeConfig {
   sampling: SamplingConfig;
   /** Resolved N+1 detection settings. */
   nPlusOne: { enabled: boolean; threshold: number };
+  /** Resolved pulse-rollup settings. */
+  pulse: {
+    enabled: boolean;
+    windowMs: number;
+    topN: number;
+    buckets: number;
+    slowRouteMs: number;
+    cards: PulseCardName[];
+  };
   /** Resolved live-stream settings. */
   stream: { enabled: boolean };
   /**
@@ -283,6 +322,14 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     nPlusOne: {
       enabled: config.nPlusOne?.enabled ?? true,
       threshold: config.nPlusOne?.threshold ?? 3,
+    },
+    pulse: {
+      enabled: config.pulse?.enabled ?? true,
+      windowMs: config.pulse?.windowMs ?? 3_600_000,
+      topN: config.pulse?.topN ?? 5,
+      buckets: config.pulse?.buckets ?? 60,
+      slowRouteMs: config.pulse?.slowRouteMs ?? 1000,
+      cards: config.pulse?.cards ?? [...PULSE_CARDS],
     },
     stream: {
       enabled: config.stream?.enabled ?? true,

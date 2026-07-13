@@ -1,4 +1,10 @@
 import type { Entry } from './entry.js';
+import {
+  type PulseQuery,
+  type PulseServiceOptions,
+  type PulseSummary,
+  PulseService,
+} from './metrics/pulse.js';
 import type { EntryQuery, TelescopeStore } from './store.js';
 
 /** A `{ familyHash | tag, count }` aggregate for top-N style summaries. */
@@ -14,11 +20,30 @@ export interface CountBucket {
  * `tags`/`familyHash` make cheap.
  */
 export class TelescopeService {
-  constructor(private readonly store: TelescopeStore) {}
+  /** Lazily-built pulse aggregator over the store (created on first `getHealth`). */
+  private pulseService: PulseService | null = null;
+
+  constructor(
+    private readonly store: TelescopeStore,
+    /** Defaults for the {@link getHealth} pulse rollup (window, cards, top-N). */
+    private readonly pulseOptions: PulseServiceOptions = {},
+  ) {}
 
   /** The underlying store, for advanced callers (and the provider's shutdown). */
   get telescopeStore(): TelescopeStore {
     return this.store;
+  }
+
+  /**
+   * The aggregated "at a glance" health rollup (slowest entries, error rate,
+   * throughput, top exceptions, cache hit ratio, slow route/outgoing/job
+   * hotspots, N+1, load-by-user) over a trailing window. Reads the store on
+   * demand through a {@link PulseService}; `query.windowMs` overrides the
+   * configured default for a single call.
+   */
+  getHealth(query?: PulseQuery): Promise<PulseSummary> {
+    this.pulseService ??= new PulseService(this.store, this.pulseOptions);
+    return this.pulseService.getHealth(query ?? {});
   }
 
   /** List entries matching `query`, newest-first. */

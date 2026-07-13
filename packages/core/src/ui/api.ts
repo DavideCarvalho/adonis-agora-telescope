@@ -1,6 +1,7 @@
 import { EntryType } from '../entry.js';
 import type { Entry } from '../entry.js';
 import { MetricsService, type MetricsServiceOptions } from '../metrics/metrics_service.js';
+import { PulseService, type PulseServiceOptions } from '../metrics/pulse.js';
 import type { RequestEntryContent } from '../request_watcher.js';
 import type { TelescopeService } from '../service.js';
 import type { EntryQuery } from '../store.js';
@@ -20,6 +21,7 @@ const MAX_LIMIT = 500;
  */
 export class TelescopeApi {
   private readonly metrics: MetricsService;
+  private readonly pulse: PulseService;
   /** Request-replay settings (additive). Replay is disabled unless `enabled`. */
   private readonly replay: { enabled: boolean } & ReplayOptions;
 
@@ -27,8 +29,10 @@ export class TelescopeApi {
     private readonly service: TelescopeService,
     metricsOptions: MetricsServiceOptions = {},
     replayOptions: ({ enabled?: boolean } & ReplayOptions) | undefined = undefined,
+    pulseOptions: PulseServiceOptions = {},
   ) {
     this.metrics = new MetricsService(service.telescopeStore, metricsOptions);
+    this.pulse = new PulseService(service.telescopeStore, pulseOptions);
     this.replay = { enabled: false, ...replayOptions };
   }
 
@@ -163,6 +167,25 @@ export class TelescopeApi {
       .status(200)
       .header('content-type', 'application/json')
       .send({ data, meta: { traceId, count: data.length } });
+  }
+
+  /**
+   * `GET <path>/api/metrics/pulse?windowMs=&topN=` — the aggregated "at a glance"
+   * health rollup (slowest, error rate, throughput, top exceptions, cache hit
+   * ratio, slow route/outgoing/job hotspots, N+1, load-by-user) over a window.
+   */
+  async metricsPulse(ctx: UiHttpContext): Promise<unknown> {
+    const windowMs = readNumber(ctx.request, 'windowMs');
+    const topN = readNumber(ctx.request, 'topN');
+    try {
+      const data = await this.pulse.getHealth({
+        ...(windowMs !== undefined ? { windowMs } : {}),
+        ...(topN !== undefined ? { topN } : {}),
+      });
+      return ctx.response.status(200).header('content-type', 'application/json').send({ data });
+    } catch (err) {
+      return ctx.response.status(400).send({ error: asMessage(err) });
+    }
   }
 
   // — request replay (additive: kept in its own region for trivial merges) —
