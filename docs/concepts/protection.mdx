@@ -1,0 +1,102 @@
+---
+title: Retention & overload protection
+description: Two core safeguards that keep Telescope bounded and self-limiting — a background pruner that deletes stale entries on a timer so the store never grows without bound, and an event-loop overload guard that pauses capture when the p99 lag crosses a threshold so Telescope can never amplify an incident.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Leaving Telescope on in production is only safe if it stays bounded and gets out of the way
+under load. Two core safeguards make that true: a **pruner** that hard-bounds the store over
+time, and an **overload guard** that sheds capture when the event loop is lagging. Both are
+configured on `config/telescope.ts`, both are fire-and-forget and fully guarded (they can never
+crash or block the host), and both use `unref`'d timers so they never keep the event loop alive.
+
+## Retention pruner
+
+By default the store is only bounded by its own cap (the memory ring buffer's `maxEntries`, or
+whatever a persistent store enforces). The pruner adds **time-based** retention: on a timer it
+deletes entries older than a cutoff, optionally keeping the newest `keepLast`.
+
+<Callout type="info">
+The pruner is **off unless a `prune` block is supplied**. Omit it and the store is only bounded
+by its own cap; add `prune: { after: '24h' }` and it is armed. A persistent (Lucid) store in
+particular wants pruning, or it grows forever.
+</Callout>
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  prune: {
+    after: '24h',      // delete entries older than this
+    keepLast: 50_000,  // …but keep at most the newest N of the doomed set
+    intervalMs: 60_000,
+  },
+})
+```
+
+| Key          | Default   | Description                                                                       |
+| ------------ | --------- | -------------------------------------------------------------------------------- |
+| `enabled`    | `true` *(when a `prune` block is present)* | Set `false` to keep the block for reference while disarming the timer. |
+| `after`      | `'24h'`   | Age cutoff — a raw ms number or a `<int><ms\|s\|m\|h\|d>` string. Entries older are deleted each cycle. |
+| `keepLast`   | _unset_   | Count-based retention: keep at most the newest N of the entries a cycle would delete. |
+| `intervalMs` | `60_000`  | How often a scheduled prune cycle runs, in ms.                                    |
+
+<Callout type="warn">
+`after` is parsed at **config resolution**, so an unparseable duration (`'24hrs'`, a typo) is a
+boot error — not a silent runtime skip that never prunes. Valid units: `ms`, `s`, `m`, `h`, `d`.
+</Callout>
+
+Each cycle deletes everything older than `now - after` via the store's `prune(cutoff, keepLast)`;
+the delete is guarded, so a slow or throwing store is captured on the run and never propagates.
+The pruner keeps the last 100 runs (newest-first) in an in-memory ring for a future dashboard —
+prune runs are deliberately **not** stored as entries (they would be pruned themselves and add
+write load to the very store retention is meant to shrink). Call `pruneNow()` to run one cycle on
+demand.
+
+## Overload guard
+
+The guard samples the process event-loop delay histogram
+(`perf_hooks.monitorEventLoopDelay`) once a second and **pauses ingestion** when the rolling p99
+lag crosses a threshold, resuming once it recovers — so a Telescope under load can never amplify
+an incident.
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  overload: {
+    enabled: true,
+    maxEventLoopLagMs: 200,
+    startupGraceMs: 5_000,
+  },
+})
+```
+
+| Key                 | Default | Description                                                                     |
+| ------------------- | ------- | ------------------------------------------------------------------------------ |
+| `enabled`           | `true`  | Master switch — the guard is **on by default**.                                |
+| `maxEventLoopLagMs` | `200`   | p99 event-loop lag (ms) at or above which capture pauses.                       |
+| `startupGraceMs`    | `5_000` | Leading sample windows discarded before the guard can pause, so the boot stall never trips it. |
+
+When the guard pauses, it flips a single runtime `paused` flag that **every** ingestion entry
+point honours at once:
+
+- the request middleware stops recording requests;
+- the watcher `safeRecord` helper drops new entries;
+- the [client-error endpoint](/docs/telescope/packages/client-errors) sheds (still answering
+  `204` so browsers don't retry-storm).
+
+<Callout type="info">
+The histogram is **reset each cycle** so the decision reflects the recent window (a per-process
+accumulation would never recover once lag spiked). The startup grace discards the first window(s)
+— which carry the synchronous boot stall (provider wiring, migrations), not live load — so a
+transient at boot never trips the guard. When `perf_hooks.monitorEventLoopDelay` is unavailable,
+the guard degrades to a no-op.
+</Callout>
+
+Pausing/resuming is logged (`Event-loop p99 lag …ms >= …ms — pausing Telescope capture.` /
+`… recovered — resuming …`), so an operator can see when Telescope stepped aside.
+
+See [Performance](/docs/telescope/concepts/performance) for the rest of the "cheap by
+construction" story.

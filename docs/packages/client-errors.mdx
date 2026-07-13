@@ -1,0 +1,122 @@
+---
+title: Client-error ingestion
+description: A public, opt-in POST endpoint browsers report front-end errors to — recorded as client_exception entries through Telescope's normal redaction / sampling / prune pipeline — protected by a body byte cap, an in-memory per-IP token bucket, an optional authorize hook, and the overload guard's shed flag.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Telescope already captures every *server-side* exception. **Client-error ingestion** extends
+that to the browser: a public `POST` endpoint your front end reports its own errors to, recorded
+as `client_exception` entries that flow through the exact same pipeline as server exceptions —
+family-hash grouping, the `failed` / `client` / `user:<id>` tags, redaction, sampling, pruning,
+and the dashboard timeline.
+
+It is part of the core, configured on `config/telescope.ts`.
+
+<Callout type="warn">
+**Disabled by default.** A public, unauthenticated ingestion surface is opt-in. Unlike a
+controller that is always mounted and 404s while off, the AdonisJS provider only **registers**
+the route when `clientErrors.enabled` is `true` — so a disabled endpoint genuinely does not
+exist and a probe can't even tell it is wired.
+</Callout>
+
+## Configuration
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  clientErrors: {
+    enabled: true,
+    path: '/telescope/client-errors',
+    maxBodyBytes: 32_768,
+    rateLimit: { perMinute: 60 },
+    // authorize: (ctx) => ctx.request.header('x-app-token') === process.env.CLIENT_ERR_TOKEN,
+  },
+})
+```
+
+| Key            | Default                       | Description                                                                 |
+| -------------- | ----------------------------- | -------------------------------------------------------------------------- |
+| `enabled`      | `false`                       | Master switch — no route is registered until this is `true`.               |
+| `path`         | `/telescope/client-errors`    | Route path the `POST` endpoint mounts on.                                   |
+| `maxBodyBytes` | `32_768` (32 KB)              | Hard cap on the accepted body size; a larger body is rejected `413` **before** validation. |
+| `rateLimit`    | `{ perMinute: 60 }`           | Per-IP token bucket; over the limit returns `429`.                          |
+| `authorize`    | _unset_                       | Optional gate run **first**; return `false` to reject `403` (a throw is a denial). |
+
+## The ingestion pipeline
+
+`POST <path>` runs a short-circuiting pipeline; each stage rejects and stops:
+
+1. **`authorize` hook** (if set) — runs first, before any work, so a host can require a session
+   cookie or a shared header. A throw is treated as a denial (fail closed) → `403`.
+2. **Body byte cap** — a body over `maxBodyBytes` is rejected `413` *before* structural
+   validation, so a hostile browser can't make telescope validate a huge payload.
+3. **Per-IP rate limit** — the token bucket, `429` when exhausted.
+4. **Structural validation** — `400` on a malformed body (no echo of the bad input).
+5. **Overload shed** — while the [overload guard](/docs/telescope/concepts/protection#overload-guard)
+   has paused ingestion, the entry is **dropped** so a lagging event loop is never made worse —
+   but still answers `204` so the browser treats it as accepted and does not retry-storm.
+6. **Record** — a `client_exception` entry with a family hash from `name` + `message` + top
+   stack frame (mirroring server exceptions) and the composing tags, then `204 No Content`.
+
+## The request body
+
+Only `message` is required; every other field is optional, type-checked, and length-capped:
+
+```ts
+interface ClientExceptionContent {
+  message: string                    // required — the one field we insist on
+  name: string | null                // error class/name (e.g. 'TypeError'); feeds the family hash
+  stack: string | null               // JS stack; its top frame also feeds the family hash
+  componentStack: string | null      // React component stack (from an error boundary)
+  url: string | null                 // page URL where the error happened
+  userAgent: string | null           // reporting browser's UA
+  user: unknown                      // host-supplied identity → pivoted into a `user:<id>` tag
+  extra: Record<string, unknown>     // free-form context; redacted + bounded like any content
+}
+```
+
+A minimal browser reporter:
+
+```ts
+window.addEventListener('error', (event) => {
+  navigator.sendBeacon(
+    '/telescope/client-errors',
+    JSON.stringify({
+      message: event.message,
+      name: event.error?.name ?? null,
+      stack: event.error?.stack ?? null,
+      url: location.href,
+      userAgent: navigator.userAgent,
+    }),
+  )
+})
+```
+
+## The rate limiter
+
+The per-IP token bucket is the only state the endpoint keeps, and it is deliberately bounded:
+each IP gets a bucket of at most `perMinute` tokens refilling continuously, and the map is
+capped (default 10,000 tracked IPs, oldest-evicted) so an attacker rotating source IPs can't
+grow it without limit.
+
+<Callout type="warn">
+The limiter is **per-process**: in a multi-instance deployment the effective limit is
+`perMinute × instances`. It is cheap abuse-dampening on a public surface, not a hard global
+quota (a shared limiter would need a cross-process store). A misconfigured zero/negative rate
+is clamped to "allow 1/min" so the endpoint never locks out every caller forever.
+</Callout>
+
+## Notable exports
+
+Exported from the core (`@adonis-agora/telescope`):
+
+- `ClientErrorIngestor` — the framework-light handler; types `ClientErrorHttpContext`,
+  `ClientErrorRequest`, `ClientErrorResponse`, `ClientErrorIngestorDeps`.
+- `ClientErrorRateLimiter`, `DEFAULT_MAX_TRACKED_IPS`.
+- `validateClientErrorBody`, `userIdentityTag`; types `ClientErrorValidation`,
+  `ClientExceptionContent`.
+- `resolveClientErrors`, `storeRecorder`; the defaults `DEFAULT_CLIENT_ERRORS_PATH`,
+  `DEFAULT_MAX_BODY_BYTES`, `DEFAULT_RATE_LIMIT_PER_MINUTE`; types `ClientErrorsConfig`,
+  `ResolvedClientErrorsConfig`.

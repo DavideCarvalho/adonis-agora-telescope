@@ -111,6 +111,62 @@ real `ctx` is passed straight through and your hook can reach `ctx.auth`, `ctx.s
 etc.
 </Callout>
 
+## Built-in login screen
+
+For a shared, human-facing dashboard, the `authorize` hook and static credentials are awkward —
+you want a real login form and a session. The optional **`dashboardAuth`** block adds exactly
+that: a server-rendered login page gated by a signed session cookie, without touching the bundled
+SPA.
+
+```ts title="config/telescope_ui.ts"
+import env from '#start/env'
+import User from '#models/user'
+import hash from '@adonisjs/core/services/hash'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  dashboardAuth: {
+    secret: env.get('TELESCOPE_DASHBOARD_SECRET'),   // HMAC-SHA256 signing key (32+ bytes)
+    ttl: '8h',
+    async login(username, password) {
+      const user = await User.findBy('email', username)
+      if (!user || !(await hash.verify(user.password, password))) return null
+      if (!user.isAdmin) return null
+      return { id: String(user.id), name: user.fullName }   // the session user, or null to deny
+    },
+  },
+})
+```
+
+| Key      | Default | Description                                                                    |
+| -------- | ------- | ----------------------------------------------------------------------------- |
+| `secret` | —       | **Required.** HMAC-SHA256 key that signs the session cookie. Missing/empty → boot error. |
+| `ttl`    | `'8h'`  | Cookie lifetime as a duration string (`'30m'`, `'8h'`, `'7d'`).               |
+| `login`  | —       | **Required.** Validates the submitted username/password; return the session user, or `null` to deny. May be `async`. |
+
+When configured, the provider mounts three routes and stamps a session guard on the dashboard:
+
+| Route                   | Serves                                                                    |
+| ----------------------- | ------------------------------------------------------------------------ |
+| `GET <path>/login`      | The server-rendered login page (a static route, so it takes precedence). |
+| `POST <path>/login`     | Runs the `login` hook; on success mints the signed session cookie.       |
+| `GET <path>/logout`     | Clears the session cookie.                                                |
+
+<Callout type="info">
+`dashboardAuth` is **additive** and composes **with** `authorize` — both must pass. An
+unauthenticated **page** navigation is redirected (`302`) to the login page; an unauthenticated
+**API** request gets a plain `401`. The signed cookie (`telescope_dashboard_session`) is minted
+**only** by your `login` hook. Omit `dashboardAuth` entirely and the dashboard behaves exactly as
+before — no login/logout routes, no session guard.
+</Callout>
+
+<Callout type="warn">
+It **fails closed at boot**: a configured-but-missing `secret` or `login` throws at startup rather
+than shipping an un-mintable gate. A `login` hook that throws is treated as a denial (logged once,
+never surfaced), every credential failure returns a **uniform** `401` (no user-enumeration), and
+the post-login `returnTo` is validated against open redirects (same-origin, root-relative only).
+</Callout>
+
 ## Guard behaviour
 
 The guard translates an `authorize` decision into an HTTP outcome, distinguishing two

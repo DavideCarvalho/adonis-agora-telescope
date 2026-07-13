@@ -1,4 +1,16 @@
 {
   "title": "Packages",
-  "pages": ["index", "core", "storages", "watchers", "ui", "ai", "alerts"]
+  "pages": [
+    "index",
+    "core",
+    "storages",
+    "watchers",
+    "pulse",
+    "ui",
+    "telescope-ui",
+    "alerts",
+    "ai",
+    "mcp",
+    "client-errors"
+  ]
 }

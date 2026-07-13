@@ -104,6 +104,15 @@ units: `ms`, `s`, `m`, `h`, `d`.
 type AlertRule =
   | { type: 'new-exception'; window: string }
   | { type: 'exception-rate'; window: string; threshold: number }
+  | {
+      type: 'metric-threshold'
+      metric: 'request-p95-ms' | 'request-p99-ms' | 'query-p95-ms' | 'query-p99-ms'
+            | 'cache-hit-rate' | 'exception-count'
+      window: string
+      comparator: 'gte' | 'lte'
+      threshold: number
+      minSamples?: number   // guard a percentile page against a single slow request; default 1
+    }
 ```
 
 - **`new-exception`** — fires the *first* time an exception's `familyHash` is seen within
@@ -112,8 +121,28 @@ type AlertRule =
   re-occurred" signal.
 - **`exception-rate`** — fires when `>= threshold` exception entries land in the trailing
   `window`.
+- **`metric-threshold`** — evaluates a computed metric over the window and fires when it
+  crosses the threshold (`comparator: 'gte' | 'lte'`). The metrics are derived from the **same**
+  windowed aggregation the [Pulse](/docs/telescope/packages/pulse) / stats views use, so an
+  alert means exactly what the dashboard shows — page on `request-p99-ms >= 800` (a slow
+  endpoint), `cache-hit-rate <= 0.8`, or an `exception-count >= N` spike. `minSamples` guards a
+  percentile rule against a single slow request on a quiet host.
 
-Both are rate-limited by `cooldown` (per-rule for rate, per-family for new-exception).
+The exception rules are rate-limited by `cooldown` (per-rule for rate, per-family for
+new-exception).
+
+### Stateful raise / auto-resolve
+
+`metric-threshold` rules are **stateful**, unlike the fire-and-cooldown exception rules. The
+alerter re-evaluates each rule on the poll interval and tracks whether it is currently firing:
+
+- crossing the threshold when not already firing → **raise** (dispatch `status: 'firing'`);
+- no longer crossing while firing → **auto-resolve** (dispatch `status: 'resolved'`);
+- a just-resolved rule is held down for `cooldown` before it can re-raise (flap control).
+
+So a Slack channel shows a spike *and* its recovery, and you are not re-paged every poll while
+an incident is ongoing. The exception rules carry no `status` (⇒ `'firing'`) — they have no
+resolve signal.
 
 ### Deduplication
 
@@ -158,11 +187,13 @@ Every channel receives the same `AlertPayload`:
 ```ts
 interface AlertPayload {
   rule: AlertRule
-  value: number          // measured value that crossed the threshold (occurrences, or count)
+  value: number          // measured value that crossed the threshold (occurrences, count, or metric)
   threshold: number      // the rule threshold (1 for new-exception)
   firedAt: string        // ISO-8601
   instanceId: string
-  exception?: {          // present for new-exception; absent for rate rules
+  status?: 'firing' | 'resolved'   // present on stateful metric-threshold alerts; absent ⇒ firing
+  metric?: AlertMetric             // present on metric-threshold alerts
+  exception?: {          // present for new-exception; absent for rate/metric rules
     familyHash: string
     class: string
     message: string
@@ -174,6 +205,12 @@ interface AlertPayload {
     occurrences: number
     entryId: string       // for the dashboard deep link
   }
+  diagnosis?: {          // AI probable-cause, on new-exception alerts when AI is configured
+    cause: string
+    fix: string
+    confidence: string
+    model: string
+  }
   dashboardUrl?: string
 }
 ```
@@ -182,12 +219,24 @@ The `exception` context is read generically from the exception entry (`class`/`n
 `message`, `stack`, `route`/`uri`/`url`, `method`, `statusCode`/`status`, and a `user:<id>`
 tag), so it works with any source of exception entries.
 
+### AI probable-cause on new-exception alerts
+
+When [AI diagnosis](/docs/telescope/packages/ai) is installed, a `new-exception` alert is
+enriched with a `diagnosis` — the [coordinator](/docs/telescope/packages/ai#the-diagnosis-coordinator)
+runs a time-bounded, fail-safe diagnosis of the offending exception and the alerter attaches a
+compact `{ cause, fix, confidence, model }` summary to the payload. Slack renders it as a
+**"Probable cause (AI)"** section; the raw webhook carries it verbatim. The diagnose hook is
+guarded, so a diagnosis failure (or a slow model) never blocks or breaks the alert — the alert
+simply goes out without the section. Omit AI and alerts behave exactly as before.
+
 ## Notable exports
 
 - Channels: `slackChannel`, `webhookChannel`, `consoleChannel`, `customChannel`; types
   `AlertChannel`, `ChannelFetch`, `ConsoleSink`.
 - `formatSlackMessage`; types `SlackMessage`, `SlackChannelOptions`.
 - `Alerter`, `ExceptionPoller`, `NewExceptionTracker`, `DEFAULT_MAX_FAMILIES`.
+- `AlerterService` — the interval metric-threshold rule evaluator with raise/resolve; types
+  `AlerterServiceDeps`, `MetricSource`.
 - `durationToMs`; `defineConfig`, `resolveConfig`, `DEFAULT_RULES`.
-- Types: `AlertRule`, `AlertPayload`, `ExceptionAlertContext`, `ResolvedAlerts`,
-  `ChannelSpec`, `ChannelConfig`, `TelescopeAlertsConfig`.
+- Types: `AlertRule`, `AlertMetric`, `AlertPayload`, `AlertDiagnosis`, `ExceptionAlertContext`,
+  `ResolvedAlerts`, `ChannelSpec`, `ChannelConfig`, `TelescopeAlertsConfig`.

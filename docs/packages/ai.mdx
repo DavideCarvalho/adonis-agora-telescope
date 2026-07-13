@@ -60,12 +60,15 @@ export default defineConfig({
 })
 ```
 
-| Key         | Default              | Description                                                          |
-| ----------- | -------------------- | ------------------------------------------------------------------ |
-| `enabled`   | `true`               | Master switch. With `false` (or no key) the diagnoser is a no-op.  |
-| `apiKey`    | _(from env)_         | Anthropic API key — `env.get('ANTHROPIC_API_KEY')`, never hardcoded.|
-| `model`     | `claude-sonnet-4-6`  | Claude model id.                                                    |
-| `maxTokens` | `1024`               | Hard cap on generated tokens per diagnosis.                        |
+| Key          | Default              | Description                                                          |
+| ------------ | -------------------- | ------------------------------------------------------------------ |
+| `enabled`    | `true`               | Master switch. Treated as disabled when neither an `apiKey` nor a `client` resolves. |
+| `apiKey`     | _(from env)_         | Anthropic API key — `env.get('ANTHROPIC_API_KEY')`, never hardcoded.|
+| `client`     | _unset_              | A host-supplied model client (any value matching `AnthropicMessagesClient`) — used verbatim so the package never constructs the SDK. |
+| `model`      | `claude-sonnet-4-6`  | Claude model id.                                                    |
+| `maxTokens`  | `1024`               | Hard cap on generated tokens per diagnosis.                        |
+| `cacheTtlMs` | `24h`                | How long a cached diagnosis stays fresh (a family is diagnosed once, then served from cache). |
+| `timeoutMs`  | `8000`               | Per-diagnosis wall-clock timeout the [coordinator](#the-diagnosis-coordinator) enforces; `<= 0` disables it. |
 
 <Callout type="warn">
 A configured-but-keyless install is treated as **disabled** — nothing ever calls the API
@@ -126,6 +129,37 @@ burns tokens. Swap in a Redis/DB-backed `DiagnosisStore` (via `createDiagnoser`)
 cross-process sharing.
 </Callout>
 
+## The diagnosis coordinator
+
+`TelescopeAiDiagnoser.diagnose` is the low-level call. On top of it sits the
+**`DiagnosisCoordinator`** — the single seam the [MCP `diagnose_exception`](/docs/telescope/packages/mcp)
+tool and the [alerter](/docs/telescope/packages/alerts#ai-probable-cause-on-new-exception-alerts)
+both call. The AI provider publishes it on the core runtime slot (no DI); both consumers read it
+from there and degrade gracefully when it is absent. It adds three properties on top of the raw
+diagnoser:
+
+- **Optional / lazy** — constructed with `diagnoser: null` when AI is unconfigured, in which case
+  `isConfigured()` is `false` and every call returns `null`. Nothing imports the Anthropic SDK
+  through it; the provider supplies the concrete diagnoser.
+- **De-duped** — concurrent diagnose calls for the **same** exception family share one in-flight
+  promise, so an MCP request and an alert firing at once never trigger two model calls (and
+  completed diagnoses are still cached by family hash).
+- **Fail-safe** — a per-call `timeoutMs` (default 8s) bounds the wait; any failure or timeout
+  resolves to `null` and is logged — it never throws into the MCP transport or the alert flush.
+
+```ts
+import { DiagnosisCoordinator } from '@adonis-agora/telescope/ai'
+
+// The coordinator projects the same diagnosis three ways for its callers:
+const diagnosis = await coordinator.diagnose(exception)          // Diagnosis | null
+const markdown  = await coordinator.diagnoseMarkdown(exception)  // for the MCP tool
+const summary   = await coordinator.diagnoseSummary(exception)   // { cause, fix, confidence, model } | null, for alerts
+```
+
+`diagnoseMarkdown` renders a compact, agent-facing markdown block (heading, confidence/model
+line, cause, suggested fix) via the exported `formatDiagnosisMarkdown`; `diagnoseSummary` returns
+the compact object the alerter attaches to an alert payload.
+
 ## Safe by construction
 
 Diagnosis never throws into your code. Disabled or no client → `null`. A model call or a
@@ -147,6 +181,9 @@ what gets captured upstream if that's a concern.
   `DiagnoseOptions`, `AnthropicMessagesClient`.
 - `createDiagnoser(config, options?)` — build a diagnoser from resolved config (constructs
   the real Anthropic client; returns `null` when disabled).
+- `DiagnosisCoordinator` — the shared, de-duped, fail-safe coordinator wiring MCP + alerts;
+  `formatDiagnosisMarkdown`, `DEFAULT_TIMEOUT_MS`; types `DiagnoserLike`,
+  `DiagnosisCoordinatorOptions`, `DiagnosisSummary`.
 - `DiagnosisCache`, `DEFAULT_DIAGNOSIS_CACHE_MAX`, `DEFAULT_DIAGNOSIS_TTL_MS`; type
   `DiagnosisStore`.
 - `parseDiagnosis`, `normalizeConfidence`; types `Diagnosis`, `DiagnosisConfidence`.

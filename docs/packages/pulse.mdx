@@ -1,0 +1,115 @@
+---
+title: Pulse health rollup
+description: Pulse is Telescope's aggregated "at a glance" health rollup — throughput, request error rate and latency percentiles, slowest entries, slow route/outgoing/job hotspots, N+1 suspects, top exception families, cache hit rate, and load-by-user — computed on demand from stored entries and served at <path>/api/metrics/pulse, from the headless getHealth API, and via the MCP get_health tool.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Individual entries answer *"what happened on this request?"*. **Pulse** answers *"how is the
+app doing right now?"* — a single aggregated snapshot over a trailing window: throughput, the
+request error rate and latency percentiles, the slowest entries, consistently-slow
+route/outgoing/job hotspots, N+1 query suspects, the top exception families, the cache hit
+ratio, and load-by-user. It is computed **on demand** from already-stored entries (a single
+windowed store scan), so there is no extra write cost and nothing to keep in sync.
+
+Pulse is part of the core — it is configured on `config/telescope.ts` and read three ways:
+
+- the headless `TelescopeService.getHealth()` API;
+- the dashboard JSON route `GET <path>/api/metrics/pulse` (served by the UI provider);
+- the MCP [`get_health`](/docs/telescope/packages/mcp#the-tools) tool.
+
+## Configuration
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  pulse: {
+    enabled: true,
+    windowMs: 3_600_000,   // trailing 1h
+    topN: 5,
+    buckets: 60,
+    slowRouteMs: 1000,
+    // cards: ['throughput', 'requests', 'exceptions', 'nPlusOne'],  // trim the payload
+  },
+})
+```
+
+| Key           | Default      | Description                                                                     |
+| ------------- | ------------ | ------------------------------------------------------------------------------ |
+| `enabled`     | `true`       | Master switch for the rollup and its `<path>/api/metrics/pulse` route.          |
+| `windowMs`    | `3_600_000`  | Trailing window (ms) the rollup aggregates over (1h).                           |
+| `topN`        | `5`          | How many rows each top-N list returns.                                          |
+| `buckets`     | `60`         | Throughput bucket count (clamped 1–500).                                        |
+| `slowRouteMs` | `1000`       | Min p99 (ms) for a route/outgoing family to count as a slow hotspot.            |
+| `cards`       | all cards    | Which cards to compute. `counts` and the window meta are always present.        |
+
+The togglable cards are `throughput`, `requests`, `cache`, `slowest`, `slowRoutes`,
+`slowOutgoing`, `slowJobs`, `exceptions`, `nPlusOne`, and `loadByUser`. Omit `cards` for all
+of them; restrict it to trim the payload on a busy host.
+
+## The headless API
+
+`TelescopeService.getHealth(query?)` builds the snapshot; `query.windowMs` overrides the
+configured default for a single call.
+
+```ts
+import { TelescopeService } from '@adonis-agora/telescope'
+
+const telescope = await app.container.make(TelescopeService)
+const health = await telescope.getHealth({ windowMs: 15 * 60_000 })   // last 15m
+// → { windowStart, windowEnd, windowMs, counts, throughput, requests,
+//     cache?, slowest, slowRoutes, slowOutgoing, slowJobs,
+//     topExceptions, nPlusOne, loadByUser, scanned, truncated }
+```
+
+The `PulseSummary` shape:
+
+```ts
+interface PulseSummary {
+  windowStart: string
+  windowEnd: string
+  windowMs: number
+  counts: Record<string, number>          // per-type entry counts in the window
+  throughput: PulseThroughput             // total, perMinute, per-bucket over time
+  requests: PulseRequestHealth            // total, errorRate, status breakdown, latency?
+  cache?: CacheStats                      // present when the cache card is on + cache entries exist
+  slowest: PulseSlowEntry[]               // slowest entries across all types
+  slowRoutes: PulseHotspot[]              // consistently-slow request families by p99
+  slowOutgoing: PulseHotspot[]            // slow outbound HTTP-client families
+  slowJobs: PulseHotspot[]                // slow queue/job families
+  topExceptions: PulseExceptionGroup[]    // grouped exception families
+  nPlusOne: PulseNPlusOne[]               // N+1 query loops aggregated across traces
+  loadByUser: PulseUserLoad[]             // share of load by `user:<id>` tag
+  scanned: number                         // entries scanned to build this summary
+  truncated: boolean                      // whether the scan hit its cap
+}
+```
+
+<Callout type="info">
+The rollup **reuses** the existing metrics primitives rather than re-deriving anything:
+`summarizeStats` (status breakdown, cache hit ratio, exception groups), `bucketTimeseries`
+(throughput), `percentile` (slow-hotspot p99), and `detectNPlusOne` (N+1 loops) — so a Pulse
+number means exactly what the corresponding dashboard view shows. The scan is capped
+(50,000 entries) and surfaces `truncated: true` if it hit the cap.
+</Callout>
+
+## The dashboard route
+
+When both the UI and Pulse are enabled, the UI provider registers:
+
+```
+GET <path>/api/metrics/pulse?windowMs=<ms>
+```
+
+behind the dashboard [auth guard](/docs/telescope/dashboard/auth), returning the same
+`PulseSummary`. The `windowMs` query param overrides the configured window for that request.
+The bundled [dashboard SPA](/docs/telescope/packages/telescope-ui) renders it as the **Pulse**
+section; the [MCP `get_health` tool](/docs/telescope/packages/mcp) returns it to a coding agent.
+
+## Hotspots vs. slowest
+
+`slowest` is a flat list of the individual slowest entries. The `slow*` **hotspots** are
+different: they group by family (`familyHash`) and rank by p99, gated by a minimum p99
+(`slowRouteMs`, default 1000ms) so a quiet host's fastest-of-the-slow route (e.g. `/health`
+at 18ms) is never a false alarm — a family only surfaces once it is *consistently* slow.

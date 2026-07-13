@@ -1,0 +1,137 @@
+---
+title: "@adonis-agora/telescope-ui"
+description: The observability dashboard SPA — a dependency-light React single-page app (entries + live tail, entry detail, traces & waterfall, exception groups, Pulse health) served by a thin AdonisJS provider under the same prefix and behind the same auth guard as the core JSON API it consumes.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+`@adonis-agora/telescope-ui` is a **separate, optional package**: a React single-page dashboard
+that renders Telescope's captured telemetry — an entries list with a live tail, entry detail,
+trace + waterfall views, exception groups, and the [Pulse](/docs/telescope/packages/pulse) health
+snapshot. A thin AdonisJS provider serves the built SPA as static assets under the **same** prefix
+the core UI provider mounts its JSON API on, behind the **same** [auth guard](/docs/telescope/dashboard/auth).
+
+<Callout type="info">
+This replaces the core `@adonis-agora/telescope/ui` provider's legacy **inline-HTML** dashboard at the
+prefix root. When this package is installed the core provider stops registering the inline page and
+keeps only `<path>/api/*`; the SPA owns `<path>` and `<path>/*`. Static API routes take precedence
+over the SPA's wildcard in the AdonisJS router, so the API always wins. If you don't want the React
+SPA, don't install this package — the core inline dashboard is still there.
+</Callout>
+
+## Install
+
+This is its own package (not a subpath). Install it alongside the core and its
+[UI subpath](/docs/telescope/packages/ui):
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm i @adonis-agora/telescope @adonis-agora/telescope-ui
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm add @adonis-agora/telescope @adonis-agora/telescope-ui
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn add @adonis-agora/telescope @adonis-agora/telescope-ui
+```
+
+</Tab>
+</Tabs>
+
+Then register the provider **after** the core telescope providers in `adonisrc.ts` (the SPA
+consumes the core UI's JSON API, so the core `ui_provider` must be enabled):
+
+```ts title="adonisrc.ts"
+providers: [
+  // …
+  () => import('@adonis-agora/telescope/telescope_provider'),
+  () => import('@adonis-agora/telescope/ui_provider'),   // JSON API + SSE under <path>/api/*
+  () => import('@adonis-agora/telescope-ui'),            // serves the SPA at <path>
+]
+```
+
+It needs the core UI to be enabled (that is the backend the SPA talks to); if
+`config('telescope_ui').enabled` is `false` it serves nothing. Open `http://localhost:3333/telescope`.
+
+## What it shows
+
+The SPA is dependency-light (React 19, no data-fetching or component framework) and calls the
+core's own read routes — it holds no server-side state of its own:
+
+- **Entries** — a filterable list with a **live tail** over the `<path>/api/stream` SSE feed.
+- **Entry detail** — one entry's full `content`, tags and trace linkage.
+- **Traces & waterfall** — every entry on a trace, plus the span waterfall.
+- **Exceptions** — grouped exception families.
+- **Pulse** — the [health rollup](/docs/telescope/packages/pulse) over a selectable window.
+
+## How it mounts
+
+The provider serves the Vite build (`dist/spa`) as static assets:
+
+| Route              | Serves                                                                    |
+| ------------------ | ------------------------------------------------------------------------- |
+| `GET <mount>`      | `302` → `<mount>/` (canonical trailing slash so relative assets resolve). |
+| `GET <mount>/`     | The SPA shell (`index.html`), with the resolved API base injected.        |
+| `GET <mount>/*`    | A built asset, or the SPA shell as a fallback (so a deep link still boots).|
+
+`<mount>` defaults to `config('telescope_ui').path` (`/telescope`), so the SPA and the JSON API
+share a prefix and the SPA's `<path>/api/*` calls line up. Every route runs the same `authorize`
+guard as the API, plus the [`dashboardAuth`](/docs/telescope/dashboard/auth#built-in-login-screen)
+session guard when configured (a page navigation with no valid session is redirected to the login
+page).
+
+## Configuration
+
+The SPA reuses the core `config/telescope_ui.ts` block for its mount `path` and `authorize` guard,
+so it sits behind the exact same auth as the API it consumes. An optional nested `dashboard` block
+only toggles the SPA on/off and, if you want it served from a different prefix, overrides the mount:
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  path: '/telescope',
+  credentials: { token: process.env.TELESCOPE_UI_TOKEN },
+  dashboard: {
+    enabled: true,
+    // path: '/__telescope',   // override the SPA mount (defaults to `path` above)
+  },
+})
+```
+
+| Key                 | Default          | Description                                             |
+| ------------------- | ---------------- | ------------------------------------------------------ |
+| `dashboard.enabled` | `true`           | Mount the SPA. `false` keeps the static routes off.    |
+| `dashboard.path`    | `telescope_ui.path` | Override the SPA mount path.                        |
+
+## The client (build your own)
+
+The package also exports a typed, framework-agnostic client at `@adonis-agora/telescope-ui/client`
+— the same one the SPA uses — for embedding Telescope data in your own admin UI:
+
+```ts
+import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
+
+const client = new TelescopeClient({ baseUrl: '/telescope/api' })
+const entries = await client.listEntries({ type: 'exception' })
+```
+
+Notable exports: `TelescopeClient`, `TelescopeApiError`, type `TelescopeClientOptions`, plus the
+shared entry `types`, `format` helpers, and `api-base` resolver.
+
+## Peer dependencies
+
+`@adonis-agora/telescope` (the backend) and `@adonisjs/core` (`^7.3.0`, optional peer). React and
+Vite are dev-only — the published package ships the pre-built SPA, so there is no build step in
+your app.

@@ -1,0 +1,132 @@
+---
+title: "@adonis-agora/telescope/mcp"
+description: The Model Context Protocol subpath of @adonis-agora/telescope — a stateless JSON-RPC endpoint that lets a coding agent (Claude Code, Cursor, …) query the app's captured telemetry with six read tools (list entries, get entry, get trace, get waterfall, Pulse health, AI diagnose), behind the same auth guard as the dashboard.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Telescope already records everything an agent needs to debug production — requests,
+queries, exception stacks, trace waterfalls, the Pulse health rollup. The
+**`@adonis-agora/telescope/mcp`** subpath exposes that store over the
+[Model Context Protocol](https://modelcontextprotocol.io) as a stateless JSON-RPC endpoint,
+so a coding agent can answer *"why is `POST /checkout` slow?"* by listing the slow requests,
+pulling the trace waterfall, and reading the queries — all from the same already-redacted,
+already-sampled entries the dashboard reads.
+
+## Install
+
+The MCP server ships inside the one `@adonis-agora/telescope` package. Enable it when
+configuring telescope:
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "MCP" at the prompt
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "MCP" at the prompt
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "MCP" at the prompt
+```
+
+</Tab>
+</Tabs>
+
+Selecting **MCP** registers `@adonis-agora/telescope/mcp_provider` and publishes
+`config/telescope_mcp.ts`. On boot the provider resolves the live store from the core's
+runtime slot (no DI) and mounts a JSON-RPC transport at `path`.
+
+<Callout type="warn">
+If `@adonis-agora/telescope` isn't enabled/booted, the store slot is `null` and the provider
+registers **no routes** (warn-logged) rather than crashing — the MCP endpoint simply doesn't
+exist until the core is running.
+</Callout>
+
+## Configuration
+
+```ts title="config/telescope_mcp.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/mcp'
+
+export default defineConfig({
+  enabled: true,
+  path: '/telescope/mcp',
+  credentials: { token: env.get('TELESCOPE_MCP_TOKEN') },
+  // tools: ['list_entries', 'get_trace', 'get_health'],   // hand an agent a narrower surface
+})
+```
+
+| Key           | Default           | Description                                                                    |
+| ------------- | ----------------- | ----------------------------------------------------------------------------- |
+| `enabled`     | `true`            | Master switch; `false` registers no routes.                                   |
+| `path`        | `/telescope/mcp`  | URL the JSON-RPC endpoint mounts at (normalized to leading slash, no trailing).|
+| `authorize`   | default policy    | Access-decision hook — the **same** guard as the [dashboard](/docs/telescope/dashboard/auth). |
+| `credentials` | `{}`              | Built-in token / HTTP Basic gate for the default policy.                       |
+| `tools`       | all six           | Which tools to expose — restrict to hand an agent a narrower, read-only surface.|
+
+<Callout type="info">
+Access reuses the **same** `authorize` + `credentials` guard as the UI / metrics API: allowed
+automatically outside production, and in production only when a `token`/`basic` credential — or
+a custom `authorize` hook — permits it. Because MCP has no transport-level `401`, a denial rides
+inside the JSON-RPC envelope as a `-32001` error (`MCP_UNAUTHORIZED`) where a compliant client
+can read it.
+</Callout>
+
+## The tools
+
+`tools/list` returns the subset `config.tools` enables (all six by default); `tools/call`
+dispatches on `name`. Every tool reads the shared `TelescopeService` / `MetricsService` /
+Pulse APIs — redaction and sampling are never bypassed.
+
+| Tool                  | Args                                                     | Returns                                                                 |
+| --------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `list_entries`        | `type?`, `search?`, `tag?`, `sinceMinutes?`, `limit?`    | Recent entries, newest-first (compact rows; default 20, max 100).      |
+| `get_entry`           | `id`                                                     | One entry plus its trace siblings (the request/job waterfall context). |
+| `get_trace`           | `traceId`                                                | Every entry recorded under one trace id, newest-first.                 |
+| `get_waterfall`       | `traceId`                                                | The span waterfall for a trace (each operation as a start/duration span).|
+| `get_health`          | `sinceMinutes?` (default 60)                             | The [Pulse](/docs/telescope/packages/pulse) health snapshot over a trailing window. |
+| `diagnose_exception`  | `id`                                                     | The [AI diagnosis](/docs/telescope/packages/ai) for an exception entry (probable cause / fix). |
+
+<Callout type="info">
+`diagnose_exception` is backed by the [AI diagnosis coordinator](/docs/telescope/packages/ai#the-diagnosis-coordinator).
+When AI is not configured the tool reports *"AI diagnosis is not configured on this telescope."*
+rather than failing — mirroring the default-open dashboard posture.
+</Callout>
+
+## The transport
+
+The route is a thin JSON-RPC surface — it runs the auth guard, then hands the parsed `body`
+and the `authorized` flag to a plain, testable `TelescopeMcpServer`:
+
+| Method                              | Behaviour                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------ |
+| `POST <path>`                       | The JSON-RPC surface: `initialize`, `ping`, `tools/list`, `tools/call`, and the `notifications/*` no-ops. A notification (no `id`) answers `202` with no body. |
+| `GET <path>`                        | `405` — the streamable-HTTP server→client stream is unsupported (this server is stateless). |
+| `DELETE <path>`                     | `200` no-op — there is no session to terminate.                          |
+
+Point your agent's MCP client at `https://your-app.example.com/telescope/mcp` (adding the
+token as the guard expects). The server advertises protocol revision `2025-06-18` and
+`serverInfo` `{ name: 'adonis-telescope', version: '0.4.0' }`.
+
+## Notable exports
+
+- `TelescopeMcpServer` — the hand-rolled JSON-RPC server (no SDK dependency); types
+  `TelescopeMcpServerOptions`, `JsonRpcRequest`, `McpToolSpec`, `DiagnoseExceptionHook`.
+- `MCP_TOOLS` — the full tool catalogue; `MCP_TOOL_NAMES`, type `McpToolName`.
+- Error codes `MCP_UNAUTHORIZED` (`-32001`), `MCP_METHOD_NOT_FOUND` (`-32601`),
+  `MCP_INTERNAL_ERROR` (`-32603`).
+- `defineConfig`, `resolveConfig`; types `TelescopeMcpConfig`, `ResolvedTelescopeMcpConfig`.

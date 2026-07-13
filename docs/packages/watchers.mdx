@@ -56,16 +56,24 @@ import { defineConfig } from '@adonis-agora/telescope/watchers'
 export default defineConfig({
   enabled: true,
   watchers: ['query'],   // default: the verified Lucid query watcher only
+  query: { slowMs: 500, captureBindings: false, normalize: true },
+  httpClient: { slowMs: 1000, ignoreHosts: [] },
+  profiling: { slowMs: 100 },
+  schedule: { slowMs: 1000 },
 })
 ```
 
-| Key        | Default     | Description                                                              |
-| ---------- | ----------- | ---------------------------------------------------------------------- |
-| `enabled`  | `true`      | Master switch; `false` starts no per-technology watcher.              |
-| `watchers` | `['query']` | Which watchers run — any of `'query'`, `'mail'`, `'cache'`, `'http-client'`, `'logs'`. |
+| Key          | Default     | Description                                                              |
+| ------------ | ----------- | ---------------------------------------------------------------------- |
+| `enabled`    | `true`      | Master switch; `false` starts no per-technology watcher.              |
+| `watchers`   | `['query']` | Which watchers run — any of `'query'`, `'mail'`, `'cache'`, `'http-client'`, `'logs'`, `'queue'`, `'events'`, `'redis'`, `'profiling'`, `'schedule'`. |
+| `query`      | see below   | Lucid `query` watcher tuning — `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `normalize` (`true`). |
+| `httpClient` | see below   | `http-client` watcher tuning — `slowMs` (1000), `ignoreHosts`, `captureBodies` (`false`). |
+| `profiling`  | see below   | `profiling` watcher tuning — `slowMs` (100), `minDurationMs` (0).       |
+| `schedule`   | see below   | `schedule` watcher tuning — `slowMs` (1000).                            |
 
 Only the Lucid `query` watcher is on by default — it's the one whose event contract is
-verified against the installed `@adonisjs/lucid` types. `mail` and `cache` are opt-in.
+verified against the installed `@adonisjs/lucid` types. Everything else is opt-in.
 
 <Callout type="info">
 The provider also accepts the watchers config under a `watchers_config` key on the main
@@ -93,10 +101,19 @@ interface QueryEntryContent {
 }
 ```
 
-Tags: `connection:<name>`, `method:<method>`, and `model:<model>` when Lucid reports them.
-The `familyHash` is a `queryFamilyHash(sql)` — the SQL normalized to a template (literals
-replaced by `?`, whitespace collapsed) and FNV-1a hashed — so every execution of
-`select * from users where id = ?` rolls up into one family regardless of the id.
+Tags: `connection:<name>`, `method:<method>`, `model:<model>` when Lucid reports them, and
+`slow` when the query is at/above `query.slowMs` (default 500ms — this feeds the Pulse
+slow-query card). The `familyHash` is a `queryFamilyHash(sql)` — the SQL normalized to a
+template (literals replaced by `?`, whitespace collapsed) and FNV-1a hashed — so every
+execution of `select * from users where id = ?` rolls up into one family regardless of the id.
+Set `query.normalize: false` to hash the raw SQL verbatim (no grouping across literals), and
+`query.ignoreConnections` to drop specific connections (e.g. the telescope store's own).
+
+<Callout type="warn">
+Bindings routinely carry PII / secrets (emails, tokens, password hashes), so by default they
+are redacted to `[REDACTED]` placeholders (arity preserved) and only the normalized SQL
+template is kept. Set `query.captureBindings: true` to record the real bound values.
+</Callout>
 
 <Callout type="warn">
 Lucid only emits `db:query` when the connection's `debug` flag is on **or** a `db:query`
@@ -185,7 +202,11 @@ calls to the same endpoint group regardless of ids.
 
 It never alters the host's call: it awaits the real `fetch`, records fire-and-forget, and
 always re-throws a network error. The wrapper is idempotent process-wide and `stop()`
-restores the original `fetch` on shutdown.
+restores the original `fetch` on shutdown. Configure it via `httpClient.slowMs` (the `slow`
+threshold), `httpClient.ignoreHosts` (exact, case-insensitive hosts whose calls are not
+recorded), and `httpClient.captureBodies` (record request/response body **sizes** in bytes —
+never the bytes — default `false`). The exported `instrumentFetch(fetch, options?)` /
+`markInternalFetch` helpers let you wrap a custom fetch instance by hand.
 
 <Callout type="info">
 The captured url is sanitized before storage — userinfo (`user:pass@`) is stripped and
@@ -231,6 +252,88 @@ and it's fully reversible. A reentrancy guard prevents an infinite record→log�
 </Callout>
 
 ---
+
+## Profiling watcher
+
+Records **user-instrumented timing spans** as `profile` entries. There is no event to tap, so
+this watcher is driven by two opt-in helpers you call around a code section — nothing is
+captured until the watcher is enabled and a helper is called.
+
+```ts
+import { profile, startProfile } from '@adonis-agora/telescope/watchers'
+
+// Scoped: times `fn`, records completed/failed, re-throws on error.
+const total = await profile('checkout', async (span) => {
+  const cart = await loadCart()
+  span.mark('cart-loaded')          // an in-span checkpoint
+  return await charge(cart)
+})
+
+// Manual: start, mark, end/fail yourself.
+const span = startProfile('report')
+span.mark('queried')
+span.end()
+```
+
+```ts
+interface ProfileEntryContent {
+  label: string                     // the span label, e.g. 'checkout'
+  durationMs: number                // total wall-clock duration
+  status: 'completed' | 'failed'
+  marks: { label: string; atMs: number }[]   // in-order checkpoints, offset from start
+  failureReason: string | null      // set when status is 'failed'
+  traceId: string | null
+}
+```
+
+Tagged `slow` at/above `profiling.slowMs` (default 100ms); spans shorter than
+`profiling.minDurationMs` (default 0) are discarded. Recording is fire-and-forget and fully
+guarded — a telescope failure can never break the code being profiled. While the watcher is
+disabled, `profile()` / `startProfile()` are a **zero-cost no-op** (the closure still runs).
+
+## Schedule watcher
+
+Records each **scheduled-task run** as a `scheduled_task` entry — the task name, cron/interval
+expression, duration and outcome. AdonisJS ships no first-party scheduler, and the community
+schedulers emit nothing on the app emitter, so — rather than fabricate an event — this
+watcher's integration point is an explicit wrapper.
+
+```ts
+import { scheduleTask, recordScheduledRun } from '@adonis-agora/telescope/watchers'
+
+// Wrap a scheduled closure — times the run, records completed/failed, always re-throws.
+await scheduleTask('prune-sessions', () => sessions.pruneExpired(), {
+  schedule: '0 * * * *',
+  kind: 'cron',
+})
+
+// …or record an outcome you already have (from an existing scheduler callback).
+recordScheduledRun({ name: 'digest', status: 'completed', durationMs: 812, kind: 'cron' })
+```
+
+```ts
+interface ScheduleEntryContent {
+  name: string
+  schedule: string | null           // the cron/interval expression, when supplied
+  kind: 'cron' | 'interval' | 'custom'
+  durationMs: number
+  status: 'completed' | 'failed'
+  attempts: number | null
+  failureReason: string | null
+  traceId: string | null
+}
+```
+
+`familyHash` is `schedule:<name>`, so repeated runs of the same task roll up and feed the
+slow-hotspot metrics cards; a run at/above `schedule.slowMs` (default 1000ms) is tagged `slow`.
+Like profiling, the helpers are a no-op until the provider starts the watcher, so schedule
+capture stays strictly opt-in.
+
+<Callout type="info">
+In the Agora ecosystem, `@adonis-agora/durable` also bridges its scheduled/cron runs onto the
+diagnostics bus, which the diagnostics watcher records — this watcher covers plain
+application-level scheduled work.
+</Callout>
 
 ## Building your own watcher
 

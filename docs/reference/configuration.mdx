@@ -40,6 +40,13 @@ export default defineConfig({
 | `watchers`   | `WatcherName[]`                  | `['request', 'diagnostics']`  | Which built-in watchers run. Omit a name to disable it.          |
 | `extensions` | `TelescopeExtension[]`           | `[]`                          | [Extensions](/docs/telescope/concepts/extensions) registered at boot. |
 | `redact`     | `{ enabled?, keys? }`            | `{ enabled: true, keys: [] }` | [Sensitive-data redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction) — masks sensitive keys in every entry's content before persistence. |
+| `sampling`   | `number \| SamplingConfig`       | _record everything_           | Tail-sampling on the write path (bare keep-rate, or per-type rules keeping errors/slow). |
+| `pulse`      | `{ enabled?, windowMs?, topN?, buckets?, slowRouteMs?, cards? }` | `enabled`, 1h window | The [Pulse](/docs/telescope/packages/pulse) health rollup + its `/api/metrics/pulse` route. |
+| `nPlusOne`   | `{ enabled?, threshold? }`       | `{ enabled: true, threshold: 3 }` | N+1 query-loop detection thresholds (read-only analysis).   |
+| `stream`     | `{ enabled? }`                   | `{ enabled: true }`           | Live SSE streaming of newly-stored entries to the dashboard.    |
+| `prune`      | `{ after?, keepLast?, intervalMs?, enabled? }` | _off unless present_ | Background retention pruner — see [Retention & overload protection](/docs/telescope/concepts/protection). |
+| `overload`   | `{ enabled?, maxEventLoopLagMs?, startupGraceMs? }` | `enabled`, 200ms | Event-loop overload guard — see [Retention & overload protection](/docs/telescope/concepts/protection). |
+| `clientErrors` | `ClientErrorsConfig`           | _disabled_                    | Public [client-error ingestion](/docs/telescope/packages/client-errors) endpoint (opt-in). |
 
 <Callout type="warn">
 Redaction is **on by default**. Every entry's `content` is scrubbed at the store boundary —
@@ -68,16 +75,21 @@ export default defineConfig({
 })
 ```
 
-| Key        | Type                                    | Default     | Description                                              |
-| ---------- | --------------------------------------- | ----------- | ------------------------------------------------------- |
-| `enabled`  | `boolean`                               | `true`      | Master switch for per-technology watchers.             |
-| `watchers` | `('query' \| 'mail' \| 'cache')[]`      | `['query']` | Which watchers subscribe. `mail`/`cache` are opt-in.   |
+| Key          | Type                        | Default     | Description                                              |
+| ------------ | --------------------------- | ----------- | ------------------------------------------------------- |
+| `enabled`    | `boolean`                   | `true`      | Master switch for per-technology watchers.             |
+| `watchers`   | `WatcherName[]`             | `['query']` | Any of `query`, `mail`, `cache`, `http-client`, `logs`, `queue`, `events`, `redis`, `profiling`, `schedule`. |
+| `query`      | `QueryWatcherConfig`        | see below   | `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `normalize` (`true`). |
+| `httpClient` | `HttpClientWatcherConfig`   | see below   | `slowMs` (1000), `ignoreHosts`, `captureBodies` (`false`). |
+| `profiling`  | `ProfilingWatcherConfig`    | see below   | `slowMs` (100), `minDurationMs` (0).                   |
+| `schedule`   | `ScheduleWatcherConfig`     | see below   | `slowMs` (1000).                                       |
 
 <Callout type="warn">
-Only `query` is on by default — it's the verified one. Enable `mail`/`cache` knowing their
-event contracts are best-effort (those packages aren't installed in this repo). And remember
-Lucid only emits `db:query` when its connection `debug` is on. See
-[Watchers](/docs/telescope/packages/watchers).
+Only `query` is on by default — it's the verified one. Enable the rest knowing some event
+contracts are best-effort (those packages aren't installed in this repo). Query bindings are
+redacted unless `query.captureBindings` is on, and `profiling`/`schedule` are user-driven (they
+publish opt-in helpers rather than tapping an event). And remember Lucid only emits `db:query`
+when its connection `debug` is on. See [Watchers](/docs/telescope/packages/watchers).
 </Callout>
 
 ## Dashboard UI — `config/telescope_ui.ts`
@@ -99,6 +111,9 @@ export default defineConfig({
 | `path`        | `string`                              | `/telescope`   | URL prefix (normalized: leading slash, no trailing slash).  |
 | `authorize`   | `(ctx) => boolean \| Promise<boolean>`| default policy | Access-decision hook. Allow outside prod, deny in prod unless a credential matches. |
 | `credentials` | `{ token?, basic? }`                  | `{}`           | Built-in token / HTTP Basic gate (ignored when `authorize` is set). |
+| `dashboardAuth` | `{ secret, ttl?, login }`           | _unset_        | Built-in [session login screen](/docs/telescope/dashboard/auth#built-in-login-screen) (fails closed at boot without `secret`/`login`). |
+| `replay`      | `{ enabled?, port?, timeoutMs? }`     | _disabled_     | Request replay from the dashboard — off by default (a captured `POST`/`DELETE` re-runs). |
+| `dashboard`   | `{ enabled?, path? }`                 | `enabled`      | Toggles / re-mounts the [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui) SPA. |
 
 `credentials.token` allows `Authorization: Bearer <token>` or `?token=<token>`;
 `credentials.basic` is `{ username, password }`. See [Dashboard auth](/docs/telescope/dashboard/auth).
@@ -126,7 +141,7 @@ export default defineConfig({
 | -------------- | ------------------- | --------------------------------------------- | ---------------------------------------------------------- |
 | `enabled`      | `boolean`           | `true`                                        | Master switch.                                             |
 | `channels`     | `ChannelConfig[]`   | `[{ type: 'console' }]`                        | `{type:'slack',url}` / `{type:'webhook',url}` / `{type:'console'}` / a channel object. |
-| `rules`        | `AlertRule[]`       | `[{ type: 'new-exception', window: '1h' }]`   | `new-exception` and/or `exception-rate` (`+ threshold`).   |
+| `rules`        | `AlertRule[]`       | `[{ type: 'new-exception', window: '1h' }]`   | `new-exception`, `exception-rate` (`+ threshold`), and stateful `metric-threshold` rules (raise/auto-resolve). |
 | `dashboardUrl` | `string`            | _unset_                                       | External dashboard URL — enables Slack deep links.        |
 | `every`        | `string`            | `'30s'`                                        | Poll cadence (`ms`/`s`/`m`/`h`/`d`).                       |
 | `cooldown`     | `string`            | `'15m'`                                        | Per-rule / per-family re-notify suppression.              |
@@ -152,15 +167,40 @@ export default defineConfig({
 })
 ```
 
-| Key         | Type      | Default              | Description                                                          |
-| ----------- | --------- | -------------------- | ------------------------------------------------------------------ |
-| `enabled`   | `boolean` | `true`               | Master switch. Treated as disabled when no `apiKey` resolves.      |
-| `apiKey`    | `string`  | _(from env)_         | Anthropic API key — `env.get('ANTHROPIC_API_KEY')`.                |
-| `model`     | `string`  | `claude-sonnet-4-6`  | Claude model id (`claude-opus-4-8` / `claude-haiku-4-5-20251001`). |
-| `maxTokens` | `number`  | `1024`               | Hard cap on generated tokens per diagnosis.                        |
+| Key          | Type      | Default              | Description                                                          |
+| ------------ | --------- | -------------------- | ------------------------------------------------------------------ |
+| `enabled`    | `boolean` | `true`               | Master switch. Treated as disabled when neither `apiKey` nor `client` resolves. |
+| `apiKey`     | `string`  | _(from env)_         | Anthropic API key — `env.get('ANTHROPIC_API_KEY')`.                |
+| `client`     | `AnthropicMessagesClient` | _unset_  | A host-supplied model client used verbatim (keeps the SDK optional). |
+| `model`      | `string`  | `claude-sonnet-4-6`  | Claude model id (`claude-opus-4-8` / `claude-haiku-4-5-20251001`). |
+| `maxTokens`  | `number`  | `1024`               | Hard cap on generated tokens per diagnosis.                        |
+| `cacheTtlMs` | `number`  | `24h`                | Diagnosis cache TTL (a family is diagnosed once, then served from cache). |
+| `timeoutMs`  | `number`  | `8000`               | Per-diagnosis timeout the coordinator enforces; `<= 0` disables it. |
 
 **Env:** `ANTHROPIC_API_KEY` (validate as `Env.schema.string.optional()`). See
 [`@adonis-agora/telescope/ai`](/docs/telescope/packages/ai).
+
+## MCP — `config/telescope_mcp.ts`
+
+```ts
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/mcp'
+
+export default defineConfig({
+  enabled: true,
+  path: '/telescope/mcp',
+  credentials: { token: env.get('TELESCOPE_MCP_TOKEN') },
+  // tools: ['list_entries', 'get_trace', 'get_health'],
+})
+```
+
+| Key           | Type              | Default          | Description                                                        |
+| ------------- | ----------------- | ---------------- | ---------------------------------------------------------------- |
+| `enabled`     | `boolean`         | `true`           | Master switch. `false` registers no routes.                      |
+| `path`        | `string`          | `/telescope/mcp` | URL the JSON-RPC endpoint mounts at.                             |
+| `authorize`   | `AuthorizeHook`   | default policy   | Same guard as the UI/metrics API.                                |
+| `credentials` | `{ token?, basic? }` | `{}`          | Built-in gate for the default policy.                            |
+| `tools`       | `McpToolName[]`   | all six          | Which tools to expose. See [`@adonis-agora/telescope/mcp`](/docs/telescope/packages/mcp). |
 
 ## Providers registered by `configure`
 
@@ -174,7 +214,9 @@ is a subpath of the one `@adonis-agora/telescope` package:
 | watchers  | `@adonis-agora/telescope/watchers_provider`     | —                                       |
 | ui        | `@adonis-agora/telescope/ui_provider`           | routes registered at boot               |
 | alerts    | `@adonis-agora/telescope/alerts_provider`       | —                                       |
-| ai        | `@adonis-agora/telescope/ai_provider`           | binds `TelescopeAiDiagnoser`            |
+| ai        | `@adonis-agora/telescope/ai_provider`           | binds `TelescopeAiDiagnoser`, publishes the diagnosis coordinator |
+| mcp       | `@adonis-agora/telescope/mcp_provider`          | JSON-RPC route registered at boot       |
+| dashboard SPA | `@adonis-agora/telescope-ui/telescope_ui_dashboard_provider` | separate package; serves the React SPA under the UI prefix |
 
 Storage is **not a separate package** — the `memory` and `lucid` drivers are built into
 `@adonis-agora/telescope` and selected in `config/telescope.ts`. `node ace configure @adonis-agora/telescope`
