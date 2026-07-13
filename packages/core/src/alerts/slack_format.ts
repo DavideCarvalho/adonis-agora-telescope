@@ -70,6 +70,8 @@ function ruleLabel(rule: AlertPayload['rule']): string {
       return 'New exception family';
     case 'exception-rate':
       return 'Exception rate';
+    case 'metric-threshold':
+      return `Metric threshold (${rule.metric})`;
   }
 }
 
@@ -119,9 +121,12 @@ export function formatSlackMessage(
   payload: AlertPayload,
   options?: SlackChannelOptions,
 ): SlackMessage {
-  const emoji = severityEmoji(payload.rule);
+  // A stateful metric-threshold that has cleared renders as a green "Resolved"
+  // card so the on-call sees the all-clear without hunting for a follow-up.
+  const resolved = payload.status === 'resolved';
+  const emoji = resolved ? ':white_check_mark:' : severityEmoji(payload.rule);
   const label = ruleLabel(payload.rule);
-  const headerText = `${emoji} ${label}`;
+  const headerText = `${emoji} ${resolved ? 'Resolved: ' : ''}${label}`;
 
   const contextFields: SlackTextObject[] = [
     field('Instance', payload.instanceId),

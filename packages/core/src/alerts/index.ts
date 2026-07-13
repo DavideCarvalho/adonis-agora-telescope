@@ -16,6 +16,7 @@ export type { SlackChannelOptions, SlackMessage } from './slack_format.js';
 
 // — rules / payload —
 export type {
+  AlertMetric,
   AlertPayload,
   AlertRule,
   ExceptionAlertContext,
@@ -25,9 +26,13 @@ export type {
 // — new-exception dedupe —
 export { DEFAULT_MAX_FAMILIES, NewExceptionTracker } from './new_exception_tracker.js';
 
-// — alerter (source → tracker → channels) —
+// — alerter (exception source → tracker → channels) —
 export { Alerter } from './alerter.js';
 export type { AlerterDeps } from './alerter.js';
+
+// — alerter service (interval metric-threshold rules with raise/resolve) —
+export { AlerterService } from './alerter_service.js';
+export type { AlerterServiceDeps, MetricSource } from './alerter_service.js';
 
 // — exception source (the polling hook) —
 export { ExceptionPoller } from './exception_source.js';

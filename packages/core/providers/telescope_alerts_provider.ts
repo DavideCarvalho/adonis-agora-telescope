@@ -1,7 +1,9 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import { Alerter } from '../src/alerts/alerter.js';
+import { AlerterService } from '../src/alerts/alerter_service.js';
 import { type TelescopeAlertsConfig, resolveConfig } from '../src/alerts/define_config.js';
 import { ExceptionPoller } from '../src/alerts/exception_source.js';
+import { MetricsService } from '../src/metrics/metrics_service.js';
 import { getTelescopeRuntime } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
 
@@ -20,6 +22,7 @@ import type { TelescopeStore } from '../src/store.js';
  */
 export default class TelescopeAlertsProvider {
   private poller: ExceptionPoller | null = null;
+  private alerterService: AlerterService | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -64,6 +67,24 @@ export default class TelescopeAlertsProvider {
       console.error(`TelescopeAlertsProvider: failed to start the alert poller: ${asMessage(err)}`);
       this.poller = null;
     }
+
+    // The interval metric-threshold service only needs to run when at least one
+    // such rule is configured — otherwise its timer would tick doing nothing.
+    const hasMetricRule = config.rules.some((rule) => rule.type === 'metric-threshold');
+    if (hasMetricRule) {
+      this.alerterService = new AlerterService({
+        alerts: config,
+        metrics: new MetricsService(store),
+      });
+      try {
+        this.alerterService.start();
+      } catch (err) {
+        console.error(
+          `TelescopeAlertsProvider: failed to start the metric alerter: ${asMessage(err)}`,
+        );
+        this.alerterService = null;
+      }
+    }
   }
 
   async shutdown() {
@@ -72,7 +93,13 @@ export default class TelescopeAlertsProvider {
     } catch {
       // never throw out of shutdown
     }
+    try {
+      this.alerterService?.stop();
+    } catch {
+      // never throw out of shutdown
+    }
     this.poller = null;
+    this.alerterService = null;
   }
 }
 

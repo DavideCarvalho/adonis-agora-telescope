@@ -1,21 +1,66 @@
 import type { AlertChannel } from './alert_channel.js';
 
 /**
- * A single alerting rule. Ported (trimmed) from the aviary telescope core. This
- * Adonis port focuses on the two rules the headless `@adonis-agora/telescope` store can
- * back today:
+ * A single alerting rule. Ported (trimmed) from the aviary telescope core.
  *
- * - `new-exception`  — fires the FIRST time an exception's `familyHash` is seen
- *                      within `window` (a genuinely NEW error family), and again
- *                      if the family re-appears after the window has elapsed (the
- *                      "re-occurring after being resolved" signal). Deduplication
- *                      is per-process via {@link NewExceptionTracker}.
- * - `exception-rate` — fires when `>= threshold` exception entries were recorded
- *                      in the trailing `window`.
+ * Two families of rules, evaluated by two complementary services:
+ *
+ * - `new-exception` / `exception-rate` — the exception-driven rules the
+ *   {@link Alerter} evaluates over a freshly-polled batch of exception entries
+ *   (fed by the {@link ExceptionPoller}). They fire-and-cooldown; they do NOT
+ *   auto-resolve.
+ *     - `new-exception`  fires the FIRST time an exception's `familyHash` is seen
+ *                        within `window` (a genuinely NEW error family), and
+ *                        again if the family re-appears after the window elapses.
+ *                        Dedup is per-process via {@link NewExceptionTracker}.
+ *     - `exception-rate` fires when `>= threshold` exception entries were recorded
+ *                        in the trailing `window`.
+ *
+ * - `metric-threshold` — the stateful rule the {@link AlerterService} evaluates on
+ *   an interval over a trailing `window`, reusing the SAME windowed aggregation
+ *   the dashboard shows (`summarizeStats`/`percentile` via `MetricsService`), so
+ *   an alert means exactly what the metrics view shows. It RAISES when the
+ *   computed metric first crosses `threshold` in the `comparator` direction and
+ *   AUTO-RESOLVES when it clears — with dedup (no duplicate raise while active)
+ *   and a post-resolve cooldown for flap control. Use it to page on
+ *   "request p99 > 800ms" (a slow endpoint), "cache hit-rate < 0.8", or an
+ *   exception spike (`exception-count >= N`).
  */
 export type AlertRule =
   | { type: 'new-exception'; window: string }
-  | { type: 'exception-rate'; window: string; threshold: number };
+  | { type: 'exception-rate'; window: string; threshold: number }
+  | {
+      type: 'metric-threshold';
+      /** The computed metric to evaluate (see {@link AlertMetric}). */
+      metric: AlertMetric;
+      /** Trailing window to aggregate over (e.g. `'5m'`). */
+      window: string;
+      /** `gte` fires when value >= threshold; `lte` when value <= threshold. */
+      comparator: 'gte' | 'lte';
+      /** The threshold the metric is compared against. */
+      threshold: number;
+      /**
+       * Minimum samples in the window before a percentile/ratio rule can fire —
+       * guards a p99 page against a single slow request on a quiet host. Default
+       * 1. Ignored for `exception-count` (a count of 0 is a meaningful value that
+       * must be able to auto-resolve a firing spike).
+       */
+      minSamples?: number;
+    };
+
+/**
+ * The metrics a `metric-threshold` rule can evaluate. Each is derived from the
+ * SAME windowed aggregation the stats view uses (`summarizeStats`), so an alert
+ * means exactly what the dashboard shows. Latency metrics are in ms;
+ * `cache-hit-rate` is a ratio in [0, 1]; `exception-count` is a raw count.
+ */
+export type AlertMetric =
+  | 'request-p95-ms'
+  | 'request-p99-ms'
+  | 'query-p95-ms'
+  | 'query-p99-ms'
+  | 'cache-hit-rate'
+  | 'exception-count';
 
 /**
  * Rich exception context attached to a `new-exception` alert. Pulled from the
@@ -57,7 +102,15 @@ export interface AlertPayload {
   firedAt: string;
   /** The reporting instance identifier. */
   instanceId: string;
-  /** Rich context for `new-exception` alerts; absent for rate rules. */
+  /**
+   * Whether this notification RAISES an alert or RESOLVES a previously-raised one.
+   * Present on stateful `metric-threshold` alerts; absent (⇒ `'firing'`) on the
+   * fire-and-cooldown exception rules, which carry no resolve signal.
+   */
+  status?: 'firing' | 'resolved';
+  /** The evaluated metric — present on `metric-threshold` alerts. */
+  metric?: AlertMetric;
+  /** Rich context for `new-exception` alerts; absent for rate/metric rules. */
   exception?: ExceptionAlertContext;
   /** External dashboard URL when configured (lets channels build deep links). */
   dashboardUrl?: string;
