@@ -9,7 +9,11 @@ export { resolveStore, safeRecord } from './record.js';
 
 // — Lucid query watcher (the headline watcher) —
 export { buildQueryEntry, DB_QUERY_EVENT, LucidQueryWatcher } from './lucid_query_watcher.js';
-export type { DbQueryEventLike, QueryEntryContent } from './lucid_query_watcher.js';
+export type {
+  DbQueryEventLike,
+  LucidQueryWatcherOptions,
+  QueryEntryContent,
+} from './lucid_query_watcher.js';
 export { queryFamilyHash } from './query_family_hash.js';
 
 // — mail watcher —
@@ -80,7 +84,9 @@ export {
 } from './define_config.js';
 export type {
   HttpClientWatcherConfig,
+  QueryWatcherConfig,
   ResolvedHttpClientWatcherConfig,
+  ResolvedQueryWatcherConfig,
   ResolvedTelescopeWatchersConfig,
   TelescopeWatchersConfig,
   WatcherName,

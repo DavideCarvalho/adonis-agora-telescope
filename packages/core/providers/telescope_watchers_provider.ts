@@ -74,7 +74,17 @@ export default class TelescopeWatchersProvider {
       return;
     }
 
-    if (config.watchers.has('query')) this.startWatcher(new LucidQueryWatcher(), emitter);
+    if (config.watchers.has('query')) {
+      this.startWatcher(
+        new LucidQueryWatcher({
+          slowMs: config.query.slowMs,
+          captureBindings: config.query.captureBindings,
+          ignoreConnections: config.query.ignoreConnections,
+          normalize: config.query.normalize,
+        }),
+        emitter,
+      );
+    }
     if (config.watchers.has('mail')) this.startWatcher(new MailWatcher(), emitter);
     if (config.watchers.has('cache')) this.startWatcher(new CacheWatcher(), emitter);
     if (config.watchers.has('http-client')) this.startHttpClientWatcher(config);

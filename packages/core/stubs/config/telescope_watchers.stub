@@ -40,6 +40,24 @@ export default defineConfig({
   // watchers: ['query'],
 
   /**
+   * Tuning for the Lucid 'query' watcher (enabled by default). It records every
+   * SQL query Lucid emits on `db:query`, grouped by normalized SQL template so the
+   * Pulse slow-query + N+1 cards can roll up "the same query".
+   */
+  // query: {
+  //   // Queries at/above this many ms get a 'slow' tag. Default 500.
+  //   slowMs: 500,
+  //   // Keep the raw bound VALUES. Off by default — bindings carry PII/secrets, so
+  //   // they are redacted to '[REDACTED]' placeholders (arity preserved). Default false.
+  //   captureBindings: false,
+  //   // Connection names (case-insensitive) whose queries are NOT recorded.
+  //   ignoreConnections: [],
+  //   // Normalize SQL into the familyHash grouping key (collapse whitespace, replace
+  //   // literals with '?'). Off hashes the raw SQL verbatim. Default true.
+  //   normalize: true,
+  // },
+
+  /**
    * Tuning for the 'http-client' (outbound) watcher. Outbound HTTP is OPT-IN:
    * AdonisJS has no single built-in client, so nothing is monkey-patched. Wrap a
    * fetch with `instrumentFetch(fetch)` (from '@adonis-agora/telescope/watchers')

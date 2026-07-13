@@ -49,6 +49,46 @@ export interface ResolvedHttpClientWatcherConfig {
 const DEFAULT_HTTP_CLIENT_SLOW_MS = 1000;
 
 /**
+ * Tuning for the Lucid `query` watcher — the one enabled by default. It records
+ * every SQL query Lucid emits on `db:query`; these knobs govern how much of each
+ * query is kept and which are recorded at all.
+ */
+export interface QueryWatcherConfig {
+  /** Queries at/above this many ms get a `slow` tag (feeds the Pulse slow-query
+   *  card). Default 500. */
+  slowMs?: number;
+  /**
+   * Record the raw bound parameter VALUES. Bindings routinely carry PII / secrets
+   * (emails, tokens, password hashes), so by default they are redacted to
+   * `[REDACTED]` placeholders (arity preserved) and only the normalized SQL
+   * template is kept. Turn on to capture the real values. Default `false`.
+   */
+  captureBindings?: boolean;
+  /** Connection names (exact, case-insensitive) whose queries are NOT recorded —
+   *  e.g. drop the telescope store's own connection from the timeline. */
+  ignoreConnections?: string[];
+  /**
+   * Normalize each SQL string (collapse whitespace, replace literals with `?`)
+   * into the `familyHash` grouping key so every execution of the same query
+   * template rolls up as one — the N+1 / slow-query grouping. Turn off to hash the
+   * raw SQL verbatim (no grouping across differing literals). Default `true`.
+   */
+  normalize?: boolean;
+}
+
+/** The fully-resolved `query` watcher config (no optionals). */
+export interface ResolvedQueryWatcherConfig {
+  slowMs: number;
+  captureBindings: boolean;
+  ignoreConnections: string[];
+  normalize: boolean;
+}
+
+/** Default slow-query threshold (ms). Databases are hotter than outbound HTTP, so
+ *  this is lower than the http-client default. */
+const DEFAULT_QUERY_SLOW_MS = 500;
+
+/**
  * The shape of `config/telescope_watchers.ts`. Everything is optional: by default
  * only the Lucid `query` watcher is enabled (it is the one whose events are
  * verified against installed types), with the rest opt-in.
@@ -73,6 +113,9 @@ export interface TelescopeWatchersConfig {
    */
   watchers?: WatcherName[];
 
+  /** Tuning for the Lucid `query` watcher (slow threshold, bindings, ignore-connections, normalize). */
+  query?: QueryWatcherConfig;
+
   /** Tuning for the `http-client` watcher (slow threshold, ignore-hosts, body sizes). */
   httpClient?: HttpClientWatcherConfig;
 }
@@ -81,6 +124,7 @@ export interface TelescopeWatchersConfig {
 export interface ResolvedTelescopeWatchersConfig {
   enabled: boolean;
   watchers: Set<WatcherName>;
+  query: ResolvedQueryWatcherConfig;
   httpClient: ResolvedHttpClientWatcherConfig;
 }
 
@@ -99,10 +143,17 @@ export function defineConfig(config: TelescopeWatchersConfig): TelescopeWatchers
 export function resolveConfig(
   config: TelescopeWatchersConfig = {},
 ): ResolvedTelescopeWatchersConfig {
+  const query = config.query ?? {};
   const httpClient = config.httpClient ?? {};
   return {
     enabled: config.enabled ?? true,
     watchers: new Set(config.watchers ?? DEFAULT_WATCHERS),
+    query: {
+      slowMs: query.slowMs ?? DEFAULT_QUERY_SLOW_MS,
+      captureBindings: query.captureBindings ?? false,
+      ignoreConnections: query.ignoreConnections ?? [],
+      normalize: query.normalize ?? true,
+    },
     httpClient: {
       slowMs: httpClient.slowMs ?? DEFAULT_HTTP_CLIENT_SLOW_MS,
       ignoreHosts: httpClient.ignoreHosts ?? [],

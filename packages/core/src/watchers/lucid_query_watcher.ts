@@ -7,6 +7,25 @@ import { safeRecord } from './record.js';
 /** The Lucid event name this watcher subscribes to. */
 export const DB_QUERY_EVENT = 'db:query';
 
+/** Placeholder a bound value is replaced with when `captureBindings` is off. */
+const REDACTED = '[REDACTED]';
+
+/** Default slow-query threshold (ms), mirrored from the resolved watcher config. */
+const DEFAULT_SLOW_MS = 500;
+
+/** Construction-time tuning for {@link LucidQueryWatcher} — the resolved slice of
+ *  `config/telescope_watchers.ts`'s `query` block the watcher acts on. */
+export interface LucidQueryWatcherOptions {
+  /** Queries at/above this many ms get a `slow` tag. Default 500. */
+  slowMs?: number;
+  /** Keep the raw bound VALUES instead of redacting them. Default `false`. */
+  captureBindings?: boolean;
+  /** Connection names (case-insensitive) whose queries are not recorded. */
+  ignoreConnections?: string[];
+  /** Normalize SQL into the `familyHash` grouping key. Default `true`. */
+  normalize?: boolean;
+}
+
 /**
  * The shape of the data `@adonisjs/lucid` emits on `db:query`. Mirrored
  * structurally from `@adonisjs/lucid`'s `DbQueryEventNode` (verified against the
@@ -76,6 +95,19 @@ function isDbQueryEvent(data: unknown): data is DbQueryEventLike {
 export class LucidQueryWatcher implements Watcher {
   readonly type = EntryType.Query;
   private unsubscribe: (() => void) | null = null;
+  private readonly slowMs: number;
+  private readonly captureBindings: boolean;
+  private readonly ignoreConnections: Set<string>;
+  private readonly normalize: boolean;
+
+  constructor(options: LucidQueryWatcherOptions = {}) {
+    this.slowMs = options.slowMs ?? DEFAULT_SLOW_MS;
+    this.captureBindings = options.captureBindings ?? false;
+    this.ignoreConnections = new Set(
+      (options.ignoreConnections ?? []).map((name) => name.toLowerCase()),
+    );
+    this.normalize = options.normalize ?? true;
+  }
 
   start(emitter: EmitterLike): void {
     if (this.unsubscribe) return;
@@ -90,34 +122,60 @@ export class LucidQueryWatcher implements Watcher {
   /** Validate + record a single `db:query` payload, never throwing. */
   private handle(data: unknown): void {
     if (!isDbQueryEvent(data)) return;
-    safeRecord(buildQueryEntry(data), 'LucidQueryWatcher');
+    // An ignored connection is dropped before any work — a telescope query that
+    // hits the store's own DB, a replica used only for the timeline, etc.
+    if (this.ignoreConnections.has(data.connection.toLowerCase())) return;
+    safeRecord(
+      buildQueryEntry(data, {
+        slowMs: this.slowMs,
+        captureBindings: this.captureBindings,
+        normalize: this.normalize,
+      }),
+      'LucidQueryWatcher',
+    );
   }
 }
 
-/** Map a Lucid `db:query` payload to a telescope {@link RecordInput}. */
-export function buildQueryEntry(event: DbQueryEventLike): RecordInput<QueryEntryContent> {
+/** Map a Lucid `db:query` payload to a telescope {@link RecordInput}. Exported so
+ *  the entry shape can be unit-tested without a running emitter. */
+export function buildQueryEntry(
+  event: DbQueryEventLike,
+  options: LucidQueryWatcherOptions = {},
+): RecordInput<QueryEntryContent> {
+  const slowMs = options.slowMs ?? DEFAULT_SLOW_MS;
+  const captureBindings = options.captureBindings ?? false;
+  const normalize = options.normalize ?? true;
+
   const durationMs = hrtimeToMs(event.duration);
   const method = typeof event.method === 'string' ? event.method : null;
   const traceId = currentTraceId();
+  const rawBindings = Array.isArray(event.bindings) ? event.bindings : [];
   const content: QueryEntryContent = {
     sql: event.sql,
-    bindings: Array.isArray(event.bindings) ? event.bindings : [],
+    // Redact bound VALUES by default (they carry PII/secrets) while preserving
+    // arity, so the query's shape stays visible without leaking data.
+    bindings: captureBindings ? rawBindings : rawBindings.map(() => REDACTED),
     durationMs,
     connection: event.connection,
     method,
     inTransaction: typeof event.inTransaction === 'boolean' ? event.inTransaction : null,
     traceId,
   };
+  const tags: string[] = [
+    `connection:${event.connection}`,
+    ...(method ? [`method:${method}`] : []),
+    ...(event.model ? [`model:${event.model}`] : []),
+  ];
+  if (durationMs !== null && durationMs >= slowMs) tags.push('slow');
+
   return {
     type: EntryType.Query,
-    familyHash: queryFamilyHash(event.sql),
+    // Group by SQL template (see queryFamilyHash) so "the same query" rolls up
+    // for the Pulse slow-query + N+1 cards. `normalize: false` hashes verbatim.
+    familyHash: normalize ? queryFamilyHash(event.sql) : queryFamilyHash(event.sql, false),
     content,
     durationMs,
     traceId,
-    tags: [
-      `connection:${event.connection}`,
-      ...(method ? [`method:${method}`] : []),
-      ...(event.model ? [`model:${event.model}`] : []),
-    ],
+    tags,
   };
 }

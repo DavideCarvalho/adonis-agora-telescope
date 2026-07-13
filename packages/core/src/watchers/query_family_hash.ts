@@ -27,7 +27,12 @@ function fnv1a(input: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-/** Grouping key for "the same query" — same template, any bound values. */
-export function queryFamilyHash(sql: string): string {
-  return fnv1a(normalizeSql(sql));
+/**
+ * Grouping key for "the same query". With `normalize` on (the default) the SQL is
+ * templated first, so every execution of the same shape shares a hash regardless
+ * of bound values; with it off the raw SQL is hashed verbatim (whitespace/literals
+ * distinguish entries — no cross-execution grouping).
+ */
+export function queryFamilyHash(sql: string, normalize = true): string {
+  return fnv1a(normalize ? normalizeSql(sql) : sql);
 }
