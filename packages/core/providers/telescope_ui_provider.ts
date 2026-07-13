@@ -6,7 +6,6 @@ import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { TelescopeApi } from '../src/ui/api.js';
-import { renderDashboard } from '../src/ui/dashboard.js';
 import {
   type ResolvedTelescopeUiConfig,
   type TelescopeUiConfig,
@@ -91,14 +90,11 @@ export default class TelescopeUiProvider {
     const router = await this.app.container.make('router');
     const guard = config.authorize;
 
-    // Dashboard page (HTML).
-    router
-      .get(config.path, async (ctx: UiHttpContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
-        ctx.response.header('content-type', 'text/html; charset=utf-8');
-        return ctx.response.send(renderDashboard(apiBase));
-      })
-      .as('telescope_ui.dashboard');
+    // Dashboard page: served by the `@adonis-agora/telescope-ui` SPA provider (it mounts the built
+    // Vite app at the prefix root, behind this same `authorize` guard). The legacy self-contained
+    // inline-HTML dashboard (`renderDashboard`) is no longer auto-routed here; it remains exported
+    // from `@adonis-agora/telescope/ui` for embedding. This provider owns only the JSON API + SSE
+    // under `<path>/api/*`, which the SPA consumes.
 
     // JSON API.
     router

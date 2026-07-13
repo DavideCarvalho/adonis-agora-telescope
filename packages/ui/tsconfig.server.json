@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "tsBuildInfoFile": ".tsbuildinfo",
+    "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/client/**/*.ts", "src/server/**/*.ts", "providers/**/*.ts"],
+  "exclude": [
+    "src/app/**",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "test/**",
+    "dist/**",
+    "node_modules"
+  ]
+}
