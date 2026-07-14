@@ -4,9 +4,9 @@
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
 /**
- * Creates the table the `lucid` telescope store persists entries into.
+ * Creates the table the 'lucid' telescope store persists entries into.
  *
- * `content` and `tags` are JSON text columns; `created_at` is stored as epoch
+ * 'content' and 'tags' are JSON text columns; 'created_at' is stored as epoch
  * milliseconds (a plain integer) so newest-first ordering and age-based pruning
  * are driver-agnostic integer comparisons across sqlite / Postgres / MySQL.
  */

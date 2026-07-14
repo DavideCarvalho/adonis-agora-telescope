@@ -1,5 +1,5 @@
 /** Keep in sync with this package's `version` in package.json. */
-export const VERSION = '0.4.0';
+export const VERSION = '0.5.0';
 
 // — entry model —
 export { EntryType, isBatchOrigin } from './entry.js';
@@ -281,3 +281,6 @@ export {
   isDiagnosticEvent,
 } from './diagnostics_registry.js';
 export type { DiagnosticEvent, DiagnosticsRegistry } from './diagnostics_registry.js';
+
+// Re-export the configure hook from the package root so `node ace configure` finds it
+export { configure } from '../configure.js'

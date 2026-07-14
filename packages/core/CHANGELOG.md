@@ -1,5 +1,15 @@
 # @adonis-agora/telescope
 
+## 0.5.0
+
+### Minor Changes
+
+- Entry pruner, event-loop overload guard, client-error ingestion; Pulse health rollup; alerter pipeline; outgoing HTTP-client watcher; MCP server endpoint; AI diagnosis coordinator; Lucid query watcher; observability UI dashboard (@adonis-agora/telescope-ui); dashboard session auth (login screen); profiling + schedule watchers.
+
+### Patch Changes
+
+- Export the `configure` hook from the package root so `node ace configure @adonis-agora/telescope` resolves it, and de-backtick the config stub comments that broke the tempura stub renderer.
+
 ## 0.3.3
 
 ### Patch Changes
