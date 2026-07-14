@@ -9,7 +9,6 @@ import {
   resolveConfig as resolveUiConfig,
 } from '@adonis-agora/telescope/ui';
 import type { HttpContext } from '@adonisjs/core/http';
-import router from '@adonisjs/core/services/router';
 import type { ApplicationService } from '@adonisjs/core/types';
 import {
   type TelescopeDashboardConfig,
@@ -69,6 +68,11 @@ export default class TelescopeUiDashboardProvider {
     // The built-in login page is registered by the core `telescope_ui` provider under the resolved
     // `telescope_ui.path`; a page navigation with no valid session redirects there.
     const loginBase = uiConfig.path;
+
+    // Resolve the router from the container — NOT the `@adonisjs/core/services/router` façade,
+    // whose default export is populated only inside `app.booted()` (which runs AFTER every
+    // provider's boot()), so at boot() it is still `undefined` and crashes on `.get`.
+    const router = await this.app.container.make('router');
 
     // Bare mount → canonical trailing slash so the SPA's relative `./assets/*` URLs resolve against
     // the mount directory rather than its parent.
