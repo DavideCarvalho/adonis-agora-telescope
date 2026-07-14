@@ -69,9 +69,18 @@ export const storage = {
 
   /** A persistent, SQL-backed store on `@adonisjs/lucid` (sqlite / Postgres / MySQL). */
   lucid(config: LucidStoreConfig = {}): StoreProvider {
-    return async () => {
-      const db = (await import('@adonisjs/lucid/services/db')).default;
+    return async ({ app }) => {
       const { LucidTelescopeStore } = await import('./lucid.js');
+
+      // Resolve the `Database` singleton from the container (lucid aliases it as
+      // `lucid.db` in its REGISTER phase, so it is available here at provider boot).
+      // We deliberately do NOT read `@adonisjs/lucid/services/db`: that façade's
+      // default export is populated only inside `app.booted()`, which runs AFTER
+      // every provider's `boot()` — so at the moment the telescope provider builds
+      // the store it would still be `undefined` and crash on `.connection`.
+      const db = (await app.container.make('lucid.db')) as {
+        connection(name: string): unknown;
+      };
 
       // Bind to a single connection client when named, else the Database facade. Both
       // satisfy the structural LucidDatabaseLike surface the store consumes.
