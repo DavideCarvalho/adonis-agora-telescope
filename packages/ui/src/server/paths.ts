@@ -81,3 +81,19 @@ export function injectApiBase(html: string, apiBase: string): string {
   if (html.includes('</head>')) return html.replace('</head>', `${tag}</head>`);
   return `${tag}${html}`;
 }
+
+/**
+ * Rewrite the SPA shell's root-relative `./` asset references to be absolute under the dashboard
+ * mount: `src="./assets/x.js"` → `src="/telescope/assets/x.js"`.
+ *
+ * The SPA is a Vite `base: './'` build, so its asset URLs are relative to the request path. Serving
+ * it under a prefix normally relies on a trailing slash (`<mount>/`) so `./assets/*` resolves to
+ * `<mount>/assets/*`. But the AdonisJS router normalizes trailing slashes — `<mount>` and `<mount>/`
+ * are the same route — so the dashboard provider serves the shell at the bare `<mount>` and rewrites
+ * the relative refs here instead. The result is identical to what a `<mount>/` request would resolve
+ * to, but works no matter which form the browser requested. A root mount (`/`) needs no rewrite.
+ */
+export function rewriteRelativeAssets(html: string, mount: string): string {
+  if (mount === '/') return html;
+  return html.replace(/(["'])\.\//g, `$1${mount}/`);
+}

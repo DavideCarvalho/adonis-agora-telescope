@@ -19,6 +19,7 @@ import {
   contentTypeFor,
   injectApiBase,
   mountPathFor,
+  rewriteRelativeAssets,
   safeAssetSegments,
 } from '../src/server/paths.js';
 
@@ -74,14 +75,15 @@ export default class TelescopeUiDashboardProvider {
     // provider's boot()), so at boot() it is still `undefined` and crashes on `.get`.
     const router = await this.app.container.make('router');
 
-    // Bare mount → canonical trailing slash so the SPA's relative `./assets/*` URLs resolve against
-    // the mount directory rather than its parent.
-    router.get(mount, (ctx) => ctx.response.redirect().toPath(`${mount}/`));
-
-    // The SPA shell.
-    router.get(`${mount}/`, async (ctx) => {
+    // The SPA shell, served at the bare mount. We do NOT register a separate `<mount>/` route and
+    // redirect `<mount>` to it (the trailing-slash trick a `base: './'` build usually needs): the
+    // AdonisJS router normalizes trailing slashes, so `<mount>` and `<mount>/` are the SAME pattern
+    // and registering both throws "Duplicate route". Instead {@link sendIndex} rewrites the shell's
+    // relative `./assets/*` URLs to absolute `<mount>/assets/*`, so they resolve regardless of the
+    // trailing slash — no redirect, no collision.
+    router.get(mount, async (ctx) => {
       if (!(await this.gate(ctx, guard, auth, loginBase))) return;
-      await this.sendIndex(ctx, apiBase);
+      await this.sendIndex(ctx, mount, apiBase);
     });
 
     // Built assets (JS/CSS/fonts/...), with an index fallback for any unmatched path so the
@@ -93,7 +95,7 @@ export default class TelescopeUiDashboardProvider {
       if (segments === null) {
         return ctx.response.status(400).json({ error: 'bad asset path' });
       }
-      await this.sendAsset(ctx, segments, apiBase);
+      await this.sendAsset(ctx, segments, mount, apiBase);
     });
   }
 
@@ -115,16 +117,25 @@ export default class TelescopeUiDashboardProvider {
     return enforceDashboardAuth(ctx, auth, 'page', loginBase);
   }
 
-  /** Read `dist/spa/index.html`, inject the API base, and send it. */
-  private async sendIndex(ctx: HttpContext, apiBase: string): Promise<void> {
+  /**
+   * Read `dist/spa/index.html`, rewrite its relative `./assets/*` URLs to absolute `<mount>/...`
+   * (the SPA is a `base: './'` Vite build; see {@link rewriteRelativeAssets}), inject the API base,
+   * and send it.
+   */
+  private async sendIndex(ctx: HttpContext, mount: string, apiBase: string): Promise<void> {
     const html = await readFile(new URL('index.html', this.spaDirUrl), 'utf8');
     ctx.response.header('content-type', 'text/html; charset=utf-8');
     ctx.response.header('cache-control', 'no-store, must-revalidate');
-    ctx.response.send(injectApiBase(html, apiBase));
+    ctx.response.send(injectApiBase(rewriteRelativeAssets(html, mount), apiBase));
   }
 
   /** Send the requested built asset, or fall back to the SPA shell when it does not exist. */
-  private async sendAsset(ctx: HttpContext, segments: string[], apiBase: string): Promise<void> {
+  private async sendAsset(
+    ctx: HttpContext,
+    segments: string[],
+    mount: string,
+    apiBase: string,
+  ): Promise<void> {
     const filename = segments[segments.length - 1] ?? 'index.html';
     try {
       const buffer = await readFile(new URL(segments.join('/'), this.spaDirUrl));
@@ -132,7 +143,7 @@ export default class TelescopeUiDashboardProvider {
       ctx.response.send(buffer);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        await this.sendIndex(ctx, apiBase);
+        await this.sendIndex(ctx, mount, apiBase);
         return;
       }
       throw error;

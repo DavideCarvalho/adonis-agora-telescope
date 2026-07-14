@@ -4,6 +4,7 @@ import {
   contentTypeFor,
   injectApiBase,
   mountPathFor,
+  rewriteRelativeAssets,
   safeAssetSegments,
   trimSlashes,
 } from './paths.js';
@@ -45,6 +46,29 @@ describe('safeAssetSegments', () => {
     expect(safeAssetSegments('a/../../b')).toBeNull();
     expect(safeAssetSegments('a\\b')).toBeNull();
     expect(safeAssetSegments('a\0b')).toBeNull();
+  });
+});
+
+describe('rewriteRelativeAssets', () => {
+  it('rewrites relative ./ asset URLs to absolute mount-based URLs', () => {
+    const html =
+      '<script type="module" src="./assets/index-abc.js"></script>' +
+      "<link rel='stylesheet' href='./assets/index-def.css'>";
+    expect(rewriteRelativeAssets(html, '/telescope')).toBe(
+      '<script type="module" src="/telescope/assets/index-abc.js"></script>' +
+        "<link rel='stylesheet' href='/telescope/assets/index-def.css'>",
+    );
+  });
+
+  it('honours a custom mount', () => {
+    expect(rewriteRelativeAssets('<img src="./a.png">', '/__tele')).toBe(
+      '<img src="/__tele/a.png">',
+    );
+  });
+
+  it('leaves the html untouched at a root mount', () => {
+    const html = '<script src="./assets/x.js"></script>';
+    expect(rewriteRelativeAssets(html, '/')).toBe(html);
   });
 });
 
