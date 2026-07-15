@@ -51,6 +51,25 @@ describe('LucidTelescopeStore', () => {
     expect(b.sequence).toBe(a.sequence + 1);
   });
 
+  it('rounds a fractional durationMs to an integer (INTEGER column safety)', async () => {
+    // Watchers that measure with performance.now() produce fractional ms; the column is INTEGER
+    // and Postgres rejects fractional input, so the store must round.
+    const entry = await store.record({ type: 'redis', content: {}, durationMs: 6.380247999999483 });
+    expect(entry.durationMs).toBe(6);
+    const fetched = await store.get(entry.id);
+    expect(fetched?.durationMs).toBe(6);
+  });
+
+  it('persists every write under concurrency (serialized chain, unique sequences)', async () => {
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) => store.record({ type: 'x', content: i })),
+    );
+    expect(results.map((e) => e.sequence).sort((a, b) => a - b)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+    expect(await store.count()).toBe(10);
+  });
+
   it('lists newest-first', async () => {
     await store.record({ type: 'x', content: 'first' });
     await store.record({ type: 'x', content: 'second' });

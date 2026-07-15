@@ -191,6 +191,14 @@ export class LucidTelescopeStore implements TelescopeStore {
   /** Lazily-resolved init (table creation + sequence seed), run at most once. */
   private ready: Promise<void> | null = null;
   private sequence = 0;
+  /**
+   * Single-flight write chain: every `record()` insert is queued behind the previous one so the
+   * store holds at most ONE pooled connection at a time. A burst of watcher events can therefore
+   * never exhaust the host app's connection pool (which telescope may share). Reads
+   * (`get`/`list`/`prune`) are user-initiated and low-frequency, so they are intentionally NOT
+   * serialized.
+   */
+  private writeTail: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly db: LucidDatabaseLike,
@@ -213,7 +221,11 @@ export class LucidTelescopeStore implements TelescopeStore {
       content: input.content,
       tags: input.tags ?? [],
       sequence: this.sequence++,
-      durationMs: input.durationMs ?? null,
+      // Coerce to an integer: `duration_ms` is an INTEGER column, and watchers that measure with
+      // `performance.now()` (redis / http-client / query / …) produce fractional milliseconds that
+      // Postgres rejects outright ("invalid input syntax for type integer: 6.38…"). Round here — the
+      // one sink to the column — so every watcher is safe without each having to remember to floor.
+      durationMs: input.durationMs != null ? Math.round(input.durationMs) : null,
       origin,
       traceId,
       createdAt: new Date(),
@@ -231,7 +243,20 @@ export class LucidTelescopeStore implements TelescopeStore {
       trace_id: entry.traceId,
       created_at: entry.createdAt.getTime(),
     };
-    await this.db.table(this.tableName).insert(row as unknown as Record<string, unknown>);
+
+    // Queue the insert behind any in-flight write (see `writeTail`): at most one telescope
+    // connection is ever checked out of the pool. The entry is built eagerly above, so
+    // `sequence`/`created_at` reflect event order even though the insert itself is serialized.
+    const write = this.writeTail.then(() =>
+      this.db.table(this.tableName).insert(row as unknown as Record<string, unknown>),
+    );
+    // Advance the chain regardless of this write's outcome — a single failed insert must not
+    // wedge every subsequent write.
+    this.writeTail = write.then(
+      () => undefined,
+      () => undefined,
+    );
+    await write;
     return entry;
   }
 
