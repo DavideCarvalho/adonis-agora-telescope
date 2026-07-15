@@ -42,7 +42,7 @@
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.spa.json --noEmit"
   },
   "peerDependencies": {
-    "@adonis-agora/telescope": "workspace:^",
+    "@adonis-agora/telescope": "^0.5.0",
     "@adonisjs/core": "^7.3.0"
   },
   "peerDependenciesMeta": {
