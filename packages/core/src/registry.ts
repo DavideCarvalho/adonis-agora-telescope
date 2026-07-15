@@ -78,9 +78,7 @@ export function setTelescopeEntryEvents(entryEvents: EntryEvents | null): void {
  * the MCP tool and the alerter can attach probable-cause analysis. Pass `null` to
  * clear it (AI disabled / provider shutdown).
  */
-export function setTelescopeDiagnosisCoordinator(
-  coordinator: DiagnosisCoordinator | null,
-): void {
+export function setTelescopeDiagnosisCoordinator(coordinator: DiagnosisCoordinator | null): void {
   runtime.diagnosisCoordinator = coordinator;
 }
 

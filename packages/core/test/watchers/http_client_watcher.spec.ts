@@ -187,7 +187,7 @@ describe('HttpClientWatcher', () => {
       expect(await store.count()).toBe(0);
     });
 
-    it('standalone instrumentFetch inherits a started watcher\'s config', async () => {
+    it("standalone instrumentFetch inherits a started watcher's config", async () => {
       const watcher = new HttpClientWatcher({ ignoreHosts: ['skip.me'] });
       watcher.start(); // publishes the default backing a bare instrumentFetch
       try {

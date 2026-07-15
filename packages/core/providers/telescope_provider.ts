@@ -1,7 +1,7 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import {
-  ClientErrorIngestor,
   type ClientErrorHttpContext,
+  ClientErrorIngestor,
   storeRecorder,
 } from '../src/client_errors/index.js';
 import {

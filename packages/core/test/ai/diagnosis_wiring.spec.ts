@@ -32,7 +32,11 @@ function configuredCoordinator(text = VALID_JSON): {
 } {
   const create = vi.fn(async () => ({ content: [{ type: 'text', text }] }));
   const client: AnthropicMessagesClient = { messages: { create } };
-  const diagnoser = new TelescopeAiDiagnoser({ client, model: 'claude-sonnet-4-6', maxTokens: 512 });
+  const diagnoser = new TelescopeAiDiagnoser({
+    client,
+    model: 'claude-sonnet-4-6',
+    maxTokens: 512,
+  });
   return { coordinator: new DiagnosisCoordinator({ diagnoser }), create };
 }
 
@@ -68,7 +72,12 @@ describe('MCP diagnose_exception ← coordinator', () => {
 
     const id = await seedException(store);
     const res = (await server.handle(
-      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'diagnose_exception', arguments: { id } } },
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'diagnose_exception', arguments: { id } },
+      },
       true,
     )) as { result: { content: { text: string }[] } };
 
@@ -85,7 +94,12 @@ describe('MCP diagnose_exception ← coordinator', () => {
     const server = new TelescopeMcpServer(service, new MetricsService(store));
     const id = await seedException(store);
     const res = (await server.handle(
-      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'diagnose_exception', arguments: { id } } },
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'diagnose_exception', arguments: { id } },
+      },
       true,
     )) as { result: { content: { text: string }[] } };
     expect(res.result.content[0]?.text).toMatch(/not configured/i);
@@ -103,7 +117,12 @@ describe('MCP diagnose_exception ← coordinator', () => {
     });
     const id = await seedException(store);
     const res = (await server.handle(
-      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'diagnose_exception', arguments: { id } } },
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'diagnose_exception', arguments: { id } },
+      },
       true,
     )) as { result: { content: { text: string }[] } };
     expect(res.result.content[0]?.text).toMatch(/not configured/i);

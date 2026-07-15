@@ -24,10 +24,7 @@ async function request(
     ...(opts.familyHash !== undefined ? { familyHash: opts.familyHash } : {}),
     content: { method: opts.method ?? 'GET', url: opts.url ?? '/x', status: opts.status },
     durationMs: opts.durationMs,
-    tags: [
-      `status:${opts.status}`,
-      ...(opts.user !== undefined ? [`user:${opts.user}`] : []),
-    ],
+    tags: [`status:${opts.status}`, ...(opts.user !== undefined ? [`user:${opts.user}`] : [])],
   });
 }
 
@@ -70,7 +67,11 @@ describe('PulseService', () => {
       durationMs: 600,
       label: 'select * from users where id = ?',
     });
-    expect(report.slowest[1]).toMatchObject({ type: 'request', durationMs: 300, label: 'GET /boom' });
+    expect(report.slowest[1]).toMatchObject({
+      type: 'request',
+      durationMs: 300,
+      label: 'GET /boom',
+    });
 
     // Error rate = (4xx + 5xx) / total requests = 2 / 4.
     expect(report.requests.total).toBe(4);

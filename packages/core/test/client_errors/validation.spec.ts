@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  userIdentityTag,
-  validateClientErrorBody,
-} from '../../src/client_errors/validation.js';
+import { userIdentityTag, validateClientErrorBody } from '../../src/client_errors/validation.js';
 
 describe('validateClientErrorBody', () => {
   it('accepts a minimal valid report', () => {

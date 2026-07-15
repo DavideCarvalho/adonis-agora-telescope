@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EntryType } from '../src/entry.js';
-import {
-  MCP_METHOD_NOT_FOUND,
-  MCP_UNAUTHORIZED,
-  TelescopeMcpServer,
-} from '../src/mcp/server.js';
+import { MCP_METHOD_NOT_FOUND, MCP_UNAUTHORIZED, TelescopeMcpServer } from '../src/mcp/server.js';
 import { MetricsService } from '../src/metrics/metrics_service.js';
 import { TelescopeService } from '../src/service.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
@@ -17,7 +13,7 @@ async function build() {
   return { store, service, metrics, server };
 }
 
-const req = (method: string, params?: Record<string, unknown>, id: number = 1) => ({
+const req = (method: string, params?: Record<string, unknown>, id = 1) => ({
   jsonrpc: '2.0',
   id,
   method,
@@ -50,11 +46,9 @@ describe('TelescopeMcpServer', () => {
 
   it('tools/list only advertises the enabled subset', async () => {
     const store = new InMemoryTelescopeStore();
-    const server = new TelescopeMcpServer(
-      new TelescopeService(store),
-      new MetricsService(store),
-      { tools: new Set(['list_entries', 'get_health'] as const) },
-    );
+    const server = new TelescopeMcpServer(new TelescopeService(store), new MetricsService(store), {
+      tools: new Set(['list_entries', 'get_health'] as const),
+    });
     const res = (await server.handle(req('tools/list'), true)) as {
       result: { tools: { name: string }[] };
     };
@@ -159,11 +153,9 @@ describe('TelescopeMcpServer', () => {
 
   it('diagnose_exception runs the hook when configured', async () => {
     const store = new InMemoryTelescopeStore();
-    const server = new TelescopeMcpServer(
-      new TelescopeService(store),
-      new MetricsService(store),
-      { diagnose: async () => '## Probable cause\nA null deref.' },
-    );
+    const server = new TelescopeMcpServer(new TelescopeService(store), new MetricsService(store), {
+      diagnose: async () => '## Probable cause\nA null deref.',
+    });
     await store.record({
       type: EntryType.Exception,
       content: { name: 'TypeError', message: 'x is undefined' },

@@ -80,17 +80,15 @@ export default class TelescopeMcpProvider {
     // runtime slot. When AI is off (no coordinator, or an inert one), NO hook is
     // passed, so `diagnose_exception` reports "not configured" exactly as before.
     const coordinator = getTelescopeRuntime().diagnosisCoordinator;
-    const diagnose: DiagnoseExceptionHook | undefined =
-      coordinator !== null && coordinator.isConfigured()
-        ? async (entry: Entry) => {
-            // Feed the same-trace siblings as extra context (already redacted).
-            const related =
-              entry.traceId !== null ? await service.byTrace(entry.traceId) : undefined;
-            return coordinator.diagnoseMarkdown(entry as Entry<ExceptionEntryContent>, {
-              ...(related !== undefined ? { related } : {}),
-            });
-          }
-        : undefined;
+    const diagnose: DiagnoseExceptionHook | undefined = coordinator?.isConfigured()
+      ? async (entry: Entry) => {
+          // Feed the same-trace siblings as extra context (already redacted).
+          const related = entry.traceId !== null ? await service.byTrace(entry.traceId) : undefined;
+          return coordinator.diagnoseMarkdown(entry as Entry<ExceptionEntryContent>, {
+            ...(related !== undefined ? { related } : {}),
+          });
+        }
+      : undefined;
 
     const server = new TelescopeMcpServer(service, metrics, {
       tools: config.tools,

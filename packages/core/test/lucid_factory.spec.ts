@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApplicationService } from '@adonisjs/core/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storage } from '../src/stores/factory.js';
 import { type TestHarness, makeHarness } from './lucid_helpers.js';
 

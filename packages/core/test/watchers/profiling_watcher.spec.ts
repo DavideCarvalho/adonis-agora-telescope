@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { resolveConfig } from '../../src/watchers/define_config.js';
 import type { ProfileEntryContent } from '../../src/watchers/profiling_watcher.js';
 import {
+  ProfilingWatcher,
   buildProfileEntry,
   profile,
-  ProfilingWatcher,
   startProfile,
 } from '../../src/watchers/profiling_watcher.js';
-import { resolveConfig } from '../../src/watchers/define_config.js';
 import { clearStore, flush, installStore } from './helpers.js';
 
 /** A monotonic fake clock so durations/marks are deterministic. */

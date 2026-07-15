@@ -61,10 +61,9 @@ export default class TelescopeAlertsProvider {
     // in the runtime slot. When AI is off, no hook is passed and alerts are
     // exactly as before (no "Probable cause (AI)" section).
     const coordinator = getTelescopeRuntime().diagnosisCoordinator;
-    const diagnose =
-      coordinator !== null && coordinator.isConfigured()
-        ? (entry: Entry) => coordinator.diagnoseSummary(entry as Entry<ExceptionEntryContent>)
-        : undefined;
+    const diagnose = coordinator?.isConfigured()
+      ? (entry: Entry) => coordinator.diagnoseSummary(entry as Entry<ExceptionEntryContent>)
+      : undefined;
 
     const alerter = new Alerter({
       alerts: config,

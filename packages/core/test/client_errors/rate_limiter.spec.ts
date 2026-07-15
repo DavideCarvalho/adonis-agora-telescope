@@ -3,7 +3,7 @@ import { ClientErrorRateLimiter } from '../../src/client_errors/rate_limiter.js'
 
 describe('ClientErrorRateLimiter', () => {
   it('allows up to perMinute requests then blocks', () => {
-    let now = 0;
+    const now = 0;
     const limiter = new ClientErrorRateLimiter({ perMinute: 3, now: () => now });
     expect(limiter.tryConsume('1.1.1.1')).toBe(true);
     expect(limiter.tryConsume('1.1.1.1')).toBe(true);
@@ -13,7 +13,7 @@ describe('ClientErrorRateLimiter', () => {
   });
 
   it('tracks buckets per IP independently', () => {
-    let now = 0;
+    const now = 0;
     const limiter = new ClientErrorRateLimiter({ perMinute: 1, now: () => now });
     expect(limiter.tryConsume('a')).toBe(true);
     expect(limiter.tryConsume('a')).toBe(false);
@@ -35,7 +35,7 @@ describe('ClientErrorRateLimiter', () => {
   });
 
   it('treats a non-positive rate as 1/min rather than locking out forever', () => {
-    let now = 0;
+    const now = 0;
     const limiter = new ClientErrorRateLimiter({ perMinute: 0, now: () => now });
     expect(limiter.tryConsume('ip')).toBe(true);
     expect(limiter.tryConsume('ip')).toBe(false);

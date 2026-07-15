@@ -1,4 +1,4 @@
-import { EntryType, type Entry } from '../entry.js';
+import { type Entry, EntryType } from '../entry.js';
 import type { MetricsService } from '../metrics/metrics_service.js';
 import type { TelescopeService } from '../service.js';
 import type { EntryQuery } from '../store.js';
@@ -42,7 +42,10 @@ export const MCP_TOOLS: readonly McpToolSpec[] = [
           description:
             'Entry type: request, query, exception, client_exception, log, event, mail, job, cache, http-client, redis, diagnostic…',
         },
-        search: { type: 'string', description: 'Case-insensitive substring over entry content + tags' },
+        search: {
+          type: 'string',
+          description: 'Case-insensitive substring over entry content + tags',
+        },
         tag: { type: 'string', description: 'Exact tag match, e.g. "status:500" or "lib:billing"' },
         sinceMinutes: { type: 'number', description: 'Only entries from the last N minutes' },
         limit: { type: 'number', description: 'Max entries (default 20, max 100)' },
@@ -208,7 +211,11 @@ export class TelescopeMcpServer {
           return this.fail(id, MCP_METHOD_NOT_FOUND, `Method not found: ${String(method)}`);
       }
     } catch (error: unknown) {
-      return this.fail(id, MCP_INTERNAL_ERROR, error instanceof Error ? error.message : String(error));
+      return this.fail(
+        id,
+        MCP_INTERNAL_ERROR,
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -217,7 +224,9 @@ export class TelescopeMcpServer {
   }
 
   private fail(id: JsonRpcRequest['id'], code: number, message: string): unknown {
-    return id === undefined || id === null ? null : { jsonrpc: '2.0', id, error: { code, message } };
+    return id === undefined || id === null
+      ? null
+      : { jsonrpc: '2.0', id, error: { code, message } };
   }
 
   private async callTool(name: string | undefined, args: ToolArgs): Promise<string> {

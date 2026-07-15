@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resolveConfig } from '../../src/watchers/define_config.js';
 import type { ScheduleEntryContent } from '../../src/watchers/schedule_watcher.js';
 import {
+  ScheduleWatcher,
   buildScheduleEntry,
   recordScheduledRun,
-  ScheduleWatcher,
   scheduleTask,
 } from '../../src/watchers/schedule_watcher.js';
 import { clearStore, flush, installStore } from './helpers.js';
@@ -41,7 +41,12 @@ describe('buildScheduleEntry', () => {
       status: 'completed',
     });
     expect(input.tags).toEqual(
-      expect.arrayContaining(['schedule', 'schedule:cron', 'task:prune-sessions', 'status:completed']),
+      expect.arrayContaining([
+        'schedule',
+        'schedule:cron',
+        'task:prune-sessions',
+        'status:completed',
+      ]),
     );
     expect(input.tags).not.toContain('slow');
   });

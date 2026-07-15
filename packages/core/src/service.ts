@@ -1,9 +1,9 @@
 import type { Entry } from './entry.js';
 import {
   type PulseQuery,
+  PulseService,
   type PulseServiceOptions,
   type PulseSummary,
-  PulseService,
 } from './metrics/pulse.js';
 import type { EntryQuery, TelescopeStore } from './store.js';
 

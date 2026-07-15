@@ -66,7 +66,13 @@ function resolved(overrides: Partial<ResolvedAlerts> = {}): ResolvedAlerts {
     cooldownMs: 900_000,
     instanceId: 'host-1',
     rules: [
-      { type: 'metric-threshold', metric: 'request-p99-ms', window: '5m', comparator: 'gte', threshold: 500 },
+      {
+        type: 'metric-threshold',
+        metric: 'request-p99-ms',
+        window: '5m',
+        comparator: 'gte',
+        threshold: 500,
+      },
     ],
     ...overrides,
   };
@@ -218,7 +224,13 @@ describe('AlerterService — cache-hit-rate + exception-count metrics', () => {
         channels: [channel],
         cooldownMs: 0,
         rules: [
-          { type: 'metric-threshold', metric: 'cache-hit-rate', window: '5m', comparator: 'lte', threshold: 0.8 },
+          {
+            type: 'metric-threshold',
+            metric: 'cache-hit-rate',
+            window: '5m',
+            comparator: 'lte',
+            threshold: 0.8,
+          },
         ],
       }),
       metrics: queuedMetrics([
@@ -250,7 +262,13 @@ describe('AlerterService — cache-hit-rate + exception-count metrics', () => {
         channels: [channel],
         cooldownMs: 0,
         rules: [
-          { type: 'metric-threshold', metric: 'exception-count', window: '5m', comparator: 'gte', threshold: 5 },
+          {
+            type: 'metric-threshold',
+            metric: 'exception-count',
+            window: '5m',
+            comparator: 'gte',
+            threshold: 5,
+          },
         ],
       }),
       metrics: queuedMetrics([
@@ -292,7 +310,9 @@ describe('AlerterService — channel dispatch', () => {
     expect(body.blocks[0].text.text).toContain('Metric threshold (request-p99-ms)');
     expect(body.text).toContain('Metric threshold');
     // Observed-vs-threshold context field is present.
-    const fieldsBlock = body.blocks.find((b: { type: string }) => b.type === 'section' && 'fields' in b);
+    const fieldsBlock = body.blocks.find(
+      (b: { type: string }) => b.type === 'section' && 'fields' in b,
+    );
     const fieldText = JSON.stringify(fieldsBlock.fields);
     expect(fieldText).toContain('800 (threshold 500)');
   });

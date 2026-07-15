@@ -227,7 +227,12 @@ export function buildScheduleEntry(
     traceId,
   };
 
-  const tags: string[] = ['schedule', `schedule:${kind}`, `task:${run.name}`, `status:${run.status}`];
+  const tags: string[] = [
+    'schedule',
+    `schedule:${kind}`,
+    `task:${run.name}`,
+    `status:${run.status}`,
+  ];
   if (failed) tags.push('failed');
   if (durationMs >= slowMs) tags.push('slow');
 
@@ -270,11 +275,7 @@ export function recordScheduledRun(run: ScheduledRun): void {
  *   import { scheduleTask } from '@adonis-agora/telescope/watchers'
  *   scheduler.call(() => scheduleTask('report', () => sendDailyReport())).daily()
  */
-export function scheduleTask<T>(
-  name: string,
-  fn: () => T,
-  options?: ScheduledTaskOptions,
-): T {
+export function scheduleTask<T>(name: string, fn: () => T, options?: ScheduledTaskOptions): T {
   const watcher = getDefaultScheduleWatcher();
   if (watcher) return watcher.scheduleTask(name, fn, options);
   return fn();

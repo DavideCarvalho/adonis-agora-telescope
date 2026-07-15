@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveClientErrors } from '../../src/client_errors/config.js';
 import {
-  ClientErrorIngestor,
   type ClientErrorHttpContext,
+  ClientErrorIngestor,
   storeRecorder,
 } from '../../src/client_errors/ingestor.js';
 import type { ClientExceptionContent } from '../../src/client_errors/validation.js';
@@ -60,7 +60,12 @@ describe('ClientErrorIngestor', () => {
   it('records a valid report as a client_exception and answers 204', async () => {
     const { ing, recorded } = ingestor();
     const ctx = fakeCtx({
-      body: { message: 'boom', name: 'TypeError', stack: 'TypeError: boom\n  at f (a.js:1:1)', user: { id: 9 } },
+      body: {
+        message: 'boom',
+        name: 'TypeError',
+        stack: 'TypeError: boom\n  at f (a.js:1:1)',
+        user: { id: 9 },
+      },
       ip: '203.0.113.4',
     });
 

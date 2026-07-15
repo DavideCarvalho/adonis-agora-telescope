@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Diagnosis, ExceptionEntryContent } from '../../src/ai/diagnoser.js';
+import { DiagnosisCache } from '../../src/ai/diagnosis_cache.js';
 import {
   type DiagnoserLike,
   DiagnosisCoordinator,
   formatDiagnosisMarkdown,
 } from '../../src/ai/diagnosis_coordinator.js';
-import { DiagnosisCache } from '../../src/ai/diagnosis_cache.js';
 import { SYSTEM_PROMPT } from '../../src/ai/prompt.js';
 import {
   type AnthropicMessagesClient,
@@ -51,7 +51,11 @@ function fakeDiagnoser(text = VALID_JSON): {
 } {
   const create = vi.fn(async () => ({ content: [{ type: 'text', text }] }));
   const client: AnthropicMessagesClient = { messages: { create } };
-  const diagnoser = new TelescopeAiDiagnoser({ client, model: 'claude-sonnet-4-6', maxTokens: 512 });
+  const diagnoser = new TelescopeAiDiagnoser({
+    client,
+    model: 'claude-sonnet-4-6',
+    maxTokens: 512,
+  });
   return { diagnoser, create };
 }
 
