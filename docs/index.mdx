@@ -25,8 +25,10 @@ three ways to read it back:
 
 - **A headless query API** — `TelescopeService` (`list`, `find`, `byTrace`,
   `topFamilies`, `topTags`). Read it from a controller, a test, or a script.
-- **A self-contained dashboard** — the `@adonis-agora/telescope/ui` subpath mounts an
-  inline-HTML console + JSON API behind an auth guard, no build step.
+- **A dashboard** — the `@adonis-agora/telescope/ui` subpath mounts the JSON query
+  API and an SSE live-stream behind an auth guard; the separate
+  `@adonis-agora/telescope-ui` package serves a React SPA over it under the same
+  prefix and guard (ships pre-built — no build step in your app).
 - **Alerts & AI** — `@adonis-agora/telescope/alerts` pages you on a brand-new exception
   family; `@adonis-agora/telescope/ai` turns an exception entry into a structured
   root-cause diagnosis.
@@ -90,13 +92,17 @@ await telescope.topFamilies(10, 'diagnostic')         // busiest lib:event pairs
 
 ### Add the dashboard
 
-The dashboard is the `@adonis-agora/telescope/ui` subpath — re-run configure and pick **UI**:
+The `@adonis-agora/telescope/ui` subpath — re-run configure and pick **UI** — serves the JSON
+API and SSE live-stream, but not a page. For the browsable dashboard, also install
+`@adonis-agora/telescope-ui`, the pre-built React SPA, and register its provider:
 
 ```sh
-node ace configure @adonis-agora/telescope   # pick "UI"
+node ace configure @adonis-agora/telescope   # pick "UI" (JSON API + SSE)
+npm i @adonis-agora/telescope-ui             # the React dashboard SPA
 ```
 
-Open `http://localhost:3333/telescope`.
+Register `@adonis-agora/telescope-ui/telescope_ui_dashboard_provider` after the core
+`ui_provider` in `adonisrc.ts`, then open `http://localhost:3333/telescope`.
 
 </Step>
 

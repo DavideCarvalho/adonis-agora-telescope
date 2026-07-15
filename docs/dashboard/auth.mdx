@@ -56,6 +56,12 @@ curl -H 'Authorization: Bearer s3cr3t' http://app.example.com/telescope/api/entr
 open 'http://app.example.com/telescope?token=s3cr3t'
 ```
 
+<Callout type="info">
+`/telescope` only serves a page when `@adonis-agora/telescope-ui` is installed and its
+provider is registered; otherwise this prefix exposes just `<path>/api/*`, and only the
+`curl` form above applies.
+</Callout>
+
 </Tab>
 <Tab value="HTTP Basic">
 
@@ -183,9 +189,10 @@ denial cases so clients and browsers behave correctly:
 the query string.
 
 <Callout type="warn">
-The guard runs on **every** route — the HTML page and every `/api/*` endpoint, including
-the extension surface. There is no unguarded endpoint, so you cannot accidentally leave
-the JSON API open while gating the page.
+The guard runs on **every** route — every `/api/*` endpoint (including the SSE stream and
+the extension surface) and the `@adonis-agora/telescope-ui` SPA routes. There is no
+unguarded endpoint, so you cannot accidentally leave the JSON API open while gating the
+page.
 </Callout>
 
 ## Security notes

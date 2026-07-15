@@ -1,21 +1,23 @@
 ---
 title: Dashboard
-description: Mount the self-contained Telescope console — an inline-HTML dashboard plus a JSON API served from the headless TelescopeService, behind a configurable auth guard — browse entries by type, family and trace, and reach the same data programmatically.
+description: Mount the Telescope console — the @adonis-agora/telescope-ui React SPA served under the same prefix and auth guard as the core JSON API + SSE it reads from the headless TelescopeService — browse entries by type, family and trace, and reach the same data programmatically.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import { Callout } from 'fumadocs-ui/components/callout'
 
-`@adonis-agora/telescope/ui` is a self-contained dashboard for browsing recorded entries. It
-mounts a single inline-HTML page and a small JSON API directly onto your app's router —
-no separate process, no build step, no front-end framework to install — all served from
-the headless [`TelescopeService`](/docs/telescope/getting-started#step-3--hit-the-headless-api)
-behind an [auth guard](/docs/telescope/dashboard/auth).
+The Telescope console is the `@adonis-agora/telescope-ui` React SPA (pre-built) for browsing
+recorded entries. It's served under the same prefix and behind the same
+[auth guard](/docs/telescope/dashboard/auth) as the core `@adonis-agora/telescope/ui` subpath it
+reads: the core mounts the JSON API and SSE stream directly onto your app's router — no separate
+process, no build step of your own — all served from the headless
+[`TelescopeService`](/docs/telescope/getting-started#step-3--hit-the-headless-api); the SPA
+package mounts the page on top of it.
 
 ## Mount it
 
-The dashboard is the `@adonis-agora/telescope/ui` subpath of the one telescope package — re-run
-configure and pick **UI**:
+The core JSON API + SSE is the `@adonis-agora/telescope/ui` subpath of the one telescope
+package — re-run configure and pick **UI**:
 
 ```sh
 npm i @adonis-agora/telescope
@@ -25,9 +27,25 @@ node ace configure @adonis-agora/telescope   # pick "UI"
 `configure` registers `@adonis-agora/telescope/ui_provider` and publishes
 `config/telescope_ui.ts`. On boot the provider resolves the live store from the core's
 runtime slot (the same handle the watchers record through — no DI), and registers the
-routes under the configured prefix.
+API + SSE routes under the configured prefix. It does **not** install a page — that's the
+separate `@adonis-agora/telescope-ui` package, and the core `configure` prompt above doesn't
+add it for you:
 
-Open `http://localhost:3333/telescope`.
+```sh
+npm i @adonis-agora/telescope-ui
+```
+
+```ts title="adonisrc.ts"
+providers: [
+  // …
+  () => import('@adonis-agora/telescope/ui_provider'),
+  () => import('@adonis-agora/telescope-ui/telescope_ui_dashboard_provider'),
+]
+```
+
+Register `@adonis-agora/telescope-ui/telescope_ui_dashboard_provider` **after** the core
+`ui_provider`. Only once both are registered does `http://localhost:3333/telescope` serve a
+page — with just the core installed, that prefix only exposes `<path>/api/*`.
 
 <Callout type="warn">
 The UI needs `@adonis-agora/telescope` to be enabled and booted — it reads the *same* store the
@@ -87,7 +105,7 @@ import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
   enabled: true,           // false → register no routes at all
-  path: '/telescope',      // dashboard at the root, API at <path>/api/*
+  path: '/telescope',      // API at <path>/api/*; the telescope-ui SPA mounts the page at the root
   // authorize: (ctx) => ctx.auth?.user?.isAdmin === true,
   // credentials: { token: env.get('TELESCOPE_UI_TOKEN') },
 })

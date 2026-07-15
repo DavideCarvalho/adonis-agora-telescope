@@ -102,6 +102,12 @@ common queries — recent entries, one trace, one type — are index scans, not 
 It never auto-evicts on `record` (that would add a query per write); bound it by running
 [`prune` on a schedule](/docs/telescope/concepts/storage#retention-and-pruning) instead.
 
+Writes are also **serialized** — a single-flight `writeTail` chain queues each `record`
+insert behind the previous one, so the store holds at most one pooled connection at any
+moment. A burst of watcher events can never exhaust the host app's DB connection pool,
+even when Telescope shares the app's default connection. Reads (`get` / `list` / `prune`)
+are user-initiated and low-frequency, so they are intentionally not serialized.
+
 ## Alerts polling is unref'd
 
 The alerts package reads the store on an interval rather than hooking core, and its timer

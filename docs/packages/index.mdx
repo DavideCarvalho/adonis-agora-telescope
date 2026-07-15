@@ -16,14 +16,14 @@ the chosen `@adonis-agora/telescope/<feature>_provider` and publishing its `conf
 | ---------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | [`@adonis-agora/telescope`](/docs/telescope/packages/core)              | Core capture spine — request + exception + diagnostics watchers, the `Entry` model, the `TelescopeStore` contract, the [config-driven storage drivers](/docs/telescope/packages/storages) (`memory` + `lucid`), `TelescopeService`, [Pulse](/docs/telescope/packages/pulse), the [pruner + overload guard](/docs/telescope/concepts/protection), [client-error ingestion](/docs/telescope/packages/client-errors), and the extension SDK. |
 | [`@adonis-agora/telescope/watchers`](/docs/telescope/packages/watchers) | Per-technology watchers — Lucid `query`, `http-client`, `logs`, `mail`, `cache`, `queue`, `events`, `redis`, plus user-driven `profiling` + `schedule`. |
-| [`@adonis-agora/telescope/ui`](/docs/telescope/packages/ui)             | The self-contained dashboard + JSON API, behind an auth guard.              |
+| [`@adonis-agora/telescope/ui`](/docs/telescope/packages/ui)             | The JSON API + SSE live-stream, behind an auth guard.                       |
 | [`@adonis-agora/telescope/alerts`](/docs/telescope/packages/alerts)     | Alerting — new-exception / exception-rate / metric-threshold rules → Slack, webhook, console, or custom channels. |
 | [`@adonis-agora/telescope/ai`](/docs/telescope/packages/ai)             | AI-assisted exception diagnosis via the Anthropic Claude API, cached by family. |
 | [`@adonis-agora/telescope/mcp`](/docs/telescope/packages/mcp)           | A Model Context Protocol JSON-RPC endpoint so a coding agent can query the captured telemetry. |
 | [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui)   | Separate package — the React dashboard SPA served under the same prefix and guard as the API. |
 
-The package is version `0.4.0`, MIT, ESM-only, and requires Node 20.6+ and
-`@adonisjs/core` `^6.12.0`. Optional peers (`@adonisjs/lucid`, `@adonisjs/mail`,
+The package is version `0.5.2`, MIT, ESM-only, and requires Node 20.6+ and
+`@adonisjs/core` `^7.3.0`. Optional peers (`@adonisjs/lucid`, `@adonisjs/mail`,
 `@adonisjs/cache`, `@anthropic-ai/sdk`) are installed only for the features that use them.
 
 ## How they fit together
@@ -39,7 +39,7 @@ structurally and degrades gracefully when they're absent.
   <Card title="Watchers" href="/docs/telescope/packages/watchers" description="Query, http-client, logs, mail, cache, profiling + schedule watchers." />
   <Card title="Pulse" href="/docs/telescope/packages/pulse" description="The aggregated at-a-glance health rollup over stored entries." />
   <Card title="Storage drivers" href="/docs/telescope/packages/storages" description="The config-driven memory + Lucid stores built into the core." />
-  <Card title="Dashboard UI" href="/docs/telescope/packages/ui" description="The inline-HTML console + JSON API." />
+  <Card title="Dashboard UI" href="/docs/telescope/packages/ui" description="The JSON API + SSE live-stream, behind an auth guard." />
   <Card title="Dashboard SPA" href="/docs/telescope/packages/telescope-ui" description="The React observability dashboard (@adonis-agora/telescope-ui)." />
   <Card title="Alerts" href="/docs/telescope/packages/alerts" description="Page on new exception families and metric thresholds via Slack, webhook, or custom channels." />
   <Card title="AI" href="/docs/telescope/packages/ai" description="Structured root-cause diagnosis of exceptions, cached by family." />

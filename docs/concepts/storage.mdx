@@ -144,6 +144,12 @@ the AI diagnoser all work against it unchanged. A few design notes:
 - `sequence` is seeded from `MAX(sequence)` on first use, so it keeps climbing
   monotonically across restarts.
 - Indexes back the hot read paths (`created_at`, `type`, `trace_id`, `family_hash`).
+- **Single pooled connection.** Writes are serialized (single-flight), so the store holds
+  at most one connection from the pool at a time — a watcher-event burst can't exhaust the
+  app's DB pool.
+- **Integer durations.** `duration_ms` is rounded to an integer at the store (it's an
+  INTEGER column), so watchers timing with `performance.now()` never produce a fractional
+  value Postgres would reject.
 
 The driver needs a table. `node ace configure @adonis-agora/telescope` publishes the
 `create_telescope_entries_table` migration; run `node ace migration:run`. See
@@ -151,8 +157,13 @@ The driver needs a table. `node ace configure @adonis-agora/telescope` publishes
 
 ## Retention and pruning
 
-No store auto-prunes by age on its own (eviction in the memory driver is by count, not
-time). To bound a persistent store, call `prune` on a schedule:
+Telescope's core already ships a background pruner: set `prune: { after: '24h', keepLast?,
+intervalMs? }` in `config/telescope.ts` and it deletes stale entries on a timer (default
+every 60s) — no scheduler wiring required.
+
+No *store* auto-prunes by age on its own (eviction in the memory driver is by count, not
+time) — the background pruner above is what drives it. Calling `store.prune` yourself, as
+below, is only needed for bespoke retention logic outside that schedule:
 
 ```ts
 // Delete everything older than 7 days.

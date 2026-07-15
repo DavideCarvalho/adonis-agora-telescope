@@ -13,7 +13,7 @@ dashboard.
 
 ## Prerequisites
 
-- **AdonisJS 6** (`@adonisjs/core` `^6.12.0`).
+- **AdonisJS 7** (`@adonisjs/core` `^7.3.0`).
 - **Node 20.6+** (the diagnostics integration uses `node:diagnostics_channel`).
 - Optional but recommended: [`@adonis-agora/context`](/docs/context) for trace correlation
   and [`@adonis-agora/diagnostics`](/docs/diagnostics) so library events flow into Telescope.
@@ -211,16 +211,22 @@ See [Watchers](/docs/telescope/packages/watchers) for each watcher's recorded sh
 
 ## Step 6 — Mount the dashboard
 
-The dashboard is the `@adonis-agora/telescope/ui` subpath of the same package — re-run configure
-and pick **UI**:
+The core **UI** feature (the `@adonis-agora/telescope/ui` subpath) serves the JSON API and
+live-stream under `<path>/api/*` — it does not render a page. The browsable dashboard is a
+separate package, `@adonis-agora/telescope-ui`, a pre-built React SPA (no build step in your
+app) served under that same prefix and auth guard.
+
+Enable both:
 
 ```sh
-node ace configure @adonis-agora/telescope   # pick "UI"
+node ace configure @adonis-agora/telescope   # pick "UI" (JSON API + SSE)
+npm i @adonis-agora/telescope-ui             # the React dashboard SPA
 ```
 
-The dashboard mounts at `/telescope` and is reachable automatically **outside
-production**. In production it is denied unless you set a credential or supply an
-`authorize` hook. See [Dashboard auth](/docs/telescope/dashboard/auth).
+Then register `@adonis-agora/telescope-ui/telescope_ui_dashboard_provider` **after** the core
+`ui_provider` in `adonisrc.ts`. With both providers registered, the dashboard mounts at
+`/telescope` and is reachable automatically **outside production**. In production it is denied
+unless you set a credential or supply an `authorize` hook. See [Dashboard auth](/docs/telescope/dashboard/auth).
 
 ---
 

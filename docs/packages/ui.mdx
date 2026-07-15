@@ -1,15 +1,17 @@
 ---
 title: "@adonis-agora/telescope/ui"
-description: The self-contained Telescope dashboard subpath — an inline-HTML console plus a JSON API served from the headless TelescopeService and mounted onto your app's router behind a configurable auth guard, with no build step and no front-end framework.
+description: The Telescope dashboard's read backend — a JSON API plus an SSE live-stream served from the headless TelescopeService and mounted onto your app's router behind a configurable auth guard. The dashboard page itself is the separate @adonis-agora/telescope-ui SPA, which consumes these routes.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import { Callout } from 'fumadocs-ui/components/callout'
 
-A turnkey web dashboard for browsing recorded entries. It mounts a single inline-HTML page
-and a small JSON API directly onto your AdonisJS router — no separate service, no build
-step — all served from the headless [`TelescopeService`](/docs/telescope/packages/core#headless-api),
-behind a configurable [auth guard](/docs/telescope/dashboard/auth).
+This subpath is the dashboard's read backend. It mounts a JSON API and an SSE live-stream
+directly onto your AdonisJS router — no separate service — all served from the headless
+[`TelescopeService`](/docs/telescope/packages/core#headless-api), behind a configurable
+[auth guard](/docs/telescope/dashboard/auth). The dashboard **page** itself is the
+[`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui) SPA, a pre-built React
+bundle that consumes these routes.
 
 ## Install
 
@@ -53,8 +55,11 @@ On boot the provider:
 1. reads `config/telescope_ui.ts`;
 2. resolves the live store from the core's runtime slot (same handle the watchers record
    through — no DI);
-3. registers routes under the configured prefix via the AdonisJS router — the HTML page at
-   the root, the JSON API under `<path>/api/*`, each behind the `authorize` guard.
+3. registers routes under the configured prefix via the AdonisJS router — the JSON API under
+   `<path>/api/*`, the SSE stream at `<path>/api/stream` (plus optional `dashboardAuth`
+   login/logout routes), each behind the `authorize` guard. It does **not** serve a page at
+   the prefix root; the [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui)
+   SPA provider owns `<path>` and `<path>/*`.
 
 <Callout type="warn">
 If `@adonis-agora/telescope` isn't enabled/booted, the store slot is `null` and the provider
@@ -66,11 +71,14 @@ exist until the core is running.
 
 | Route                              | Serves                                                       |
 | ---------------------------------- | ----------------------------------------------------------- |
-| `GET <path>`                       | The inline-HTML dashboard page.                             |
 | `GET <path>/api/entries`           | List (filterable, capped). Compact `EntrySummary` rows.     |
 | `GET <path>/api/entries/:id`       | One entry with full `content`, or 404.                      |
 | `GET <path>/api/trace/:traceId`    | Every entry on a trace.                                     |
 | `GET <path>/api/stats`             | `{ count, topFamilies, topTags }`.                          |
+| `GET <path>/api/stream`            | SSE live-tail of newly recorded entries.                    |
+| `GET <path>/api/metrics/stats\|timeseries\|traces\|waterfall/:traceId\|n-plus-one/:traceId` | Metrics analytics used by the SPA. |
+| `GET <path>/api/metrics/pulse` *(if Pulse enabled)* | Pulse rollup snapshot.                        |
+| `POST <path>/api/requests/:id/replay` *(if replay enabled)* | Replay a captured request.        |
 | `GET <path>/api/meta` *(if any extension)*           | Contributed dashboards + entry types.     |
 | `GET <path>/api/ext/:ext/data/:provider` *(if any extension)* | One data provider's result.      |
 
@@ -109,5 +117,6 @@ want to assemble a custom mount.
 
 ## Peer dependencies
 
-Only `@adonisjs/core` (`^6.12.0`), which the core already requires. The dashboard is plain
-inline HTML — there is no React, Vue, or build toolchain to install.
+Only `@adonisjs/core` (`^7.3.0`), which the core already requires. This subpath ships no
+front-end — it is the JSON API/SSE backend. The React SPA lives in the separate
+`@adonis-agora/telescope-ui` package, published pre-built.

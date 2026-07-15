@@ -132,6 +132,10 @@ import { LucidTelescopeStore } from '@adonis-agora/telescope'
 const store = new LucidTelescopeStore(db, { tableName: 'tscope', autoCreateTable: true })
 ```
 
+Inside a provider's `boot()`, resolve `app.container.make('lucid.db')` instead — the
+`services/db` façade's default export is undefined until `app.booted()`, which runs after
+provider boot.
+
 ### Design notes
 
 - **Dialect-agnostic.** It uses Lucid's async query builder directly, so it works on every
@@ -146,6 +150,12 @@ const store = new LucidTelescopeStore(db, { tableName: 'tscope', autoCreateTable
   across restarts.
 - **Tag matching.** `tag` filters match the quoted token inside the JSON array text, so
   `lib:bill` never matches `lib:billing`.
+- **Single pooled connection.** Writes are serialized (single-flight), so the store holds
+  at most one connection from the pool at a time — a watcher-event burst can't exhaust the
+  app's DB pool.
+- **Integer durations.** `duration_ms` is rounded to an integer at the store (it's an
+  INTEGER column), so watchers timing with `performance.now()` never produce a fractional
+  value Postgres would reject.
 
 <Callout type="warn">
 The store never auto-evicts on `record` (that would add a query per write). Bound table
