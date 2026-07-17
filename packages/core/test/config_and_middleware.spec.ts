@@ -35,6 +35,15 @@ describe('resolveConfig', () => {
     expect(c.watchers.has('diagnostics')).toBe(true);
   });
 
+  it('defaults diagnostics.exclude to an empty list', () => {
+    expect(resolveConfig().diagnostics.exclude).toEqual([]);
+  });
+
+  it('threads diagnostics.exclude through the resolved config', () => {
+    const c = resolveConfig({ diagnostics: { exclude: ['media:upload.progress'] } });
+    expect(c.diagnostics.exclude).toEqual(['media:upload.progress']);
+  });
+
   it('preserves a supplied store instance', () => {
     const store = new InMemoryTelescopeStore();
     const c = resolveConfig({ store });

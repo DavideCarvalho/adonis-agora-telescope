@@ -42,7 +42,10 @@ export {
   DIAGNOSTIC_ENTRY_TYPE,
   DiagnosticsWatcher,
 } from './diagnostics_watcher.js';
-export type { DiagnosticEntryContent } from './diagnostics_watcher.js';
+export type {
+  DiagnosticEntryContent,
+  DiagnosticsWatcherOptions,
+} from './diagnostics_watcher.js';
 export { recordRequest } from './request_watcher.js';
 export type {
   HttpContextLike,
@@ -104,6 +107,7 @@ export {
 // — config —
 export { defineConfig, resolveConfig } from './define_config.js';
 export type {
+  DiagnosticsConfig,
   NPlusOneConfig,
   OverloadConfig,
   PruneConfig,

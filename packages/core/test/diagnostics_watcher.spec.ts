@@ -139,6 +139,52 @@ describe('DiagnosticsWatcher', () => {
     expect(await store.count()).toBe(0);
   });
 
+  it('skips events whose lib:event is in the exclude set (only the muted event is dropped)', async () => {
+    const progressChannel = 'agora:media:upload.progress';
+    const completeChannel = 'agora:media:upload.complete';
+    registerChannel(registry, progressChannel);
+    registerChannel(registry, completeChannel);
+
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store, { exclude: ['media:upload.progress'] });
+    watcher.start();
+
+    // Muted: high-frequency progress channel is in the exclude set.
+    diagnostics_channel
+      .channel(progressChannel)
+      .publish(envelope({ lib: 'media', event: 'upload.progress' }));
+    diagnostics_channel
+      .channel(progressChannel)
+      .publish(envelope({ lib: 'media', event: 'upload.progress' }));
+    // Kept: a sibling event on the same lib is NOT muted.
+    diagnostics_channel
+      .channel(completeChannel)
+      .publish(envelope({ lib: 'media', event: 'upload.complete' }));
+    await flush();
+
+    const entries = await store.list({ type: DIAGNOSTIC_ENTRY_TYPE });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.familyHash).toBe('media:upload.complete');
+
+    watcher.stop();
+  });
+
+  it('records everything when no exclude set is configured', async () => {
+    const channelName = 'agora:media:upload.progress:default';
+    registerChannel(registry, channelName);
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store);
+    watcher.start();
+
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'media', event: 'upload.progress' }));
+    await flush();
+
+    expect(await store.count()).toBe(1);
+    watcher.stop();
+  });
+
   it('start is idempotent (no double subscription)', async () => {
     const channelName = 'agora:billing:invoice-paid:idem';
     registerChannel(registry, channelName);

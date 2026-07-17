@@ -85,6 +85,13 @@ export interface TelescopeConfig {
   watchers?: WatcherName[];
 
   /**
+   * Fine-tunes the generic `diagnostics` watcher (only meaningful while it is
+   * active). Mute noisy channels via {@link DiagnosticsConfig.exclude}. Defaults
+   * are all-off (record every diagnostics event).
+   */
+  diagnostics?: DiagnosticsConfig;
+
+  /**
    * Extensions contributed by sibling libs (e.g. `@adonis-agora/durable-telescope`) — each adds navigable
    * entry types, dashboard pages, and the data providers those pages bind to. Default none.
    */
@@ -168,6 +175,17 @@ export interface TelescopeConfig {
   clientErrors?: ClientErrorsConfig;
 }
 
+/** Diagnostics-watcher configuration (see {@link TelescopeConfig.diagnostics}). */
+export interface DiagnosticsConfig {
+  /**
+   * `lib:event` keys to skip recording — the exact label the "Busiest events"
+   * panel shows (e.g. `'media:upload.progress'`). Mute high-frequency channels
+   * that would otherwise flood the timeline; the events stay live on their
+   * diagnostics channel for other subscribers (OTel, custom watchers). Default `[]`.
+   */
+  exclude?: string[];
+}
+
 /** Background-pruner configuration (see {@link TelescopeConfig.prune}). */
 export interface PruneConfig {
   /**
@@ -246,6 +264,8 @@ export interface ResolvedTelescopeConfig {
   stores: Record<string, StoreProvider>;
   maxEntries: number;
   watchers: Set<WatcherName>;
+  /** Resolved diagnostics-watcher settings (always present; defaults record everything). */
+  diagnostics: { exclude: string[] };
   extensions: TelescopeExtension[];
   redact: { enabled: boolean; keys: string[] };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
@@ -313,6 +333,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     stores: config.stores ?? {},
     maxEntries: config.maxEntries ?? 1000,
     watchers: new Set(watchers),
+    diagnostics: { exclude: config.diagnostics?.exclude ?? [] },
     extensions: config.extensions ?? [],
     redact: {
       enabled: config.redact?.enabled ?? true,
