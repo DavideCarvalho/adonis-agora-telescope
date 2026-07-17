@@ -264,7 +264,9 @@ describe('Alerter — every-exception + enrichment (d11295d)', () => {
       }),
     });
 
-    await alerter.evaluate([clientExceptionEntry('fam-C', { clientIp: '198.51.100.9', message: 'x' })]);
+    await alerter.evaluate([
+      clientExceptionEntry('fam-C', { clientIp: '198.51.100.9', message: 'x' }),
+    ]);
 
     expect(geoLookup).toHaveBeenCalledWith('198.51.100.9');
     expect(payloads[0]?.exception?.geo).toMatchObject({ city: 'São Paulo', countryCode: 'BR' });
@@ -283,7 +285,9 @@ describe('Alerter — every-exception + enrichment (d11295d)', () => {
       logger: () => {},
     });
 
-    await alerter.evaluate([clientExceptionEntry('fam-C', { clientIp: '198.51.100.9', message: 'x' })]);
+    await alerter.evaluate([
+      clientExceptionEntry('fam-C', { clientIp: '198.51.100.9', message: 'x' }),
+    ]);
     expect(payloads).toHaveLength(1);
     expect(payloads[0]?.exception?.geo).toBeNull();
   });

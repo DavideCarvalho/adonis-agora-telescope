@@ -276,7 +276,9 @@ describe('DiagnosticsWatcher', () => {
     const watcher = new DiagnosticsWatcher(store);
     watcher.start();
 
-    diagnostics_channel.channel(channelName).publish(envelope({ lib: 'agent', event: 'tool-call' }));
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'agent', event: 'tool-call' }));
     await flush();
 
     expect(await store.count()).toBe(1);

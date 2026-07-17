@@ -60,9 +60,9 @@ describe('resolveConfig', () => {
   });
 
   it('still validates an every-exception window WHEN present (fail-closed)', () => {
-    expect(() =>
-      resolveConfig({ rules: [{ type: 'every-exception', window: 'soon' }] }),
-    ).toThrow(/Invalid duration/);
+    expect(() => resolveConfig({ rules: [{ type: 'every-exception', window: 'soon' }] })).toThrow(
+      /Invalid duration/,
+    );
   });
 
   it('resolves a geoLookup function and defaults it to null when unset', () => {

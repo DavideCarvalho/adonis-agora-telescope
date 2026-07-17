@@ -134,10 +134,8 @@ describe('ClientErrorIngestor', () => {
       }),
     );
 
-    const redacted = redactBounded(recorded[0]!.content, { maxContentBytes: 2_000 }).value as Record<
-      string,
-      unknown
-    >;
+    const redacted = redactBounded(recorded[0]!.content, { maxContentBytes: 2_000 })
+      .value as Record<string, unknown>;
     expect(redacted.clientIp).toBe('203.0.113.7');
     expect(redacted.url).toBe('https://dev.example/dashboard/vehicle-statistics');
     expect(redacted.userAgent).toBe('Mozilla/5.0 (Windows NT 10.0)');

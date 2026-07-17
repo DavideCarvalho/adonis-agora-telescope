@@ -397,7 +397,10 @@ function pickNumber(record: Record<string, unknown>, keys: string[]): number | n
 }
 
 /** First plain-object field among `keys`, or `null`. */
-function pickRecord(record: Record<string, unknown>, keys: string[]): Record<string, unknown> | null {
+function pickRecord(
+  record: Record<string, unknown>,
+  keys: string[],
+): Record<string, unknown> | null {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
