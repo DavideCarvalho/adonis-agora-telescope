@@ -184,6 +184,14 @@ export interface DiagnosticsConfig {
    * diagnostics channel for other subscribers (OTel, custom watchers). Default `[]`.
    */
   exclude?: string[];
+  /**
+   * Record events whose `lib:event` key is claimed by a lib-specific watcher
+   * (via `@adonis-agora/diagnostics`'s `claimDiagnostics`), instead of skipping
+   * them by default. Default `false` — a claimed event is already recorded as a
+   * typed entry by the claiming lib, so recording it again here would duplicate
+   * it. `exclude` still mutes noisy events regardless of claim status.
+   */
+  recordClaimed?: boolean;
 }
 
 /** Background-pruner configuration (see {@link TelescopeConfig.prune}). */
@@ -265,7 +273,7 @@ export interface ResolvedTelescopeConfig {
   maxEntries: number;
   watchers: Set<WatcherName>;
   /** Resolved diagnostics-watcher settings (always present; defaults record everything). */
-  diagnostics: { exclude: string[] };
+  diagnostics: { exclude: string[]; recordClaimed: boolean };
   extensions: TelescopeExtension[];
   redact: { enabled: boolean; keys: string[] };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
@@ -333,7 +341,10 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     stores: config.stores ?? {},
     maxEntries: config.maxEntries ?? 1000,
     watchers: new Set(watchers),
-    diagnostics: { exclude: config.diagnostics?.exclude ?? [] },
+    diagnostics: {
+      exclude: config.diagnostics?.exclude ?? [],
+      recordClaimed: config.diagnostics?.recordClaimed ?? false,
+    },
     extensions: config.extensions ?? [],
     redact: {
       enabled: config.redact?.enabled ?? true,

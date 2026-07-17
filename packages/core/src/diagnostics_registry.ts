@@ -20,6 +20,7 @@ export interface DiagnosticsRegistry {
 }
 
 const REGISTRY_KEY = Symbol.for('@agora/diagnostics:registry');
+const CLAIMS_KEY = Symbol.for('@agora/diagnostics:claims');
 
 /**
  * The registry `@adonis-agora/diagnostics` published, or `undefined` when the package is
@@ -27,6 +28,27 @@ const REGISTRY_KEY = Symbol.for('@agora/diagnostics:registry');
  */
 export function getDiagnosticsRegistry(): DiagnosticsRegistry | undefined {
   return (globalThis as Record<symbol, unknown>)[REGISTRY_KEY] as DiagnosticsRegistry | undefined;
+}
+
+/**
+ * Whether `lib:event` is CLAIMED by a lib-specific consumer — i.e. some sibling
+ * watcher (nestjs-agent's, media's) already records it as a typed entry via
+ * `@adonis-agora/diagnostics`'s `claimDiagnostics`. Read structurally, WITHOUT
+ * importing `@adonis-agora/diagnostics`: the claim registry is a plain
+ * `Map<string, number>` (`lib:event` → active claim count) on the cross-copy-stable
+ * global slot `Symbol.for('@agora/diagnostics:claims')`. A key is claimed iff the
+ * map has it. Returns `false` when the package is absent (no slot) — telescope
+ * degrades to recording everything.
+ *
+ * MUST be consulted at RECORD time (not subscribe time) so claiming stays
+ * order-independent — the claiming lib may register its claim before or after the
+ * generic watcher started, and a released claim must un-skip the event again.
+ */
+export function isDiagnosticClaimed(lib: string, event: string): boolean {
+  const claims = (globalThis as Record<symbol, unknown>)[CLAIMS_KEY] as
+    | Map<string, number>
+    | undefined;
+  return claims?.has(`${lib}:${event}`) ?? false;
 }
 
 /**

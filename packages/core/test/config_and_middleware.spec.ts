@@ -44,6 +44,13 @@ describe('resolveConfig', () => {
     expect(c.diagnostics.exclude).toEqual(['media:upload.progress']);
   });
 
+  it('defaults diagnostics.recordClaimed to false and threads an override', () => {
+    expect(resolveConfig().diagnostics.recordClaimed).toBe(false);
+    expect(resolveConfig({ diagnostics: { recordClaimed: true } }).diagnostics.recordClaimed).toBe(
+      true,
+    );
+  });
+
   it('preserves a supplied store instance', () => {
     const store = new InMemoryTelescopeStore();
     const c = resolveConfig({ store });

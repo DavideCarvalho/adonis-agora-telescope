@@ -282,6 +282,7 @@ export { currentTraceId, getContextAccessor } from './context_accessor.js';
 export type { ContextAccessor } from './context_accessor.js';
 export {
   getDiagnosticsRegistry,
+  isDiagnosticClaimed,
   isDiagnosticEvent,
 } from './diagnostics_registry.js';
 export type { DiagnosticEvent, DiagnosticsRegistry } from './diagnostics_registry.js';

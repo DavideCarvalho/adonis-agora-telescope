@@ -84,6 +84,7 @@ export default class TelescopeProvider {
     if (config.watchers.has('diagnostics')) {
       const watcher = new DiagnosticsWatcher(store, {
         exclude: config.diagnostics.exclude,
+        recordClaimed: config.diagnostics.recordClaimed,
       });
       watcher.start();
       this.diagnosticsWatcher = watcher;
