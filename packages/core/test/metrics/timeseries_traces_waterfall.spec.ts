@@ -124,4 +124,19 @@ describe('buildWaterfall', () => {
     const wf = buildWaterfall(entries);
     expect(wf?.spans).toHaveLength(2);
   });
+
+  it('labels diagnostics span entries as lib:event (not the bare "diagnostic" type)', () => {
+    seq = 0;
+    const wf = buildWaterfall([
+      entry({
+        id: 'd1',
+        type: EntryType.Diagnostic,
+        createdAt: new Date(0),
+        durationMs: 100,
+        content: { lib: 'agent', event: 'llm.turn', spanId: 'x-1', phase: 'asyncEnd' },
+      }),
+    ]);
+    if (wf === null) throw new Error('expected waterfall');
+    expect(wf.spans[0]?.label).toBe('agent:llm.turn');
+  });
 });
