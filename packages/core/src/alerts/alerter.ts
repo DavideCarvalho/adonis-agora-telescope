@@ -343,6 +343,8 @@ function buildExceptionContext(entry: Entry, occurrences: number): ExceptionAler
     durationMs: pickNumber(content, ['durationMs']),
     user: userFromTags(entry.tags),
     occurrences,
+    // First occurrence of the family in the window vs a recurrence.
+    isNew: occurrences === 1,
     entryId: entry.id,
   };
   if (client) {

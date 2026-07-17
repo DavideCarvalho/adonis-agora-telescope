@@ -23,6 +23,7 @@ function exceptionContext(over: Partial<ExceptionAlertContext> = {}): ExceptionA
     durationMs: null,
     user: '42',
     occurrences: 3,
+    isNew: false,
     entryId: 'ex-1',
     ...over,
   };
@@ -146,5 +147,34 @@ describe('formatSlackMessage — enriched exception (d11295d)', () => {
     expect(header.type).toBe('header');
     expect(header.text.text).toContain('Exception');
     expect(header.text.text).toContain(':rotating_light:');
+  });
+});
+
+describe('formatSlackMessage — New/Recurring badge (356539f)', () => {
+  it('badges a first-occurrence exception 🆕 New', () => {
+    const message = formatSlackMessage(exceptionPayload(exceptionContext({ isNew: true })));
+    const header = message.blocks[0] as { text: { text: string } };
+    expect(header.text.text).toContain('🆕 New');
+    expect(header.text.text).not.toContain('🔁 Recurring');
+  });
+
+  it('badges a recurring exception 🔁 Recurring', () => {
+    const message = formatSlackMessage(exceptionPayload(exceptionContext({ isNew: false })));
+    const header = message.blocks[0] as { text: { text: string } };
+    expect(header.text.text).toContain('🔁 Recurring');
+    expect(header.text.text).not.toContain('🆕 New');
+  });
+
+  it('adds no badge to a rate-rule alert (no exception context)', () => {
+    const message = formatSlackMessage({
+      rule: { type: 'exception-rate', window: '5m', threshold: 10 },
+      value: 12,
+      threshold: 10,
+      firedAt: '2026-07-17T00:00:00.000Z',
+      instanceId: 'host-1',
+    });
+    const header = message.blocks[0] as { text: { text: string } };
+    expect(header.text.text).not.toContain('🆕');
+    expect(header.text.text).not.toContain('🔁');
   });
 });

@@ -43,6 +43,7 @@ function exceptionPayload(): AlertPayload {
       durationMs: null,
       user: '42',
       occurrences: 1,
+      isNew: true,
       entryId: 'ex-1',
     },
   };

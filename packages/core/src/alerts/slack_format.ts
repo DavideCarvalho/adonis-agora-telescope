@@ -228,7 +228,11 @@ export function formatSlackMessage(
   const resolved = payload.status === 'resolved';
   const emoji = resolved ? ':white_check_mark:' : severityEmoji(payload.rule);
   const label = ruleLabel(payload.rule);
-  const headerText = `${emoji} ${resolved ? 'Resolved: ' : ''}${label}`;
+  // Badge a brand-new error family distinctly from a recurrence so on-call can
+  // triage urgency at a glance. Only exceptions carry this; rate rules don't.
+  const badge =
+    payload.exception === undefined ? '' : payload.exception.isNew ? ' · 🆕 New' : ' · 🔁 Recurring';
+  const headerText = `${emoji} ${resolved ? 'Resolved: ' : ''}${label}${badge}`;
 
   const contextFields: SlackTextObject[] = [
     field('Instance', payload.instanceId),

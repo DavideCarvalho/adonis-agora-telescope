@@ -185,6 +185,25 @@ describe('Alerter — every-exception + enrichment (d11295d)', () => {
     expect(payloads[0]?.rule.type).toBe('every-exception');
   });
 
+  it('surfaces isNew=true on a first occurrence and isNew=false when the batch has repeats', async () => {
+    const { channel, payloads } = capturingChannel();
+    const alerter = new Alerter({
+      alerts: resolved({
+        channels: [channel],
+        rules: [{ type: 'every-exception' }],
+        cooldownMs: 0,
+      }),
+      now: () => 1_000,
+    });
+    // Single occurrence → isNew true.
+    await alerter.evaluate([exceptionEntry('fam-solo')]);
+    expect(payloads.at(-1)?.exception?.isNew).toBe(true);
+    // Two of the same family in one batch → occurrences 2 → isNew false.
+    await alerter.evaluate([exceptionEntry('fam-dup'), exceptionEntry('fam-dup')]);
+    expect(payloads.at(-1)?.exception?.occurrences).toBe(2);
+    expect(payloads.at(-1)?.exception?.isNew).toBe(false);
+  });
+
   it('keeps independent per-family cooldown clocks for new-exception and every-exception', async () => {
     const newCh = capturingChannel('new');
     // Both rules configured; a single fam-A entry should fire BOTH once.
