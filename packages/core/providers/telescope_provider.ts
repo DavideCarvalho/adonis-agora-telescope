@@ -164,7 +164,10 @@ export default class TelescopeProvider {
    */
   private applyRedaction(store: TelescopeStore, config: ResolvedTelescopeConfig): TelescopeStore {
     if (!config.redact.enabled) return store;
-    return new RedactingTelescopeStore(store, { keys: config.redact.keys });
+    return new RedactingTelescopeStore(store, {
+      keys: config.redact.keys,
+      perType: config.redact.perType,
+    });
   }
 
   /**

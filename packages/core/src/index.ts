@@ -232,6 +232,7 @@ export {
 export type {
   CompiledRedactSpec,
   RedactBoundedResult,
+  RedactBounds,
   RedactOptions,
 } from './redaction/redact.js';
 export { RedactingTelescopeStore } from './redaction/redacting_store.js';

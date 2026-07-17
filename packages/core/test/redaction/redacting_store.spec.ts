@@ -87,6 +87,56 @@ describe('RedactingTelescopeStore', () => {
     expect(await store.get(entry.id)).not.toBeNull();
   });
 
+  it('gives a per-type entry a larger content budget than the global one', async () => {
+    const inner = new InMemoryTelescopeStore();
+    // Punishingly small global byte budget (protects high-volume request/cache
+    // entries); a generous per-type budget for the rare, high-value exception.
+    const store = new RedactingTelescopeStore(inner, {
+      maxContentBytes: 50,
+      perType: { [EntryType.Exception]: { maxContentBytes: 100_000 } },
+    });
+
+    // Same payload for both: a long leading field exhausts the tiny global budget,
+    // so a trailing field is dropped — UNLESS the per-type budget is larger.
+    const payload = { big: 'x'.repeat(400), tail: 'keepme' };
+    await store.record({ type: EntryType.Request, familyHash: 'r', content: { ...payload } });
+    await store.record({ type: EntryType.Exception, familyHash: 'e', content: { ...payload } });
+
+    const req = (await inner.list({ type: EntryType.Request }))[0]?.content as Record<
+      string,
+      unknown
+    >;
+    const exc = (await inner.list({ type: EntryType.Exception }))[0]?.content as Record<
+      string,
+      unknown
+    >;
+
+    // Global budget starved the request's trailing field out.
+    expect(req.tail).toBeUndefined();
+    // The exception's larger per-type budget preserved it.
+    expect(exc.tail).toBe('keepme');
+  });
+
+  it('masking (sensitive keys) stays global even for a per-type entry', async () => {
+    const inner = new InMemoryTelescopeStore();
+    const store = new RedactingTelescopeStore(inner, {
+      keys: ['ssn'],
+      perType: { [EntryType.Exception]: { maxContentBytes: 100_000 } },
+    });
+    await store.record({
+      type: EntryType.Exception,
+      familyHash: 'e',
+      content: { ssn: '123-45-6789', note: 'ok' },
+    });
+    const exc = (await inner.list({ type: EntryType.Exception }))[0]?.content as Record<
+      string,
+      unknown
+    >;
+    // The per-type override only widened the numeric budget; the mask still applies.
+    expect(exc.ssn).toBe(DEFAULT_MASK);
+    expect(exc.note).toBe('ok');
+  });
+
   it('delegates read/maintenance operations unchanged', async () => {
     const inner = new InMemoryTelescopeStore();
     const store = new RedactingTelescopeStore(inner);

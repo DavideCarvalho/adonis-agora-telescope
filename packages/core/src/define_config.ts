@@ -6,6 +6,7 @@ import {
 } from './client_errors/config.js';
 import type { TelescopeExtension } from './extension/types.js';
 import { PULSE_CARDS, type PulseCardName } from './metrics/pulse.js';
+import type { RedactBounds } from './redaction/redact.js';
 import { type SamplingConfig, resolveSampling } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
@@ -36,6 +37,15 @@ export interface RedactConfig {
    * Matched case-insensitively at any depth.
    */
   keys?: string[];
+  /**
+   * Per-entry-type overrides of the NUMERIC redaction bounds (e.g. a bigger
+   * `maxContentBytes` for `exception`/`client_exception`, whose stacks are
+   * legitimately many KB), keyed by entry `type`. Lets rare high-value entries
+   * carry a larger budget without loosening the global OOM guard on high-volume
+   * request/query/cache entries. Masking (`keys`) stays global. See
+   * {@link RedactBounds}.
+   */
+  perType?: Record<string, RedactBounds>;
 }
 
 /** The set of watchers this headless slice ships. */
@@ -275,7 +285,7 @@ export interface ResolvedTelescopeConfig {
   /** Resolved diagnostics-watcher settings (always present; defaults record everything). */
   diagnostics: { exclude: string[]; recordClaimed: boolean };
   extensions: TelescopeExtension[];
-  redact: { enabled: boolean; keys: string[] };
+  redact: { enabled: boolean; keys: string[]; perType: Record<string, RedactBounds> };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
   sampling: SamplingConfig;
   /** Resolved N+1 detection settings. */
@@ -349,6 +359,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     redact: {
       enabled: config.redact?.enabled ?? true,
       keys: config.redact?.keys ?? [],
+      perType: config.redact?.perType ?? {},
     },
     sampling: resolveSampling(config.sampling),
     nPlusOne: {
