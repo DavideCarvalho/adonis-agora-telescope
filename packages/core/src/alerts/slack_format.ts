@@ -20,6 +20,30 @@ export interface SlackChannelOptions {
 const STACK_CHAR_LIMIT = 2_800;
 const STACK_FRAME_LIMIT = 10;
 
+/**
+ * Slack caps a `section` block's `fields` array at 10 items — an 11th makes Slack
+ * reject the WHOLE message with `400 invalid_blocks`. A fully-enriched exception
+ * (instance + observed + error + route + UA + referer + duration + user + client
+ * IP + location + occurrences) exceeds that, so we spread the fields across as
+ * many section blocks as needed rather than overflowing one.
+ */
+const MAX_SECTION_FIELDS = 10;
+
+/**
+ * Chunk a flat list of Slack section fields into groups of at most
+ * {@link MAX_SECTION_FIELDS}, so each becomes its own `section` block. Slack
+ * rejects the WHOLE message with `400 invalid_blocks` if any single section
+ * carries more than 10 fields, so this is what keeps a fully-enriched exception
+ * alert deliverable. Exported for direct testing of the field-cap invariant.
+ */
+export function chunkContextFields<T>(fields: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < fields.length; i += MAX_SECTION_FIELDS) {
+    chunks.push(fields.slice(i, i + MAX_SECTION_FIELDS));
+  }
+  return chunks;
+}
+
 interface SlackTextObject {
   type: 'plain_text' | 'mrkdwn';
   text: string;
@@ -174,8 +198,12 @@ export function formatSlackMessage(
 
   const blocks: SlackBlock[] = [
     { type: 'header', text: { type: 'plain_text', text: headerText, emoji: true } },
-    { type: 'section', fields: contextFields },
   ];
+  // Spread the context fields across section blocks of at most MAX_SECTION_FIELDS —
+  // one overflowing section makes Slack reject the entire message (invalid_blocks).
+  for (const chunk of chunkContextFields(contextFields)) {
+    blocks.push({ type: 'section', fields: chunk });
+  }
 
   const diagnosisText = formatDiagnosis(payload.diagnosis);
   if (diagnosisText !== null) {
