@@ -181,6 +181,10 @@
       .card th, .card td { padding: 5px 8px; }
       .card td a { color: var(--accent); text-decoration: none; }
       .card td a:hover { text-decoration: underline; }
+      .pager { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
+      .pager button { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 2px 8px; cursor: pointer; font-size: 11px; }
+      .pager button:hover:not(:disabled) { background: var(--border); }
+      .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
       .barlist { display: flex; flex-direction: column; gap: 6px; }
       .barlist .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 12.5px; }
       .barlist .track { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
@@ -457,9 +461,19 @@
             })
             .join('') + '</div>';
         }
+        // Pager state for a paged table panel — a faithful mirror of core's
+        // `tablePagination` (src/ui/ext_table.ts), which is the unit-tested source
+        // of truth for this math. Keep the two in sync.
+        function tablePagination(data) {
+          var rows = data.rows || [];
+          var page = Math.max(1, data.page || 1);
+          var limit = data.limit && data.limit > 0 ? data.limit : (rows.length || 1);
+          var total = data.total != null ? data.total : rows.length;
+          var totalPages = Math.max(1, Math.ceil(total / limit));
+          return { page: page, limit: limit, total: total, totalPages: totalPages, hasPrev: page > 1, hasNext: page < totalPages };
+        }
         function panelTable(panel, data) {
           var cols = panel.columns || [], rows = data.rows || [];
-          if (!rows.length) return '<div class="muted-pill">no data</div>';
           var head = '<tr>' + cols.map(function (c) { return '<th>' + esc(c.label) + '</th>'; }).join('') + '</tr>';
           var body = rows
             .map(function (row) {
@@ -475,7 +489,20 @@
                 .join('') + '</tr>';
             })
             .join('');
-          return '<table><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
+          if (!panel.paged) {
+            if (!rows.length) return '<div class="muted-pill">no data</div>';
+            return '<table><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
+          }
+          // Paged: render the table (even when empty) + prev/next controls so the
+          // operator can page through the provider's full result set.
+          var p = tablePagination(data);
+          var emptyRow = rows.length ? '' : '<tr><td colspan="' + cols.length + '" class="muted-pill" style="text-align:center">no data</td></tr>';
+          var pager = '<div class="pager">' +
+            '<button type="button" class="pager-prev"' + (p.hasPrev ? '' : ' disabled') + '>Prev</button>' +
+            '<span>Page ' + p.page + ' of ' + p.totalPages + '</span>' +
+            '<button type="button" class="pager-next"' + (p.hasNext ? '' : ' disabled') + '>Next</button>' +
+            '</div>';
+          return '<table><thead>' + head + '</thead><tbody>' + emptyRow + body + '</tbody></table>' + pager;
         }
         function renderPanelBody(panel, data) {
           if (panel.kind === 'stat') {
@@ -518,14 +545,35 @@
           var binding = panel.data || {};
           var provider = binding.provider || '';
           var ext = provider.split('.')[0];
-          var url = API_BASE + '/ext/' + encodeURIComponent(ext) + '/data/' + encodeURIComponent(provider) + qs(binding.query || {});
-          fetchJson(url)
-            .then(function (res) {
-              card.innerHTML = '<div class="card-title">' + esc(panel.title) + '</div>' + renderPanelBody(panel, res.data || {});
-            })
-            .catch(function (err) {
-              card.innerHTML = '<div class="card-title">' + esc(panel.title) + '</div><div class="error">' + esc(err.message) + '</div>';
-            });
+          var baseQuery = binding.query || {};
+          var isPaged = panel.kind === 'table' && panel.paged;
+          function wirePager(currentPage) {
+            var prev = card.querySelector('.pager-prev');
+            var next = card.querySelector('.pager-next');
+            if (prev && !prev.disabled) prev.addEventListener('click', function () { load(currentPage - 1); });
+            if (next && !next.disabled) next.addEventListener('click', function () { load(currentPage + 1); });
+          }
+          function load(page) {
+            // Paged tables re-resolve the provider with query.page (1-based) merged
+            // over the panel's own static data.query; other panels load once.
+            var query = baseQuery;
+            if (isPaged) {
+              query = {};
+              Object.keys(baseQuery).forEach(function (k) { query[k] = baseQuery[k]; });
+              query.page = page;
+            }
+            var url = API_BASE + '/ext/' + encodeURIComponent(ext) + '/data/' + encodeURIComponent(provider) + qs(query);
+            fetchJson(url)
+              .then(function (res) {
+                var data = res.data || {};
+                card.innerHTML = '<div class="card-title">' + esc(panel.title) + '</div>' + renderPanelBody(panel, data);
+                if (isPaged) wirePager(tablePagination(data).page);
+              })
+              .catch(function (err) {
+                card.innerHTML = '<div class="card-title">' + esc(panel.title) + '</div><div class="error">' + esc(err.message) + '</div>';
+              });
+          }
+          load(1);
           return card;
         }
         function renderDashboardSpec(spec) {

@@ -38,6 +38,10 @@ export type {
   VerifyOptions,
 } from './session_cookie.js';
 export { renderLoginPage } from './login_page.js';
+
+// — paged extension-dashboard tables (source of truth for dashboard.html's mirror) —
+export { fillLinkHref, tablePagination } from './ext_table.js';
+export type { PagedTableData, TablePagination } from './ext_table.js';
 export {
   readSessionCookie,
   writeSessionCookie,
