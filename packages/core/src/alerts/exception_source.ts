@@ -16,13 +16,18 @@ export interface ExceptionPollerDeps {
   logger?: (message: string) => void;
 }
 
+/** The entry types the poller feeds to the alerter: server + browser-reported exceptions. */
+const EXCEPTION_TYPES = [EntryType.Exception, EntryType.ClientException] as const;
+
 /**
  * The hook point. Telescope's headless `@adonis-agora/telescope` core does not expose a
  * "new entry" event, so — by design, to avoid modifying core — this poller reads
- * the {@link TelescopeStore} on an interval for `exception` entries recorded since
+ * the {@link TelescopeStore} on an interval for exception entries recorded since
  * the previous poll (a high-water-mark on `createdAt`) and feeds them to the
- * {@link Alerter}. Polling keeps the hook fully testable (drive {@link pollOnce}
- * directly) and decoupled from any specific watcher.
+ * {@link Alerter}. It polls BOTH server `exception` entries AND browser-reported
+ * `client_exception` entries, so a front-end error family pages exactly like a
+ * server one (and feeds the `every-exception` rule). Polling keeps the hook fully
+ * testable (drive {@link pollOnce} directly) and decoupled from any specific watcher.
  *
  * The unref'd timer means the poller never keeps the process alive on its own.
  * Every poll is wrapped so a store failure is logged, not thrown.
@@ -61,32 +66,45 @@ export class ExceptionPoller {
   }
 
   /**
-   * Read exception entries recorded since the last poll, advance the high-water
-   * mark, and hand them to the alerter. Exposed for deterministic tests. Never
-   * throws — a store failure is logged and the watermark is left untouched so the
-   * next poll retries the same window.
+   * Read exception entries (server `exception` + browser `client_exception`)
+   * recorded since the last poll, advance the high-water mark, and hand them to
+   * the alerter. Exposed for deterministic tests. Never throws — a store failure
+   * is logged and the watermark is left untouched so the next poll retries the
+   * same window.
+   *
+   * `list` filters a single `type`, so the two families are queried separately
+   * with the shared watermark, then merged and sorted oldest-first (by
+   * `createdAt`, then `sequence`) so occurrence ordering / first-seen detection is
+   * natural across both. The watermark advances to the newest entry seen across
+   * BOTH types, so neither starves the other.
    */
   async pollOnce(): Promise<void> {
-    let entries: Entry[];
+    let batches: Entry[][];
     try {
-      entries = await this.deps.store.list({
-        type: EntryType.Exception,
-        after: this.since,
-        limit: POLL_SCAN_CAP,
-      });
+      batches = await Promise.all(
+        EXCEPTION_TYPES.map((type) =>
+          this.deps.store.list({ type, after: this.since, limit: POLL_SCAN_CAP }),
+        ),
+      );
     } catch (error: unknown) {
       this.logger(`Telescope alert poll failed: ${asMessage(error)}`);
       return;
     }
 
+    // Merge and order oldest-first (createdAt asc, then sequence asc for a stable
+    // order within the same instant).
+    const entries = batches.flat().sort((a, b) => {
+      const byTime = a.createdAt.getTime() - b.createdAt.getTime();
+      return byTime !== 0 ? byTime : a.sequence - b.sequence;
+    });
+
     if (entries.length > 0) {
-      // `list` returns newest-first; advance the mark to the newest seen.
-      const newest = entries[0];
+      // Advance the mark to the newest (last, after the asc sort) across both types.
+      const newest = entries[entries.length - 1];
       if (newest !== undefined) this.since = newest.createdAt;
     }
 
-    // Feed oldest-first so occurrence ordering / first-seen detection is natural.
-    await this.deps.alerter.evaluate([...entries].reverse());
+    await this.deps.alerter.evaluate(entries);
   }
 }
 

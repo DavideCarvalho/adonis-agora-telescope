@@ -113,6 +113,64 @@ describe('ExceptionPoller', () => {
     expect(payloads).toHaveLength(1);
   });
 
+  it('feeds client_exception entries to the alerter, sourcing clientIp from server-filled content', async () => {
+    const store = new InMemoryTelescopeStore({ maxEntries: 100 });
+    const { channel, payloads } = capturing();
+    const alerter = new Alerter({
+      alerts: resolveConfig({ channels: [channel], rules: [{ type: 'every-exception' }] }),
+    });
+    const poller = new ExceptionPoller({ store, alerter, intervalMs: 1_000, now: () => 0 });
+
+    // A browser-reported client error — clientIp is the value the ingestion
+    // endpoint filled in SERVER-side, never from the body.
+    await store.record({
+      type: 'client_exception',
+      familyHash: 'fam-client',
+      tags: ['failed', 'client', 'user:9'],
+      content: {
+        clientIp: '203.0.113.7',
+        message: 'f.map is not a function',
+        name: 'TypeError',
+        url: 'https://app.example/dash',
+        userAgent: 'Mozilla/5.0',
+        componentStack: 'at Component',
+      },
+    });
+
+    await poller.pollOnce();
+    expect(payloads).toHaveLength(1);
+    const ex = payloads[0]?.exception;
+    expect(ex?.familyHash).toBe('fam-client');
+    expect(ex?.client).toBe(true);
+    expect(ex?.clientIp).toBe('203.0.113.7');
+    expect(ex?.componentStack).toBe('at Component');
+  });
+
+  it('feeds BOTH server and client exceptions in one poll, oldest-first', async () => {
+    const store = new InMemoryTelescopeStore({ maxEntries: 100 });
+    const { channel, payloads } = capturing();
+    const alerter = new Alerter({
+      alerts: resolveConfig({ channels: [channel], rules: [{ type: 'every-exception' }] }),
+    });
+    const poller = new ExceptionPoller({ store, alerter, intervalMs: 1_000, now: () => 0 });
+
+    // Server exception recorded first, client exception second.
+    await store.record({
+      type: 'exception',
+      familyHash: 'fam-server',
+      content: { class: 'Error', message: 'boom', createdAt: new Date(10) },
+    });
+    await store.record({
+      type: 'client_exception',
+      familyHash: 'fam-client',
+      content: { clientIp: '203.0.113.7', message: 'oops', name: 'TypeError' },
+    });
+
+    await poller.pollOnce();
+    // Both families fired; server one first (older sequence).
+    expect(payloads.map((p) => p.exception?.familyHash)).toEqual(['fam-server', 'fam-client']);
+  });
+
   it('swallows a store failure (never throws into the poll loop)', async () => {
     const brokenStore = {
       record: () => Promise.resolve({} as never),
