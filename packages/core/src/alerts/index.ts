@@ -17,10 +17,12 @@ export type { SlackChannelOptions, SlackMessage } from './slack_format.js';
 // — rules / payload —
 export type {
   AlertDiagnosis,
+  AlertGeoLocation,
   AlertMetric,
   AlertPayload,
   AlertRule,
   ExceptionAlertContext,
+  GeoLookup,
   ResolvedAlerts,
 } from './alert_rule.js';
 

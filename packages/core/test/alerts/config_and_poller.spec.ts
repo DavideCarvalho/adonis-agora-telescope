@@ -53,6 +53,23 @@ describe('resolveConfig', () => {
       resolveConfig({ rules: [{ type: 'new-exception', window: 'eventually' }] }),
     ).toThrow(/Invalid duration/);
   });
+
+  it('accepts an every-exception rule with NO window (occurrence-count is optional)', () => {
+    const config = resolveConfig({ rules: [{ type: 'every-exception' }] });
+    expect(config.rules).toEqual([{ type: 'every-exception' }]);
+  });
+
+  it('still validates an every-exception window WHEN present (fail-closed)', () => {
+    expect(() =>
+      resolveConfig({ rules: [{ type: 'every-exception', window: 'soon' }] }),
+    ).toThrow(/Invalid duration/);
+  });
+
+  it('resolves a geoLookup function and defaults it to null when unset', () => {
+    const geoLookup = (ip: string) => ({ country: ip });
+    expect(resolveConfig({ geoLookup }).geoLookup).toBe(geoLookup);
+    expect(resolveConfig().geoLookup).toBeNull();
+  });
 });
 
 describe('ExceptionPoller', () => {

@@ -1,7 +1,8 @@
-import type { Entry } from '../entry.js';
+import { type Entry, EntryType } from '../entry.js';
 import type { AlertChannel } from './alert_channel.js';
 import type {
   AlertDiagnosis,
+  AlertGeoLocation,
   AlertPayload,
   AlertRule,
   ExceptionAlertContext,
@@ -12,6 +13,10 @@ import { durationToMs } from './parse_duration.js';
 
 /** Stack frames carried in a `new-exception` alert (the Slack channel re-clips). */
 const ALERT_STACK_FRAME_LIMIT = 12;
+
+/** Window used only to count occurrences on an `every-exception` alert when the
+ *  rule omits its own `window`. Firing is per-flush, so this is display-only. */
+const DEFAULT_EVERY_WINDOW = '1h';
 
 export interface AlerterDeps {
   alerts: ResolvedAlerts;
@@ -83,6 +88,7 @@ export class Alerter {
         this.recentExceptions.push(entry.createdAt.getTime());
       }
       await this.evaluateNewException(exceptionEntries, nowMs);
+      await this.evaluateEveryException(exceptionEntries, nowMs);
       await this.evaluateExceptionRate(nowMs);
     } catch (error: unknown) {
       // A bug in evaluation must never break the caller's poll loop.
@@ -96,7 +102,9 @@ export class Alerter {
    */
   resolveFamily(familyHash: string): void {
     this.tracker.resolve(familyHash);
-    this.lastFiredFamily.delete(familyHash);
+    // Clear BOTH flush rules' independent per-family cooldown clocks.
+    this.lastFiredFamily.delete(this.cooldownKey('new-exception', familyHash));
+    this.lastFiredFamily.delete(this.cooldownKey('every-exception', familyHash));
   }
 
   /** Number of error families currently tracked (test/observability seam). */
@@ -122,13 +130,42 @@ export class Alerter {
       if (entry.familyHash === null) continue;
       const isNew = this.tracker.observe(entry.familyHash, nowMs, windowMs);
       if (!isNew) continue;
-      if (this.familyInCooldown(entry.familyHash, nowMs)) continue;
-      this.lastFiredFamily.set(entry.familyHash, nowMs);
+      if (this.familyInCooldown('new-exception', entry.familyHash, nowMs)) continue;
+      this.lastFiredFamily.set(this.cooldownKey('new-exception', entry.familyHash), nowMs);
       const occurrences = occurrencesByFamily.get(entry.familyHash) ?? 1;
-      const payload = this.buildNewExceptionPayload(result.rule, entry, occurrences, nowMs);
+      const payload = await this.buildExceptionPayload(result.rule, entry, occurrences, nowMs);
       // Optionally enrich with an AI probable-cause section when a diagnose hook is
       // wired. The hook is expected to be fail-safe/time-bounded (the coordinator
       // is); we guard it anyway so a diagnosis failure never blocks the alert.
+      const diagnosis = await this.safeDiagnose(entry);
+      if (diagnosis !== null) payload.diagnosis = diagnosis;
+      await this.dispatch(payload);
+    }
+  }
+
+  /**
+   * The `every-exception` rule: fire for EVERY exception (server + client), not
+   * just brand-new families, rate-limited PER FAMILY by the shared cooldown on an
+   * independent clock from `new-exception`. The optional `window` only counts
+   * occurrences shown on the alert; it does NOT gate firing.
+   */
+  private async evaluateEveryException(entries: Entry[], nowMs: number): Promise<void> {
+    const result = this.findRule('every-exception');
+    if (result === null) return;
+    const occurrencesByFamily = new Map<string, number>();
+    for (const entry of entries) {
+      if (entry.familyHash === null) continue;
+      occurrencesByFamily.set(
+        entry.familyHash,
+        (occurrencesByFamily.get(entry.familyHash) ?? 0) + 1,
+      );
+    }
+    for (const entry of entries) {
+      if (entry.familyHash === null) continue;
+      if (this.familyInCooldown('every-exception', entry.familyHash, nowMs)) continue;
+      this.lastFiredFamily.set(this.cooldownKey('every-exception', entry.familyHash), nowMs);
+      const occurrences = occurrencesByFamily.get(entry.familyHash) ?? 1;
+      const payload = await this.buildExceptionPayload(result.rule, entry, occurrences, nowMs);
       const diagnosis = await this.safeDiagnose(entry);
       if (diagnosis !== null) payload.diagnosis = diagnosis;
       await this.dispatch(payload);
@@ -183,8 +220,17 @@ export class Alerter {
     return nowMs - last < this.deps.alerts.cooldownMs;
   }
 
-  private familyInCooldown(familyHash: string, nowMs: number): boolean {
-    const last = this.lastFiredFamily.get(familyHash);
+  /** Composite cooldown key so each flush rule keeps an independent per-family clock. */
+  private cooldownKey(ruleType: 'new-exception' | 'every-exception', familyHash: string): string {
+    return `${ruleType}|${familyHash}`;
+  }
+
+  private familyInCooldown(
+    ruleType: 'new-exception' | 'every-exception',
+    familyHash: string,
+    nowMs: number,
+  ): boolean {
+    const last = this.lastFiredFamily.get(this.cooldownKey(ruleType, familyHash));
     if (last === undefined) return false;
     return nowMs - last < this.deps.alerts.cooldownMs;
   }
@@ -207,23 +253,48 @@ export class Alerter {
     };
   }
 
-  private buildNewExceptionPayload(
+  /**
+   * Build the rich exception payload shared by `new-exception` and
+   * `every-exception`. Reads the exception entry's own fields (server vs client),
+   * then — when a `geoLookup` hook is configured and a client IP is present —
+   * resolves the IP to a coarse location. Geo runs ONLY on a real fire.
+   */
+  private async buildExceptionPayload(
     rule: AlertRule,
     entry: Entry,
     occurrences: number,
     nowMs: number,
-  ): AlertPayload {
+  ): Promise<AlertPayload> {
+    const exception = buildExceptionContext(entry, occurrences);
+    exception.geo = await this.resolveGeo(exception.clientIp);
     return {
       rule,
       value: occurrences,
       threshold: 1,
       firedAt: new Date(nowMs).toISOString(),
       instanceId: this.deps.alerts.instanceId,
-      exception: buildExceptionContext(entry, occurrences),
+      exception,
       ...(this.deps.alerts.dashboardUrl !== null
         ? { dashboardUrl: this.deps.alerts.dashboardUrl }
         : {}),
     };
+  }
+
+  /**
+   * Resolve a client IP to a coarse {@link AlertGeoLocation} via the host's
+   * `geoLookup` hook. Returns `null` when no hook is configured, no IP is present,
+   * the hook returns `null`, or the hook throws (swallowed — geo is purely
+   * additive and must never break or block an alert beyond the hook's own cost).
+   */
+  private async resolveGeo(clientIp: string | null): Promise<AlertGeoLocation | null> {
+    const hook = this.deps.alerts.geoLookup;
+    if (typeof hook !== 'function' || clientIp === null) return null;
+    try {
+      return (await hook(clientIp)) ?? null;
+    } catch (error: unknown) {
+      this.logger(`Telescope alert geoLookup failed: ${asMessage(error)}`);
+      return null;
+    }
   }
 
   /**
@@ -250,20 +321,52 @@ export class Alerter {
   }
 }
 
-/** Build the rich exception context from an exception {@link Entry}. */
+/**
+ * Build the rich exception context from an exception {@link Entry}, branching on
+ * whether it's a browser-reported `client_exception` or a server exception. Client
+ * exceptions carry their own IP (server-filled at ingest, NEVER from the body),
+ * user-agent, React component stack, and free-form `extra`; server exceptions
+ * carry route/method from the recorded request context. `geo` is left `null` here
+ * and resolved async by the alerter only on a real fire.
+ */
 function buildExceptionContext(entry: Entry, occurrences: number): ExceptionAlertContext {
   const content = asContentRecord(entry.content);
-  return {
+  const client = entry.type === EntryType.ClientException;
+  const base = {
     familyHash: entry.familyHash ?? '',
     class: pickString(content, ['class', 'name']) ?? 'Error',
     message: pickString(content, ['message']) ?? '',
     stack: clipStackFrames(pickString(content, ['stack']) ?? null),
     route: pickString(content, ['route', 'uri', 'url']),
-    method: pickString(content, ['method']),
     statusCode: pickNumber(content, ['statusCode', 'status']),
+    geo: null,
+    durationMs: pickNumber(content, ['durationMs']),
     user: userFromTags(entry.tags),
     occurrences,
     entryId: entry.id,
+  };
+  if (client) {
+    return {
+      ...base,
+      method: null,
+      userAgent: pickString(content, ['userAgent']),
+      referer: null,
+      componentStack: pickString(content, ['componentStack']),
+      extra: pickRecord(content, ['extra']),
+      client: true,
+      // Server-filled at ingest (client_errors validation), never from the body.
+      clientIp: pickString(content, ['clientIp']),
+    };
+  }
+  return {
+    ...base,
+    method: pickString(content, ['method']),
+    userAgent: pickString(content, ['userAgent']),
+    referer: pickString(content, ['referer', 'referrer']),
+    componentStack: null,
+    extra: null,
+    client: false,
+    clientIp: pickString(content, ['ip', 'clientIp']),
   };
 }
 
@@ -287,6 +390,17 @@ function pickNumber(record: Record<string, unknown>, keys: string[]): number | n
   for (const key of keys) {
     const value = record[key];
     if (typeof value === 'number') return value;
+  }
+  return null;
+}
+
+/** First plain-object field among `keys`, or `null`. */
+function pickRecord(record: Record<string, unknown>, keys: string[]): Record<string, unknown> | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
   }
   return null;
 }
