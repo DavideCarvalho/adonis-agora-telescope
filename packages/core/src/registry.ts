@@ -1,5 +1,6 @@
 import type { DiagnosisCoordinator } from './ai/diagnosis_coordinator.js';
 import type { ExtensionRegistry } from './extension/registry.js';
+import type { RequestCaptureOptions } from './request_watcher.js';
 import type { TelescopeStore } from './store.js';
 import type { EntryEvents } from './stream/entry_events.js';
 
@@ -15,6 +16,12 @@ export interface TelescopeRuntime {
   store: TelescopeStore | null;
   /** Whether the request watcher should record. */
   requestWatcherEnabled: boolean;
+  /**
+   * Resolved request body-capture gates the middleware feeds to the request
+   * watcher, or `null` when body capture is off (the default). See
+   * {@link RequestCaptureOptions}.
+   */
+  requestCapture: RequestCaptureOptions | null;
   /** The booted extension registry (entry types / dashboards / data providers), or `null`. */
   registry: ExtensionRegistry | null;
   /**
@@ -45,6 +52,7 @@ const globalStore = globalThis as typeof globalThis & { [RUNTIME_KEY]?: Telescop
 const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   store: null,
   requestWatcherEnabled: false,
+  requestCapture: null,
   registry: null,
   entryEvents: null,
   paused: false,
@@ -58,9 +66,14 @@ export function getTelescopeRuntime(): TelescopeRuntime {
 }
 
 /** Install the active store + flags (called by the provider at boot). */
-export function setTelescopeRuntime(store: TelescopeStore, requestWatcherEnabled: boolean): void {
+export function setTelescopeRuntime(
+  store: TelescopeStore,
+  requestWatcherEnabled: boolean,
+  requestCapture: RequestCaptureOptions | null = null,
+): void {
   runtime.store = store;
   runtime.requestWatcherEnabled = requestWatcherEnabled;
+  runtime.requestCapture = requestCapture;
 }
 
 /** Publish the booted extension registry so the UI can serve its dashboards + providers. */
@@ -94,6 +107,7 @@ export function setTelescopePaused(paused: boolean): void {
 export function resetTelescopeRuntime(): void {
   runtime.store = null;
   runtime.requestWatcherEnabled = false;
+  runtime.requestCapture = null;
   runtime.registry = null;
   runtime.entryEvents = null;
   runtime.paused = false;

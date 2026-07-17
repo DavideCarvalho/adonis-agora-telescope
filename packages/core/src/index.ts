@@ -46,11 +46,14 @@ export type {
   DiagnosticEntryContent,
   DiagnosticsWatcherOptions,
 } from './diagnostics_watcher.js';
-export { recordRequest } from './request_watcher.js';
+export { recordRequest, resolveRequestCapture } from './request_watcher.js';
 export type {
+  CaptureRequestInfo,
   HttpContextLike,
   RecordRequestOptions,
+  RequestCaptureOptions,
   RequestEntryContent,
+  ResolvedRequestCapture,
 } from './request_watcher.js';
 export {
   buildExceptionInput,

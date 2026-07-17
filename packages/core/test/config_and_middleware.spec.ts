@@ -51,6 +51,12 @@ describe('resolveConfig', () => {
     );
   });
 
+  it('defaults requestCapture to null (body capture off) and threads a supplied config', () => {
+    expect(resolveConfig().requestCapture).toBeNull();
+    const capture = { maxBodyBytes: 4096 as const };
+    expect(resolveConfig({ requestCapture: capture }).requestCapture).toBe(capture);
+  });
+
   it('preserves a supplied store instance', () => {
     const store = new InMemoryTelescopeStore();
     const c = resolveConfig({ store });

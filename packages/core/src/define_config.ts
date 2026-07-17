@@ -7,6 +7,7 @@ import {
 import type { TelescopeExtension } from './extension/types.js';
 import { PULSE_CARDS, type PulseCardName } from './metrics/pulse.js';
 import type { RedactBounds } from './redaction/redact.js';
+import type { RequestCaptureOptions } from './request_watcher.js';
 import { type SamplingConfig, resolveSampling } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
@@ -100,6 +101,15 @@ export interface TelescopeConfig {
    * are all-off (record every diagnostics event).
    */
   diagnostics?: DiagnosticsConfig;
+
+  /**
+   * Opt-in request BODY capture, gated so a huge or binary body is never walked
+   * by the synchronous redaction pass. When set (even to `{}` for defaults), the
+   * request watcher captures the body through content-type / size / predicate
+   * gates; a gated-out body becomes a marker string. OFF by default (no `body`
+   * field on request entries). See {@link RequestCaptureOptions}.
+   */
+  requestCapture?: RequestCaptureOptions;
 
   /**
    * Extensions contributed by sibling libs (e.g. `@adonis-agora/durable-telescope`) — each adds navigable
@@ -284,6 +294,8 @@ export interface ResolvedTelescopeConfig {
   watchers: Set<WatcherName>;
   /** Resolved diagnostics-watcher settings (always present; defaults record everything). */
   diagnostics: { exclude: string[]; recordClaimed: boolean };
+  /** Opt-in request body-capture gates, or `null` when body capture is off (default). */
+  requestCapture: RequestCaptureOptions | null;
   extensions: TelescopeExtension[];
   redact: { enabled: boolean; keys: string[]; perType: Record<string, RedactBounds> };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
@@ -355,6 +367,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
       exclude: config.diagnostics?.exclude ?? [],
       recordClaimed: config.diagnostics?.recordClaimed ?? false,
     },
+    requestCapture: config.requestCapture ?? null,
     extensions: config.extensions ?? [],
     redact: {
       enabled: config.redact?.enabled ?? true,
