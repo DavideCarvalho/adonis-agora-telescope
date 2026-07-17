@@ -7,6 +7,7 @@ import {
 } from '../../src/client_errors/ingestor.js';
 import type { ClientExceptionContent } from '../../src/client_errors/validation.js';
 import { EntryType, type RecordInput } from '../../src/entry.js';
+import { redactBounded } from '../../src/redaction/redact.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 
 /** A recording HTTP context double: captures status + body, feeds a fixed body/ip/headers. */
@@ -85,6 +86,61 @@ describe('ClientErrorIngestor', () => {
     const { ing, recorded } = ingestor();
     await ing.handle(fakeCtx({ body: { message: 'm' }, ip: undefined }));
     expect(recorded[0]!.content.clientIp).toBeNull();
+  });
+
+  it('orders content so clientIp/url/userAgent lead and stack/componentStack come last', async () => {
+    const { ing, recorded } = ingestor();
+    await ing.handle(
+      fakeCtx({
+        body: {
+          message: 'boom',
+          name: 'TypeError',
+          url: 'https://dev.example/dashboard',
+          userAgent: 'Mozilla/5.0',
+          stack: 'TypeError: boom\n  at f (a.js:1:1)',
+          componentStack: 'at Component',
+        },
+        ip: '203.0.113.4',
+      }),
+    );
+    const keys = Object.keys(recorded[0]!.content);
+    // clientIp/url/userAgent MUST precede stack/componentStack: the redaction
+    // byte budget drops keys in insertion order, so a huge componentStack must
+    // never be positioned ahead of the short enrichment fields the alert renders.
+    expect(keys.indexOf('clientIp')).toBeLessThan(keys.indexOf('stack'));
+    expect(keys.indexOf('url')).toBeLessThan(keys.indexOf('componentStack'));
+    expect(keys.indexOf('userAgent')).toBeLessThan(keys.indexOf('componentStack'));
+    expect(keys.indexOf('stack')).toBeLessThan(keys.indexOf('componentStack'));
+  });
+
+  it('keeps clientIp/url/userAgent when a huge componentStack would exhaust the redaction budget', async () => {
+    // A deeply-nested React error boundary produces a componentStack of many KB.
+    // The short enrichment fields the Slack alert renders (clientIp/url/userAgent)
+    // must NOT be starved out of the content by that big string — they are ordered
+    // ahead of the stacks so the byte budget covers them first. This runs the
+    // recorded content through the same bounded redaction the store applies.
+    const { ing, recorded } = ingestor();
+    const componentStack = 'at Component\n'.repeat(600); // ~7.8 KB, well over budget
+    await ing.handle(
+      fakeCtx({
+        body: {
+          message: 'f.map is not a function',
+          name: 'TypeError',
+          url: 'https://dev.example/dashboard/vehicle-statistics',
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0)',
+          componentStack,
+        },
+        ip: '203.0.113.7',
+      }),
+    );
+
+    const redacted = redactBounded(recorded[0]!.content, { maxContentBytes: 2_000 }).value as Record<
+      string,
+      unknown
+    >;
+    expect(redacted.clientIp).toBe('203.0.113.7');
+    expect(redacted.url).toBe('https://dev.example/dashboard/vehicle-statistics');
+    expect(redacted.userAgent).toBe('Mozilla/5.0 (Windows NT 10.0)');
   });
 
   it('rejects an oversized body with 413 before validating', async () => {

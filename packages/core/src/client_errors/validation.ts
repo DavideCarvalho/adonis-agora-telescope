@@ -115,11 +115,14 @@ export function validateClientErrorBody(body: unknown): ClientErrorValidation {
 
   return {
     ok: true,
+    // Field ORDER is load-bearing: the Recorder's content-byte budget drops keys
+    // in insertion order, so the short enrichment fields (url/userAgent) lead and
+    // the multi-KB `stack`/`componentStack` come LAST — otherwise a deep error
+    // boundary's stack starves the short fields the alert renders. The ingestor
+    // re-asserts this order (with server-derived clientIp first) at record time.
     value: {
       message: cappedMessage,
       name: name.value,
-      stack: stack.value,
-      componentStack: componentStack.value,
       url: url.value,
       userAgent: userAgent.value,
       // `user` is intentionally untyped passthrough: redacted at record time and
@@ -127,6 +130,8 @@ export function validateClientErrorBody(body: unknown): ClientErrorValidation {
       user: 'user' in body ? body.user : null,
       release: release.value,
       extra,
+      stack: stack.value,
+      componentStack: componentStack.value,
     },
   };
 }
