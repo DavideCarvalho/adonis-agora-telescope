@@ -1,7 +1,7 @@
 ---
 title: "@adonis-agora/telescope/alerts"
 icon: Bell
-description: Alerting subpath of @adonis-agora/telescope — detect brand-new exception families (and re-occurrences after resolve) and exception-rate spikes from recorded entries, then fan rich alerts out to Slack, a generic webhook, the console, or any custom channel.
+description: Alerting subpath of @adonis-agora/telescope — detect brand-new exception families (and re-occurrences after resolve), fire on every exception (server + browser), and catch exception-rate / metric spikes from recorded entries, then fan rich alerts out to Slack, a generic webhook, the console, or any custom channel.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
@@ -105,6 +105,7 @@ units: `ms`, `s`, `m`, `h`, `d`.
 ```ts
 type AlertRule =
   | { type: 'new-exception'; window: string }
+  | { type: 'every-exception'; window?: string }   // window is OPTIONAL — display-only occurrence count
   | { type: 'exception-rate'; window: string; threshold: number }
   | {
       type: 'metric-threshold'
@@ -121,6 +122,18 @@ type AlertRule =
   `window` (a genuinely new error family), and again if the family re-appears after the
   window elapses, or after an explicit `alerter.resolveFamily(hash)` — the "resolved →
   re-occurred" signal.
+- **`every-exception`** — fires for **every** exception (server `exception` *and*
+  browser-reported `client_exception`), not just brand-new families — parity with a "notify
+  on every error" setup. It is still rate-limited by `cooldown` **per family**, on an
+  *independent* clock from `new-exception`, so a hot loop of the same error re-pages once per
+  cooldown rather than on every single occurrence. Its `window` is **optional** and used only
+  to count the occurrences shown on the alert (it does **not** gate firing); omit it and a
+  1h display window is assumed. Fired payloads carry the full `exception` context (the same
+  shape `new-exception` gets), and a fresh vs repeat firing is badged **New vs Recurring** via
+  the `isNew` flag (see [the payload](#the-alert-payload)). Because it also fires on
+  `client_exception` entries, this is the rule to reach for when you want front-end errors
+  ingested via [client-error reporting](/docs/telescope/packages/client-errors) to page you
+  the same way server errors do.
 - **`exception-rate`** — fires when `>= threshold` exception entries land in the trailing
   `window`.
 - **`metric-threshold`** — evaluates a computed metric over the window and fires when it
@@ -131,7 +144,35 @@ type AlertRule =
   percentile rule against a single slow request on a quiet host.
 
 The exception rules are rate-limited by `cooldown` (per-rule for rate, per-family for
-new-exception).
+`new-exception` and `every-exception` — each on its own independent per-family clock, so
+enabling both never double-suppresses).
+
+For a "page me on every error" setup — including front-end `client_exception` reports —
+reach for `every-exception`. It's happy alongside a `metric-threshold` spike rule:
+
+```ts title="config/telescope_alerts.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
+
+export default defineConfig({
+  channels: [{ type: 'slack', url: env.get('TELESCOPE_SLACK_WEBHOOK') }],
+  rules: [
+    // Fire on EVERY exception (server + browser), rate-limited per family by `cooldown`.
+    // `window` is display-only here — it just labels the occurrence count on the alert.
+    { type: 'every-exception', window: '15m' },
+    // …and still page loudly on a broad exception spike.
+    { type: 'metric-threshold', metric: 'exception-count', window: '5m', comparator: 'gte', threshold: 25 },
+  ],
+  cooldown: '10m',   // one page per error family per 10m, however hot the loop
+})
+```
+
+<Callout type="info">
+Tune `cooldown` deliberately with `every-exception`: it is the *only* thing keeping a
+tight loop of the same error from paging on every occurrence. A short cooldown on a noisy
+family is a self-inflicted alert storm; the per-family clock means a *different* family
+still pages immediately.
+</Callout>
 
 ### Stateful raise / auto-resolve
 
@@ -162,7 +203,7 @@ rather than thrown into the host.
 
 | Channel                            | Sends                                                                        |
 | ---------------------------------- | --------------------------------------------------------------------------- |
-| `{ type: 'slack', url, options? }` | Block Kit JSON to a Slack incoming webhook — severity header, fielded context (route/method/status/user/occurrences), a truncated stack, and an "Open in Telescope" deep link when `dashboardUrl` is set. |
+| `{ type: 'slack', url, options? }` | Block Kit JSON to a Slack incoming webhook — severity header with a **New / Recurring** badge, fielded context (route/method/status, UA, referer, duration, user, client IP, location, occurrences), a truncated stack, `client_exception` component-stack + `extra` blocks, and an "Open in Telescope" deep link when `dashboardUrl` is set. |
 | `{ type: 'webhook', url }`         | The raw `AlertPayload` as JSON.                                             |
 | `{ type: 'console' }`              | A one-line summary (the zero-config default).                              |
 | `customChannel(fn, name?)`         | An arbitrary async sink — email, PagerDuty, SNS, …                         |
@@ -195,17 +236,26 @@ interface AlertPayload {
   instanceId: string
   status?: 'firing' | 'resolved'   // present on stateful metric-threshold alerts; absent ⇒ firing
   metric?: AlertMetric             // present on metric-threshold alerts
-  exception?: {          // present for new-exception; absent for rate/metric rules
+  exception?: {          // present for new-exception + every-exception; absent for rate/metric rules
     familyHash: string
     class: string
     message: string
     stack: string | null
-    route: string | null
-    method: string | null
+    route: string | null           // route/uri/url of the request (or the page url for a client_exception)
+    method: string | null          // always null for a client_exception
     statusCode: number | null
-    user: string | null   // from a `user:<id>` tag, when present
-    occurrences: number
-    entryId: string       // for the dashboard deep link
+    userAgent: string | null       // reporting browser UA (client) or the sibling request's UA (server)
+    referer: string | null         // `Referer` of the originating request; null for a client_exception
+    componentStack: string | null  // React error-boundary stack — client_exception only
+    extra: Record<string, unknown> | null  // host-defined debugging bag — client_exception only
+    client: boolean                // true when the alert is a browser-reported client_exception
+    clientIp: string | null        // originating IP; NEVER sourced from an untrusted body
+    geo: AlertGeoLocation | null   // populated only when a geoLookup hook is configured (see below)
+    durationMs: number | null      // request duration, when captured
+    user: string | null            // from a `user:<id>` tag, when present
+    occurrences: number            // times this family was seen in the window (>= 1)
+    isNew: boolean                 // occurrences === 1 — a first occurrence vs a recurrence
+    entryId: string                // for the dashboard deep link
   }
   diagnosis?: {          // AI probable-cause, on new-exception alerts when AI is configured
     cause: string
@@ -218,8 +268,45 @@ interface AlertPayload {
 ```
 
 The `exception` context is read generically from the exception entry (`class`/`name`,
-`message`, `stack`, `route`/`uri`/`url`, `method`, `statusCode`/`status`, and a `user:<id>`
-tag), so it works with any source of exception entries.
+`message`, `stack`, `route`/`uri`/`url`, `method`, `statusCode`/`status`, `userAgent`,
+`referer`/`referrer`, `durationMs`, and a `user:<id>` tag), so it works with any source of
+exception entries. A browser-reported [`client_exception`](/docs/telescope/packages/client-errors)
+additionally carries `componentStack` (the React error-boundary stack), a host-defined
+`extra` bag, and the server-filled `clientIp`, with `client: true` and `method`/`referer`
+left `null`; a server exception carries `method`/`referer` and its recorded request IP,
+with `componentStack`/`extra` `null` and `client: false`.
+
+### New vs Recurring, and the fuller exception fields
+
+Every fired exception alert carries `isNew` — `true` when this is the family's first
+occurrence in the window (`occurrences === 1`), `false` on a recurrence. Channels badge the
+two distinctly so on-call can triage urgency at a glance: the **Slack** channel prepends
+**🆕 New** or **🔁 Recurring** to the header. This matters most with the
+[`every-exception`](#rules) rule, which pages on repeats as well as first sightings.
+
+Beyond the core error fields, the Slack channel renders these enriched fields as context
+(each shown only when present, so a sparse alert stays compact):
+
+| Field                        | Rendered as                                                              |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `userAgent`                  | a **User agent** context field                                           |
+| `referer`                    | a **Referer** context field (server exceptions)                          |
+| `durationMs`                 | a **Duration** context field (`… ms`)                                    |
+| `clientIp`                   | a **Client IP** context field                                            |
+| `geo`                        | a **Location** context field — `🇺🇸 City, Region, Country` (see [Geo-enrichment](#geo-enrichment)) |
+| `componentStack`             | a fenced **Component stack:** code block (`client_exception` only)       |
+| `extra`                      | a fenced **Extra:** JSON block (`client_exception` only)                 |
+| `isNew`                      | the **🆕 New** / **🔁 Recurring** header badge                          |
+
+<Callout type="info">
+Slack caps a section's `fields` array at 10 items, and a fully-enriched exception (instance,
+observed, error, route, UA, referer, duration, user, client IP, location, occurrences)
+exceeds that — the formatter automatically spreads the fields across multiple section blocks
+so the message never trips Slack's `invalid_blocks` rejection. The `componentStack` and
+`extra` blocks are clipped to Slack's per-section character budget. The raw `webhook`
+channel carries **all** of these fields verbatim; the `console` channel logs a one-line
+summary (`class: message (route) — N× in window`).
+</Callout>
 
 ### AI probable-cause on new-exception alerts
 
@@ -280,7 +367,8 @@ The result lands on the `geo` field of the alert's `ExceptionAlertContext` (and 
 
 ```ts
 interface ExceptionAlertContext {
-  // …familyHash, class, message, stack, route, method, statusCode, user, occurrences, entryId…
+  // …familyHash, class, message, stack, route, method, statusCode, userAgent, referer,
+  //   componentStack, extra, client, durationMs, user, occurrences, isNew, entryId…
   clientIp: string | null   // the originating IP; NEVER sourced from an untrusted body
   geo: AlertGeoLocation | null   // populated only when a geoLookup hook is configured AND clientIp is present
 }
