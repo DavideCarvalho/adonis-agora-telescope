@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 0.6.0
+
+### Minor Changes
+
+- Parity sync from nestjs-telescope (redact binary-blob bound, client-error reorder, Slack section spread, diagnostics exclude/recordClaimed, exception alert enrichment + every-exception + isNew badge, lib:event span labels, client_exception polling, perType redaction budgets, paged ext-dashboard + trace deep-links, requestCapture gates).
+
 ## 0.5.0
 
 ### Minor Changes
