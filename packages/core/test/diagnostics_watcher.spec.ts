@@ -9,6 +9,29 @@ import {
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 
 const REGISTRY_KEY = Symbol.for('@agora/diagnostics:registry');
+const CLAIMS_KEY = Symbol.for('@agora/diagnostics:claims');
+
+/**
+ * Stand-in for `@adonis-agora/diagnostics`'s `claimDiagnostics(lib, [event])`:
+ * increments the ref-count for each `lib:event` on the well-known global claims
+ * slot (a `Map<string, number>`) and returns a release that decrements/deletes —
+ * exactly the RAW convention the watcher reads via `isDiagnosticClaimed`.
+ */
+function claim(lib: string, events: string[]): () => void {
+  const store = globalThis as Record<symbol, unknown>;
+  const map = (store[CLAIMS_KEY] as Map<string, number> | undefined) ?? new Map<string, number>();
+  store[CLAIMS_KEY] = map;
+  const keys = events.map((event) => `${lib}:${event}`);
+  for (const key of keys) map.set(key, (map.get(key) ?? 0) + 1);
+  return () => {
+    for (const key of keys) {
+      const count = map.get(key);
+      if (count === undefined) continue;
+      if (count <= 1) map.delete(key);
+      else map.set(key, count - 1);
+    }
+  };
+}
 
 /**
  * Stand-in for what `@adonis-agora/diagnostics` publishes on the global slot. The real
@@ -60,6 +83,7 @@ describe('DiagnosticsWatcher', () => {
 
   afterEach(() => {
     delete (globalThis as Record<symbol, unknown>)[REGISTRY_KEY];
+    delete (globalThis as Record<symbol, unknown>)[CLAIMS_KEY];
   });
 
   it('records a publish on a channel registered BEFORE start', async () => {
@@ -137,6 +161,153 @@ describe('DiagnosticsWatcher', () => {
     expect(() => watcher.start()).not.toThrow();
     expect(() => watcher.stop()).not.toThrow();
     expect(await store.count()).toBe(0);
+  });
+
+  it('skips events whose lib:event is in the exclude set (only the muted event is dropped)', async () => {
+    const progressChannel = 'agora:media:upload.progress';
+    const completeChannel = 'agora:media:upload.complete';
+    registerChannel(registry, progressChannel);
+    registerChannel(registry, completeChannel);
+
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store, { exclude: ['media:upload.progress'] });
+    watcher.start();
+
+    // Muted: high-frequency progress channel is in the exclude set.
+    diagnostics_channel
+      .channel(progressChannel)
+      .publish(envelope({ lib: 'media', event: 'upload.progress' }));
+    diagnostics_channel
+      .channel(progressChannel)
+      .publish(envelope({ lib: 'media', event: 'upload.progress' }));
+    // Kept: a sibling event on the same lib is NOT muted.
+    diagnostics_channel
+      .channel(completeChannel)
+      .publish(envelope({ lib: 'media', event: 'upload.complete' }));
+    await flush();
+
+    const entries = await store.list({ type: DIAGNOSTIC_ENTRY_TYPE });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.familyHash).toBe('media:upload.complete');
+
+    watcher.stop();
+  });
+
+  it('records everything when no exclude set is configured', async () => {
+    const channelName = 'agora:media:upload.progress:default';
+    registerChannel(registry, channelName);
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store);
+    watcher.start();
+
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'media', event: 'upload.progress' }));
+    await flush();
+
+    expect(await store.count()).toBe(1);
+    watcher.stop();
+  });
+
+  it('skips a claimed lib:event by default (a lib-specific watcher already records it)', async () => {
+    const channelName = 'agora:agent:chat-request:claimed';
+    registerChannel(registry, channelName);
+    const release = claim('agent', ['chat-request']);
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store);
+    watcher.start();
+
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'agent', event: 'chat-request' }));
+    await flush();
+
+    expect(await store.count()).toBe(0);
+    watcher.stop();
+    release();
+  });
+
+  it('records a claimed lib:event when recordClaimed: true is set', async () => {
+    const channelName = 'agora:agent:chat-request:recordclaimed';
+    registerChannel(registry, channelName);
+    const release = claim('agent', ['chat-request']);
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store, { recordClaimed: true });
+    watcher.start();
+
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'agent', event: 'chat-request' }));
+    await flush();
+
+    const entries = await store.list({ type: DIAGNOSTIC_ENTRY_TYPE });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.familyHash).toBe('agent:chat-request');
+    watcher.stop();
+    release();
+  });
+
+  it('mutes a claimed event via exclude even when recordClaimed: true', async () => {
+    const channelName = 'agora:agent:chat-request:excludewins';
+    registerChannel(registry, channelName);
+    const release = claim('agent', ['chat-request']);
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store, {
+      recordClaimed: true,
+      exclude: ['agent:chat-request'],
+    });
+    watcher.start();
+
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'agent', event: 'chat-request' }));
+    await flush();
+
+    expect(await store.count()).toBe(0);
+    watcher.stop();
+    release();
+  });
+
+  it('leaves unclaimed sibling events unaffected by a claim', async () => {
+    const channelName = 'agora:agent:tool-call:unclaimed';
+    registerChannel(registry, channelName);
+    const release = claim('agent', ['chat-request']); // only chat-request is claimed
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store);
+    watcher.start();
+
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'agent', event: 'tool-call' }));
+    await flush();
+
+    expect(await store.count()).toBe(1);
+    watcher.stop();
+    release();
+  });
+
+  it('un-claiming (release) makes the watcher record the event again (record-time check)', async () => {
+    const channelName = 'agora:agent:chat-request:release';
+    registerChannel(registry, channelName);
+    const release = claim('agent', ['chat-request']);
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store);
+    watcher.start();
+
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'agent', event: 'chat-request' })); // claimed → skipped
+    await flush();
+    expect(await store.count()).toBe(0);
+
+    release(); // un-claim
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'agent', event: 'chat-request' })); // unclaimed → recorded
+    await flush();
+    expect(await store.count()).toBe(1);
+
+    watcher.stop();
   });
 
   it('start is idempotent (no double subscription)', async () => {

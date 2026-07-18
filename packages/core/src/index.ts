@@ -42,12 +42,18 @@ export {
   DIAGNOSTIC_ENTRY_TYPE,
   DiagnosticsWatcher,
 } from './diagnostics_watcher.js';
-export type { DiagnosticEntryContent } from './diagnostics_watcher.js';
-export { recordRequest } from './request_watcher.js';
 export type {
+  DiagnosticEntryContent,
+  DiagnosticsWatcherOptions,
+} from './diagnostics_watcher.js';
+export { recordRequest, resolveRequestCapture } from './request_watcher.js';
+export type {
+  CaptureRequestInfo,
   HttpContextLike,
   RecordRequestOptions,
+  RequestCaptureOptions,
   RequestEntryContent,
+  ResolvedRequestCapture,
 } from './request_watcher.js';
 export {
   buildExceptionInput,
@@ -104,6 +110,7 @@ export {
 // — config —
 export { defineConfig, resolveConfig } from './define_config.js';
 export type {
+  DiagnosticsConfig,
   NPlusOneConfig,
   OverloadConfig,
   PruneConfig,
@@ -228,6 +235,7 @@ export {
 export type {
   CompiledRedactSpec,
   RedactBoundedResult,
+  RedactBounds,
   RedactOptions,
 } from './redaction/redact.js';
 export { RedactingTelescopeStore } from './redaction/redacting_store.js';
@@ -278,6 +286,7 @@ export { currentTraceId, getContextAccessor } from './context_accessor.js';
 export type { ContextAccessor } from './context_accessor.js';
 export {
   getDiagnosticsRegistry,
+  isDiagnosticClaimed,
   isDiagnosticEvent,
 } from './diagnostics_registry.js';
 export type { DiagnosticEvent, DiagnosticsRegistry } from './diagnostics_registry.js';

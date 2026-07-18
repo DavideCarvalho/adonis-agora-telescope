@@ -78,11 +78,14 @@ export default class TelescopeProvider {
       return;
     }
 
-    setTelescopeRuntime(store, config.watchers.has('request'));
+    setTelescopeRuntime(store, config.watchers.has('request'), config.requestCapture);
     setTelescopeEntryEvents(this.entryEvents);
 
     if (config.watchers.has('diagnostics')) {
-      const watcher = new DiagnosticsWatcher(store);
+      const watcher = new DiagnosticsWatcher(store, {
+        exclude: config.diagnostics.exclude,
+        recordClaimed: config.diagnostics.recordClaimed,
+      });
       watcher.start();
       this.diagnosticsWatcher = watcher;
     }
@@ -161,7 +164,10 @@ export default class TelescopeProvider {
    */
   private applyRedaction(store: TelescopeStore, config: ResolvedTelescopeConfig): TelescopeStore {
     if (!config.redact.enabled) return store;
-    return new RedactingTelescopeStore(store, { keys: config.redact.keys });
+    return new RedactingTelescopeStore(store, {
+      keys: config.redact.keys,
+      perType: config.redact.perType,
+    });
   }
 
   /**

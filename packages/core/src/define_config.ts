@@ -6,6 +6,8 @@ import {
 } from './client_errors/config.js';
 import type { TelescopeExtension } from './extension/types.js';
 import { PULSE_CARDS, type PulseCardName } from './metrics/pulse.js';
+import type { RedactBounds } from './redaction/redact.js';
+import type { RequestCaptureOptions } from './request_watcher.js';
 import { type SamplingConfig, resolveSampling } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
@@ -36,6 +38,15 @@ export interface RedactConfig {
    * Matched case-insensitively at any depth.
    */
   keys?: string[];
+  /**
+   * Per-entry-type overrides of the NUMERIC redaction bounds (e.g. a bigger
+   * `maxContentBytes` for `exception`/`client_exception`, whose stacks are
+   * legitimately many KB), keyed by entry `type`. Lets rare high-value entries
+   * carry a larger budget without loosening the global OOM guard on high-volume
+   * request/query/cache entries. Masking (`keys`) stays global. See
+   * {@link RedactBounds}.
+   */
+  perType?: Record<string, RedactBounds>;
 }
 
 /** The set of watchers this headless slice ships. */
@@ -83,6 +94,22 @@ export interface TelescopeConfig {
    * (`request` + `diagnostics`).
    */
   watchers?: WatcherName[];
+
+  /**
+   * Fine-tunes the generic `diagnostics` watcher (only meaningful while it is
+   * active). Mute noisy channels via {@link DiagnosticsConfig.exclude}. Defaults
+   * are all-off (record every diagnostics event).
+   */
+  diagnostics?: DiagnosticsConfig;
+
+  /**
+   * Opt-in request BODY capture, gated so a huge or binary body is never walked
+   * by the synchronous redaction pass. When set (even to `{}` for defaults), the
+   * request watcher captures the body through content-type / size / predicate
+   * gates; a gated-out body becomes a marker string. OFF by default (no `body`
+   * field on request entries). See {@link RequestCaptureOptions}.
+   */
+  requestCapture?: RequestCaptureOptions;
 
   /**
    * Extensions contributed by sibling libs (e.g. `@adonis-agora/durable-telescope`) — each adds navigable
@@ -168,6 +195,25 @@ export interface TelescopeConfig {
   clientErrors?: ClientErrorsConfig;
 }
 
+/** Diagnostics-watcher configuration (see {@link TelescopeConfig.diagnostics}). */
+export interface DiagnosticsConfig {
+  /**
+   * `lib:event` keys to skip recording — the exact label the "Busiest events"
+   * panel shows (e.g. `'media:upload.progress'`). Mute high-frequency channels
+   * that would otherwise flood the timeline; the events stay live on their
+   * diagnostics channel for other subscribers (OTel, custom watchers). Default `[]`.
+   */
+  exclude?: string[];
+  /**
+   * Record events whose `lib:event` key is claimed by a lib-specific watcher
+   * (via `@adonis-agora/diagnostics`'s `claimDiagnostics`), instead of skipping
+   * them by default. Default `false` — a claimed event is already recorded as a
+   * typed entry by the claiming lib, so recording it again here would duplicate
+   * it. `exclude` still mutes noisy events regardless of claim status.
+   */
+  recordClaimed?: boolean;
+}
+
 /** Background-pruner configuration (see {@link TelescopeConfig.prune}). */
 export interface PruneConfig {
   /**
@@ -246,8 +292,12 @@ export interface ResolvedTelescopeConfig {
   stores: Record<string, StoreProvider>;
   maxEntries: number;
   watchers: Set<WatcherName>;
+  /** Resolved diagnostics-watcher settings (always present; defaults record everything). */
+  diagnostics: { exclude: string[]; recordClaimed: boolean };
+  /** Opt-in request body-capture gates, or `null` when body capture is off (default). */
+  requestCapture: RequestCaptureOptions | null;
   extensions: TelescopeExtension[];
-  redact: { enabled: boolean; keys: string[] };
+  redact: { enabled: boolean; keys: string[]; perType: Record<string, RedactBounds> };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
   sampling: SamplingConfig;
   /** Resolved N+1 detection settings. */
@@ -313,10 +363,16 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     stores: config.stores ?? {},
     maxEntries: config.maxEntries ?? 1000,
     watchers: new Set(watchers),
+    diagnostics: {
+      exclude: config.diagnostics?.exclude ?? [],
+      recordClaimed: config.diagnostics?.recordClaimed ?? false,
+    },
+    requestCapture: config.requestCapture ?? null,
     extensions: config.extensions ?? [],
     redact: {
       enabled: config.redact?.enabled ?? true,
       keys: config.redact?.keys ?? [],
+      perType: config.redact?.perType ?? {},
     },
     sampling: resolveSampling(config.sampling),
     nPlusOne: {

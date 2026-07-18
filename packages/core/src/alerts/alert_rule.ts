@@ -13,6 +13,14 @@ import type { AlertChannel } from './alert_channel.js';
  *                        within `window` (a genuinely NEW error family), and
  *                        again if the family re-appears after the window elapses.
  *                        Dedup is per-process via {@link NewExceptionTracker}.
+ *     - `every-exception` fires for EVERY exception (server + browser-reported
+ *                        `client_exception`), not just brand-new families —
+ *                        parity with a "notify on every error" setup. Still
+ *                        rate-limited by the shared `cooldown` PER FAMILY (on an
+ *                        independent clock from `new-exception`), so a hot loop of
+ *                        the same error re-pages once per cooldown rather than on
+ *                        every occurrence. The optional `window` is used only to
+ *                        count occurrences shown on the alert; it does NOT gate firing.
  *     - `exception-rate` fires when `>= threshold` exception entries were recorded
  *                        in the trailing `window`.
  *
@@ -28,6 +36,7 @@ import type { AlertChannel } from './alert_channel.js';
  */
 export type AlertRule =
   | { type: 'new-exception'; window: string }
+  | { type: 'every-exception'; window?: string }
   | { type: 'exception-rate'; window: string; threshold: number }
   | {
       type: 'metric-threshold';
@@ -63,8 +72,33 @@ export type AlertMetric =
   | 'exception-count';
 
 /**
- * Rich exception context attached to a `new-exception` alert. Pulled from the
- * exception {@link Entry} that fired the rule. Absent on rate-rule alerts.
+ * A coarse geo location resolved from a client IP, attached to an exception alert
+ * when a {@link GeoLookup} hook is configured. Every field is optional — a partial
+ * result (e.g. country only) still renders. Deliberately dependency-light: the LIB
+ * ships no geo database or HTTP client; the host owns the lookup (and its
+ * caching/rate-limiting) and returns this shape.
+ */
+export interface AlertGeoLocation {
+  city?: string;
+  region?: string;
+  country?: string;
+  /** ISO 3166-1 alpha-2 (e.g. `US`), used to render a flag emoji. */
+  countryCode?: string;
+}
+
+/**
+ * Host-supplied resolver from a client IP to a coarse {@link AlertGeoLocation}.
+ * Called ONLY when an exception alert actually fires and carries a `clientIp`, so
+ * the common no-fire path pays nothing. May be sync or async; returning `null`
+ * (or throwing — swallowed) simply omits the Location field. The lib never caches
+ * or rate-limits it — do that in the hook if the provider needs it.
+ */
+export type GeoLookup = (ip: string) => AlertGeoLocation | null | Promise<AlertGeoLocation | null>;
+
+/**
+ * Rich exception context attached to a `new-exception` / `every-exception` alert.
+ * Pulled from the exception {@link Entry} that fired the rule. Absent on rate-rule
+ * alerts.
  */
 export interface ExceptionAlertContext {
   /** Stable family hash that was first-seen this window. */
@@ -77,14 +111,59 @@ export interface ExceptionAlertContext {
   stack: string | null;
   /** Request route/uri associated with the exception, or `null`. */
   route: string | null;
-  /** Request method, or `null`. */
+  /** Request method, or `null` (always `null` for a client_exception). */
   method: string | null;
   /** Response status code, or `null`. */
   statusCode: number | null;
+  /**
+   * User-agent string. For a `client_exception` it's the reporting browser's UA;
+   * for a server exception it's the sibling request's UA (when captured). `null`
+   * when unavailable.
+   */
+  userAgent: string | null;
+  /**
+   * `Referer` header of the originating request (server exception) — the page a
+   * user came from. `null` when absent or for a `client_exception` (the browser
+   * report carries its own page `url` in `route`, not a referer).
+   */
+  referer: string | null;
+  /**
+   * React component stack from an error boundary — present ONLY for a
+   * `client_exception` that supplied one. `null` otherwise.
+   */
+  componentStack: string | null;
+  /**
+   * Host-defined free-form debugging bag from a `client_exception` (`extra`), or
+   * `null`. Redacted/bounded at record time like any other content.
+   */
+  extra: Record<string, unknown> | null;
+  /** True when this alert is a browser-reported `client_exception`. */
+  client: boolean;
+  /**
+   * Originating client IP, or `null` when unknown. For a `client_exception` it's
+   * the browser IP the ingestion endpoint filled in server-side (`clientIp`);
+   * for a server exception it's the recorded request IP when available. NEVER
+   * sourced from an untrusted body.
+   */
+  clientIp: string | null;
+  /**
+   * Coarse geo location resolved from {@link clientIp}, or `null`. Populated only
+   * when a {@link GeoLookup} hook is configured AND the alert has a `clientIp`;
+   * otherwise `null`.
+   */
+  geo: AlertGeoLocation | null;
+  /** Request duration (ms), or `null`. */
+  durationMs: number | null;
   /** Authenticated user id from a `user:<id>` tag, or `null`. */
   user: string | null;
   /** Times this family was seen in the window (>= 1; 1 on first-occurrence). */
   occurrences: number;
+  /**
+   * True when this is the family's first occurrence in the window (`occurrences
+   * === 1`) — a brand-new error rather than a recurrence. Lets channels badge a
+   * new error distinctly from a recurring one.
+   */
+  isNew: boolean;
   /** Exception entry id (for the dashboard deep link). */
   entryId: string;
 }
@@ -158,4 +237,6 @@ export interface ResolvedAlerts {
   instanceId: string;
   /** Rules to evaluate. */
   rules: AlertRule[];
+  /** Host IP→geo resolver, or `null` when unconfigured. */
+  geoLookup: GeoLookup | null;
 }

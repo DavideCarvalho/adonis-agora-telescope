@@ -92,7 +92,32 @@ export interface RedactOptions {
    * remaining subtrees become `'[Truncated: size]'`. ON BY DEFAULT (16_384).
    */
   maxContentBytes?: number;
+  /**
+   * Per-entry-type overrides of the numeric bounds above, keyed by the entry's
+   * `type` (e.g. `'exception'`, `'client_exception'`). A listed type's bounds are
+   * merged OVER the top-level bounds for that entry only; unlisted types use the
+   * top-level bounds unchanged. The masking spec (`keys`/`paths`/`mask`) is never
+   * per-type — it stays uniform (and is compiled once).
+   *
+   * Motivation: the content-byte budget is really an OOM guard on HIGH-VOLUME
+   * entries (request/query/cache clone big live graphs). Rare, high-value entries
+   * — exceptions and client exceptions, whose stacks/componentStacks are
+   * legitimately many KB — can be given a bigger budget WITHOUT loosening the
+   * guard on the noisy ones.
+   */
+  perType?: Record<string, RedactBounds>;
 }
+
+/**
+ * The numeric memory bounds of {@link RedactOptions} — the subset overridable
+ * PER ENTRY TYPE via {@link RedactOptions.perType}. The masking spec
+ * (`keys`/`paths`/`mask`) is deliberately excluded: masking is a security
+ * invariant that stays uniform across every entry.
+ */
+export type RedactBounds = Pick<
+  RedactOptions,
+  'maxDepth' | 'maxStringLength' | 'maxArrayLength' | 'maxNodes' | 'maxContentBytes'
+>;
 
 /** Result of a bounded redaction: the detached clone plus whether anything was clipped. */
 export interface RedactBoundedResult {
@@ -218,6 +243,25 @@ export function redactBoundedWith(
       }
       seen.delete(node);
       return mapped;
+    }
+
+    // Binary blobs (Buffer, TypedArrays, DataView, ArrayBuffer) are opaque
+    // bytes, not a traversable graph — summarize them as a bounded marker
+    // instead of walking them. This is load-bearing: a Buffer is `typeof
+    // 'object'` and not an Array, so without this it satisfies isPlainObject()
+    // and `Object.entries()` EAGERLY materializes one [index, byte] pair per
+    // byte BEFORE the node/byte budget is ever consulted. On a multi-MB body
+    // (e.g. a raw file-upload chunk) that is seconds of synchronous CPU and
+    // hundreds of MB allocated on the event loop — the budgets never get a
+    // chance to bite. O(1) here.
+    if (ArrayBuffer.isView(node)) {
+      truncated = true;
+      const name = node.constructor?.name ?? 'Binary';
+      return `[${name}: ${node.byteLength} bytes]`;
+    }
+    if (node instanceof ArrayBuffer) {
+      truncated = true;
+      return `[ArrayBuffer: ${node.byteLength} bytes]`;
     }
 
     if (isPlainObject(node)) {

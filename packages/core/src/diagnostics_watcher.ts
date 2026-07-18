@@ -2,6 +2,7 @@ import diagnostics_channel, { type Channel } from 'node:diagnostics_channel';
 import {
   type DiagnosticEvent,
   getDiagnosticsRegistry,
+  isDiagnosticClaimed,
   isDiagnosticEvent,
 } from './diagnostics_registry.js';
 import { EntryType, type RecordInput } from './entry.js';
@@ -9,6 +10,30 @@ import type { TelescopeStore } from './store.js';
 
 /** Telescope entry `type` produced by this watcher. */
 export const DIAGNOSTIC_ENTRY_TYPE = EntryType.Diagnostic;
+
+/** Construction options for {@link DiagnosticsWatcher}. */
+export interface DiagnosticsWatcherOptions {
+  /**
+   * `lib:event` keys to skip recording — the exact label the "Busiest events"
+   * dashboard panel shows (e.g. `'media:upload.progress'`). High-frequency
+   * channels can flood the timeline; muting one here drops only its Telescope
+   * entries. The event still publishes on its diagnostics channel, so other
+   * subscribers (OTel, custom watchers) keep seeing it.
+   */
+  exclude?: readonly string[];
+  /**
+   * Record events whose `lib:event` key is CLAIMED by a lib-specific watcher —
+   * e.g. a sibling lib's own Telescope watcher, via `claimDiagnostics` from
+   * `@adonis-agora/diagnostics`. Default `false`: claimed keys are skipped here
+   * because the claiming lib already records them as a typed entry, and recording
+   * them again would duplicate every such event (once typed, once as a generic
+   * `diagnostic` entry). Set `true` to record everything regardless of claims,
+   * e.g. to see the raw feed alongside the typed one while debugging. Independent
+   * of `exclude`: `exclude` mutes noisy events outright; `recordClaimed` only
+   * concerns events another watcher already records.
+   */
+  recordClaimed?: boolean;
+}
 
 /**
  * What a single recorded diagnostic entry looks like. Mirrors the
@@ -60,8 +85,18 @@ export class DiagnosticsWatcher {
   private registryListener: ((name: string) => void) | null = null;
   /** name → the subscribe handler we attached, so cleanup can detach exactly. */
   private readonly subscriptions = new Map<string, (msg: unknown) => void>();
+  /** `lib:event` keys whose events are dropped instead of recorded. */
+  private readonly excluded: ReadonlySet<string>;
+  /** See {@link DiagnosticsWatcherOptions.recordClaimed}. */
+  private readonly recordClaimed: boolean;
 
-  constructor(private readonly store: TelescopeStore) {}
+  constructor(
+    private readonly store: TelescopeStore,
+    options: DiagnosticsWatcherOptions = {},
+  ) {
+    this.excluded = new Set(options.exclude ?? []);
+    this.recordClaimed = options.recordClaimed ?? false;
+  }
 
   /**
    * Begin recording. Subscribes to every currently-registered channel and arms a
@@ -107,6 +142,13 @@ export class DiagnosticsWatcher {
   private safeRecord(msg: unknown): void {
     try {
       if (!isDiagnosticEvent(msg)) return;
+      // Mute high-frequency channels the host opted out of. The event still
+      // published on its diagnostics channel — only its Telescope entry is dropped.
+      if (this.excluded.has(`${msg.lib}:${msg.event}`)) return;
+      // Skip keys a lib-specific watcher already records as a typed entry, so an
+      // event is never recorded twice. Checked at RECORD time (not subscribe time)
+      // so claiming stays order-independent — see isDiagnosticClaimed's contract.
+      if (!this.recordClaimed && isDiagnosticClaimed(msg.lib, msg.event)) return;
       // This runs inside a synchronous `node:diagnostics_channel` subscriber, so we
       // CANNOT await the now-async store. Fire-and-forget and swallow rejections —
       // telescope must never break (or block) an emitting code path.

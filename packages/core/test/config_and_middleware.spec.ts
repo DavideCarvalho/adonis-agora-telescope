@@ -35,6 +35,28 @@ describe('resolveConfig', () => {
     expect(c.watchers.has('diagnostics')).toBe(true);
   });
 
+  it('defaults diagnostics.exclude to an empty list', () => {
+    expect(resolveConfig().diagnostics.exclude).toEqual([]);
+  });
+
+  it('threads diagnostics.exclude through the resolved config', () => {
+    const c = resolveConfig({ diagnostics: { exclude: ['media:upload.progress'] } });
+    expect(c.diagnostics.exclude).toEqual(['media:upload.progress']);
+  });
+
+  it('defaults diagnostics.recordClaimed to false and threads an override', () => {
+    expect(resolveConfig().diagnostics.recordClaimed).toBe(false);
+    expect(resolveConfig({ diagnostics: { recordClaimed: true } }).diagnostics.recordClaimed).toBe(
+      true,
+    );
+  });
+
+  it('defaults requestCapture to null (body capture off) and threads a supplied config', () => {
+    expect(resolveConfig().requestCapture).toBeNull();
+    const capture = { maxBodyBytes: 4096 as const };
+    expect(resolveConfig({ requestCapture: capture }).requestCapture).toBe(capture);
+  });
+
   it('preserves a supplied store instance', () => {
     const store = new InMemoryTelescopeStore();
     const c = resolveConfig({ store });

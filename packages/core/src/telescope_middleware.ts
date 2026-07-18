@@ -48,7 +48,11 @@ export default class TelescopeMiddleware {
       // store surfaces back-pressure here rather than leaking an unhandled
       // rejection, but wrapped so observability can never break the request.
       try {
-        await recordRequest(store, ctx as unknown as HttpContextLike, startedAt);
+        await recordRequest(store, ctx as unknown as HttpContextLike, startedAt, {
+          // Body capture is opt-in: only pass `capture` when configured, so the
+          // default stays "no body field" and zero body-read overhead.
+          ...(runtime.requestCapture !== null ? { capture: runtime.requestCapture } : {}),
+        });
       } catch {
         // Observability must never break the request it observes.
       }

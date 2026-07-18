@@ -30,11 +30,20 @@ export class RedactingTelescopeStore implements TelescopeStore {
   }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
+    // Per-type content bounds: a rare, high-value entry (exception/
+    // client_exception, whose stacks are legitimately many KB) can carry a bigger
+    // content budget than the high-volume request/query/cache entries the global
+    // bound exists to guard. Only the NUMERIC bounds differ per type; the masking
+    // spec is shared (compiled once). Most entries have no override → the common
+    // path reuses the global options object and allocates nothing.
+    const perType = this.options.perType?.[input.type];
+    const contentOptions = perType ? { ...this.options, ...perType } : this.options;
     const redacted: RecordInput<TContent> = {
       ...input,
-      content: redactBoundedWith(input.content, this.options, this.spec).value as TContent,
+      content: redactBoundedWith(input.content, contentOptions, this.spec).value as TContent,
     };
     if (input.tags !== undefined) {
+      // Tags are small and uniform — always the global bounds (never per-type).
       redacted.tags = redactBoundedWith(input.tags, this.options, this.spec).value as string[];
     }
     return this.inner.record(redacted);

@@ -4,7 +4,7 @@ import {
   slackChannel,
   webhookChannel,
 } from './alert_channel.js';
-import type { AlertRule, ResolvedAlerts } from './alert_rule.js';
+import type { AlertRule, GeoLookup, ResolvedAlerts } from './alert_rule.js';
 import { durationToMs } from './parse_duration.js';
 import type { SlackChannelOptions } from './slack_format.js';
 
@@ -57,6 +57,14 @@ export interface TelescopeAlertsConfig {
   cooldown?: string;
   /** Reporting instance identifier carried on every payload. Default `'telescope'`. */
   instanceId?: string;
+  /**
+   * Optional IP→geo resolver. When set, a firing exception alert that carries a
+   * `clientIp` is enriched with a coarse {@link AlertGeoLocation} (rendered as a
+   * "Location" field by channels that support it). Kept out of the lib core so
+   * telescope ships no geo dependency — see {@link GeoLookup}. May be sync or
+   * async; a `null`/throw simply omits the Location field.
+   */
+  geoLookup?: GeoLookup;
 }
 
 /** The default rule set — page on a brand-new exception family within the hour. */
@@ -101,6 +109,12 @@ export function resolveConfig(config: TelescopeAlertsConfig = {}): ResolvedAlert
 
   // Validate every rule window at boot — a typo surfaces here, not silently never.
   for (const rule of rules) {
+    // `every-exception`'s window is OPTIONAL (occurrence-count only); validate it
+    // when present so a typo fails at boot rather than silently mis-counting.
+    if (rule.type === 'every-exception') {
+      if (rule.window !== undefined) durationToMs(rule.window);
+      continue;
+    }
     durationToMs(rule.window);
   }
 
@@ -115,5 +129,6 @@ export function resolveConfig(config: TelescopeAlertsConfig = {}): ResolvedAlert
     cooldownMs: durationToMs(config.cooldown ?? DEFAULT_COOLDOWN),
     instanceId: config.instanceId ?? DEFAULT_INSTANCE_ID,
     rules,
+    geoLookup: typeof config.geoLookup === 'function' ? config.geoLookup : null,
   };
 }
