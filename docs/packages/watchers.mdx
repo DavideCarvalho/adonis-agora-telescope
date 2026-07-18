@@ -1,5 +1,6 @@
 ---
 title: "@adonis-agora/telescope/watchers"
+icon: Radio
 description: The watchers subpath of @adonis-agora/telescope — record every Lucid SQL query (sql, bindings, duration, connection), every email sent, @adonisjs/cache hit/miss/write/delete events, outbound fetch calls, and AdonisJS logger output, each correlated to the active request trace.
 ---
 
@@ -253,6 +254,150 @@ and it's fully reversible. A reentrancy guard prevents an infinite record→log�
 
 ---
 
+## Queue watcher
+
+Records every **`@adonisjs/queue` job execution** as a `job` entry — the queue, job name,
+payload, outcome, attempts and duration, correlated to the active trace. This is an
+**optional peer** watcher: with `@adonisjs/queue` absent it is a pure no-op.
+
+```ts
+interface JobEntryContent {
+  id: string | null          // the job id, when the engine carried one
+  name: string | null        // the job class, e.g. 'SendWelcomeEmail'
+  queue: string | null       // the queue it ran on, e.g. 'default'
+  payload: unknown           // the job payload (redaction applies downstream)
+  status: 'completed' | 'failed' | 'retrying'
+  attempts: number | null    // how many attempts had been made
+  failureReason: string | null   // set when status is 'failed' / 'retrying'
+  traceId: string | null
+}
+```
+
+Tagged `queue`, `status:<status>`, `queue:<queue>`, `job:<name>`, plus `failed` when the
+attempt failed/retried and `slow` when the run is at/above the slow threshold (default
+1000ms). The `familyHash` is `<queue>:<name>`, so every run of the same job on the same
+queue rolls up into one family — feeding the slow-hotspot metrics cards.
+
+### How it hooks in
+
+AdonisJS's queue engine is [`@boringnode/queue`](https://github.com/boringnode/queue), which
+publishes a **`node:diagnostics_channel` tracing channel** per execution attempt — the
+channel name is exported as `QUEUE_EXECUTE_CHANNEL` (`'boringqueue.job.execute'`). A tracing
+channel fires `:start` / `:end` / `:asyncStart` / `:asyncEnd` / `:error` sub-channels around
+the traced async operation; the watcher subscribes to `:asyncEnd`, fired once the execution
+settles with `status` / `duration` / `error` populated, and records one entry per attempt.
+Subscribing is what flips the channel's `hasSubscribers` on — with no publisher (the peer
+absent) nothing is recorded. Recording is fire-and-forget and fully guarded: a telescope
+failure can never break or block a job.
+
+```ts
+import { buildJobEntry, QUEUE_EXECUTE_CHANNEL, type JobEntryContent } from '@adonis-agora/telescope/watchers'
+
+// The exported `buildJobEntry(message, slowMs?)` maps a raw tracing message to the
+// telescope RecordInput — exposed so the entry shape can be asserted in a unit test
+// without a real diagnostics publish.
+```
+
+<Callout type="warn">
+`@adonisjs/queue` (and its `@boringnode/queue` engine) is not installed in this repository,
+so the channel name and payload shape are sourced from the engine's `tracing_channels.ts`
+rather than verified against installed types. The engine is pre-1.0, so this surface can
+drift; the watcher reads every field defensively and no-ops entirely when nobody publishes.
+</Callout>
+
+## Events watcher
+
+Records **every event emitted through the core `@adonisjs/core` Emitter** as an `event`
+entry — the event name and its payload, correlated to the active trace. One wildcard
+listener (`emitter.onAny(...)`) captures the lot.
+
+```ts
+interface EventEntryContent {
+  name: string        // the emitted event name, or the class name for class-based events
+  payload: unknown    // the single emitted payload (redaction applies downstream)
+  traceId: string | null
+}
+```
+
+Tagged `event` and `event:<name>`; `familyHash` is `event:<name>`, so every emit of the same
+event groups. A class-based event is coerced to its constructor name. The watcher degrades
+gracefully — if the resolved emitter has no `onAny`, `start()` is a silent no-op rather than
+a throw — and recording is fire-and-forget and fully guarded, so it can never break an emit.
+
+### The default ignore-list
+
+Some Adonis surfaces already have a dedicated telescope watcher, so capturing their events
+here would double-record. The watcher therefore ships an ignore-list, exported as
+`DEFAULT_IGNORED_EVENTS`:
+
+```ts
+import { DEFAULT_IGNORED_EVENTS } from '@adonis-agora/telescope/watchers'
+// ['db:query', 'mail:sent'] — the query and mail watchers already record these.
+```
+
+Names in the set (matched against the resolved event name) are skipped. To watch a different
+set, construct the watcher yourself with an explicit list — `new EventsWatcher(['user:*ignored*'])`
+— or pass `[]` to capture everything (including the events other watchers already cover).
+
+<Callout type="info">
+The `onAny` contract is mirrored structurally (an `EmitterAnyLike` with an `onAny` returning
+an unsubscribe function) rather than imported, so the watcher carries no build-time coupling
+to a specific `@adonisjs/events` / `emittery` version and stays unit-testable with a plain
+double.
+</Callout>
+
+## Redis watcher
+
+Records **every Redis command issued through `@adonisjs/redis`** as a `redis` entry — the
+command, its arguments, the connection and the round-trip duration, correlated to the active
+trace. Like the queue watcher this is an **optional peer** watcher: with `@adonisjs/redis`
+absent it no-ops.
+
+```ts
+interface RedisEntryContent {
+  command: string          // upper-cased, e.g. 'GET'
+  args: unknown[]          // the command arguments, in order (redaction applies downstream)
+  connection: string | null   // the connection name, e.g. 'main'
+  durationMs: number | null    // round-trip ms, or null when not awaitable
+  traceId: string | null
+}
+```
+
+Tagged `redis`, `redis:<command>` and `connection:<name>`; `familyHash` is `redis:<command>`,
+so every `GET` (etc.) groups into one family.
+
+### How it hooks in
+
+`@adonisjs/redis` exposes the raw [ioredis](https://github.com/redis/ioredis) client on each
+`connection().ioConnection`, and ioredis funnels **every** command through
+`sendCommand(command)` — so wrapping that single method captures everything, including
+pipelined and `multi` commands. The watcher is constructed with the resolved `@adonisjs/redis`
+manager: at `start()` it instruments every already-active connection and arms the manager's
+`'connection'` event so connections created later are instrumented too. Patching is
+per-client and idempotent (branded with a shared `Symbol.for`, so two package copies never
+double-wrap), the original `sendCommand` is always called and its result returned/thrown
+unchanged, and `stop()` restores every original.
+
+```ts
+import { buildRedisEntry, type RedisEntryContent } from '@adonis-agora/telescope/watchers'
+// buildRedisEntry(command, connection, durationMs) maps a captured command to a
+// RecordInput — exported for unit tests without a live ioredis client.
+```
+
+<Callout type="warn">
+The watcher records exactly what each wrapped client does — including telescope's **own**
+storage commands if the [`lucid`/redis store](/docs/telescope/concepts/storage) shares that
+connection. Give telescope storage a dedicated Redis connection to keep its bookkeeping out
+of the timeline.
+</Callout>
+
+<Callout type="warn">
+`@adonisjs/redis` is not installed in this repository, so its connection surface
+(`ioConnection` / `ioSubscriberConnection` / `activeConnections`) is sourced from its types
+rather than verified. The watcher narrows every access defensively and no-ops on a `null`
+manager.
+</Callout>
+
 ## Profiling watcher
 
 Records **user-instrumented timing spans** as `profile` entries. There is no event to tap, so
@@ -354,6 +499,16 @@ walks through a full example.
 
 ## Peer dependencies
 
-`@adonisjs/lucid`, `@adonisjs/mail` and `@adonisjs/cache` are all **optional** peers —
-install only the ones whose watcher you enable. With none installed the package still loads;
-the watchers simply have nothing to subscribe to.
+`@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache`, `@adonisjs/queue` and
+`@adonisjs/redis` are all **optional** peers — install only the ones whose watcher you
+enable. With none installed the package still loads; the watchers simply have nothing to
+subscribe to (the queue and events watchers idle on a channel/emitter nobody feeds, and the
+redis watcher no-ops on a `null` manager).
+
+<Callout type="info">
+The `queue`, `events` and `redis` watchers currently expose **no `config/telescope_watchers.ts`
+knobs** — enabling them in the `watchers` array is enough, and they run on their defaults
+(the queue slow threshold is 1000ms; the events watcher uses `DEFAULT_IGNORED_EVENTS`). Their
+constructor options (`QueueWatcherOptions.slowMs`, the `EventsWatcher` ignore-list) are still
+available when you wire a watcher by hand rather than through the provider.
+</Callout>

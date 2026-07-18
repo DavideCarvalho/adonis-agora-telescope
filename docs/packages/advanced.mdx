@@ -1,0 +1,196 @@
+---
+title: Advanced / programmatic
+icon: SlidersHorizontal
+description: The lower-level store-decorator and helper exports of @adonis-agora/telescope — bounded redaction (redactBounded / RedactingTelescopeStore / compileRedactSpec), tail-sampling (SamplingTelescopeStore / passesSampling / resolveSampling), and the live-stream bus (EntryEvents / StreamingTelescopeStore / streamEntries) — for wiring a custom store chain by hand.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Redaction, sampling and the live-stream are wired **automatically** by the provider — you
+configure them through `config/telescope.ts` and never touch the plumbing. This page
+documents the **exports underneath** for the rare case you assemble a custom store chain by
+hand (a bespoke driver, a test harness, an off-Adonis embedding).
+
+Every piece here is a `TelescopeStore` **decorator** or a pure helper, exported from the
+package root:
+
+```ts
+import {
+  // redaction
+  redactBounded, redactBoundedWith, compileRedactSpec, RedactingTelescopeStore,
+  // sampling
+  passesSampling, resolveSampling, SamplingTelescopeStore,
+  // live-stream
+  EntryEvents, StreamingTelescopeStore, streamEntries,
+} from '@adonis-agora/telescope'
+```
+
+The provider composes them as a chain around the raw driver — **stream (outermost) →
+sampling → redaction → driver** — so each entry is scrubbed and sampled before it is
+persisted, and only the final stored entry is streamed:
+
+```ts
+const store =
+  new StreamingTelescopeStore(          // publishes persisted entries to the SSE bus
+    new SamplingTelescopeStore(         // drops sampled-away entries before they persist
+      new RedactingTelescopeStore(      // masks + bounds content before it persists
+        rawDriver,                      // memory / lucid / your own TelescopeStore
+      ),
+      resolveSampling(config.sampling),
+    ),
+    entryEvents,
+  )
+```
+
+## Bounded redaction
+
+[Redaction](/docs/telescope/concepts/protection) runs at the **one boundary every watcher
+records through**, so no watcher can leak a secret into storage. It masks sensitive keys
+**and** enforces hard memory bounds (a captured body / ORM graph can be arbitrarily large).
+
+### `RedactingTelescopeStore`
+
+The decorator. Its `record()` masks the entry's `content` (and `tags`) before delegating;
+every other operation passes through untouched. The key/path Sets are compiled **once** at
+construction so the per-entry hot path never rebuilds them:
+
+```ts
+const store = new RedactingTelescopeStore(rawDriver, {
+  keys: ['ssn', 'dob'],              // extra keys to mask (merged with the defaults), any depth
+  paths: ['body.card.number'],       // exact dot-paths to mask regardless of key name
+  mask: '[REDACTED]',
+  // hard memory bounds (all on by default):
+  maxDepth: 8, maxStringLength: 8_192, maxArrayLength: 200,
+  maxNodes: 5_000, maxContentBytes: 16_384,
+  // per-entry-type bound overrides (masking spec stays uniform):
+  perType: { exception: { maxContentBytes: 65_536 } },
+})
+```
+
+<Callout type="info">
+`perType` lets a rare, high-value entry (an `exception` / `client_exception`, whose stacks
+are legitimately many KB) carry a bigger content budget than the high-volume
+`request` / `query` / `cache` entries the global byte bound exists to guard against OOM. Only
+the **numeric bounds** are per-type; the masking spec (`keys` / `paths` / `mask`) is a
+security invariant that stays uniform (and is compiled once).
+</Callout>
+
+### `redactBounded` / `redactBoundedWith` / `compileRedactSpec`
+
+The pure engine, if you want to scrub a value outside a store:
+
+```ts
+// One-shot: compiles the spec internally.
+const { value, truncated } = redactBounded(payload, { keys: ['token'] })
+
+// Hot path: compile the spec once, reuse it per entry.
+const spec = compileRedactSpec({ keys: ['token'], paths: ['body.ssn'] })
+const out = redactBoundedWith(payload, { maxContentBytes: 4_096 }, spec)
+// out.truncated === true when any bound (depth/string/array/node/byte) clipped content
+```
+
+`redactBounded` returns `{ value, truncated }` — a detached, masked, bounded **clone** (never
+mutates the input, cycle-safe, never throws). Truncation is visible in the clone as markers
+(`'[Truncated: depth]'`, `'…[truncated]'`, `'[Truncated: N of M items]'`, `'[Truncated:
+size]'`); binary blobs (`Buffer`, TypedArrays, `ArrayBuffer`) are summarized as `'[Uint8Array:
+N bytes]'` rather than walked byte-by-byte. `redact(value, options)` is the same thing when
+you don't care about the flag. The `RedactBounds` type is the `Pick` of the numeric bounds
+overridable per type; `CompiledRedactSpec` is the prebuilt `{ keySet, paths }`.
+
+## Tail-sampling
+
+[Sampling](/docs/telescope/concepts/performance) down-samples noisy entry types on the
+**write path** while never dropping the entries that matter — errors and slow operations.
+
+### `SamplingTelescopeStore`
+
+The decorator. A dropped entry is **never persisted** — `record()` short-circuits and resolves
+to a synthetic placeholder (`sequence: -1`) so the fire-and-forget `record()` contract is
+honoured without surfacing the drop as an error. The RNG is injectable so the decision is
+deterministic in tests:
+
+```ts
+const store = new SamplingTelescopeStore(
+  rawDriver,
+  resolveSampling({
+    query: 0.1,                                    // keep 10% of queries
+    request: { rate: 0.25, keepErrors: true, keepSlowMs: 500 },
+    default: 1,                                    // keep everything else
+  }),
+  Math.random,                                     // injected RNG (default Math.random)
+)
+```
+
+### `passesSampling` / `resolveSampling`
+
+`resolveSampling(sampling?)` normalizes the author-facing option — a bare number →
+`{ default: n }`, a `SamplingConfig` as-is, `undefined` → `{}` (record everything). A per-type
+value is either a bare keep-rate or a `SamplingRule` (`{ rate, keepErrors?, keepSlowMs? }`).
+
+`passesSampling(config, input, random)` is the pure decision: it always keeps an entry that
+`keepErrors` matches (a `failed` tag, `content.failed === true`, `statusCode >= 500`, or a
+`warn`/`error`/`fatal` log level) or that meets `keepSlowMs`, then falls back to the base rate
+(`rate >= 1` always keeps, `rate <= 0` always drops, else `random() < rate`). Default-neutral:
+a type with no rule and no `default` is always kept.
+
+<Callout type="warn">
+Sampling is a **retention** trade-off, not a security one — it decides what to *store*, not
+what to *scrub*. Combine it with redaction (which always runs); never rely on sampling to keep
+a secret out of storage.
+</Callout>
+
+## Live-stream bus
+
+The dashboard's SSE live-tail is fed by a tiny **process-local pub/sub**: the store publishes
+each persisted (already-scrubbed, already-sampled) entry, and the stream route pushes it to
+connected clients.
+
+### `EntryEvents`
+
+The dependency-free synchronous emitter (a port of the NestJS RxJS `Subject`, reshaped to the
+Agora no-RxJS idiom). `publish` is a cheap **no-op when nothing is subscribed**, so the hot
+write path pays nothing while the dashboard is closed; a throwing subscriber is isolated so
+observability can never break the flush:
+
+```ts
+const events = new EntryEvents()
+const unsubscribe = events.subscribe((entry) => console.log('stored', entry.type))
+events.subscriberCount            // 0 ⇒ publish() is a no-op
+unsubscribe()                     // idempotent
+events.clear()                    // drop every subscriber (provider does this at shutdown)
+```
+
+### `StreamingTelescopeStore`
+
+The decorator that publishes each **persisted** entry to an `EntryEvents` bus. Placed as the
+**outermost** wrap so it only ever sees the final stored entry — never raw content, never a
+sampled-away placeholder (it skips `sequence < 0`):
+
+```ts
+const store = new StreamingTelescopeStore(innerChain, events)
+```
+
+### `streamEntries(events, sink, options?)`
+
+Wires an `EntryEvents` bus to an SSE sink: it writes the handshake, subscribes, pushes each
+new entry as an `entry` frame (the already-redacted `EntrySummary` row shape), and emits a
+periodic keep-alive so proxies don't reap an idle connection. It returns a `StreamSession`
+whose `close()` unsubscribes and stops the heartbeat (also fired automatically when the client
+disconnects):
+
+```ts
+const session = streamEntries(events, sseSink, {
+  heartbeatMs: DEFAULT_HEARTBEAT_MS,   // 15_000; set 0 to disable
+  // timer — injectable setInterval/clearInterval pair for deterministic tests
+})
+// …later
+session.close()
+```
+
+<Callout type="info">
+You almost never call these directly — the [`ui` provider](/docs/telescope/packages/ui) mounts
+the SSE route and the provider wires the bus into the store chain. They are exported for
+custom mounts, embeddings, and tests. `EntrySubscriber`, `Unsubscribe`, `StreamOptions` and
+`StreamSession` are the accompanying types.
+</Callout>

@@ -1,5 +1,6 @@
 {
   "title": "Guides",
+  "icon": "ListChecks",
   "pages": [
     "index",
     "custom-watcher",

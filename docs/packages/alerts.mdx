@@ -1,5 +1,6 @@
 ---
 title: "@adonis-agora/telescope/alerts"
+icon: Bell
 description: Alerting subpath of @adonis-agora/telescope — detect brand-new exception families (and re-occurrences after resolve) and exception-rate spikes from recorded entries, then fan rich alerts out to Slack, a generic webhook, the console, or any custom channel.
 ---
 
@@ -91,6 +92,7 @@ export default defineConfig({
 | `every`        | `'30s'`                  | Poll cadence (duration string).                                       |
 | `cooldown`     | `'15m'`                  | Per-rule / per-family re-notify suppression.                          |
 | `instanceId`   | `'telescope'`            | Reporting instance id carried on every payload.                       |
+| `geoLookup`    | _unset_                  | Host IP→geo resolver for exception alerts — see [Geo-enrichment](#geo-enrichment). |
 
 <Callout type="warn">
 Durations are normalized at boot and an unparseable one (`'15min'`, a typo) **throws** —
@@ -229,6 +231,75 @@ compact `{ cause, fix, confidence, model }` summary to the payload. Slack render
 guarded, so a diagnosis failure (or a slow model) never blocks or breaks the alert — the alert
 simply goes out without the section. Omit AI and alerts behave exactly as before.
 
+## Geo-enrichment
+
+An exception alert can be enriched with a **coarse geo location** resolved from the
+originating client IP — so a Slack alert reads `Location: 🇺🇸 San Francisco, California,
+United States` next to the route and user. Geo is **opt-in and dependency-light**: the
+library ships no geo database and no HTTP client. You provide a `geoLookup` hook and own the
+lookup (and its caching / rate-limiting); telescope only calls it and renders the result.
+
+```ts title="config/telescope_alerts.ts"
+import { defineConfig } from '@adonis-agora/telescope/alerts'
+import { lookupCity } from '#services/geoip'   // your MaxMind / ip-api / Cloudflare wrapper
+
+export default defineConfig({
+  channels: [{ type: 'slack', url: env.get('TELESCOPE_SLACK_WEBHOOK') }],
+  rules: [{ type: 'new-exception', window: '1h' }],
+  // Called ONLY when an exception alert actually fires AND carries a clientIp.
+  geoLookup: async (ip) => {
+    const city = await lookupCity(ip)          // your provider
+    if (!city) return null                     // null simply omits the Location field
+    return {
+      city: city.name,
+      region: city.region,
+      country: city.country,
+      countryCode: city.isoCode,               // ISO 3166-1 alpha-2 → renders a flag emoji
+    }
+  },
+})
+```
+
+The hook resolves an IP to an `AlertGeoLocation` — every field optional, so a partial result
+(country only) still renders:
+
+```ts
+interface AlertGeoLocation {
+  city?: string
+  region?: string
+  country?: string
+  countryCode?: string   // ISO 3166-1 alpha-2 (e.g. 'US'), used to render a flag emoji
+}
+
+// Sync or async; returning null (or throwing — swallowed) omits the Location field.
+type GeoLookup = (ip: string) => AlertGeoLocation | null | Promise<AlertGeoLocation | null>
+```
+
+The result lands on the `geo` field of the alert's `ExceptionAlertContext` (and thus on the
+`AlertPayload.exception`), alongside the `clientIp` it was resolved from:
+
+```ts
+interface ExceptionAlertContext {
+  // …familyHash, class, message, stack, route, method, statusCode, user, occurrences, entryId…
+  clientIp: string | null   // the originating IP; NEVER sourced from an untrusted body
+  geo: AlertGeoLocation | null   // populated only when a geoLookup hook is configured AND clientIp is present
+}
+```
+
+<Callout type="info">
+Geo resolution runs **only on a real fire** — never during evaluation — and only when the
+alert carries a `clientIp`, so the common no-fire path pays nothing. For a browser-reported
+[`client_exception`](/docs/telescope/packages/client-errors) the IP is the one the ingestion
+endpoint filled in server-side; for a server exception it's the recorded request IP. The hook
+is fully guarded: a `null` return, a throw, or a slow provider simply omits the Location
+field — it never blocks or breaks the alert. The library never caches or rate-limits the
+hook, so add that inside it if your provider needs it.
+</Callout>
+
+The Slack channel renders geo as a **`Location`** context field (`formatSlackMessage`
+composes `🇺🇸 City, Region, Country`, skipping absent or duplicated parts); the raw
+`webhook` channel carries the `geo` object verbatim.
+
 ## Notable exports
 
 - Channels: `slackChannel`, `webhookChannel`, `consoleChannel`, `customChannel`; types
@@ -240,3 +311,5 @@ simply goes out without the section. Omit AI and alerts behave exactly as before
 - `durationToMs`; `defineConfig`, `resolveConfig`, `DEFAULT_RULES`.
 - Types: `AlertRule`, `AlertMetric`, `AlertPayload`, `AlertDiagnosis`, `ExceptionAlertContext`,
   `ResolvedAlerts`, `ChannelSpec`, `ChannelConfig`, `TelescopeAlertsConfig`.
+- Geo-enrichment types: `GeoLookup` (the IP→location hook) and `AlertGeoLocation` (its
+  result), both re-exported from `@adonis-agora/telescope/alerts`.

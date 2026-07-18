@@ -1,0 +1,222 @@
+---
+title: Metrics API
+icon: ChartLine
+description: The programmatic analytics layer of @adonis-agora/telescope — MetricsService and the pure functions behind it (percentiles, latency histograms, throughput timeseries, trace summaries, span waterfalls, N+1 detection) exported from the main package so you can compute the same numbers the dashboard shows without going through HTTP.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+The [dashboard](/docs/telescope/packages/ui) surfaces analytics — latency percentiles, a
+throughput chart, a trace list, per-trace span waterfalls, N+1 detection — over
+`GET <path>/api/metrics/*`. Those routes are a thin shell around a **fully-exported
+programmatic API**: the `MetricsService` class and the pure functions it composes are all
+re-exported from the package root, so you can compute the exact same numbers from a job, a
+health check, a custom alert, a CLI, or a test — no HTTP round-trip, no dashboard.
+
+```ts
+import {
+  MetricsService,
+  summarizeStats, estimateLatencyPercentiles, percentile,
+  bucketTimeseries, summarizeTraces, buildWaterfall,
+  buildHistogram, mergeHistograms, estimatePercentileFromHistogram, LATENCY_BOUNDARIES_MS,
+} from '@adonis-agora/telescope'
+```
+
+<Callout type="info">
+Everything here is **read-only** and **storage-agnostic**. `MetricsService` works through the
+[`TelescopeStore.list`](/docs/telescope/concepts/storage) interface only — never a specific
+driver — and it reads **already-redacted** stored entries, so analysis can never bypass
+[redaction](/docs/telescope/concepts/protection). The pure functions take an array of entries
+you have already fetched.
+</Callout>
+
+## `MetricsService`
+
+The stateful entry point. Construct it with a store (resolve the live one from the
+[`TelescopeService`](/docs/telescope/packages/core#headless-api)) and optional tuning:
+
+```ts
+import { MetricsService, TelescopeService } from '@adonis-agora/telescope'
+
+const telescope = await app.container.make(TelescopeService)
+const metrics = new MetricsService(telescope.store, {
+  slowMs: 100,            // duration (ms) at/above which an entry counts as "slow". Default 100.
+  defaultBuckets: 60,     // timeseries buckets when a query omits `buckets`. Default 60 (max 500).
+  scanCap: 50_000,        // safety cap on entries scanned per request; surfaced via `truncated`.
+  nPlusOneThreshold: 3,   // minimum repetitions to flag an N+1 loop. Default 3.
+})
+```
+
+### Per-type stats
+
+`getStats({ type, windowMs, buckets? })` computes the analytics block for one entry type over
+a trailing window — latency percentiles, a throughput timeseries, and a type-specific
+breakdown (query families, cache hit/miss, request status classes, or exception groups):
+
+```ts
+const stats = await metrics.getStats({ type: 'request', windowMs: 15 * 60_000 })
+
+stats.total                 // entries in the window
+stats.latency               // { count, p50, p95, p99, max, slow } — present when the type carries durations
+stats.status                // request only: { '2xx', '3xx', '4xx', '5xx', other }
+stats.overTime.buckets      // throughput per time bucket
+stats.truncated             // true when the scan hit `scanCap`
+```
+
+The `type` selects the extra block: `'query'` adds `families` (top families by p99),
+`'cache'` adds `cache` (`hits` / `misses` / `sets` / `hitRatio` / `topKeys`), `'request'`
+adds `status`, and `'exception'` adds `exceptions` (top groups by class+message with
+per-bucket `overTime`). A non-positive or non-finite `windowMs` throws a `RangeError`.
+
+### Throughput, traces, waterfalls
+
+```ts
+// Total + per-type counts per time bucket (optionally scoped to one type).
+const series = await metrics.getTimeseries({ windowMs: 60 * 60_000, type: 'query' })
+
+// Recent traces, newest-last-seen first (each: entryCount, types, first/last, totalDuration, rootLabel).
+const traces: TraceSummary[] = await metrics.getTraces(50)
+
+// The nested span waterfall for one trace, or null when the trace is empty.
+const waterfall: Waterfall | null = await metrics.getWaterfall('abc123')
+```
+
+### N+1 detection
+
+```ts
+// Loop-attributed N+1 patterns within one trace (ranked by wasted time).
+const patterns = await metrics.getNPlusOne('abc123')      // NPlusOnePattern[]
+
+// Flat family-count insights within one trace.
+const flat = await metrics.getNPlusOneFlat('abc123')      // NPlusOneInsight[]
+```
+
+Both re-order the store's newest-first result to the oldest-first record order the detector
+needs to attribute the driving parent query, and accept a per-call `threshold` override.
+
+## The pure functions
+
+`MetricsService` is a thin orchestrator: it fetches windowed entries and delegates the maths
+to pure, side-effect-free functions. Each is exported so you can call it directly on entries
+you already hold — handy for tests and bespoke rollups.
+
+### `summarizeStats(input)`
+
+The aggregation behind `getStats`. Given the windowed `entries` plus the window bounds, it
+returns a `StatsResult`. Pure — you supply everything, including whether the scan was
+`truncated`:
+
+```ts
+import { summarizeStats } from '@adonis-agora/telescope'
+
+const result = summarizeStats({
+  entries,                       // the entries you fetched for [windowStart, windowEnd]
+  type: 'query',
+  windowStart, windowEnd,        // Date bounds
+  windowMs: 900_000,
+  buckets: 60,
+  slowMs: 100,
+  truncated: false,
+  // topFamilies / topKeys / topExceptions — optional caps (default 8 each)
+  // latencyPercentiles — optional histogram-estimated p50/p95/p99 override
+})
+```
+
+### `percentile(sortedAscending, q)`
+
+Nearest-rank percentile over a **non-empty ascending** array; `q` in `[0, 1]`; `0` for an
+empty array. This is the exact primitive the raw latency path uses (`idx = clamp(ceil(q·n) −
+1, 0, n−1)`):
+
+```ts
+percentile([3, 7, 12, 40, 90].sort((a, b) => a - b), 0.95)   // → 90
+```
+
+### `estimateLatencyPercentiles(durations)`
+
+The **histogram-backed** percentile path — the storage-agnostic stand-in for a pre-aggregated
+rollup. It buckets the durations into the latency histogram and estimates p50/p95/p99 at
+bucket resolution, clamped to the exact observed max so a percentile is never reported above
+it. Returns `undefined` for no samples (shape parity with "no durations ⇒ no latency"):
+
+```ts
+estimateLatencyPercentiles([5, 8, 12, 40, 900])   // → { p50, p95, p99 } | undefined
+```
+
+<Callout type="info">
+The histogram estimate agrees with the raw nearest-rank percentile **within one bucket
+width** (proven by an equivalence spec ported from the NestJS original). `MetricsService`
+feeds it into `summarizeStats` as the `latencyPercentiles` override, so `count` / `max` /
+`slow` stay raw-derived while p50/p95/p99 come from the O(buckets) histogram.
+</Callout>
+
+### `bucketTimeseries(entries, windowStart, windowEnd, bucketCount)`
+
+Groups entries into `bucketCount` equal time buckets across the window, counting total +
+per-type per bucket. Out-of-range entries clamp into the edge buckets. Returns a
+`TimeseriesReport` (`{ windowStart, windowEnd, bucketMs, buckets }`).
+
+### `summarizeTraces(entries, { limit? })`
+
+Groups entries by `traceId` into one `TraceSummary` per trace (entry count, distinct types,
+first/last timestamps, summed duration, and the request `rootLabel` when present), sorted by
+`lastAt` descending and sliced to `limit` (default 50).
+
+### `buildWaterfall(entries)`
+
+Reconstructs a **nested span waterfall** from a trace's entries, or `null` for an empty input.
+The entry model carries `traceId` but no parent-span pointer, so — exactly as Sentry/Tempo do
+when parent links are missing — nesting is inferred from **time-interval containment**: a span
+is a child of the tightest enclosing span whose `[start, end]` strictly contains it, with
+`sequence` as a stable tie-break. Each `WaterfallSpan` carries `offsetMs` / `durationMs`
+relative to the trace start so a UI lays each bar out as `left = offsetMs / totalDurationMs`.
+
+## Latency histograms (`rollup`)
+
+The histogram maths behind `estimateLatencyPercentiles` is exported too, for building your own
+pre-aggregation or merging histograms across shards/replicas:
+
+```ts
+import {
+  LATENCY_BOUNDARIES_MS,          // [1,2,5,10,25,50,100,250,500,1000,2500,5000,10000]
+  HISTOGRAM_BUCKET_COUNT,         // boundaries.length + 1 (a final overflow cell)
+  buildHistogram,                 // durations[] → fixed-length histogram
+  incrementHistogram, histogramBucketIndex,
+  mergeHistograms,                // element-wise additive merge (normalizes legacy/short arrays)
+  estimatePercentileFromHistogram,// percentile at bucket resolution (O(buckets), no raw scan)
+  normalizeHistogram, emptyHistogram, ROLLUP_BUCKET_MS,
+} from '@adonis-agora/telescope'
+
+// Merge per-shard histograms, then estimate the fleet-wide p99.
+const combined = shardHistograms.reduce(mergeHistograms, emptyHistogram())
+const p99 = estimatePercentileFromHistogram(combined, 0.99)
+```
+
+Bucket `i` counts durations `d` where `LATENCY_BOUNDARIES_MS[i-1] < d <=
+LATENCY_BOUNDARIES_MS[i]`; everything past the last boundary lands in the overflow cell, whose
+percentile estimate returns the last boundary as a safe finite representative (a documented
+under-estimate, never `Infinity`). `estimatePercentileFromHistogram` returns `0` for an empty
+histogram.
+
+## Types
+
+The exported result types let you consume the API with full type-safety:
+
+| Type | Shape |
+| ---- | ----- |
+| `StatsResult` | `getStats` / `summarizeStats` output — `total`, `overTime`, optional `latency` / `families` / `cache` / `status` / `exceptions`, `truncated`. |
+| `LatencyStats` | `{ count, p50, p95, p99, max, slow }`. |
+| `FamilyLatency`, `CacheStats`, `StatusBreakdown`, `ExceptionGroupStats` | The per-type breakdown blocks on `StatsResult`. |
+| `TimeseriesReport`, `TimeseriesBucket` | `bucketTimeseries` / `getTimeseries` output. |
+| `TraceSummary` | One row of `getTraces` / `summarizeTraces`. |
+| `Waterfall`, `WaterfallSpan` | `buildWaterfall` / `getWaterfall` output. |
+| `StatsQuery`, `TimeseriesQuery`, `MetricsServiceOptions` | `MetricsService` inputs. |
+| `LatencyPercentilesOverride`, `SummarizeStatsInput` | `summarizeStats` inputs. |
+
+<Callout type="info">
+The higher-level [Pulse](/docs/telescope/packages/pulse) rollup (`PulseService`,
+`summarizePulse`) is built on this same module and is exported from the package root too —
+reach for Pulse when you want the pre-composed "one-glance health" snapshot, and for the
+functions here when you want to compute a single metric yourself.
+</Callout>

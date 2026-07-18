@@ -1,4 +1,11 @@
 {
   "title": "Concepts",
-  "pages": ["capture", "storage", "extensions", "performance", "protection"]
+  "icon": "Compass",
+  "pages": [
+    "capture",
+    "storage",
+    "extensions",
+    "performance",
+    "protection"
+  ]
 }

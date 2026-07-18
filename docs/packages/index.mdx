@@ -1,5 +1,6 @@
 ---
 title: Packages
+icon: Package
 description: Everything ships as one package — @adonis-agora/telescope — exposing the headless core (with config-driven memory + Lucid storage drivers) plus opt-in subpaths for per-technology watchers, the dashboard UI, alerts, and AI exception diagnosis.
 ---
 
@@ -36,8 +37,9 @@ structurally and degrades gracefully when they're absent.
 
 <Cards>
   <Card title="Core" href="/docs/telescope/packages/core" description="The capture spine, Entry model, store contract, query API, and extension SDK." />
-  <Card title="Watchers" href="/docs/telescope/packages/watchers" description="Query, http-client, logs, mail, cache, profiling + schedule watchers." />
+  <Card title="Watchers" href="/docs/telescope/packages/watchers" description="Query, http-client, logs, mail, cache, queue, events, redis, profiling + schedule watchers." />
   <Card title="Pulse" href="/docs/telescope/packages/pulse" description="The aggregated at-a-glance health rollup over stored entries." />
+  <Card title="Metrics API" href="/docs/telescope/packages/metrics" description="MetricsService + the pure percentile / timeseries / trace / waterfall functions behind the dashboard analytics." />
   <Card title="Storage drivers" href="/docs/telescope/packages/storages" description="The config-driven memory + Lucid stores built into the core." />
   <Card title="Dashboard UI" href="/docs/telescope/packages/ui" description="The JSON API + SSE live-stream, behind an auth guard." />
   <Card title="Dashboard SPA" href="/docs/telescope/packages/telescope-ui" description="The React observability dashboard (@adonis-agora/telescope-ui)." />
@@ -45,4 +47,5 @@ structurally and degrades gracefully when they're absent.
   <Card title="AI" href="/docs/telescope/packages/ai" description="Structured root-cause diagnosis of exceptions, cached by family." />
   <Card title="MCP" href="/docs/telescope/packages/mcp" description="Query the captured telemetry from a coding agent over the Model Context Protocol." />
   <Card title="Client errors" href="/docs/telescope/packages/client-errors" description="A public, opt-in endpoint for browser-reported front-end errors." />
+  <Card title="Advanced / programmatic" href="/docs/telescope/packages/advanced" description="The bounded-redaction, tail-sampling, and live-stream store decorators for wiring a custom store chain by hand." />
 </Cards>

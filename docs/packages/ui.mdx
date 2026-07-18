@@ -1,5 +1,6 @@
 ---
 title: "@adonis-agora/telescope/ui"
+icon: Server
 description: The Telescope dashboard's read backend — a JSON API plus an SSE live-stream served from the headless TelescopeService and mounted onto your app's router behind a configurable auth guard. The dashboard page itself is the separate @adonis-agora/telescope-ui SPA, which consumes these routes.
 ---
 
@@ -105,6 +106,58 @@ export default defineConfig({
 | `path`        | `/telescope`   | URL prefix (normalized to leading slash, no trailing slash).   |
 | `authorize`   | default policy | Access-decision hook — [Dashboard auth](/docs/telescope/dashboard/auth). |
 | `credentials` | `{}`           | Built-in token / HTTP Basic gate for the default policy.        |
+| `replay`      | `{ enabled: false }` | Request-replay gate — see [Request replay](#request-replay).      |
+
+## Request replay
+
+The dashboard can **re-issue a captured `request` entry** against your local server so you
+can reproduce it with one click. This is powerful and therefore **disabled by default** —
+replaying re-runs a real request, and a captured `POST` / `DELETE` will run again and may
+mutate application state. Opt in explicitly:
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  replay: {
+    enabled: true,        // default false — a disabled replay endpoint answers 403
+    // port: 3333,        // override the local target port (reverse-proxy / non-standard setups)
+    // timeoutMs: 30_000,
+  },
+})
+```
+
+With it enabled, `POST <path>/api/requests/:id/replay` re-issues the entry and returns the
+replayed `{ status, durationMs, body }`. Under the hood the endpoint calls the exported
+`replayRequest(content, options?)`, whose safety posture is deliberately narrow:
+
+| Guard | Behaviour |
+| ----- | --------- |
+| **Same-origin only** | The replay always targets `127.0.0.1:<port>` — never an arbitrary URL, so it can't become an SSRF primitive. Only the captured **path** is reused. Port resolves in order: explicit `replay.port` → the live dashboard request's port → `PORT` env → `3333` (the AdonisJS default). |
+| **Credential stripping** | `cookie`, `authorization`, `host` and `content-length` are stripped (`REPLAY_STRIPPED_HEADERS`) — a replay never silently reuses the original caller's session. |
+| **Self-identifying** | Carries `x-telescope-replay: 1`, and the outbound fetch is marked internal so the [http-client watcher](/docs/telescope/packages/watchers#http-client-watcher) never records (or recurses on) it. |
+| **Bounded** | A 30s timeout (`REPLAY_TIMEOUT_MS`) and a 4 KB response-body cap (`REPLAY_BODY_CAP`). Never throws — a failed call resolves to `status: 0` with an `error`. |
+
+```ts
+import {
+  replayRequest,
+  REPLAY_BODY_CAP,          // 4096
+  REPLAY_TIMEOUT_MS,        // 30_000
+  REPLAY_STRIPPED_HEADERS,  // Set(['cookie','authorization','host','content-length'])
+  type ReplayOptions, type ReplayResult, type ReplayTransport,
+} from '@adonis-agora/telescope/ui'
+
+const result: ReplayResult = await replayRequest(entry.content, { port: 3333 })
+// { status: 200, durationMs: 12, body: '…up to 4 KB…' }
+```
+
+<Callout type="info">
+The Adonis `request` watcher captures only `method` + path (no query string, no request
+headers, no body — and even that `content` is redacted before storage), so a replay
+reconstructs exactly that: a same-method call to the same local path. There is deliberately
+nothing sensitive to forward upstream. The `ReplayTransport` type lets you inject a
+fetch-shaped transport (tests pass a fake so they never hit the network).
+</Callout>
 
 ## Build your own UI
 

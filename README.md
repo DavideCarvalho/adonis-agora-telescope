@@ -30,21 +30,57 @@ only the optional peers for the features you actually use.
 
 | Subpath | Provider subpath | What | Optional peers |
 |---|---|---|---|
-| [`@adonis-agora/telescope/watchers`](./docs/packages/watchers.mdx) | `@adonis-agora/telescope/watchers_provider` | records Lucid SQL queries (`db:query`), mail-sent and cache events | `@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache` |
-| [`@adonis-agora/telescope/ui`](./docs/packages/ui.mdx) | `@adonis-agora/telescope/ui_provider` | self-contained web dashboard + JSON API behind an auth guard | — |
-| [`@adonis-agora/telescope/ai`](./docs/packages/ai.mdx) | `@adonis-agora/telescope/ai_provider` | Claude-powered exception diagnosis | `@anthropic-ai/sdk` |
-| [`@adonis-agora/telescope/alerts`](./docs/packages/alerts.mdx) | `@adonis-agora/telescope/alerts_provider` | new-exception alerts to Slack / webhook / console | — |
+| [`@adonis-agora/telescope/watchers`](./docs/packages/watchers.mdx) | `@adonis-agora/telescope/watchers_provider` | per-technology watchers — Lucid `query`, `http-client`, `logs`, `mail`, `cache`, `queue`, `events`, `redis`, plus user-driven `profiling` + `schedule` | `@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache`, `@adonisjs/queue`, `@adonisjs/redis` |
+| [`@adonis-agora/telescope/ui`](./docs/packages/ui.mdx) | `@adonis-agora/telescope/ui_provider` | JSON API + SSE live-stream behind an auth guard (+ opt-in [request replay](./docs/packages/ui.mdx)) | — |
+| [`@adonis-agora/telescope/ai`](./docs/packages/ai.mdx) | `@adonis-agora/telescope/ai_provider` | Claude-powered exception diagnosis, cached by family | `@anthropic-ai/sdk` |
+| [`@adonis-agora/telescope/alerts`](./docs/packages/alerts.mdx) | `@adonis-agora/telescope/alerts_provider` | new-exception / exception-rate / metric-threshold alerts to Slack / webhook / console / custom, with optional [geo-enrichment](./docs/packages/alerts.mdx) | — |
+| [`@adonis-agora/telescope/mcp`](./docs/packages/mcp.mdx) | `@adonis-agora/telescope/mcp_provider` | Model Context Protocol endpoint so a coding agent can query the captured telemetry | — |
+
+The React dashboard **page** ships as a separate pre-built package,
+[`@adonis-agora/telescope-ui`](./docs/packages/telescope-ui.mdx), served under the same prefix
+and guard as the `ui` API.
+
+Baked into the **core** package root (no separate subpath): [Pulse](./docs/packages/pulse.mdx)
+(at-a-glance health rollup), the [Metrics API](./docs/packages/metrics.mdx) (percentiles /
+timeseries / traces / waterfalls / N+1 detection), [client-error
+ingestion](./docs/packages/client-errors.mdx) (browser-reported front-end errors), and the
+[advanced store decorators](./docs/packages/advanced.mdx) — bounded redaction, tail-sampling,
+and the live-stream bus.
 
 ## What it records
+
+The **core** ships three always-on watchers:
 
 | Watcher | Entry type | What |
 |---|---|---|
 | **request** | `request` | every inbound HTTP request — method, url, status, duration, traceId |
+| **exception** | `exception` | every unhandled HTTP exception — class, message, stack, correlated to its request |
 | **diagnostics** | `diagnostic` | every `agora:<lib>:<event>` publish from any `@adonis-agora/*` library that uses `@adonis-agora/diagnostics` — one entry per event, grouped by `lib:event` |
 
 The diagnostics watcher is the key integration: ONE generic watcher subscribes to
 **all** diagnostics channels (current and future) and records each publish — no
 bespoke watcher per library.
+
+The [`watchers` subpath](./docs/packages/watchers.mdx) adds per-technology watchers, each
+correlated to the active trace:
+
+| Watcher | Entry type | What |
+|---|---|---|
+| **query** | `query` | every Lucid SQL statement (`db:query`) — sql, bindings, duration, connection; N+1 grouping |
+| **http-client** | `http-client` | every outbound `fetch` — method, sanitized url, host, status, duration |
+| **logs** | `log` | AdonisJS logger output — level, message, bounded structured context |
+| **mail** | `mail` | every email sent (`mail:sent`) — mailer, from, to, subject |
+| **cache** | `cache` | `@adonisjs/cache` hit / miss / write / delete / clear events |
+| **queue** | `job` | `@adonisjs/queue` job executions — queue, name, payload, outcome, attempts, duration |
+| **events** | `event` | every event emitted through the core Emitter (`onAny`), minus a default ignore-list |
+| **redis** | `redis` | every `@adonisjs/redis` command — command, args, connection, round-trip duration |
+| **profiling** | `profile` | user-instrumented timing spans via `profile()` / `startProfile()` |
+| **schedule** | `scheduled_task` | scheduled-task runs via `scheduleTask()` / `recordScheduledRun()` |
+
+Browser-reported front-end errors ([client-error
+ingestion](./docs/packages/client-errors.mdx)) are recorded as `client_exception` entries.
+Every stored entry passes through the redaction + optional tail-sampling
+[store decorators](./docs/packages/advanced.mdx) before it persists.
 
 ## Query it
 
@@ -124,11 +160,16 @@ a custom backend implements the same contract and is passed as a `store` instanc
 
 ## Roadmap
 
-The NestJS original is 18 packages. This port ships the headless core plus the
-[optional feature subpaths](#optional-features) above (UI, watchers, AI, alerts).
+The NestJS original is 18 packages. This port ships the headless core (request / exception /
+diagnostics watchers, Pulse, the [Metrics API](./docs/packages/metrics.mdx), client-error
+ingestion, redaction + tail-sampling + live-stream decorators) plus the
+[optional feature subpaths](#optional-features) above — the full watcher set
+(`query` / `http-client` / `logs` / `mail` / `cache` / `queue` / `events` / `redis` /
+`profiling` / `schedule`), the dashboard UI + SPA, AI diagnosis, alerts, and MCP.
+
 Still planned, not built (see [`DESIGN.md`](./DESIGN.md) for rationale):
 
-- More per-tech watchers: bullmq / mikro-orm / typeorm / prisma / redis / sqs / schedule.
+- More ORM/queue watchers: bullmq / mikro-orm / typeorm / prisma / sqs.
 - OTel export.
 
 ## The Agora ecosystem
