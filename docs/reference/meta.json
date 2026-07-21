@@ -1,7 +1,5 @@
 {
   "title": "Reference",
   "icon": "Settings",
-  "pages": [
-    "configuration"
-  ]
+  "pages": ["configuration"]
 }
