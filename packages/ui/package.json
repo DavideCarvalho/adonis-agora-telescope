@@ -29,14 +29,11 @@
       "default": "./dist/src/client/index.js"
     }
   },
-  "files": [
-    "dist/",
-    "README.md",
-    "CHANGELOG.md"
-  ],
+  "files": ["dist/", "README.md", "CHANGELOG.md"],
   "sideEffects": false,
   "scripts": {
     "build": "vite build && tsc -p tsconfig.server.json",
+    "prepack": "pnpm run build",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.spa.json --noEmit"
