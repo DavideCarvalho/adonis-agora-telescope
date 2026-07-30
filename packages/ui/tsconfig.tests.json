@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.server.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "incremental": false,
+    "tsBuildInfoFile": null,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/client/**/*.ts", "src/server/**/*.ts", "providers/**/*.ts", "test/**/*.ts"],
+  "exclude": ["src/app/**", "dist/**", "node_modules"]
+}
