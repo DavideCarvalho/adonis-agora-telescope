@@ -21,11 +21,14 @@ describe('redact', () => {
     const out = redact({
       level1: { level2: { password: 'hunter2', name: 'davi' } },
       headers: { Authorization: 'Bearer abc' },
-    }) as Record<string, Record<string, Record<string, string>>>;
+    }) as {
+      level1: { level2: { password: string; name: string } };
+      headers: Record<string, string>;
+    };
 
     expect(out.level1.level2.password).toBe(DEFAULT_MASK);
     expect(out.level1.level2.name).toBe('davi');
-    expect((out.headers as unknown as Record<string, string>).Authorization).toBe(DEFAULT_MASK);
+    expect(out.headers.Authorization).toBe(DEFAULT_MASK);
   });
 
   it('matches sensitive keys case-insensitively', () => {
@@ -56,7 +59,7 @@ describe('redact', () => {
     const out = redact(
       { body: { ssn: '123', other: 'x' }, ssn: 'top' },
       { paths: ['body.ssn'] },
-    ) as Record<string, Record<string, string>>;
+    ) as { body: { ssn: string; other: string }; ssn: string };
     expect(out.body.ssn).toBe(DEFAULT_MASK);
     expect(out.body.other).toBe('x');
     // The top-level ssn is NOT a configured path and not a default key.
@@ -77,7 +80,7 @@ describe('redact', () => {
 
   it('clones arrays and masks sensitive keys inside them', () => {
     const out = redact({ users: [{ password: 'a' }, { password: 'b' }] }) as {
-      users: Array<Record<string, string>>;
+      users: [Record<string, string>, Record<string, string>];
     };
     expect(out.users[0].password).toBe(DEFAULT_MASK);
     expect(out.users[1].password).toBe(DEFAULT_MASK);
@@ -93,14 +96,14 @@ describe('redact', () => {
   describe('bounds', () => {
     it('truncates beyond maxDepth', () => {
       const result = redactBounded({ a: { b: { c: { d: 'deep' } } } }, { maxDepth: 2 });
-      const out = result.value as Record<string, Record<string, unknown>>;
+      const out = result.value as { a: { b: unknown } };
       expect(out.a.b).toBe('[Truncated: depth]');
       expect(result.truncated).toBe(true);
     });
 
     it('clips strings longer than maxStringLength', () => {
       const result = redactBounded({ blob: 'x'.repeat(100) }, { maxStringLength: 10 });
-      const out = result.value as Record<string, string>;
+      const out = result.value as { blob: string };
       expect(out.blob.startsWith('x'.repeat(10))).toBe(true);
       expect(out.blob).toContain('[truncated]');
       expect(result.truncated).toBe(true);
@@ -154,7 +157,10 @@ describe('redact', () => {
 
     it('does not treat a non-cyclic shared sibling reference as circular', () => {
       const shared = { token: 'x', label: 'shared' };
-      const out = redact({ a: shared, b: shared }) as Record<string, Record<string, string>>;
+      const out = redact({ a: shared, b: shared }) as {
+        a: Record<string, string>;
+        b: Record<string, string>;
+      };
       // Both siblings are fully cloned + masked; neither becomes [Circular].
       expect(out.a.token).toBe(DEFAULT_MASK);
       expect(out.b.token).toBe(DEFAULT_MASK);

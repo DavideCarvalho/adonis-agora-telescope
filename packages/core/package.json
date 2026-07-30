@@ -94,7 +94,7 @@
     "prepack": "pnpm run build",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json"
   },
   "peerDependencies": {
     "@adonisjs/core": "^7.3.0",

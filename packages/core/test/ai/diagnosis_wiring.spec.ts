@@ -176,6 +176,7 @@ function resolved(overrides: Partial<ResolvedAlerts> = {}): ResolvedAlerts {
     intervalMs: 1_000,
     cooldownMs: 900_000,
     instanceId: 'host-1',
+    geoLookup: null,
     rules: [{ type: 'new-exception', window: '1h' }],
     ...overrides,
   };

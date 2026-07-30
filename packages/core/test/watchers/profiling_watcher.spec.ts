@@ -67,7 +67,7 @@ describe('ProfilingWatcher', () => {
     span.end();
 
     await flush();
-    const [entry] = await store.list({});
+    const entry = (await store.list({}))[0]!;
     expect(entry.type).toBe('profile');
     expect(entry.durationMs).toBe(25);
     const content = entry.content as ProfileEntryContent;
@@ -92,7 +92,7 @@ describe('ProfilingWatcher', () => {
 
     expect(result).toBe('done');
     await flush();
-    const [entry] = await store.list({});
+    const entry = (await store.list({}))[0]!;
     expect(entry.durationMs).toBe(16);
     expect((entry.content as ProfileEntryContent).marks).toEqual([{ label: 'half', atMs: 8 }]);
   });
@@ -108,7 +108,7 @@ describe('ProfilingWatcher', () => {
     ).rejects.toThrow('kaput');
 
     await flush();
-    const [entry] = await store.list({});
+    const entry = (await store.list({}))[0]!;
     const content = entry.content as ProfileEntryContent;
     expect(content.status).toBe('failed');
     expect(content.failureReason).toBe('kaput');
@@ -125,7 +125,7 @@ describe('ProfilingWatcher', () => {
     span.end();
 
     await flush();
-    const [entry] = await store.list({});
+    const entry = (await store.list({}))[0]!;
     expect(entry.tags).toContain('slow');
   });
 

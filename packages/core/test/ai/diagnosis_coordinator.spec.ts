@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { type Mock, describe, expect, it, vi } from 'vitest';
 import type { Diagnosis, ExceptionEntryContent } from '../../src/ai/diagnoser.js';
 import { DiagnosisCache } from '../../src/ai/diagnosis_cache.js';
 import {
@@ -45,11 +45,13 @@ const VALID_JSON = JSON.stringify({
 });
 
 /** A real diagnoser over a fake Anthropic client that counts calls. */
+type MessagesCreate = AnthropicMessagesClient['messages']['create'];
+
 function fakeDiagnoser(text = VALID_JSON): {
   diagnoser: TelescopeAiDiagnoser;
-  create: ReturnType<typeof vi.fn>;
+  create: Mock<MessagesCreate>;
 } {
-  const create = vi.fn(async () => ({ content: [{ type: 'text', text }] }));
+  const create = vi.fn<MessagesCreate>(async () => ({ content: [{ type: 'text', text }] }));
   const client: AnthropicMessagesClient = { messages: { create } };
   const diagnoser = new TelescopeAiDiagnoser({
     client,
@@ -75,7 +77,7 @@ describe('DiagnosisCoordinator', () => {
     expect(coordinator.isConfigured()).toBe(true);
     const markdown = await coordinator.diagnoseMarkdown(exceptionEntry());
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0].system).toBe(SYSTEM_PROMPT);
+    expect(create.mock.calls[0]![0].system).toBe(SYSTEM_PROMPT);
     expect(markdown).toContain('Probable cause');
     expect(markdown).toContain('A null user was dereferenced.');
     expect(markdown).toContain('Guard against a missing user');

@@ -3,6 +3,7 @@ import {
   type AlertChannel,
   type AlertPayload,
   AlerterService,
+  type ChannelFetch,
   type MetricSource,
   type ResolvedAlerts,
   slackChannel,
@@ -65,6 +66,7 @@ function resolved(overrides: Partial<ResolvedAlerts> = {}): ResolvedAlerts {
     intervalMs: 1_000,
     cooldownMs: 900_000,
     instanceId: 'host-1',
+    geoLookup: null,
     rules: [
       {
         type: 'metric-threshold',
@@ -289,7 +291,7 @@ describe('AlerterService — cache-hit-rate + exception-count metrics', () => {
 
 describe('AlerterService — channel dispatch', () => {
   it('renders a Slack Block Kit card via the slack channel + mock fetch', async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(undefined));
+    const fetchMock = vi.fn<ChannelFetch>(() => Promise.resolve(undefined));
     const service = new AlerterService({
       alerts: resolved({
         channels: [slackChannel('https://hooks.slack/x', undefined, fetchMock)],
@@ -305,7 +307,7 @@ describe('AlerterService — channel dispatch', () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe('https://hooks.slack/x');
     expect(init?.method).toBe('POST');
-    const body = JSON.parse((init as { body: string }).body);
+    const body = JSON.parse(init!.body);
     expect(body.blocks[0].type).toBe('header');
     expect(body.blocks[0].text.text).toContain('Metric threshold (request-p99-ms)');
     expect(body.text).toContain('Metric threshold');

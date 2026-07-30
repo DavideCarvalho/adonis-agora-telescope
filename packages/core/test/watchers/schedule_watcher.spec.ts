@@ -81,7 +81,7 @@ describe('ScheduleWatcher', () => {
 
     expect(result).toBe('pruned');
     await flush();
-    const [entry] = await store.list({});
+    const entry = (await store.list({}))[0]!;
     expect(entry.type).toBe('scheduled_task');
     expect(entry.origin).toBe('schedule');
     expect(entry.durationMs).toBe(30);
@@ -99,7 +99,7 @@ describe('ScheduleWatcher', () => {
     ).rejects.toThrow('cron boom');
 
     await flush();
-    const [entry] = await store.list({});
+    const entry = (await store.list({}))[0]!;
     const content = entry.content as ScheduleEntryContent;
     expect(content.status).toBe('failed');
     expect(content.failureReason).toBe('cron boom');
@@ -114,7 +114,7 @@ describe('ScheduleWatcher', () => {
     watcher.scheduleTask('slow', () => clock.advance(250));
 
     await flush();
-    const [entry] = await store.list({});
+    const entry = (await store.list({}))[0]!;
     expect(entry.tags).toContain('slow');
   });
 

@@ -16,12 +16,13 @@ import { clearStore, flush, installStore } from './helpers.js';
 /** A clock whose `now()` returns a scripted sequence — durations are deterministic. */
 function scriptedClock(values: number[]): { now(): number } {
   let i = 0;
-  return { now: () => values[Math.min(i++, values.length - 1)] };
+  return { now: () => values[Math.min(i++, values.length - 1)]! };
 }
 
 /** A fetch double resolving a `Response` with the given status (+ optional headers). */
 function fakeFetch(status: number, headers?: Record<string, string>): typeof fetch {
-  return (async () => new Response('ok', { status, headers })) as typeof fetch;
+  return (async () =>
+    new Response('ok', { status, ...(headers !== undefined ? { headers } : {}) })) as typeof fetch;
 }
 
 describe('HttpClientWatcher', () => {

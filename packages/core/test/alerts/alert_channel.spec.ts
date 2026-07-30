@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type AlertPayload,
+  type ChannelFetch,
   consoleChannel,
   customChannel,
   slackChannel,
@@ -51,7 +52,7 @@ function exceptionPayload(): AlertPayload {
 
 describe('webhookChannel', () => {
   it('POSTs the raw AlertPayload as JSON', async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(undefined));
+    const fetchMock = vi.fn<ChannelFetch>(() => Promise.resolve(undefined));
     const channel = webhookChannel('https://hook.example/x', fetchMock);
     const payload = ratePayload();
     await channel.send(payload);
@@ -98,7 +99,7 @@ describe('customChannel', () => {
 
 describe('slackChannel', () => {
   it('POSTs Block Kit blocks with a header, fields, stack, and dashboard link', async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(undefined));
+    const fetchMock = vi.fn<ChannelFetch>(() => Promise.resolve(undefined));
     const channel = slackChannel('https://hooks.slack.com/x', undefined, fetchMock);
     await channel.send(exceptionPayload());
     expect(channel.name).toBe('slack');
@@ -131,17 +132,18 @@ describe('slackChannel', () => {
   });
 
   it('omits the dashboard link button when no dashboardUrl is configured', async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(undefined));
+    const fetchMock = vi.fn<ChannelFetch>(() => Promise.resolve(undefined));
     const channel = slackChannel('https://hooks.slack.com/x', undefined, fetchMock);
-    const payload = exceptionPayload();
-    payload.dashboardUrl = undefined;
+    // Production omits the key entirely when no dashboardUrl is configured
+    // (see resolveConfig/Alerter), so build the payload the same way.
+    const { dashboardUrl: _noDashboard, ...payload } = exceptionPayload();
     await channel.send(payload);
     const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body ?? '');
     expect(body.blocks.some((b: { type: string }) => b.type === 'actions')).toBe(false);
   });
 
   it('renders a rate-rule payload (no exception context) without crashing', async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(undefined));
+    const fetchMock = vi.fn<ChannelFetch>(() => Promise.resolve(undefined));
     const channel = slackChannel('https://hooks.slack.com/x', undefined, fetchMock);
     await channel.send(ratePayload());
     const body = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body ?? '');
@@ -150,7 +152,7 @@ describe('slackChannel', () => {
   });
 
   it('applies username/iconEmoji overrides', async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(undefined));
+    const fetchMock = vi.fn<ChannelFetch>(() => Promise.resolve(undefined));
     const channel = slackChannel(
       'https://hooks.slack.com/x',
       { username: 'Telescope', iconEmoji: ':rotating_light:' },

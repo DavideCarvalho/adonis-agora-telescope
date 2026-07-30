@@ -83,7 +83,7 @@ describe('stats percentile histogram/raw-scan equivalence', () => {
       buckets: 2,
       slowMs: 100,
       truncated: false,
-      latencyPercentiles: estimateLatencyPercentiles(durations),
+      latencyPercentiles: estimateLatencyPercentiles(durations)!,
     });
 
     expect(raw.latency).toBeDefined();
@@ -120,7 +120,7 @@ describe('stats percentile histogram/raw-scan equivalence', () => {
       buckets: 1,
       slowMs: 100,
       truncated: false,
-      latencyPercentiles: estimateLatencyPercentiles(durations),
+      latencyPercentiles: estimateLatencyPercentiles(durations)!,
     });
     const l = histo.latency;
     if (l === undefined) throw new Error('no latency');
@@ -137,7 +137,8 @@ describe('stats percentile histogram/raw-scan equivalence', () => {
       entry(EntryType.Request, new Date(now - 5_000), null),
       entry(EntryType.Request, new Date(now - 4_000), null),
     ];
-    expect(estimateLatencyPercentiles([])).toBeUndefined();
+    const noSamples = estimateLatencyPercentiles([]);
+    expect(noSamples).toBeUndefined();
     const histo = summarizeStats({
       entries,
       type: EntryType.Request,
@@ -147,7 +148,7 @@ describe('stats percentile histogram/raw-scan equivalence', () => {
       buckets: 1,
       slowMs: 100,
       truncated: false,
-      latencyPercentiles: estimateLatencyPercentiles([]),
+      ...(noSamples !== undefined ? { latencyPercentiles: noSamples } : {}),
     });
     expect(histo.latency).toBeUndefined();
   });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { type Mock, describe, expect, it, vi } from 'vitest';
 import type { ExceptionEntryContent } from '../../src/ai/diagnoser.js';
 import { DiagnosisCache } from '../../src/ai/diagnosis_cache.js';
 import { SYSTEM_PROMPT } from '../../src/ai/prompt.js';
@@ -34,11 +34,13 @@ function exceptionEntry(
 }
 
 /** A fake Anthropic client returning a fixed text payload, counting calls. */
+type MessagesCreate = AnthropicMessagesClient['messages']['create'];
+
 function fakeClient(text: string): {
   client: AnthropicMessagesClient;
-  create: ReturnType<typeof vi.fn>;
+  create: Mock<MessagesCreate>;
 } {
-  const create = vi.fn(async () => ({ content: [{ type: 'text', text }] }));
+  const create = vi.fn<MessagesCreate>(async () => ({ content: [{ type: 'text', text }] }));
   return { client: { messages: { create } }, create };
 }
 
@@ -60,13 +62,13 @@ describe('TelescopeAiDiagnoser.diagnose', () => {
     const result = await diagnoser.diagnose(exceptionEntry());
 
     expect(create).toHaveBeenCalledTimes(1);
-    const body = create.mock.calls[0][0];
+    const body = create.mock.calls[0]![0];
     expect(body.model).toBe('claude-sonnet-4-6');
     expect(body.max_tokens).toBe(512);
     expect(body.system).toBe(SYSTEM_PROMPT);
-    expect(body.messages[0].content).toContain('TypeError: nope');
-    expect(body.messages[0].content).toContain('POST /orders');
-    expect(body.messages[0].content).toContain('at foo');
+    expect(body.messages[0]!.content).toContain('TypeError: nope');
+    expect(body.messages[0]!.content).toContain('POST /orders');
+    expect(body.messages[0]!.content).toContain('at foo');
 
     expect(result).not.toBeNull();
     expect(result?.cause).toBe('A null user was dereferenced.');
@@ -177,7 +179,7 @@ describe('TelescopeAiDiagnoser.diagnose', () => {
       },
     ];
     await diagnoser.diagnose(exceptionEntry(), { related });
-    const prompt = create.mock.calls[0][0].messages[0].content;
+    const prompt = create.mock.calls[0]![0].messages[0]!.content;
     expect(prompt).toContain('[query]');
     expect(prompt).toContain('select * from users');
   });

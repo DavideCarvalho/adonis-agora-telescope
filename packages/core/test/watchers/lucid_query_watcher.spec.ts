@@ -58,7 +58,8 @@ describe('LucidQueryWatcher', () => {
     });
 
     it('tolerates a missing duration tuple', () => {
-      const input = buildQueryEntry(dbQueryEvent({ duration: undefined }));
+      const { duration: _noDuration, ...event } = dbQueryEvent();
+      const input = buildQueryEntry(event);
       expect((input.content as QueryEntryContent).durationMs).toBeNull();
       expect(input.durationMs).toBeNull();
     });

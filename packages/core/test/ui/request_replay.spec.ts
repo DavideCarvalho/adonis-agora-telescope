@@ -15,10 +15,19 @@ function content(over: Partial<RequestEntryContent> = {}): RequestEntryContent {
 /** A transport that records the call it received and returns a canned response. */
 function fakeTransport(response: { status?: number; body?: string } = {}): {
   transport: ReplayTransport;
-  calls: { url: string; method: string; headers: Record<string, string>; body?: string }[];
+  calls: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body: string | undefined;
+  }[];
 } {
-  const calls: { url: string; method: string; headers: Record<string, string>; body?: string }[] =
-    [];
+  const calls: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body: string | undefined;
+  }[] = [];
   const transport: ReplayTransport = async (url, init) => {
     calls.push({ url, method: init.method, headers: init.headers, body: init.body });
     return { status: response.status ?? 200, text: async () => response.body ?? 'ok' };

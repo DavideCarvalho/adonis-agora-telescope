@@ -22,7 +22,7 @@ describe('StreamingTelescopeStore', () => {
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toBe(recorded);
-    expect(seen[0].sequence).toBeGreaterThanOrEqual(0);
+    expect(seen[0]!.sequence).toBeGreaterThanOrEqual(0);
   });
 
   it('publishes the persisted entry, so list() and the stream see the same record', async () => {
@@ -35,7 +35,7 @@ describe('StreamingTelescopeStore', () => {
     await store.record(input());
     const listed = await store.list();
 
-    expect(seen[0].id).toBe(listed[0].id);
+    expect(seen[0]!.id).toBe(listed[0]!.id);
   });
 
   it('does NOT publish a sampled-away entry (sequence -1, never persisted)', async () => {
@@ -74,7 +74,7 @@ describe('StreamingTelescopeStore', () => {
 
     expect(await store.get(recorded.id)).toEqual(recorded);
     expect(await store.count()).toBe(1);
-    expect((await store.list({ traceId: 't1' }))[0].id).toBe(recorded.id);
+    expect((await store.list({ traceId: 't1' }))[0]!.id).toBe(recorded.id);
     await store.clear();
     expect(await store.count()).toBe(0);
   });

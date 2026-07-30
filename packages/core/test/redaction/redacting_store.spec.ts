@@ -18,7 +18,7 @@ describe('RedactingTelescopeStore', () => {
       },
     });
 
-    const [entry] = await inner.list();
+    const entry = (await inner.list())[0]!;
     const content = entry.content as {
       url: string;
       headers: Record<string, string>;
@@ -44,7 +44,7 @@ describe('RedactingTelescopeStore', () => {
       },
     });
 
-    const [entry] = await inner.list();
+    const entry = (await inner.list())[0]!;
     const content = entry.content as { bindings: Record<string, string> };
     expect(content.bindings.password).toBe(DEFAULT_MASK);
   });
@@ -58,7 +58,7 @@ describe('RedactingTelescopeStore', () => {
       content: { from: 'a@b.com', subject: 'Reset', token: 'reset-token-123' },
     });
 
-    const [entry] = await inner.list();
+    const entry = (await inner.list())[0]!;
     const content = entry.content as Record<string, string>;
     expect(content.from).toBe('a@b.com');
     expect(content.subject).toBe('Reset');
@@ -71,7 +71,7 @@ describe('RedactingTelescopeStore', () => {
 
     await store.record({ type: EntryType.Cache, content: { ssn: '123-45-6789', op: 'get' } });
 
-    const [entry] = await inner.list();
+    const entry = (await inner.list())[0]!;
     const content = entry.content as Record<string, string>;
     expect(content.ssn).toBe(DEFAULT_MASK);
     expect(content.op).toBe('get');
