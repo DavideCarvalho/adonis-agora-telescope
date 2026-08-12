@@ -1,5 +1,25 @@
 # @adonis-agora/telescope
 
+## 0.7.0
+
+### Minor Changes
+
+- [`8d227de`](https://github.com/DavideCarvalho/adonis-telescope/commit/8d227de32147fe58e84dd9d14d2e0cf16eebb56c) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - feat: wire AI exception diagnosis into the dashboard API + expose retention/sampling posture
+
+  - **AI exception diagnosis**: a new `POST <path>/api/exceptions/:id/diagnose` route (optional `?force=true` to bypass the cache) re-diagnoses (or serves the cached diagnosis for) an `exception`/`client_exception` entry via the existing `DiagnosisCoordinator`. Degrades to a clear "not configured" response when `@adonis-agora/telescope/ai` isn't installed/configured — the coordinator itself was already published in 0.5.0, this just exposes it through the UI API for the first time.
+  - **Retention indicator**: a new `GET <path>/api/retention` route echoes the resolved pruner cutoff (age / optional keep-last floor / cycle interval) and which entry types are being tail-sampled below 100%, so the dashboard can show a static "what's being kept" summary. No live pruner run-history — that stays a per-process runtime handle (`TelescopePruner.getRuns()`) for hosts that want it directly.
+  - `GET <path>/api/meta` now always registers (previously gated behind an extension registry booting) and reports `ai.enabled` / `profiling.enabled` / `queueManager.enabled` flags alongside any extension-contributed `entryTypes`/`dashboards`.
+
+  Both routes are additive and read-only; no existing route or response shape changed.
+
+- [`8d227de`](https://github.com/DavideCarvalho/adonis-telescope/commit/8d227de32147fe58e84dd9d14d2e0cf16eebb56c) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - feat: Live Queue Manager, Live Schedules, and CPU flamegraph profiling — three new opt-in backend capabilities
+
+  - **Live Queue Manager** (`queue-manager` watcher, `src/watchers/queue_manager.ts`): a live list/inspect/retry/enqueue control surface over `@adonisjs/queue` (`@boringnode/queue`'s engine), distinct from the existing `queue` watcher which only records past job executions. Built strictly against `@boringnode/queue`'s real, verified public API (`getJob`/`retryJob`/`sizeOf`) — advertised via a `capabilities` getter rather than faking operations the engine doesn't support (no `remove`/`promote`). Requires explicit `queueManager.queues` in `config/telescope_watchers.ts` (the engine has no queue-enumeration API to auto-discover from) and degrades to `configured: false` when `@adonisjs/queue` isn't installed. New `GET <path>/api/queues/live`, `GET <path>/api/queues/live/:queue/jobs/:id`, and mutation routes `POST .../jobs/:id/retry` / `POST .../enqueue` (both behind a default-deny `telescope_ui.queueActions.enabled` gate, on top of the existing read guard).
+  - **Live Schedules**: a new `registerSchedule()` / `unregisterSchedule()` / `listRegisteredSchedules()` API on `ScheduleWatcher` (exported from `@adonis-agora/telescope/watchers`) — an explicit, idempotent registry of "this scheduled task exists," since AdonisJS has no first-party scheduler registry to read the way `@nestjs/schedule`'s `SchedulerRegistry` can be scanned. `nextRunAt` is computed from the registered cron expression via the new OPTIONAL `cron-parser` peer (`peerDependenciesMeta` marks it `optional: true`, mirroring this repo's existing graceful-no-op convention); it's `null` — an honest "unknown," never a guess — for non-cron kinds or when the peer is absent. New `GET <path>/api/schedules/live` route joins registrations with their most recent recorded run.
+  - **CPU flamegraph profiling** (`@adonis-agora/telescope/cpu_profiling`, new optional sub-entry point + `telescope_cpu_profiling_provider`): a `node:inspector`-based V8 CPU profiler, ported near-verbatim from the NestJS sibling. Opt-in per-request capture via `TelescopeMiddleware` (gated by `ProfilerService.shouldProfile`, a single cheap boolean check when the feature isn't installed), aggregated into a flamegraph tree + precomputed hot frames and recorded as a new `cpu_profile` entry type. New `GET <path>/api/profiles/status`, `GET <path>/api/profiles`, `GET <path>/api/profiles/:id`, and a manual-arm `POST <path>/api/profiles/arm` (behind a default-deny `telescope_ui.cpuProfiling.armEnabled` gate — it's real CPU overhead).
+
+  All three are pure additive capabilities: unconfigured/uninstalled, every touchpoint degrades to inert (no overhead, 404/"not configured" responses) — no existing behavior changes.
+
 ## 0.6.0
 
 ### Minor Changes
