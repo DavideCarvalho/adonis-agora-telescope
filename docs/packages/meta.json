@@ -12,6 +12,7 @@
     "telescope-ui",
     "alerts",
     "ai",
+    "cpu-profiling",
     "mcp",
     "client-errors",
     "advanced"

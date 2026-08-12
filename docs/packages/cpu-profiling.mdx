@@ -1,0 +1,177 @@
+---
+title: "@adonis-agora/telescope/cpu_profiling"
+icon: Flame
+description: On-demand V8 CPU profiling subpath of @adonis-agora/telescope — captures real Profiler.start/Profiler.stop samples via node:inspector around a request, aggregates them into a flamegraph tree, and renders it in the dashboard.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+The **`@adonis-agora/telescope/cpu_profiling`** subpath captures a real V8 CPU profile — via
+Node's built-in `node:inspector` `Profiler.start`/`Profiler.stop` protocol, the same one
+Chrome DevTools/`0x`/Clinic Flame use — around a request, aggregates it into a flamegraph tree,
+and lets you inspect it in the dashboard's **Profiles** section.
+
+This is a genuinely different capability from the `profiling` **watcher** (part of
+[`@adonis-agora/telescope/watchers`](/docs/telescope/packages/watchers#profiling-watcher)),
+which records user-instrumented timing spans (`profile('checkout', fn)` — you mark the
+boundaries). CPU profiling here needs no code changes at all: it samples the V8 call stack at
+a fixed interval while armed, telling you *which functions* actually burned the CPU time,
+down to file:line.
+
+## Install
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm i @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "CPU profiling" at the prompt
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "CPU profiling" at the prompt
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn add @adonis-agora/telescope
+node ace configure @adonis-agora/telescope   # then pick "CPU profiling" at the prompt
+```
+
+</Tab>
+</Tabs>
+
+No extra peer — `node:inspector` is a Node.js built-in. Selecting **CPU profiling** registers
+`@adonis-agora/telescope/cpu_profiling_provider` and publishes `config/telescope_cpu_profiling.ts`.
+You also need the [`ui` subpath](/docs/telescope/packages/ui) enabled to reach the
+`/api/profiles/*` routes and the Profiles section.
+
+## Configuration
+
+```ts title="config/telescope_cpu_profiling.ts"
+import { defineConfig } from '@adonis-agora/telescope/cpu_profiling'
+
+export default defineConfig({
+  enabled: false,          // OFF by default — real CPU overhead while a capture runs
+  sampleRate: 0,           // 0 = only via "arm"; e.g. 0.01 to auto-sample 1% of requests
+  maxConcurrent: 2,        // cap concurrent captures
+  minDurationMs: 5,        // discard captures shorter than this
+  samplingIntervalMicros: 1000,   // V8's own default (1ms) — lower = finer, more overhead
+})
+```
+
+| Key                      | Default | Description                                                        |
+| ------------------------ | ------- | ------------------------------------------------------------------ |
+| `enabled`                | `false` | Master switch. A running V8 sampling profiler slows the process it profiles, so this is opt-in — while `false`, `node:inspector` is never even `require`d. |
+| `sampleRate`              | `0`     | Fraction (0–1) of requests to auto-capture. `0` means captures only happen via the arm trigger. |
+| `maxConcurrent`           | `2`     | Maximum simultaneous captures — bounds overhead under load.        |
+| `minDurationMs`           | `5`     | Captures shorter than this are discarded (not worth an entry).     |
+| `samplingIntervalMicros`  | `1000`  | V8 sampling interval, in microseconds.                             |
+
+<Callout type="warn">
+CPU profiling has REAL overhead while a capture is running — a sampling profiler measurably
+slows the profiled code. Keep `sampleRate` low (or `0`, arming captures on demand) in
+production.
+</Callout>
+
+## Arming a capture
+
+With `sampleRate: 0` (the recommended production default), nothing is captured until you ask
+for it — either from the dashboard's **Profiles** section ("Capture next N requests"), or the
+API directly:
+
+```sh
+curl -X POST http://localhost:3333/telescope/api/profiles/arm \
+  -H 'content-type: application/json' \
+  -d '{"count": 3, "label": "GET /users/:id"}'
+```
+
+`count` (default 1) profiles the next N matching requests; an optional `label` scopes the arm
+to one route (matched against `"<METHOD> <route pattern>"`, e.g. `"GET /users/:id"` — the
+matched AdonisJS route pattern when the router resolved one, else the raw URL). Omitting
+`label` arms the next N requests of ANY route.
+
+<Callout type="info">
+The arm endpoint is a MUTATION (it triggers real profiling overhead), so — like [request
+replay](/docs/telescope/packages/ui#request-replay) — it is disabled by default even when the
+feature itself is enabled. Turn it on in `config/telescope_ui.ts`:
+
+```ts
+export default defineConfig({
+  cpuProfiling: { armEnabled: true },
+})
+```
+</Callout>
+
+## How it works
+
+1. **Middleware hook.** `TelescopeMiddleware` (the same one that records `request`/`exception`
+   entries) reads the `ProfilerService` this provider publishes on the runtime slot. Before
+   calling `next()` it checks `shouldProfile(label)` — a single cheap boolean/RNG check while
+   disabled or not selected — and, if selected, `begin(label)` starts a REAL `node:inspector`
+   session (`Profiler.enable` → `Profiler.setSamplingInterval` → `Profiler.start`).
+2. **Stop + aggregate.** On response finish, `end(handle, label)` calls `Profiler.stop`,
+   aggregates the raw per-sample V8 profile into a flame tree (self/total time per frame,
+   in milliseconds, rooted at a synthetic `(root)`), and records it as a `cpu_profile` entry —
+   sharing the request's trace id, so it composes with the rest of the dashboard.
+3. **Precomputed hot frames.** The aggregation also ranks the 12 hottest frames by SELF time
+   (as a percentage of the capture), so the dashboard's "Hot functions" table needs no
+   client-side tree walk.
+
+```ts
+interface CpuProfileContent {
+  durationMs: number
+  sampleCount: number
+  reason: 'manual' | 'sampled'
+  label: string | null              // e.g. "GET /users/:id"
+  tree: FlameNode                   // { name, file, selfMs, totalMs, totalSamples, children }
+  hot: { name: string; file: string; selfMs: number; selfPct: number }[]
+}
+```
+
+<Callout type="info">
+The persisted content is the AGGREGATED flame tree, not the raw `.cpuprofile` (which is
+unbounded and would blow past a reasonable entry-content budget). The flame tree is
+everything the dashboard's flamegraph renderer needs.
+</Callout>
+
+## The dashboard flamegraph
+
+The **Profiles** section lists captured profiles (label, duration, sample count, manual/sampled
+tag) in a sidebar; selecting one renders a dependency-light **icicle flamegraph** — one
+absolutely-positioned `<div>` per visible frame (no canvas, no charting library), root at top,
+children below, widest-first so the hot path reads down the left edge. Click a frame to zoom
+into it as the new 100%-width root; click "Reset zoom" to zoom back out. Below it, the
+precomputed "Hot functions" table ranks frames by self time.
+
+## Porting note
+
+The V8 inspector logic (`CpuProfiler`, `aggregateCpuProfile`, the raw `V8CpuProfile` types) is
+**ported near-verbatim** from `nestjs-telescope`'s `packages/core/src/profiling/*` — `Profiler.start`
+/ `Profiler.stop` over `node:inspector` and the pure aggregation math have nothing
+NestJS-specific about them; only the import paths changed. What genuinely needed rewriting for
+AdonisJS: the `ProfilerService`'s recording seam (fire-and-forget `safeRecord` through the
+runtime store slot, matching every other Adonis watcher, instead of a NestJS-injected
+recorder), the provider registration (`TelescopeCpuProfilingProvider`, following the same
+`register()`/publish-to-runtime-slot pattern as the AI provider), and the middleware hook
+(`TelescopeMiddleware` reads the runtime slot directly rather than NestJS's constructor
+injection). The flamegraph rendering (`Flamegraph.tsx`, `flamegraph.ts`) ported the same way —
+restyled onto this package's Tailwind primitives, logic unchanged.
+
+## Notable exports
+
+- `ProfilerService` — `arm`, `shouldProfile`, `begin`, `end`, `status`; types `ProfileHandle`,
+  `ProfilerLike`, `ProfilerServiceDeps`, `ProfilerStatus`.
+- `CpuProfiler`, `defaultSessionFactory`; types `CpuProfilerOptions`, `CpuProfilerResult`,
+  `InspectorSessionLike`, `SessionFactory`.
+- `aggregateCpuProfile`; types `CpuProfileContent`, `FlameNode`, `HotFrame`, `V8CpuProfile`,
+  `V8ProfileNode`.
+- `defineConfig`, `resolveConfig`; types `TelescopeCpuProfilingConfig`,
+  `ResolvedTelescopeCpuProfilingConfig`.

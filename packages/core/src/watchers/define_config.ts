@@ -29,7 +29,8 @@ export type WatcherName =
   | 'events'
   | 'redis'
   | 'profiling'
-  | 'schedule';
+  | 'schedule'
+  | 'queue-manager';
 
 /**
  * Tuning for the `http-client` (outbound) watcher. Outbound HTTP is opt-in
@@ -136,6 +137,31 @@ export interface ResolvedScheduleWatcherConfig {
 const DEFAULT_SCHEDULE_SLOW_MS = 1000;
 
 /**
+ * Config for the `'queue-manager'` capability — the Live Queue Manager driver
+ * (`src/watchers/queue_manager.ts`) over the OPTIONAL `@adonisjs/queue` peer. Distinct from the
+ * `'queue'` watcher (which records past job EXECUTIONS as `job` entries): this is a live
+ * list/inspect/retry/enqueue control surface, not an entry watcher — see `queue_manager.ts`'s module
+ * doc for exactly what `@boringnode/queue`'s public API does and doesn't support.
+ */
+export interface QueueManagerWatcherConfig {
+  /**
+   * Explicit queue names to surface. REQUIRED to get anything: `@boringnode/queue` has no
+   * queue-enumeration API (queue names only exist as strings at dispatch time), so there is nothing
+   * to auto-discover. Default `[]` (the driver constructs but reports `configured: false`).
+   */
+  queues?: string[];
+  /** Which configured `@boringnode/queue` adapter to resolve via `queue.use(name)`. Omit to use the
+   *  manager's own default adapter. */
+  adapter?: string;
+}
+
+/** The fully-resolved `queue-manager` config (no optionals). */
+export interface ResolvedQueueManagerWatcherConfig {
+  queues: string[];
+  adapter: string | undefined;
+}
+
+/**
  * The shape of `config/telescope_watchers.ts`. Everything is optional: by default
  * only the Lucid `query` watcher is enabled (it is the one whose events are
  * verified against installed types), with the rest opt-in.
@@ -159,6 +185,7 @@ export interface TelescopeWatchersConfig {
    *  - `'redis'` — records `@adonisjs/redis` commands (optional peer).
    *  - `'profiling'` — publishes the `profile()`/`startProfile()` span helpers.
    *  - `'schedule'` — publishes the `scheduleTask()`/`recordScheduledRun()` helpers.
+   *  - `'queue-manager'` — publishes the Live Queue Manager driver (list/inspect/retry/enqueue).
    */
   watchers?: WatcherName[];
 
@@ -173,6 +200,9 @@ export interface TelescopeWatchersConfig {
 
   /** Tuning for the `schedule` watcher (slow-run threshold). */
   schedule?: ScheduleWatcherConfig;
+
+  /** Config for the `queue-manager` capability (explicit queue names, adapter selection). */
+  queueManager?: QueueManagerWatcherConfig;
 }
 
 /** The fully-resolved watchers config the provider acts on (no optionals). */
@@ -183,6 +213,7 @@ export interface ResolvedTelescopeWatchersConfig {
   httpClient: ResolvedHttpClientWatcherConfig;
   profiling: ResolvedProfilingWatcherConfig;
   schedule: ResolvedScheduleWatcherConfig;
+  queueManager: ResolvedQueueManagerWatcherConfig;
 }
 
 /** The default set of enabled watchers — the verified Lucid query watcher only. */
@@ -204,6 +235,7 @@ export function resolveConfig(
   const httpClient = config.httpClient ?? {};
   const profiling = config.profiling ?? {};
   const schedule = config.schedule ?? {};
+  const queueManager = config.queueManager ?? {};
   return {
     enabled: config.enabled ?? true,
     watchers: new Set(config.watchers ?? DEFAULT_WATCHERS),
@@ -224,6 +256,10 @@ export function resolveConfig(
     },
     schedule: {
       slowMs: schedule.slowMs ?? DEFAULT_SCHEDULE_SLOW_MS,
+    },
+    queueManager: {
+      queues: queueManager.queues ?? [],
+      adapter: queueManager.adapter,
     },
   };
 }

@@ -82,6 +82,16 @@
       "types": "./dist/providers/telescope_alerts_provider.d.ts",
       "import": "./dist/providers/telescope_alerts_provider.js",
       "default": "./dist/providers/telescope_alerts_provider.js"
+    },
+    "./cpu_profiling": {
+      "types": "./dist/src/profiling/index.d.ts",
+      "import": "./dist/src/profiling/index.js",
+      "default": "./dist/src/profiling/index.js"
+    },
+    "./cpu_profiling_provider": {
+      "types": "./dist/providers/telescope_cpu_profiling_provider.d.ts",
+      "import": "./dist/providers/telescope_cpu_profiling_provider.js",
+      "default": "./dist/providers/telescope_cpu_profiling_provider.js"
     }
   },
   "files": ["dist/", "README.md", "CHANGELOG.md"],
@@ -89,7 +99,7 @@
   "sideEffects": ["**/registry.js", "**/registry.ts"],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs && pnpm run copy:assets",
-    "copy:stubs": "mkdir -p dist/stubs/config dist/stubs/database/migrations && cp stubs/config/telescope.stub dist/stubs/config/telescope.stub && cp stubs/config/telescope_watchers.stub dist/stubs/config/telescope_watchers.stub && cp stubs/config/telescope_ui.stub dist/stubs/config/telescope_ui.stub && cp stubs/config/telescope_ai.stub dist/stubs/config/telescope_ai.stub && cp stubs/config/telescope_alerts.stub dist/stubs/config/telescope_alerts.stub && cp stubs/config/telescope_mcp.stub dist/stubs/config/telescope_mcp.stub && cp stubs/database/migrations/create_telescope_entries_table.stub dist/stubs/database/migrations/create_telescope_entries_table.stub",
+    "copy:stubs": "mkdir -p dist/stubs/config dist/stubs/database/migrations && cp stubs/config/telescope.stub dist/stubs/config/telescope.stub && cp stubs/config/telescope_watchers.stub dist/stubs/config/telescope_watchers.stub && cp stubs/config/telescope_ui.stub dist/stubs/config/telescope_ui.stub && cp stubs/config/telescope_ai.stub dist/stubs/config/telescope_ai.stub && cp stubs/config/telescope_alerts.stub dist/stubs/config/telescope_alerts.stub && cp stubs/config/telescope_mcp.stub dist/stubs/config/telescope_mcp.stub && cp stubs/config/telescope_cpu_profiling.stub dist/stubs/config/telescope_cpu_profiling.stub && cp stubs/database/migrations/create_telescope_entries_table.stub dist/stubs/database/migrations/create_telescope_entries_table.stub",
     "copy:assets": "mkdir -p dist/src/ui && cp src/ui/dashboard.html dist/src/ui/dashboard.html",
     "prepack": "pnpm run build",
     "test": "vitest run --passWithNoTests",
@@ -101,7 +111,8 @@
     "@adonisjs/lucid": "^22.4.0",
     "@adonisjs/mail": "^10.2.0",
     "@adonisjs/cache": "^2.1.0",
-    "@anthropic-ai/sdk": "^0.32.0"
+    "@anthropic-ai/sdk": "^0.32.0",
+    "cron-parser": "^4.0.0 || ^5.0.0"
   },
   "peerDependenciesMeta": {
     "@adonisjs/lucid": {
@@ -115,19 +126,23 @@
     },
     "@anthropic-ai/sdk": {
       "optional": true
+    },
+    "cron-parser": {
+      "optional": true
     }
   },
   "devDependencies": {
-    "@adonisjs/assembler": "^8.4.0",
-    "@adonisjs/core": "^7.3.0",
-    "@adonisjs/lucid": "^22.4.0",
-    "@anthropic-ai/sdk": "^0.32.0",
-    "@types/better-sqlite3": "^7.6.0",
-    "@types/node": "^20.0.0",
-    "better-sqlite3": "^12.0.0",
-    "luxon": "^3.4.4",
-    "typescript": "^5.4.0",
-    "vitest": "^3.0.0"
+    "@adonisjs/assembler": "8.4.0",
+    "@adonisjs/core": "7.4.0",
+    "@adonisjs/lucid": "22.4.2",
+    "@anthropic-ai/sdk": "0.116.0",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "20.19.43",
+    "better-sqlite3": "12.11.1",
+    "cron-parser": "4.9.0",
+    "luxon": "3.7.2",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
   },
   "engines": {
     "node": ">=20.6.0"

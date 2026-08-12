@@ -30,11 +30,12 @@ only the optional peers for the features you actually use.
 
 | Subpath | Provider subpath | What | Optional peers |
 |---|---|---|---|
-| [`@adonis-agora/telescope/watchers`](./docs/packages/watchers.mdx) | `@adonis-agora/telescope/watchers_provider` | per-technology watchers — Lucid `query`, `http-client`, `logs`, `mail`, `cache`, `queue`, `events`, `redis`, plus user-driven `profiling` + `schedule` | `@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache`, `@adonisjs/queue`, `@adonisjs/redis` |
+| [`@adonis-agora/telescope/watchers`](./docs/packages/watchers.mdx) | `@adonis-agora/telescope/watchers_provider` | per-technology watchers — Lucid `query`, `http-client`, `logs`, `mail`, `cache`, `queue`, `events`, `redis`, plus user-driven `profiling` + `schedule` (with a `registerSchedule()` next-run registry) + a live `queue-manager` console | `@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache`, `@adonisjs/queue`, `@adonisjs/redis`, `cron-parser` |
 | [`@adonis-agora/telescope/ui`](./docs/packages/ui.mdx) | `@adonis-agora/telescope/ui_provider` | JSON API + SSE live-stream behind an auth guard (+ opt-in [request replay](./docs/packages/ui.mdx)) | — |
 | [`@adonis-agora/telescope/ai`](./docs/packages/ai.mdx) | `@adonis-agora/telescope/ai_provider` | Claude-powered exception diagnosis, cached by family | `@anthropic-ai/sdk` |
 | [`@adonis-agora/telescope/alerts`](./docs/packages/alerts.mdx) | `@adonis-agora/telescope/alerts_provider` | new-exception / exception-rate / metric-threshold alerts to Slack / webhook / console / custom, with optional [geo-enrichment](./docs/packages/alerts.mdx) | — |
 | [`@adonis-agora/telescope/mcp`](./docs/packages/mcp.mdx) | `@adonis-agora/telescope/mcp_provider` | Model Context Protocol endpoint so a coding agent can query the captured telemetry | — |
+| [`@adonis-agora/telescope/cpu_profiling`](./docs/packages/cpu-profiling.mdx) | `@adonis-agora/telescope/cpu_profiling_provider` | on-demand V8 CPU profiling (real `node:inspector` flamegraph captures, arm-trigger + dashboard flamegraph view) | — (`node:inspector` is a Node.js built-in) |
 
 The React dashboard **page** ships as a separate pre-built package,
 [`@adonis-agora/telescope-ui`](./docs/packages/telescope-ui.mdx), served under the same prefix
@@ -75,7 +76,11 @@ correlated to the active trace:
 | **events** | `event` | every event emitted through the core Emitter (`onAny`), minus a default ignore-list |
 | **redis** | `redis` | every `@adonisjs/redis` command — command, args, connection, round-trip duration |
 | **profiling** | `profile` | user-instrumented timing spans via `profile()` / `startProfile()` |
-| **schedule** | `scheduled_task` | scheduled-task runs via `scheduleTask()` / `recordScheduledRun()` |
+| **schedule** | `scheduled_task` | scheduled-task runs via `scheduleTask()` / `recordScheduledRun()`; `registerSchedule()` additionally maintains a live next-run registry (the dashboard's Schedules section) |
+| **queue-manager** | — (live control surface, not an entry watcher) | list/inspect/retry/enqueue against `@adonisjs/queue` (see the [Live Queue Manager](./docs/packages/watchers.mdx#live-queue-manager) docs for exactly what `@boringnode/queue`'s public API does and doesn't support) |
+
+The [`cpu_profiling` subpath](./docs/packages/cpu-profiling.mdx) adds one more entry type, `cpu_profile`
+— a real V8 CPU profile (flamegraph tree + hot frames), captured on demand via `node:inspector`.
 
 Browser-reported front-end errors ([client-error
 ingestion](./docs/packages/client-errors.mdx)) are recorded as `client_exception` entries.

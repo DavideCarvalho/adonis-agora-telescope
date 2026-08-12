@@ -61,17 +61,19 @@ export default defineConfig({
   httpClient: { slowMs: 1000, ignoreHosts: [] },
   profiling: { slowMs: 100 },
   schedule: { slowMs: 1000 },
+  queueManager: { queues: ['default', 'emails'] },
 })
 ```
 
-| Key          | Default     | Description                                                              |
-| ------------ | ----------- | ---------------------------------------------------------------------- |
-| `enabled`    | `true`      | Master switch; `false` starts no per-technology watcher.              |
-| `watchers`   | `['query']` | Which watchers run — any of `'query'`, `'mail'`, `'cache'`, `'http-client'`, `'logs'`, `'queue'`, `'events'`, `'redis'`, `'profiling'`, `'schedule'`. |
-| `query`      | see below   | Lucid `query` watcher tuning — `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `normalize` (`true`). |
-| `httpClient` | see below   | `http-client` watcher tuning — `slowMs` (1000), `ignoreHosts`, `captureBodies` (`false`). |
-| `profiling`  | see below   | `profiling` watcher tuning — `slowMs` (100), `minDurationMs` (0).       |
-| `schedule`   | see below   | `schedule` watcher tuning — `slowMs` (1000).                            |
+| Key            | Default     | Description                                                              |
+| -------------- | ----------- | ---------------------------------------------------------------------- |
+| `enabled`      | `true`      | Master switch; `false` starts no per-technology watcher.              |
+| `watchers`     | `['query']` | Which watchers run — any of `'query'`, `'mail'`, `'cache'`, `'http-client'`, `'logs'`, `'queue'`, `'events'`, `'redis'`, `'profiling'`, `'schedule'`, `'queue-manager'`. |
+| `query`        | see below   | Lucid `query` watcher tuning — `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `normalize` (`true`). |
+| `httpClient`   | see below   | `http-client` watcher tuning — `slowMs` (1000), `ignoreHosts`, `captureBodies` (`false`). |
+| `profiling`    | see below   | `profiling` watcher tuning — `slowMs` (100), `minDurationMs` (0).       |
+| `schedule`     | see below   | `schedule` watcher tuning — `slowMs` (1000).                            |
+| `queueManager` | see below   | Live Queue Manager config — `queues` (string[], **required** to get anything), `adapter` (optional adapter name). |
 
 Only the Lucid `query` watcher is on by default — it's the one whose event contract is
 verified against the installed `@adonisjs/lucid` types. Everything else is opt-in.
@@ -305,6 +307,63 @@ rather than verified against installed types. The engine is pre-1.0, so this sur
 drift; the watcher reads every field defensively and no-ops entirely when nobody publishes.
 </Callout>
 
+## Live Queue Manager
+
+A **live control surface** for `@adonisjs/queue` — list configured queues (with a pending
+count), look up a job by id, retry it, and enqueue a new one — surfaced in the dashboard's
+Queues section. This is a genuinely different capability from the queue watcher above: the
+watcher records past job *executions* as entries; the Live Queue Manager reaches into the
+*live* queue to inspect/act on it right now. Enable it by adding `'queue-manager'` to
+`watchers` and setting `queueManager.queues`:
+
+```ts title="config/telescope_watchers.ts"
+export default defineConfig({
+  watchers: ['query', 'queue-manager'],
+  queueManager: { queues: ['default', 'emails'] },
+})
+```
+
+<Callout type="warn">
+**This is a smaller console than its BullMQ-backed NestJS sibling, on purpose.**
+`@adonisjs/queue`'s engine is [`@boringnode/queue`](https://github.com/boringnode/queue), whose
+public `Adapter` interface (checked across every published version, 0.5.0 through the current
+0.7.1) supports far less than BullMQ:
+
+- **Supported**: a single job lookup by id (`getJob`), retrying a failed job by id
+  (`retryJob`), a **pending-only** count per queue (`sizeOf`), and enqueueing a new job
+  (`push`/`pushOn`).
+- **NOT supported by the engine at all — not faked here**: listing/paginating jobs BY STATE
+  (there is no `getJobs`/`listJobs`/`findByStatus`), removing a job, promoting a delayed job,
+  per-state counts (active/delayed/failed/completed), or enumerating queue names (they are
+  just strings passed at dispatch time — there is no registry to discover, which is why
+  `queueManager.queues` must be configured explicitly).
+
+The dashboard's Queues section reflects this honestly: a queue's `active`/`delayed`/`failed`/
+`completed` counts render as `—` (unknown, not zero), and there is no per-state job table —
+only "look up a job by id". The API advertises exactly what it can do via a `capabilities`
+array (`GET <path>/api/queues/live` → `{ queues, capabilities: { actions } }`), computed from
+what the resolved `@boringnode/queue` adapter actually exposes, not guessed.
+</Callout>
+
+Mutations (`retry`, `enqueue`) are **disabled by default** — they act on real jobs. Enable
+them in `config/telescope_ui.ts`:
+
+```ts title="config/telescope_ui.ts"
+export default defineConfig({
+  queueActions: { enabled: true },
+})
+```
+
+<Callout type="info">
+`@boringnode/queue`'s top-level `queue` service is resolved from the container's `'queue'`
+binding, and this driver calls `.use(adapterName?)` on it to get a concrete adapter — the
+standard AdonisJS "Manager" convention (`db.connection()`, `mail.use()`, …). That specific
+method was not directly confirmed against `@boringnode/queue`'s public `.d.ts` (unlike
+`getJob`/`retryJob`/`sizeOf`/`push`/`pushOn`, which were); if your `queue` service doesn't
+expose `.use()`, the driver falls back to treating the service itself as the adapter, and
+degrades to "not configured" if neither shape matches.
+</Callout>
+
 ## Events watcher
 
 Records **every event emitted through the core `@adonisjs/core` Emitter** as an `event`
@@ -480,6 +539,52 @@ diagnostics bus, which the diagnostics watcher records — this watcher covers p
 application-level scheduled work.
 </Callout>
 
+### Live Schedules — registering what EXISTS, not just what ran
+
+`scheduleTask()`/`recordScheduledRun()` answer "what already ran?" — they say nothing about
+"what schedules exist and when will they next fire?", because AdonisJS gives telescope no
+registry of that to read (there is no `@Cron()`-style decorator scanning to hook, unlike
+`@nestjs/schedule`'s `SchedulerRegistry`). `registerSchedule()` closes that gap the same way
+the rest of this watcher works: **explicit, not discovered**. Call it once per scheduled task,
+next to wherever you actually wire it into your scheduler:
+
+```ts
+import { registerSchedule, scheduleTask } from '@adonis-agora/telescope/watchers'
+
+registerSchedule({ name: 'prune-sessions', schedule: '0 * * * *', kind: 'cron' })
+
+// However you actually schedule it — shown here with adonisjs-scheduler:
+scheduler.call(() =>
+  scheduleTask('prune-sessions', () => Session.pruneExpired(), { schedule: '0 * * * *' }),
+).hourly()
+```
+
+The dashboard's **Schedules** section (`GET <path>/api/schedules/live`) lists every
+registered schedule with a computed **next-run time** — via the OPTIONAL
+[`cron-parser`](https://www.npmjs.com/package/cron-parser) peer, the same library
+`@adonis-agora/durable` already depends on for its own cron scheduling, reused here for
+ecosystem consistency rather than picking a second one — joined against the most recent
+matching `scheduled_task` entry for last-run status/duration.
+
+```sh
+npm i cron-parser   # optional; without it nextRunAt is always null (not an error)
+```
+
+<Callout type="warn">
+There is deliberately **no "active/running" column**, unlike the NestJS sibling's
+`ScheduledTask.running` (which reads a real `CronJob.running` flag off `@nestjs/schedule`'s
+internals). AdonisJS has no equivalent object to read a running/stopped flag off — faking one
+(e.g. always `true`) would be actively misleading, so it is omitted rather than guessed.
+</Callout>
+
+<Callout type="info">
+`cron-parser` has shipped two incompatible top-level shapes across its major versions: v4
+exposes `parseExpression(expr, opts)` directly; v5 moved it to
+`CronExpressionParser.parse(expr, opts)`. `registerSchedule`'s next-run computation tries both,
+so either major version works — a real compatibility gap in `@adonis-agora/durable`'s own
+`cron-parser` usage (which only calls the v4 shape) that this watcher does not repeat.
+</Callout>
+
 ## Building your own watcher
 
 Every watcher implements the same tiny `Watcher` contract over a structural `EmitterLike`:
@@ -499,11 +604,12 @@ walks through a full example.
 
 ## Peer dependencies
 
-`@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache`, `@adonisjs/queue` and
-`@adonisjs/redis` are all **optional** peers — install only the ones whose watcher you
-enable. With none installed the package still loads; the watchers simply have nothing to
-subscribe to (the queue and events watchers idle on a channel/emitter nobody feeds, and the
-redis watcher no-ops on a `null` manager).
+`@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache`, `@adonisjs/queue`, `@adonisjs/redis`
+and `cron-parser` are all **optional** peers — install only the ones whose watcher/capability
+you enable. With none installed the package still loads; the watchers simply have nothing to
+subscribe to (the queue and events watchers idle on a channel/emitter nobody feeds, the redis
+watcher no-ops on a `null` manager, the Live Queue Manager reports `configured: false`, and
+Live Schedules' `nextRunAt` is always `null`).
 
 <Callout type="info">
 The `queue`, `events` and `redis` watchers currently expose **no `config/telescope_watchers.ts`

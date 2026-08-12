@@ -65,7 +65,25 @@ export type { GuardResult } from './guard.js';
 
 // — JSON API —
 export { TelescopeApi, buildQuery, toSummary } from './api.js';
-export type { EntrySummary } from './api.js';
+export type {
+  EntrySummary,
+  RetentionInfo,
+  RetentionOptions,
+  RetentionPruneOptions,
+  RetentionSamplingRate,
+} from './api.js';
+
+// — CPU profiling JSON API (optional feature: @adonis-agora/telescope/cpu_profiling) —
+export { ProfilesApi } from './profiles_api.js';
+export type { ArmProfileBody } from './profiles_api.js';
+
+// — live queue manager JSON API (optional peer: @adonisjs/queue) —
+export { QueueManagerApi } from './queue_manager_api.js';
+export type { EnqueueBody } from './queue_manager_api.js';
+
+// — live schedules JSON API (registry: `registerSchedule()`) —
+export { SchedulesApi } from './schedules_api.js';
+export type { LiveScheduledTask } from './schedules_api.js';
 
 // — request replay —
 export {

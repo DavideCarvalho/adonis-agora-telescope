@@ -1,4 +1,5 @@
 import type { ApplicationService } from '@adonisjs/core/types';
+import { setTelescopeQueueManager } from '../src/registry.js';
 import { CacheWatcher } from '../src/watchers/cache_watcher.js';
 import {
   type ResolvedTelescopeWatchersConfig,
@@ -12,6 +13,7 @@ import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 import { LucidQueryWatcher } from '../src/watchers/lucid_query_watcher.js';
 import { MailWatcher } from '../src/watchers/mail_watcher.js';
 import { ProfilingWatcher } from '../src/watchers/profiling_watcher.js';
+import { type QueueLike, QueueManagerDriver } from '../src/watchers/queue_manager.js';
 import { QueueWatcher } from '../src/watchers/queue_watcher.js';
 import { RedisWatcher } from '../src/watchers/redis_watcher.js';
 import { ScheduleWatcher } from '../src/watchers/schedule_watcher.js';
@@ -96,6 +98,7 @@ export default class TelescopeWatchersProvider {
     if (config.watchers.has('redis')) await this.startRedisWatcher();
     if (config.watchers.has('profiling')) this.startProfilingWatcher(config);
     if (config.watchers.has('schedule')) this.startScheduleWatcher(config);
+    if (config.watchers.has('queue-manager')) await this.startQueueManager(config);
   }
 
   /** Start the profiling watcher: it publishes a config-backed default for the
@@ -128,6 +131,32 @@ export default class TelescopeWatchersProvider {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`TelescopeWatchersProvider: failed to start schedule watcher: ${message}`);
     }
+  }
+
+  /**
+   * Publish the Live Queue Manager driver: resolves the OPTIONAL `queue` service from the container
+   * (absent when `@adonisjs/queue` isn't installed — the same try/catch-to-null stance the redis
+   * watcher uses for `redis`) and constructs a {@link QueueManagerDriver} over it, published on the
+   * runtime slot the UI's `/api/queues/live*` routes read. Unlike every other watcher here this
+   * publishes to the REGISTRY slot rather than an emitter — it's a live control surface, not an
+   * entry recorder — so it has no `stop()`/unsubscribe to track in `this.started`; `shutdown()`
+   * clears the slot directly.
+   */
+  private async startQueueManager(config: ResolvedTelescopeWatchersConfig): Promise<void> {
+    let queueService: QueueLike | null = null;
+    try {
+      queueService = (await this.app.container.make('queue')) as unknown as QueueLike;
+    } catch {
+      // @adonisjs/queue not installed / not bound — the driver degrades to `configured: false`.
+      queueService = null;
+    }
+    const driver = new QueueManagerDriver(queueService, {
+      queues: config.queueManager.queues,
+      ...(config.queueManager.adapter !== undefined
+        ? { adapter: config.queueManager.adapter }
+        : {}),
+    });
+    setTelescopeQueueManager(driver);
   }
 
   /** Start the queue watcher: it taps the engine's `node:diagnostics_channel`
@@ -240,5 +269,7 @@ export default class TelescopeWatchersProvider {
       }
     }
     this.started.length = 0;
+    // Clear the queue-manager slot so a re-registering app (tests / HMR) doesn't read a stale driver.
+    setTelescopeQueueManager(null);
   }
 }

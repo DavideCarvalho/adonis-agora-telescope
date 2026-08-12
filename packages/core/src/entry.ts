@@ -41,6 +41,14 @@ export const EntryType = {
    * tags, so it composes with dedup, prune, sampling, and the dashboard.
    */
   ClientException: 'client_exception',
+  /**
+   * An aggregated V8 CPU profile (flamegraph tree + precomputed hot frames)
+   * captured via `node:inspector`'s `Profiler.start`/`Profiler.stop`, recorded
+   * by the OPTIONAL `cpu_profiling` feature (`@adonis-agora/telescope/cpu_profiling`).
+   * Distinct from {@link EntryType.Profile} (user-instrumented timing spans) —
+   * this is a real V8 sampling-profiler capture.
+   */
+  CpuProfile: 'cpu_profile',
 } as const;
 
 export type BuiltinEntryType = (typeof EntryType)[keyof typeof EntryType];

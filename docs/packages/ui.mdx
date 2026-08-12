@@ -82,6 +82,9 @@ exist until the core is running.
 | `POST <path>/api/requests/:id/replay` *(if replay enabled)* | Replay a captured request.        |
 | `GET <path>/api/meta` *(if any extension)*           | Contributed dashboards + entry types.     |
 | `GET <path>/api/ext/:ext/data/:provider` *(if any extension)* | One data provider's result.      |
+| `GET/POST <path>/api/profiles*` *(if [`cpu_profiling`](/docs/telescope/packages/cpu-profiling) installed)* | Captured CPU profiles + arm trigger. |
+| `GET <path>/api/schedules/live`    | Registered schedules + computed next-run, joined with last-run — see [Live Schedules](/docs/telescope/packages/watchers#live-schedules--registering-what-exists-not-just-what-ran). |
+| `GET/POST <path>/api/queues/live*` *(if `queue-manager` watcher enabled)* | Live queue list/inspect/retry/enqueue — see [Live Queue Manager](/docs/telescope/packages/watchers#live-queue-manager). |
 
 The dashboard HTML is read once per process and cached; the API base path is injected into
 it at render time. See the [dashboard tour](/docs/telescope/dashboard) for the full API
@@ -107,6 +110,8 @@ export default defineConfig({
 | `authorize`   | default policy | Access-decision hook — [Dashboard auth](/docs/telescope/dashboard/auth). |
 | `credentials` | `{}`           | Built-in token / HTTP Basic gate for the default policy.        |
 | `replay`      | `{ enabled: false }` | Request-replay gate — see [Request replay](#request-replay).      |
+| `cpuProfiling` | `{ armEnabled: false }` | Gate for `POST <path>/api/profiles/arm` — see [CPU profiling](/docs/telescope/packages/cpu-profiling#arming-a-capture). |
+| `queueActions` | `{ enabled: false }` | Gate for the queue console's `retry`/`enqueue` mutations — see [Live Queue Manager](/docs/telescope/packages/watchers#live-queue-manager). |
 
 ## Request replay
 

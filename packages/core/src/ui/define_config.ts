@@ -81,6 +81,24 @@ export interface TelescopeUiConfig {
    * credential stripping, bounded, self-identifying).
    */
   replay?: ReplayConfig;
+
+  // — CPU profiling arm trigger (additive: keep in its own region for trivial merges) —
+  /**
+   * The `POST <path>/api/profiles/arm` trigger: DISABLED BY DEFAULT, like `replay` — arming a
+   * capture incurs real CPU overhead (a running V8 sampling profiler on the next N requests), so the
+   * host must opt in even when `@adonis-agora/telescope/cpu_profiling` itself is installed and
+   * `enabled`. When disabled, the arm endpoint answers `403`. Purely a UI-mutation gate: reading
+   * captured profiles (`GET .../profiles*`) is unaffected.
+   */
+  cpuProfiling?: { armEnabled?: boolean };
+
+  // — live queue manager mutations (additive) —
+  /**
+   * The queue console's mutating actions (`retry`/`enqueue`): DISABLED BY DEFAULT, like `replay` —
+   * they act on real jobs (retrying re-runs one, enqueueing dispatches a new one). Reading the queue
+   * console (`GET .../queues/live*`) is unaffected; only `POST .../queues/live/*` is gated.
+   */
+  queueActions?: { enabled?: boolean };
 }
 
 /** Request-replay configuration (see {@link TelescopeUiConfig.replay}). */
@@ -107,6 +125,10 @@ export interface ResolvedTelescopeUiConfig {
   dashboardAuth: ResolvedDashboardAuth | null;
   /** Resolved request-replay settings (disabled by default). */
   replay: { enabled: boolean; port?: number; timeoutMs?: number };
+  /** Resolved CPU-profiling arm-trigger gate (disabled by default). */
+  cpuProfiling: { armEnabled: boolean };
+  /** Resolved queue-console mutation gate (disabled by default). */
+  queueActions: { enabled: boolean };
 }
 
 /**
@@ -213,6 +235,14 @@ export function resolveConfig(config: TelescopeUiConfig = {}): ResolvedTelescope
       enabled: config.replay?.enabled ?? false,
       ...(config.replay?.port !== undefined ? { port: config.replay.port } : {}),
       ...(config.replay?.timeoutMs !== undefined ? { timeoutMs: config.replay.timeoutMs } : {}),
+    },
+    cpuProfiling: {
+      // Safe default: arming is OFF unless the host explicitly enables it.
+      armEnabled: config.cpuProfiling?.armEnabled ?? false,
+    },
+    queueActions: {
+      // Safe default: queue mutations are OFF unless the host explicitly enables them.
+      enabled: config.queueActions?.enabled ?? false,
     },
   };
 }

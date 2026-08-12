@@ -1,8 +1,27 @@
 import type { HttpContext } from '@adonisjs/core/http';
 import type { NextFn } from '@adonisjs/core/types/http';
 import { recordExceptionInStore } from './exception_watcher.js';
+import type { ProfileHandle } from './profiling/profiler_service.js';
 import { getTelescopeRuntime } from './registry.js';
 import { type HttpContextLike, recordRequest } from './request_watcher.js';
+
+/** The bit of AdonisJS's real `HttpContext` a route-labelled profile needs beyond
+ *  {@link HttpContextLike} — the matched route's pattern (e.g. `/users/:id`), when the router has
+ *  resolved one at this point in the pipeline. Structural, so it degrades to the raw URL when absent
+ *  (e.g. a 404, or a context built without the router). */
+interface RouteMatchedContext {
+  route?: { pattern?: string } | null;
+}
+
+/** `"GET /users/:id"` when the router matched a route, else `"GET <raw url>"`. Mirrors the NestJS
+ *  sibling's `normalizeRoute` label closely enough for `ProfilerService`'s manual-arm `label` match
+ *  and the `cpu_profile` entry's `familyHash` to be genuinely useful for grouping repeated captures
+ *  of the same endpoint — without adding a whole route-normalization module for one label. */
+function profileLabel(ctx: HttpContextLike): string {
+  const method = ctx.request.method();
+  const pattern = (ctx as unknown as RouteMatchedContext).route?.pattern;
+  return `${method} ${pattern ?? ctx.request.url()}`;
+}
 
 /**
  * Records each inbound HTTP request as a `request` telescope entry (method, url,
@@ -28,6 +47,19 @@ export default class TelescopeMiddleware {
 
     const startedAt = Date.now();
     const store = runtime.store;
+
+    // Opt-in CPU profiling (`@adonis-agora/telescope/cpu_profiling`): a single cheap boolean gate
+    // when the feature isn't installed/enabled (`runtime.cpuProfiler` is `null`, or its
+    // `shouldProfile` returns `false`). When a request IS selected, `begin` starts a real
+    // `node:inspector` capture now and `end` stops+records it in the `finally` below, so the
+    // captured `cpu_profile` entry shares this request's trace context.
+    const httpCtx = ctx as unknown as HttpContextLike;
+    const label = runtime.cpuProfiler ? profileLabel(httpCtx) : null;
+    const profile: ProfileHandle | null =
+      label !== null && runtime.cpuProfiler?.shouldProfile(label)
+        ? runtime.cpuProfiler.begin(label)
+        : null;
+
     try {
       return await next();
     } catch (error: unknown) {
@@ -55,6 +87,12 @@ export default class TelescopeMiddleware {
         });
       } catch {
         // Observability must never break the request it observes.
+      }
+      // Stop + record the profile (if one was armed/sampled) within the same
+      // `finally` so its `cpu_profile` entry shares this request's trace context.
+      // Fire-and-forget: `end` never throws and never blocks the response.
+      if (profile !== null) {
+        void runtime.cpuProfiler?.end(profile, label);
       }
     }
   }

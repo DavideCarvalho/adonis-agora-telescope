@@ -14,12 +14,17 @@ export class ExtensionApi {
     private readonly ctx: ExtensionContext,
   ) {}
 
-  /** `GET /api/meta` — the dashboards + entry types contributed by every extension. */
-  meta(http: UiHttpContext): unknown {
+  /**
+   * `GET /api/meta` — the dashboards + entry types contributed by every extension, plus whatever
+   * `extra` fields the provider merges in (e.g. `{ ai: { enabled } }` — additive, unrelated to the
+   * extension SDK, but `/meta` is the one endpoint the dashboard always fetches on boot).
+   */
+  meta(http: UiHttpContext, extra: Record<string, unknown> = {}): unknown {
     return http.response.status(200).send({
       data: {
         entryTypes: this.registry.entryTypes(),
         dashboards: this.registry.dashboards(),
+        ...extra,
       },
     });
   }

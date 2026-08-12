@@ -96,19 +96,50 @@ export type {
 // — schedule watcher (scheduled-task runs; explicit wrapper integration) —
 export {
   buildScheduleEntry,
+  listRegisteredSchedules,
   recordScheduledRun,
+  registerSchedule,
   SCHEDULED_TASK_ENTRY_TYPE,
   ScheduleWatcher,
   scheduleTask,
+  toRegisteredSchedule,
+  unregisterSchedule,
 } from './schedule_watcher.js';
 export type {
+  RegisteredSchedule,
   ScheduleEntryContent,
   ScheduledRun,
   ScheduledTaskOptions,
   ScheduleKind,
+  ScheduleRegistration,
   ScheduleRunStatus,
   ScheduleWatcherOptions,
 } from './schedule_watcher.js';
+export { nextCronRunMs } from './cron_next_run.js';
+
+// — live queue manager (optional peer: @adonisjs/queue / @boringnode/queue) —
+export {
+  isQueueAction,
+  isQueueState,
+  QUEUE_ACTIONS,
+  QUEUE_STATES,
+  QueueManagerDriver,
+} from './queue_manager.js';
+export type {
+  JobPage,
+  QueueActionName,
+  QueueAdapterLike,
+  QueueCapabilities,
+  QueueCounts,
+  QueueJob,
+  QueueJobDetail,
+  QueueJobRecordLike,
+  QueueLike,
+  QueueManager,
+  QueueManagerDriverOptions,
+  QueueState,
+  QueueSummary,
+} from './queue_manager.js';
 
 // — config —
 export {
@@ -120,9 +151,11 @@ export type {
   HttpClientWatcherConfig,
   ProfilingWatcherConfig,
   QueryWatcherConfig,
+  QueueManagerWatcherConfig,
   ResolvedHttpClientWatcherConfig,
   ResolvedProfilingWatcherConfig,
   ResolvedQueryWatcherConfig,
+  ResolvedQueueManagerWatcherConfig,
   ResolvedScheduleWatcherConfig,
   ResolvedTelescopeWatchersConfig,
   ScheduleWatcherConfig,

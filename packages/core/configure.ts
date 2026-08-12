@@ -36,6 +36,12 @@ const FEATURES = [
     provider: '@adonis-agora/telescope/mcp_provider',
     configStub: 'config/telescope_mcp.stub',
   },
+  {
+    name: 'cpu_profiling',
+    message: 'CPU profiling — on-demand V8 flamegraph captures via node:inspector',
+    provider: '@adonis-agora/telescope/cpu_profiling_provider',
+    configStub: 'config/telescope_cpu_profiling.stub',
+  },
 ] as const;
 
 type FeatureName = (typeof FEATURES)[number]['name'];

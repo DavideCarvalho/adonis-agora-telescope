@@ -1,8 +1,10 @@
 import type { DiagnosisCoordinator } from './ai/diagnosis_coordinator.js';
 import type { ExtensionRegistry } from './extension/registry.js';
+import type { ProfilerService } from './profiling/profiler_service.js';
 import type { RequestCaptureOptions } from './request_watcher.js';
 import type { TelescopeStore } from './store.js';
 import type { EntryEvents } from './stream/entry_events.js';
+import type { QueueManager } from './watchers/queue_manager.js';
 
 /**
  * The live runtime telescope handles, published on a cross-copy-stable global slot
@@ -44,6 +46,20 @@ export interface TelescopeRuntime {
    * when its `isConfigured()` is `false` — both degrade to their non-AI behaviour.
    */
   diagnosisCoordinator: DiagnosisCoordinator | null;
+  /**
+   * The CPU profiler service published by `@adonis-agora/telescope/cpu_profiling_provider`, or
+   * `null` when that OPTIONAL feature is not installed/enabled. `TelescopeMiddleware` reads it (no
+   * DI) to gate/begin/end a `node:inspector` capture around each request; the UI routes read it to
+   * serve `/api/profiles/*`. `null` degrades every touchpoint to inert (no overhead, 404 routes).
+   */
+  cpuProfiler: ProfilerService | null;
+  /**
+   * The Live Queue Manager driver the `queue-manager` watcher publishes, or `null` when that OPTIONAL
+   * capability is not enabled/configured (`@adonisjs/queue` absent, or `queue-manager` not in
+   * `config/telescope_watchers.ts`'s `watchers` list). The UI's `/api/queues/live*` routes read it
+   * (no DI) to serve the queue console; `null` degrades those routes to a clear "not configured" 404.
+   */
+  queueManager: QueueManager | null;
 }
 
 const RUNTIME_KEY = Symbol.for('@agora/telescope:runtime');
@@ -57,6 +73,8 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   entryEvents: null,
   paused: false,
   diagnosisCoordinator: null,
+  cpuProfiler: null,
+  queueManager: null,
 };
 globalStore[RUNTIME_KEY] = runtime;
 
@@ -96,6 +114,24 @@ export function setTelescopeDiagnosisCoordinator(coordinator: DiagnosisCoordinat
 }
 
 /**
+ * Publish the CPU profiler service (called by `telescope_cpu_profiling_provider` at register) so
+ * the request middleware and the UI's `/api/profiles/*` routes can reach it without DI. Pass `null`
+ * to clear it (feature disabled / provider shutdown).
+ */
+export function setTelescopeCpuProfiler(profiler: ProfilerService | null): void {
+  runtime.cpuProfiler = profiler;
+}
+
+/**
+ * Publish the Live Queue Manager driver (called by `TelescopeWatchersProvider` when the
+ * `queue-manager` watcher is enabled) so the UI's `/api/queues/live*` routes can reach it without DI.
+ * Pass `null` to clear it (capability disabled / provider shutdown).
+ */
+export function setTelescopeQueueManager(manager: QueueManager | null): void {
+  runtime.queueManager = manager;
+}
+
+/**
  * Toggle the overload-shed flag (called by the overload guard). While paused,
  * every ingestion entry point drops new entries. Idempotent.
  */
@@ -112,4 +148,6 @@ export function resetTelescopeRuntime(): void {
   runtime.entryEvents = null;
   runtime.paused = false;
   runtime.diagnosisCoordinator = null;
+  runtime.cpuProfiler = null;
+  runtime.queueManager = null;
 }

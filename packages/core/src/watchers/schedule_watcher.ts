@@ -1,5 +1,6 @@
 import { currentTraceId } from '../context_accessor.js';
 import { EntryType, type RecordInput } from '../entry.js';
+import { nextCronRunMs } from './cron_next_run.js';
 import { safeRecord } from './record.js';
 
 /** The `type` of the entries this watcher records. */
@@ -66,6 +67,45 @@ export interface ScheduledTaskOptions {
   kind?: ScheduleKind;
 }
 
+/**
+ * A registration describing "this scheduled task EXISTS" — independent of any individual run. See
+ * {@link ScheduleWatcher.register} for why this is a separate call from {@link ScheduledRun}.
+ */
+export interface ScheduleRegistration {
+  /** The task name. Re-registering the same name REPLACES the prior registration (idempotent). */
+  name: string;
+  /** The cron/interval expression (e.g. `'0 * * * *'`), when the schedule has one. */
+  schedule?: string | null;
+  /** The schedule kind. Default `'cron'`. */
+  kind?: ScheduleKind;
+  /**
+   * IANA timezone the cron expression is evaluated in (e.g. `'America/Sao_Paulo'`). Only meaningful
+   * for `kind: 'cron'`; passed straight through to `cron-parser`. Defaults to the server's local TZ.
+   */
+  timezone?: string | null;
+}
+
+/**
+ * A registered schedule enriched with its computed next-run time — what
+ * {@link ScheduleWatcher.list} / {@link listRegisteredSchedules} return. Deliberately does NOT
+ * include last-run data (status/duration/lastRunAt): that lives in the recorded `scheduled_task`
+ * entries this same watcher writes, and joining the two is the UI API layer's job (it already holds
+ * a `TelescopeService` to query them) — the registry itself only knows what was registered.
+ */
+export interface RegisteredSchedule {
+  name: string;
+  kind: ScheduleKind;
+  schedule: string | null;
+  timezone: string | null;
+  /**
+   * ISO timestamp of the next fire, computed from `schedule` via `cron-parser` (see
+   * `cron_next_run.ts`). `null` when: the kind isn't `'cron'`, no `schedule` was given, the OPTIONAL
+   * `cron-parser` peer isn't installed, or the expression failed to parse — every case is a genuine
+   * "unknown", not an error.
+   */
+  nextRunAt: string | null;
+}
+
 /** Default slow-run threshold in milliseconds. */
 const DEFAULT_SLOW_MS = 1000;
 
@@ -114,6 +154,23 @@ function getDefaultScheduleWatcher(): ScheduleWatcher | null {
  * is fire-and-forget and fully guarded: a telescope failure can never break (or
  * delay) a scheduled task.
  *
+ * ## The "Live Schedules" registry — the same explicit-integration philosophy, one layer up
+ * `recordScheduledRun`/`scheduleTask` answer "what already ran?"; they say nothing about "what
+ * schedules EXIST and when will they next fire?" — because, per the section above, AdonisJS gives us
+ * no registry of that to read (no `@Cron()` scanning, no `SchedulerRegistry`). {@link register} /
+ * {@link registerSchedule} closes that gap the same way: an EXPLICIT, idempotent call the host makes
+ * once per scheduled task (typically right next to where it wires the task into whatever scheduler
+ * it uses — `adonisjs-scheduler`, `@adonis-agora/durable`'s `@Scheduled`, a hand-rolled interval,
+ * …), analogous to how `nestjs-telescope`'s schedule package reads `@nestjs/schedule`'s
+ * `SchedulerRegistry` — except here nothing can be read, only told.
+ *
+ * `nextRunAt` is computed from the registered cron expression via the OPTIONAL `cron-parser` peer
+ * (see `cron_next_run.ts`); it is `null` for non-cron kinds or when the peer is absent — an honest
+ * "unknown" rather than a guess. There is deliberately no `running`/active-state field (unlike the
+ * NestJS `ScheduledTask.running`, which reads a real `CronJob.running` flag off `@nestjs/schedule`'s
+ * internals): AdonisJS has no equivalent object to read a running/stopped flag off, so faking one
+ * would be strictly worse than omitting it.
+ *
  * Idiomatic Adonis: a plain class, no DI decorators. The provider constructs it
  * from `config/telescope_watchers.ts` and calls {@link start} to publish it as the
  * default backing the bare {@link scheduleTask} / {@link recordScheduledRun}
@@ -123,6 +180,7 @@ export class ScheduleWatcher {
   readonly type = EntryType.ScheduledTask;
   private readonly slowMs: number;
   private readonly clock: { now(): number };
+  private readonly registrations = new Map<string, ScheduleRegistration>();
 
   constructor(options: ScheduleWatcherOptions = {}) {
     this.slowMs = options.slowMs ?? DEFAULT_SLOW_MS;
@@ -136,9 +194,38 @@ export class ScheduleWatcher {
     setDefaultScheduleWatcher(this);
   }
 
-  /** Unpublish this instance as the default (if it is). Never touches globals. */
+  /** Unpublish this instance as the default (if it is). Never touches globals. Registrations are
+   *  kept (a `stop`/`start` cycle — e.g. hot reload — shouldn't lose them), so a fresh `start()`
+   *  sees the same registry; call {@link unregister} explicitly to drop one. */
   stop(): void {
     if (getDefaultScheduleWatcher() === this) setDefaultScheduleWatcher(null);
+  }
+
+  /**
+   * Register (or re-register — idempotent by `name`) a schedule so it shows up in
+   * {@link list} with a computed `nextRunAt`, joined against its `scheduled_task` run history by the
+   * UI layer. Call this once per scheduled task, e.g. right after wiring it into your scheduler:
+   *
+   * @example
+   *   import { registerSchedule, scheduleTask } from '@adonis-agora/telescope/watchers'
+   *   registerSchedule({ name: 'prune-sessions', schedule: '0 * * * *', kind: 'cron' })
+   *   scheduler.call(() => scheduleTask('prune-sessions', () => Session.pruneExpired(), {
+   *     schedule: '0 * * * *',
+   *   })).hourly()
+   */
+  register(registration: ScheduleRegistration): void {
+    this.registrations.set(registration.name, registration);
+  }
+
+  /** Drop a registration (the task was removed / the app is shutting it down). No-op if unknown. */
+  unregister(name: string): void {
+    this.registrations.delete(name);
+  }
+
+  /** Every registered schedule, with `nextRunAt` computed from `now`. Order is registration order. */
+  list(): RegisteredSchedule[] {
+    const now = this.clock.now();
+    return [...this.registrations.values()].map((reg) => toRegisteredSchedule(reg, now));
   }
 
   /** Record one already-completed scheduled run. Fire-and-forget; never throws. */
@@ -250,6 +337,48 @@ export function buildScheduleEntry(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Map a registration + "now" to its {@link RegisteredSchedule}, computing `nextRunAt` for
+ *  `cron`-kind entries. Exported so it's unit-testable without a live watcher. */
+export function toRegisteredSchedule(reg: ScheduleRegistration, nowMs: number): RegisteredSchedule {
+  const kind: ScheduleKind = reg.kind ?? 'cron';
+  const schedule = typeof reg.schedule === 'string' ? reg.schedule : null;
+  const timezone = typeof reg.timezone === 'string' ? reg.timezone : null;
+  const nextRunMs =
+    kind === 'cron' && schedule !== null ? nextCronRunMs(schedule, nowMs, timezone) : null;
+  return {
+    name: reg.name,
+    kind,
+    schedule,
+    timezone,
+    nextRunAt: nextRunMs !== null ? new Date(nextRunMs).toISOString() : null,
+  };
+}
+
+/**
+ * Register (or re-register) a schedule through the provider-published default watcher, so it shows
+ * up in the dashboard's Live Schedules view. A NO-OP when the schedule watcher is not enabled, so
+ * it's safe to call unconditionally (e.g. at the top of a boot file that wires up cron jobs).
+ *
+ * @example
+ *   import { registerSchedule } from '@adonis-agora/telescope/watchers'
+ *   registerSchedule({ name: 'prune-sessions', schedule: '0 * * * *', kind: 'cron' })
+ */
+export function registerSchedule(registration: ScheduleRegistration): void {
+  getDefaultScheduleWatcher()?.register(registration);
+}
+
+/** Drop a registration through the provider-published default watcher. A no-op when the schedule
+ *  watcher is not enabled or the name was never registered. */
+export function unregisterSchedule(name: string): void {
+  getDefaultScheduleWatcher()?.unregister(name);
+}
+
+/** Every registered schedule (with computed `nextRunAt`) through the provider-published default
+ *  watcher, or `[]` when the schedule watcher is not enabled. */
+export function listRegisteredSchedules(): RegisteredSchedule[] {
+  return getDefaultScheduleWatcher()?.list() ?? [];
 }
 
 /**

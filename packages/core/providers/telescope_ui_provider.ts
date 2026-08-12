@@ -18,10 +18,14 @@ import {
   type TelescopeUiConfig,
   resolveConfig,
 } from '../src/ui/define_config.js';
+import { DiagnosisApi } from '../src/ui/diagnosis_api.js';
 import { ExtensionApi } from '../src/ui/extension_api.js';
 import { enforceGuard } from '../src/ui/guard.js';
 import type { SseSink, UiHttpContext } from '../src/ui/http.js';
 import { renderLoginPage } from '../src/ui/login_page.js';
+import { ProfilesApi } from '../src/ui/profiles_api.js';
+import { QueueManagerApi } from '../src/ui/queue_manager_api.js';
+import { SchedulesApi } from '../src/ui/schedules_api.js';
 
 /**
  * Wires `@adonis-agora/telescope/ui` into the AdonisJS application.
@@ -95,7 +99,29 @@ export default class TelescopeUiProvider {
           ? { nPlusOneThreshold: coreConfig.nPlusOne.threshold }
           : {}),
       },
+      // Retention/sampling posture (additive) from core `config.telescope.prune`/`sampling`.
+      { prune: coreConfig.prune, sampling: coreConfig.sampling },
     );
+    // AI exception diagnosis (additive): reads the coordinator the AI provider publishes at
+    // `register()` time — `null` when `@adonis-agora/telescope/ai` isn't installed/configured, in
+    // which case `DiagnosisApi` degrades every call to a 404 rather than throwing.
+    const diagnosisApi = new DiagnosisApi(service, getTelescopeRuntime().diagnosisCoordinator);
+
+    // CPU profiling (additive): reads the `ProfilerService` the `cpu_profiling` provider publishes
+    // at `register()` time — `null` when `@adonis-agora/telescope/cpu_profiling` isn't installed/
+    // enabled, in which case `ProfilesApi` degrades every call to a 404 rather than throwing.
+    const profilesApi = new ProfilesApi(service, getTelescopeRuntime().cpuProfiler);
+
+    // Live Queue Manager (additive): reads the driver the `queue-manager` watcher publishes at
+    // `boot()` time — `null` when not enabled/configured, in which case `QueueManagerApi` degrades
+    // every call to a 404.
+    const queueManagerApi = new QueueManagerApi(getTelescopeRuntime().queueManager);
+
+    // Live Schedules (additive): reads the registry `registerSchedule()` maintains directly (not
+    // through the runtime slot — the registry lives on the `ScheduleWatcher` module itself, exactly
+    // like `recordScheduledRun`/`scheduleTask`), joined with each schedule's most recent run.
+    const schedulesApi = new SchedulesApi(service);
+
     const apiBase = `${config.path}/api`;
 
     const router = await this.app.container.make('router');
@@ -203,6 +229,13 @@ export default class TelescopeUiProvider {
       })
       .as('telescope_ui.stats');
 
+    router
+      .get(`${apiBase}/retention`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        return api.retention(ctx);
+      })
+      .as('telescope_ui.retention');
+
     // Request replay (additive): re-issue a captured request from the dashboard.
     // A MUTATION, so it is a POST and is disabled by default (the handler answers
     // 403 unless telescope_ui `replay.enabled` is set) on top of the read guard.
@@ -212,6 +245,97 @@ export default class TelescopeUiProvider {
         return api.replayRequest(ctx, String(ctx.params.id), localPortOf(ctx));
       })
       .as('telescope_ui.replay');
+
+    // AI exception diagnosis (additive): re-diagnose (or serve the cached diagnosis for) an
+    // exception/client_exception entry. A `force=true` query string bypasses the cache. Mirrors the
+    // NestJS sibling's `POST telescope/api/exceptions/:id/diagnose` route + response shape.
+    router
+      .post(`${apiBase}/exceptions/:id/diagnose`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        const force = String(ctx.request.qs().force ?? '') === 'true';
+        return diagnosisApi.diagnose(ctx, String(ctx.params.id), force);
+      })
+      .as('telescope_ui.diagnose');
+
+    // CPU profiling (additive): capture/inspect real V8 CPU profiles. Registered unconditionally
+    // (like `diagnose`); `ProfilesApi` itself 404s every route when the feature isn't installed.
+    router
+      .get(`${apiBase}/profiles/status`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        return profilesApi.status(ctx);
+      })
+      .as('telescope_ui.profiles_status');
+
+    router
+      .get(`${apiBase}/profiles`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        return profilesApi.list(ctx);
+      })
+      .as('telescope_ui.profiles');
+
+    router
+      .get(`${apiBase}/profiles/:id`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        return profilesApi.show(ctx, String(ctx.params.id));
+      })
+      .as('telescope_ui.profile');
+
+    // A MUTATION (real CPU overhead), so — like replay — it stays behind its own default-deny gate
+    // (`telescope_ui.cpuProfiling.armEnabled`) on top of the read guard.
+    router
+      .post(`${apiBase}/profiles/arm`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        if (!config.cpuProfiling.armEnabled) {
+          return ctx.response.status(403).send({
+            error:
+              'Arming a CPU capture is disabled (set telescope_ui `cpuProfiling.armEnabled: true`).',
+          });
+        }
+        return profilesApi.arm(ctx, bodyOf(ctx));
+      })
+      .as('telescope_ui.profiles_arm');
+
+    // Live Schedules (additive): registered schedules + computed next-run, joined with last-run.
+    router
+      .get(`${apiBase}/schedules/live`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        return schedulesApi.live(ctx);
+      })
+      .as('telescope_ui.schedules_live');
+
+    // Live Queue Manager (additive): read routes registered unconditionally (like `profiles/*`);
+    // `QueueManagerApi` itself 404s when the capability isn't enabled/configured.
+    router
+      .get(`${apiBase}/queues/live`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        return queueManagerApi.list(ctx, config.queueActions.enabled);
+      })
+      .as('telescope_ui.queues_live');
+
+    router
+      .get(`${apiBase}/queues/live/:queue/jobs/:id`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        return queueManagerApi.job(ctx, String(ctx.params.queue), String(ctx.params.id));
+      })
+      .as('telescope_ui.queues_live_job');
+
+    // Job/queue MUTATIONS: real actions against real jobs, so — like replay/arm — they stay behind
+    // their own default-deny gate (`telescope_ui.queueActions.enabled`) on top of the read guard.
+    router
+      .post(`${apiBase}/queues/live/:queue/jobs/:id/retry`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
+        return queueManagerApi.retry(ctx, String(ctx.params.queue), String(ctx.params.id));
+      })
+      .as('telescope_ui.queues_live_retry');
+
+    router
+      .post(`${apiBase}/queues/live/:queue/enqueue`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
+        return queueManagerApi.enqueue(ctx, String(ctx.params.queue), bodyOf(ctx));
+      })
+      .as('telescope_ui.queues_live_enqueue');
 
     // Metrics analytics (stats/timeseries/percentiles/traces/waterfall) + N+1.
     router
@@ -289,28 +413,40 @@ export default class TelescopeUiProvider {
 
     // Extension SDK surface (only when at least one extension contributed a registry at boot).
     const registry = getTelescopeRuntime().registry;
+    const extApi = registry
+      ? new ExtensionApi(registry, {
+          store,
+          container: { make: (token) => this.app.container.make(token as never) },
+          config: resolveTelescopeConfig(this.app.config.get('telescope', {})),
+        } satisfies ExtensionContext)
+      : null;
+
     if (registry) {
-      const extCtx: ExtensionContext = {
-        store,
-        container: { make: (token) => this.app.container.make(token as never) },
-        config: resolveTelescopeConfig(this.app.config.get('telescope', {})),
-      };
-      const extApi = new ExtensionApi(registry, extCtx);
-
-      router
-        .get(`${apiBase}/meta`, async (ctx: GuardedContext) => {
-          if (!(await gate(ctx))) return;
-          return extApi.meta(ctx);
-        })
-        .as('telescope_ui.meta');
-
       router
         .get(`${apiBase}/ext/:ext/data/:provider`, async (ctx: GuardedContext) => {
           if (!(await gate(ctx))) return;
-          return extApi.data(ctx, String(ctx.params.ext), String(ctx.params.provider));
+          return extApi?.data(ctx, String(ctx.params.ext), String(ctx.params.provider));
         })
         .as('telescope_ui.ext_data');
     }
+
+    // `GET <path>/api/meta` — always registered (unlike the extension-only routes above), because
+    // the dashboard's `ai.enabled` flag lives here too. `entryTypes`/`dashboards` are empty when no
+    // extension registry booted; the client already treats a 404 here as "nothing contributed", so
+    // registering this unconditionally is purely additive.
+    router
+      .get(`${apiBase}/meta`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        const ai = { enabled: diagnosisApi.isConfigured() };
+        const profiling = { enabled: profilesApi.isConfigured() };
+        const queueManager = { enabled: queueManagerApi.isConfigured() };
+        if (extApi) return extApi.meta(ctx, { ai, profiling, queueManager });
+        return ctx.response
+          .status(200)
+          .header('content-type', 'application/json')
+          .send({ data: { entryTypes: [], dashboards: [], ai, profiling, queueManager } });
+      })
+      .as('telescope_ui.meta');
   }
 }
 
@@ -339,6 +475,25 @@ interface StreamContext extends UiHttpContext {
 
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Read the parsed JSON body off a real Adonis `HttpContext`'s request. `UiRequest` (the
+ * framework-light interface these routes are typed against) deliberately has no `body()` — every
+ * OTHER route here takes its parameters from the URL/query string — so this reads it structurally
+ * off the real `ctx` the router hands in, the same "cast down to what we actually need" pattern
+ * {@link localPortOf} uses for the raw socket.
+ */
+function bodyOf(ctx: GuardedContext): Record<string, unknown> {
+  const body: unknown = (ctx as unknown as { request: { body?(): unknown } }).request.body?.();
+  return body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+}
+
+/** `403` for a queue mutation route when `telescope_ui.queueActions.enabled` is not set. */
+function queueMutationsDisabled(ctx: GuardedContext): unknown {
+  return ctx.response
+    .status(403)
+    .send({ error: 'Queue actions are disabled (set telescope_ui `queueActions.enabled: true`).' });
 }
 
 /**

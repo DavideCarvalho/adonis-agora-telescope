@@ -3,10 +3,43 @@ import type { Entry } from '../entry.js';
 import { MetricsService, type MetricsServiceOptions } from '../metrics/metrics_service.js';
 import { PulseService, type PulseServiceOptions } from '../metrics/pulse.js';
 import type { RequestEntryContent } from '../request_watcher.js';
+import type { SamplingConfig } from '../sampling/sampling.js';
 import type { TelescopeService } from '../service.js';
 import type { EntryQuery } from '../store.js';
 import type { UiHttpContext, UiRequest } from './http.js';
 import { type ReplayOptions, type ReplayResult, replayRequest } from './request_replay.js';
+
+/** The resolved pruner slice the retention endpoint echoes (mirrors `ResolvedTelescopeConfig['prune']`). */
+export interface RetentionPruneOptions {
+  enabled: boolean;
+  afterMs: number;
+  keepLast?: number;
+  intervalMs: number;
+}
+
+/** Constructor options for the additive `GET <path>/api/retention` endpoint. */
+export interface RetentionOptions {
+  /** The resolved pruner config, or `undefined` when no `prune` block was configured. */
+  prune?: RetentionPruneOptions;
+  /** The resolved per-type sampling config (empty ⇒ nothing is sampled). */
+  sampling?: SamplingConfig;
+}
+
+/** One entry type recording below 100%, for the dashboard's "some data is sampled" note. */
+export interface RetentionSamplingRate {
+  type: string;
+  rate: number;
+}
+
+/** `GET <path>/api/retention` payload — static retention/sampling posture, no live pruner state. */
+export interface RetentionInfo {
+  enabled: boolean;
+  afterMs: number;
+  keepLast: number | null;
+  intervalMs: number;
+  /** Only types sampled below 100% (rate < 1) are listed. */
+  sampling: RetentionSamplingRate[];
+}
 
 /** Default number of entries returned by the list endpoint when no `limit` is given. */
 const DEFAULT_LIMIT = 50;
@@ -24,16 +57,20 @@ export class TelescopeApi {
   private readonly pulse: PulseService;
   /** Request-replay settings (additive). Replay is disabled unless `enabled`. */
   private readonly replay: { enabled: boolean } & ReplayOptions;
+  /** Retention/sampling posture (additive). Empty when the host configured neither. */
+  private readonly retentionOptions: RetentionOptions;
 
   constructor(
     private readonly service: TelescopeService,
     metricsOptions: MetricsServiceOptions = {},
     replayOptions: ({ enabled?: boolean } & ReplayOptions) | undefined = undefined,
     pulseOptions: PulseServiceOptions = {},
+    retentionOptions: RetentionOptions = {},
   ) {
     this.metrics = new MetricsService(service.telescopeStore, metricsOptions);
     this.pulse = new PulseService(service.telescopeStore, pulseOptions);
     this.replay = { enabled: false, ...replayOptions };
+    this.retentionOptions = retentionOptions;
   }
 
   /**
@@ -186,6 +223,30 @@ export class TelescopeApi {
     } catch (err) {
       return ctx.response.status(400).send({ error: asMessage(err) });
     }
+  }
+
+  /**
+   * `GET <path>/api/retention` — the STATIC retention/sampling posture: the
+   * configured pruner cutoff (age + optional keep-last floor + cycle interval)
+   * and which entry types are being tail-sampled below 100%. No live pruner
+   * state (last/next run) — the `TelescopePruner` instance is a per-process
+   * runtime handle, not something this framework-light API layer reaches into;
+   * a host wanting run history can read `TelescopePruner.getRuns()` directly.
+   */
+  async retention(ctx: UiHttpContext): Promise<unknown> {
+    const prune = this.retentionOptions.prune;
+    const sampling = this.retentionOptions.sampling ?? {};
+    const rates: RetentionSamplingRate[] = Object.entries(sampling)
+      .map(([type, rule]) => ({ type, rate: typeof rule === 'number' ? rule : rule.rate }))
+      .filter((entry) => entry.rate < 1);
+    const data: RetentionInfo = {
+      enabled: prune?.enabled ?? false,
+      afterMs: prune?.afterMs ?? 0,
+      keepLast: prune?.keepLast ?? null,
+      intervalMs: prune?.intervalMs ?? 0,
+      sampling: rates,
+    };
+    return ctx.response.status(200).header('content-type', 'application/json').send({ data });
   }
 
   // — request replay (additive: kept in its own region for trivial merges) —
