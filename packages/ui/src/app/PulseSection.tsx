@@ -2,7 +2,18 @@ import { useState } from 'react';
 import { formatCount, formatDuration, formatPercent } from '../client/format.js';
 import type { PulseSummary } from '../client/types.js';
 import { WindowSelect } from './WindowSelect.js';
-import { AsyncBlock, Panel, SectionTitle, Sparkline, Stat, clickable } from './ui.js';
+import { cn } from './primitives/cn.js';
+import { Table, TableBody, TableCell, TableRow } from './primitives/table.js';
+import {
+  AsyncBlock,
+  Empty,
+  Panel,
+  SectionTitle,
+  ShareBar,
+  Sparkline,
+  Stat,
+  clickable,
+} from './ui.js';
 import { usePulse } from './use-telescope.js';
 
 /**
@@ -15,9 +26,9 @@ export function PulseSection({ onOpenTrace }: { onOpenTrace: (traceId: string) =
   const state = usePulse(windowMs);
 
   return (
-    <div className="stack">
-      <div className="section-title">
-        <h2>Pulse · health overview</h2>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm text-brand">Pulse · health overview</h2>
         <WindowSelect value={windowMs} onChange={setWindowMs} />
       </div>
       <AsyncBlock state={state} empty="No data in this window." skeletonRows={4}>
@@ -35,12 +46,16 @@ function PulseBody({
   onOpenTrace: (traceId: string) => void;
 }) {
   const errorClass =
-    pulse.requests.errorRate >= 0.05 ? 'bad' : pulse.requests.errorRate > 0 ? 'warn' : 'good';
+    pulse.requests.errorRate >= 0.05
+      ? 'text-bad'
+      : pulse.requests.errorRate > 0
+        ? 'text-warn'
+        : 'text-good';
   const throughputSeries = pulse.throughput.overTime.buckets.map((b) => b.total);
 
   return (
-    <div className="stack">
-      <div className="grid stat-4">
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <Stat
           label="Throughput"
           value={formatCount(pulse.throughput.total)}
@@ -68,7 +83,7 @@ function PulseBody({
         <Sparkline values={throughputSeries} width={1180} height={64} />
       </Panel>
 
-      <div className="grid cols-2">
+      <div className="grid grid-cols-2 gap-4">
         <Panel>
           <SectionTitle title="HTTP status" />
           <StatusBars status={pulse.requests.status} total={pulse.requests.total} />
@@ -142,7 +157,7 @@ function PulseBody({
       {pulse.cache && (
         <Panel>
           <SectionTitle title="Cache" hint={`hit ratio ${formatPercent(pulse.cache.hitRatio)}`} />
-          <div className="grid stat-4">
+          <div className="grid grid-cols-4 gap-4">
             <Stat label="Hits" value={formatCount(pulse.cache.hits)} />
             <Stat label="Misses" value={formatCount(pulse.cache.misses)} />
             <Stat label="Sets" value={formatCount(pulse.cache.sets)} />
@@ -161,25 +176,23 @@ function StatusBars({
   status: PulseSummary['requests']['status'];
   total: number;
 }) {
-  const rows: { key: keyof typeof status; color: string }[] = [
-    { key: '2xx', color: 'var(--good)' },
-    { key: '3xx', color: 'var(--info)' },
-    { key: '4xx', color: 'var(--warn)' },
-    { key: '5xx', color: 'var(--bad)' },
-    { key: 'other', color: 'var(--muted)' },
+  const rows: { key: keyof typeof status; textClass: string; barColor: string }[] = [
+    { key: '2xx', textClass: 'text-good', barColor: 'var(--good)' },
+    { key: '3xx', textClass: 'text-live', barColor: 'var(--live)' },
+    { key: '4xx', textClass: 'text-warn', barColor: 'var(--warn)' },
+    { key: '5xx', textClass: 'text-bad', barColor: 'var(--bad)' },
+    { key: 'other', textClass: 'text-muted-foreground', barColor: 'var(--muted)' },
   ];
   const denom = total > 0 ? total : 1;
   return (
-    <div className="stack" style={{ gap: 10 }}>
-      {rows.map(({ key, color }) => (
-        <div key={key} className="controls" style={{ gap: 10 }}>
-          <span className="mono" style={{ width: 44, color }}>
-            {key}
-          </span>
-          <div className="bar" style={{ flex: 1 }}>
-            <span style={{ width: `${(status[key] / denom) * 100}%`, background: color }} />
+    <div className="flex flex-col gap-2.5">
+      {rows.map(({ key, textClass, barColor }) => (
+        <div key={key} className="flex items-center gap-2.5">
+          <span className={cn('mono w-11', textClass)}>{key}</span>
+          <div className="flex-1">
+            <ShareBar fraction={status[key] / denom} color={barColor} />
           </div>
-          <span className="tnum muted" style={{ width: 56, textAlign: 'right' }}>
+          <span className="tnum w-14 text-right text-muted-foreground">
             {formatCount(status[key])}
           </span>
         </div>
@@ -197,31 +210,24 @@ function HotspotList({
   empty: string;
   onOpenTrace?: (traceId: string) => void;
 }) {
-  if (rows.length === 0) return <div className="empty">{empty}</div>;
+  if (rows.length === 0) return <Empty>{empty}</Empty>;
   return (
-    <div className="table-wrap">
-      <table className="table">
-        <tbody>
-          {rows.map((row) => {
-            const linkable = row.traceId && onOpenTrace;
-            return (
-              <tr
-                key={row.key}
-                className={linkable ? 'row-link' : undefined}
-                {...(linkable ? clickable(() => onOpenTrace?.(row.traceId as string)) : {})}
-              >
-                <td
-                  className="mono"
-                  style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis' }}
-                >
-                  {row.label}
-                </td>
-                <td className="num tnum muted">{row.right}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <TableBody>
+        {rows.map((row) => {
+          const linkable = row.traceId && onOpenTrace;
+          return (
+            <TableRow
+              key={row.key}
+              className={cn(linkable && 'cursor-pointer hover:bg-brand/5')}
+              {...(linkable ? clickable(() => onOpenTrace?.(row.traceId as string)) : {})}
+            >
+              <TableCell className="mono max-w-[420px] truncate">{row.label}</TableCell>
+              <TableCell className="tnum text-right text-muted-foreground">{row.right}</TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }

@@ -111,6 +111,76 @@ export function useMetricsStats(type: string, windowMs: number) {
   return useAsync(() => client.metricsStats(type, windowMs), [client, type, windowMs]);
 }
 
+export function useRetention() {
+  const client = useTelescopeClient();
+  return useAsync(() => client.retention(), [client]);
+}
+
+export function useMeta() {
+  const client = useTelescopeClient();
+  return useAsync(() => client.meta(), [client]);
+}
+
+// ── CPU profiling ──────────────────────────────────────────────────────────
+
+export function useProfilerStatus() {
+  const client = useTelescopeClient();
+  return useAsync(() => client.profilerStatus(), [client]);
+}
+
+export function useProfiles(limit = 100) {
+  const client = useTelescopeClient();
+  return useAsync(() => client.profiles(limit), [client, limit]);
+}
+
+export function useProfile(id: string | null) {
+  const client = useTelescopeClient();
+  return useAsync(() => (id === null ? Promise.resolve(null) : client.profile(id)), [client, id]);
+}
+
+/** Mutation-style hook: `arm(count, label?)` returns the `ArmOutcome` (never throws). */
+export function useArmProfile() {
+  const client = useTelescopeClient();
+  return useCallback((count: number, label?: string) => client.armProfile(count, label), [client]);
+}
+
+// ── live queue manager ───────────────────────────────────────────────────
+
+export function useLiveQueues() {
+  const client = useTelescopeClient();
+  return useAsync(() => client.liveQueues(), [client]);
+}
+
+export function useQueueJob(queue: string | null, id: string | null) {
+  const client = useTelescopeClient();
+  return useAsync(
+    () => (queue === null || id === null ? Promise.resolve(null) : client.queueJob(queue, id)),
+    [client, queue, id],
+  );
+}
+
+// ── live schedules ───────────────────────────────────────────────────────
+
+export function useLiveSchedules() {
+  const client = useTelescopeClient();
+  return useAsync(() => client.liveSchedules(), [client]);
+}
+
+const extQueryKey = (query: Record<string, string> | undefined) =>
+  query
+    ? Object.entries(query)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .join('&')
+    : '';
+
+export function useExtensionData<T>(ext: string, provider: string, query?: Record<string, string>) {
+  const client = useTelescopeClient();
+  return useAsync(
+    () => client.extData<T>(ext, provider, query),
+    [client, ext, provider, extQueryKey(query)],
+  );
+}
+
 // ── live tail (SSE) ────────────────────────────────────────────────────────
 
 /**

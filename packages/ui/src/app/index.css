@@ -1,511 +1,214 @@
-/* ------------------------------------------------------------------ *
- * Telescope observability dashboard — Agora AdonisJS violet on a
- * dusk-ink canvas, warm-paper in light. Tokens mirror the Agora site
- * (`--agora-*`) and the sibling Agora dashboards.
- * ------------------------------------------------------------------ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/*
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Aviary console tokens — ported byte-for-byte from `@dudousxd/nestjs-telescope-ui`'s
+ * `src/app/index.css` (this console's NestJS sibling: same product, same tokens,
+ * same `--accent` magenta) so the AdonisJS dashboard matches it 1:1 instead of the
+ * bespoke Agora-violet palette this file used to declare. The shared neutrals and
+ * status hues are identical across every Aviary console (agent, durable, media,
+ * telescope); `--accent` is the one line that is per-console, and telescope's is
+ * the same in both hosts.
+ *
+ * Telescope has a user-facing light mode, so the tokens are declared twice:
+ * `:root` holds the canonical dark values, `.light` re-points the SAME names at
+ * light equivalents — anything expressed in tokens themes for free.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 :root {
-  --agora-primary: #5a45ff;
-  --agora-primary-soft: hsl(250 74% 51% / 0.14);
-  --agora-accent: #06b6d4;
+  /* ── Shared. Identical in all four consoles. Do not tune per console. ── */
+  --bg: #09090b;
+  --panel: #0c0c0f;
+  --panel-2: #101017; /* elevated surface: modal/dialog, drawer, popover, menu */
+  --line: #1c1c22;
+  --line-soft: #16161a;
+  --text: #e7e7ea;
+  --muted: #76767f;
 
-  /* dark is the default canvas (deep dusk ink + warm bone text) */
-  --bg: hsl(240 10% 6.5%);
-  --panel: hsl(240 9% 9%);
-  --panel-2: hsl(240 9% 11%);
-  --line: hsl(40 30% 82% / 0.1);
-  --line-soft: hsl(40 30% 82% / 0.05);
-  --text: hsl(40 28% 92%);
-  --muted: hsl(40 12% 66%);
-  --primary: var(--agora-primary);
-  --primary-fg: hsl(40 40% 96%);
+  /* Status. Semantic, never decorative. */
   --good: #34d399;
   --warn: #fbbf24;
   --bad: #f87171;
-  --info: var(--agora-accent);
-}
+  --live: #60a5fa; /* in flight: a live tail streaming, a request mid-execution */
 
-:root[data-theme="light"],
-:root:not([data-theme="dark"]) {
-  color-scheme: light;
-}
-:root[data-theme="dark"] {
+  /* ── Per console. Telescope: magenta, matching the NestJS sibling. ── */
+  --accent: #e879f9;
+
   color-scheme: dark;
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: hsl(40 30% 96%);
-    --panel: hsl(40 28% 98%);
-    --panel-2: hsl(40 24% 95%);
-    --line: hsl(240 10% 14% / 0.12);
-    --line-soft: hsl(240 10% 14% / 0.06);
-    --text: hsl(240 14% 12%);
-    --muted: hsl(240 6% 42%);
-    --primary-fg: hsl(40 40% 97%);
-  }
-}
-:root[data-theme="light"] {
-  --bg: hsl(40 30% 96%);
-  --panel: hsl(40 28% 98%);
-  --panel-2: hsl(40 24% 95%);
-  --line: hsl(240 10% 14% / 0.12);
-  --line-soft: hsl(240 10% 14% / 0.06);
-  --text: hsl(240 14% 12%);
-  --muted: hsl(240 6% 42%);
-  --primary-fg: hsl(40 40% 97%);
+/* Light theme. Same token names, light values — every token-based surface, border, label and
+ * status flips with it. Toggled by adding `.light` to `<html>` (see `App.tsx`). */
+.light {
+  --bg: #ffffff;
+  --panel: #fafafa;
+  --panel-2: #f4f4f5;
+  --line: #e4e4e7;
+  --line-soft: #efeff1;
+  --text: #18181b;
+  --muted: #71717a;
+
+  --good: #047857;
+  --warn: #b45309;
+  --bad: #dc2626;
+  --live: #1d4ed8;
+
+  --accent: #a21caf;
+
+  color-scheme: light;
 }
 
 * {
   box-sizing: border-box;
 }
+
 html,
 body,
 #root {
   height: 100%;
-  margin: 0;
 }
+
 body {
+  margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 .mono {
-  font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
 }
+
 .tnum {
   font-variant-numeric: tabular-nums;
 }
 
+/* Faint blueprint grid + top glow — atmosphere, not noise. */
 .app-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   background-image: radial-gradient(
-      900px 420px at 82% -10%,
-      hsl(250 74% 51% / 0.12),
+      900px 400px at 78% -8%,
+      color-mix(in srgb, var(--accent) 8%, transparent),
       transparent 70%
-    ), radial-gradient(700px 360px at 8% -12%, hsl(190 90% 50% / 0.06), transparent 70%);
-  opacity: 0.9;
+    ), linear-gradient(to right, var(--line-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px);
+  background-size: 100% 100%, 44px 44px, 44px 44px;
+  mask-image: linear-gradient(to bottom, black, black 60%, transparent);
+  opacity: 0.5;
 }
 
-.shell {
-  position: relative;
-  z-index: 1;
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 28px 24px 64px;
+/*
+ * Tinted pills/chips: one class per semantic role, each setting background, border and text
+ * together. `bg-good/10 border-good/40 text-good` would work too (the `token()` colour functions in
+ * `tailwind.config.ts` make the opacity modifier resolve) — these exist because a handful of call
+ * sites need the tint as ONE class rather than three kept in sync.
+ */
+.tint-brand {
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
 }
-
-/* header */
-.masthead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 22px;
+.tint-good {
+  background-color: color-mix(in srgb, var(--good) 12%, transparent);
+  border-color: color-mix(in srgb, var(--good) 40%, transparent);
+  color: var(--good);
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.tint-warn {
+  background-color: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  color: var(--warn);
 }
-.brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  color: var(--primary-fg);
-  background: linear-gradient(140deg, var(--agora-primary), #8b78ff);
-  box-shadow: 0 6px 20px hsl(250 74% 51% / 0.35);
-  font-weight: 700;
+.tint-bad {
+  background-color: color-mix(in srgb, var(--bad) 12%, transparent);
+  border-color: color-mix(in srgb, var(--bad) 40%, transparent);
+  color: var(--bad);
 }
-.brand h1 {
-  font-size: 17px;
-  margin: 0;
-  letter-spacing: -0.01em;
-}
-.brand p {
-  margin: 1px 0 0;
-  font-size: 12px;
+.tint-muted {
+  background-color: var(--panel-2);
+  border-color: var(--line);
   color: var(--muted);
 }
 
-/* nav tabs */
-.tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
-.tab {
-  appearance: none;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--muted);
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border: 3px solid var(--bg);
   border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 13px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-.tab:hover {
-  color: var(--text);
-}
-.tab[aria-selected="true"] {
-  color: var(--primary-fg);
-  background: var(--primary);
-  border-color: var(--primary);
 }
 
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
-.input,
-.range-input,
-.select {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 13px;
-  font-family: inherit;
-}
-.input {
-  min-width: 220px;
-}
-.icon-btn,
-.btn {
-  appearance: none;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--muted);
-  border-radius: 8px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-}
-.icon-btn {
-  width: 34px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-}
-.btn {
-  padding: 7px 12px;
-}
-.icon-btn:hover,
-.btn:hover {
-  color: var(--text);
-}
-.btn.primary {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: var(--primary-fg);
-}
-.btn.active {
-  color: var(--primary-fg);
-  background: var(--primary);
-  border-color: var(--primary);
+.rise {
+  animation: rise 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
-/* live indicator */
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--line-soft), var(--line), var(--line-soft));
+  background-size: 200% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+  height: 14px;
+}
+
+@keyframes pulse-dot {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 50%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--good) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 0%, transparent);
+  }
+}
 .live-dot {
   width: 8px;
   height: 8px;
   border-radius: 999px;
   background: var(--good);
   display: inline-block;
-  box-shadow: 0 0 0 0 hsl(152 60% 52% / 0.6);
-  animation: pulse 1.8s infinite;
-}
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 hsl(152 60% 52% / 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 6px hsl(152 60% 52% / 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 hsl(152 60% 52% / 0);
-  }
+  animation: pulse-dot 1.8s infinite;
 }
 
-/* panels + grid */
-.panel {
-  background: linear-gradient(180deg, var(--panel-2), var(--panel));
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 18px;
-}
-.grid {
-  display: grid;
-  gap: 16px;
-}
-.grid.cols-3 {
-  grid-template-columns: repeat(3, 1fr);
-}
-.grid.cols-2 {
-  grid-template-columns: repeat(2, 1fr);
-}
-.grid.stat-4 {
-  grid-template-columns: repeat(4, 1fr);
-}
-.grid.detail {
-  grid-template-columns: 2fr 1fr;
-  align-items: start;
-}
-@media (max-width: 900px) {
-  .grid.cols-3,
-  .grid.cols-2,
-  .grid.stat-4,
-  .grid.detail {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-@media (max-width: 560px) {
-  .grid.cols-3,
-  .grid.cols-2,
-  .grid.stat-4,
-  .grid.detail {
-    grid-template-columns: 1fr;
-  }
-}
-
-.stat .label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  margin-bottom: 8px;
-}
-.stat .value {
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-.stat .sub {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 4px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0 0 14px;
-  gap: 12px;
-}
-.section-title h2 {
-  font-size: 14px;
-  margin: 0;
-  letter-spacing: 0.01em;
-}
-.section-title .hint {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-/* tables */
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.table th {
-  text-align: left;
-  font-weight: 500;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  padding: 0 10px 10px;
-  border-bottom: 1px solid var(--line);
-}
-.table td {
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--line-soft);
-  vertical-align: middle;
-}
-.table tr:last-child td {
-  border-bottom: none;
-}
-.table .num {
-  text-align: right;
-}
-.table-wrap {
-  overflow-x: auto;
-}
-.row-link {
-  cursor: pointer;
-}
-.row-link:hover td {
-  background: var(--agora-primary-soft);
-}
-.row-new td {
-  animation: flash 1.2s ease-out;
-}
 @keyframes flash {
   from {
-    background: var(--agora-primary-soft);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
   }
   to {
     background: transparent;
   }
 }
-
-/* type badge */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid transparent;
-  background: color-mix(in srgb, currentColor 14%, transparent);
-  white-space: nowrap;
-}
-.badge .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: currentColor;
+.row-new td {
+  animation: flash 1.2s ease-out;
 }
 
-/* share bar */
-.bar {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--line);
-  overflow: hidden;
-  min-width: 60px;
-}
-.bar > span {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--primary);
-}
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  border: 1px solid var(--line);
-  color: var(--muted);
-}
-.tag {
-  font-size: 11px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 1px 6px;
-  margin-right: 4px;
-  white-space: nowrap;
-}
-.tag.link {
-  cursor: pointer;
-  color: var(--info);
-}
-button.tag {
-  appearance: none;
-  background: none;
-  font: inherit;
-  cursor: pointer;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--text);
-}
-.chip button {
-  appearance: none;
-  border: none;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-  padding: 0;
-}
-
-/* segmented toggle */
-.segmented {
-  display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.segmented button {
-  appearance: none;
-  border: none;
-  background: var(--panel);
-  color: var(--muted);
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  font-family: inherit;
-}
-.segmented button[aria-selected="true"] {
-  background: var(--primary);
-  color: var(--primary-fg);
-}
-
-/* code / json */
-pre.code {
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px;
-  font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  overflow-x: auto;
-  margin: 0;
-  white-space: pre;
-}
-
-/* meta list */
-.meta {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 8px 16px;
-  font-size: 13px;
-}
-.meta dt {
-  color: var(--muted);
-}
-.meta dd {
-  margin: 0;
-  word-break: break-word;
-}
-
-/* waterfall */
+/* Waterfall trace view — a dense, grid-based timeline that composing from plain utilities loses
+ * legibility on (many rows, thin bars, a shared time-scale track). Kept as hand-written CSS, same as
+ * `entries-table`'s host in the NestJS sibling. */
 .waterfall {
   display: flex;
   flex-direction: column;
@@ -570,72 +273,8 @@ pre.code {
   flex: none;
 }
 
-/* status/state helpers */
-.empty {
-  color: var(--muted);
-  font-size: 13px;
-  text-align: center;
-  padding: 26px 10px;
-}
-.err {
-  color: var(--bad);
-  font-size: 13px;
-  padding: 20px 10px;
-  text-align: center;
-}
-.skeleton {
-  border-radius: 8px;
-  background: linear-gradient(90deg, var(--line-soft), var(--line), var(--line-soft));
-  background-size: 200% 100%;
-  animation: shimmer 1.3s ease-in-out infinite;
-  height: 14px;
-}
-@keyframes shimmer {
-  from {
-    background-position: 200% 0;
-  }
-  to {
-    background-position: -200% 0;
-  }
-}
-
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.muted {
-  color: var(--muted);
-}
-.good {
-  color: var(--good);
-}
-.warn {
-  color: var(--warn);
-}
-.bad {
-  color: var(--bad);
-}
-.right {
-  text-align: right;
-}
 .chart-svg {
   width: 100%;
   height: auto;
   display: block;
-}
-.foot {
-  margin-top: 26px;
-  font-size: 11px;
-  color: var(--muted);
-  text-align: center;
-}
-.back {
-  appearance: none;
-  border: none;
-  background: none;
-  color: var(--info);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0 0 12px;
 }

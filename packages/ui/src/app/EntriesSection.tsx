@@ -1,6 +1,25 @@
 import { useMemo, useState } from 'react';
 import { formatDuration, formatRelative, formatTime } from '../client/format.js';
 import { ENTRY_TYPES, type EntriesQuery, type EntrySummary } from '../client/types.js';
+import { Badge } from './primitives/badge.js';
+import { Button } from './primitives/button.js';
+import { cn } from './primitives/cn.js';
+import { InputField } from './primitives/input.js';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './primitives/select.js';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './primitives/table.js';
 import { AsyncBlock, Panel, SectionTitle, TypeBadge, clickable } from './ui.js';
 import { useEntries, useLiveTail } from './use-telescope.js';
 
@@ -12,11 +31,15 @@ import { useEntries, useLiveTail } from './use-telescope.js';
 export function EntriesSection({
   onOpenEntry,
   onOpenTrace,
+  presetType,
 }: {
   onOpenEntry: (id: string) => void;
   onOpenTrace: (traceId: string) => void;
+  /** Initial type filter (e.g. from the command palette's "Entries: &lt;type&gt;" actions). Only
+   *  read once on mount — pass a remounting `key` from the caller to re-apply a new preset. */
+  presetType?: string;
 }) {
-  const [type, setType] = useState<string>('');
+  const [type, setType] = useState<string>(presetType ?? '');
   const [search, setSearch] = useState<string>('');
   const [draft, setDraft] = useState<string>('');
   const [live, setLive] = useState(false);
@@ -49,25 +72,27 @@ export function EntriesSection({
   const commitSearch = () => setSearch(draft.trim());
 
   return (
-    <div className="stack">
+    <div className="flex flex-col gap-4">
       <Panel>
-        <div className="controls" style={{ justifyContent: 'space-between' }}>
-          <div className="controls">
-            <select
-              className="select"
-              aria-label="filter by type"
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Select
               value={type}
-              onChange={(e) => setType(e.target.value)}
+              onValueChange={(next) => setType(typeof next === 'string' ? next : '')}
             >
-              <option value="">All types</option>
-              {ENTRY_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <input
-              className="input"
+              <SelectTrigger aria-label="filter by type" className="min-w-[9rem]">
+                <SelectValue>{(v: string | null) => (v ? v : 'All types')}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All types</SelectItem>
+                {ENTRY_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <InputField
               type="search"
               placeholder="Search summary + content…"
               aria-label="search entries"
@@ -75,33 +100,37 @@ export function EntriesSection({
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && commitSearch()}
               onBlur={commitSearch}
+              containerClassName="min-w-[220px]"
+              onClear={() => {
+                setDraft('');
+                commitSearch();
+              }}
             />
-            <button type="button" className="btn" onClick={() => state.reload()}>
+            <Button variant="outline" onClick={() => state.reload()}>
               Refresh
-            </button>
+            </Button>
           </div>
-          <button
-            type="button"
-            className={`btn${live ? ' active' : ''}`}
+          <Button
+            variant={live ? 'brand' : 'outline'}
             aria-pressed={live}
             onClick={() => setLive((v) => !v)}
           >
             {live ? <span className="live-dot" /> : null} Live tail
-          </button>
+          </Button>
         </div>
 
         {(type || search) && (
-          <div className="controls" style={{ marginTop: 12 }}>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             {type && (
-              <span className="chip">
+              <Badge variant="outline" className="gap-1.5 rounded-full px-2.5 py-1">
                 type: {type}
                 <button type="button" aria-label="clear type" onClick={() => setType('')}>
                   ×
                 </button>
-              </span>
+              </Badge>
             )}
             {search && (
-              <span className="chip">
+              <Badge variant="outline" className="gap-1.5 rounded-full px-2.5 py-1">
                 search: “{search}”
                 <button
                   type="button"
@@ -113,7 +142,7 @@ export function EntriesSection({
                 >
                   ×
                 </button>
-              </span>
+              </Badge>
             )}
           </div>
         )}
@@ -135,37 +164,42 @@ export function EntriesSection({
           skeletonRows={6}
         >
           {() => (
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Type</th>
-                    <th>Summary</th>
-                    <th className="num">Duration</th>
-                    <th>Tags</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((e, i) => (
-                    <tr
-                      key={e.id}
-                      className={`row-link${live && i < tail.entries.length ? ' row-new' : ''}`}
-                      {...clickable(() => onOpenEntry(e.id))}
-                    >
-                      <td className="muted" title={e.createdAt}>
-                        {formatRelative(e.createdAt) || formatTime(e.createdAt)}
-                      </td>
-                      <td>
-                        <TypeBadge type={e.type} />
-                      </td>
-                      <td className="mono">{e.summary}</td>
-                      <td className="num tnum">{formatDuration(e.durationMs)}</td>
-                      <td>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Summary</TableHead>
+                  <TableHead className="text-right">Duration</TableHead>
+                  <TableHead>Tags</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((e, i) => (
+                  <TableRow
+                    key={e.id}
+                    className={cn(
+                      'cursor-pointer hover:bg-brand/5',
+                      live && i < tail.entries.length && 'row-new',
+                    )}
+                    {...clickable(() => onOpenEntry(e.id))}
+                  >
+                    <TableCell className="text-muted-foreground" title={e.createdAt}>
+                      {formatRelative(e.createdAt) || formatTime(e.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <TypeBadge type={e.type} />
+                    </TableCell>
+                    <TableCell className="mono">{e.summary}</TableCell>
+                    <TableCell className="tnum text-right">
+                      {formatDuration(e.durationMs)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-1">
                         {e.traceId && (
                           <button
                             type="button"
-                            className="tag link"
+                            className="rounded border border-line px-1.5 py-0.5 text-[11px] text-brand"
                             onClick={(ev) => {
                               ev.stopPropagation();
                               onOpenTrace(e.traceId as string);
@@ -175,16 +209,16 @@ export function EntriesSection({
                           </button>
                         )}
                         {e.tags.slice(0, 4).map((t) => (
-                          <span key={t} className="tag">
+                          <Badge key={t} variant="outline">
                             {t}
-                          </span>
+                          </Badge>
                         ))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </AsyncBlock>
       </Panel>

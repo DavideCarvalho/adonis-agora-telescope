@@ -128,6 +128,9 @@ function fakeClient(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
     pulse: vi.fn().mockResolvedValue(pulseSummary),
     metricsStats: vi.fn().mockResolvedValue(exceptionStats),
     streamUrl: vi.fn().mockReturnValue('/telescope/api/stream'),
+    // `EntryDetail` reads `meta.ai.enabled` to gate the AI diagnosis panel — defaulted to disabled
+    // so the existing EntryDetail assertions below don't need to know about the AI panel at all.
+    meta: vi.fn().mockResolvedValue({ entryTypes: [], dashboards: [], ai: { enabled: false } }),
     ...overrides,
   } as unknown as TelescopeClient;
 }
@@ -221,6 +224,93 @@ describe('EntryDetail', () => {
     expect(client.getEntry).toHaveBeenCalledWith('e-1');
     expect(screen.getByText('e-1')).toBeTruthy();
     expect(screen.getByText(/view trace/)).toBeTruthy();
+  });
+});
+
+describe('EntryDetail — AI diagnosis', () => {
+  const exceptionEntry: Entry = {
+    id: 'e-2',
+    type: 'exception',
+    familyHash: 'exc:TypeError:boom',
+    content: { name: 'TypeError', message: 'boom', stack: 'at foo (a.ts:1:1)' },
+    tags: [],
+    sequence: 2,
+    durationMs: null,
+    origin: 'manual',
+    traceId: null,
+    createdAt: '2026-07-13T10:00:00.000Z',
+  };
+
+  it('hides the panel when meta.ai.enabled is false', async () => {
+    const client = fakeClient({ getEntry: vi.fn().mockResolvedValue(exceptionEntry) });
+    renderWith(client, <EntryDetail id="e-2" onOpenTrace={vi.fn()} onBack={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('e-2')).toBeTruthy());
+    expect(screen.queryByText('Diagnose with AI')).toBeNull();
+  });
+
+  it('runs a diagnosis on click and renders the markdown result', async () => {
+    const diagnoseException = vi.fn().mockResolvedValue({
+      ok: true,
+      markdown: '## Probable cause\n\nA null was dereferenced.',
+      cached: false,
+    });
+    const client = fakeClient({
+      getEntry: vi.fn().mockResolvedValue(exceptionEntry),
+      meta: vi.fn().mockResolvedValue({ entryTypes: [], dashboards: [], ai: { enabled: true } }),
+      diagnoseException,
+    });
+    renderWith(client, <EntryDetail id="e-2" onOpenTrace={vi.fn()} onBack={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('Diagnose with AI')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('Diagnose with AI'));
+    expect(diagnoseException).toHaveBeenCalledWith('e-2', false);
+    await waitFor(() => expect(screen.getByText('A null was dereferenced.')).toBeTruthy());
+    expect(screen.getByText('Re-run')).toBeTruthy();
+
+    fireEvent.click(screen.getByText('Re-run'));
+    expect(diagnoseException).toHaveBeenCalledWith('e-2', true);
+  });
+
+  it('renders the failure message when diagnosis is unavailable', async () => {
+    const client = fakeClient({
+      getEntry: vi.fn().mockResolvedValue(exceptionEntry),
+      meta: vi.fn().mockResolvedValue({ entryTypes: [], dashboards: [], ai: { enabled: true } }),
+      diagnoseException: vi
+        .fn()
+        .mockResolvedValue({ ok: false, message: 'AI diagnosis failed or timed out.' }),
+    });
+    renderWith(client, <EntryDetail id="e-2" onOpenTrace={vi.fn()} onBack={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('Diagnose with AI')).toBeTruthy());
+    fireEvent.click(screen.getByText('Diagnose with AI'));
+    await waitFor(() => expect(screen.getByText('AI diagnosis failed or timed out.')).toBeTruthy());
+  });
+});
+
+describe('EntryDetail — replay', () => {
+  it('replays a request entry and renders the outcome', async () => {
+    const replayRequest = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, durationMs: 12, body: 'ok' });
+    const client = fakeClient({ replayRequest });
+    renderWith(client, <EntryDetail id="e-1" onOpenTrace={vi.fn()} onBack={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('Replay request')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('Replay request'));
+    expect(replayRequest).toHaveBeenCalledWith('e-1');
+    await waitFor(() => expect(screen.getByText('200')).toBeTruthy());
+    expect(screen.getByText('12ms')).toBeTruthy();
+  });
+
+  it('renders the failure message when replay is disabled', async () => {
+    const client = fakeClient({
+      replayRequest: vi
+        .fn()
+        .mockResolvedValue({ ok: false, message: 'Request replay is disabled.' }),
+    });
+    renderWith(client, <EntryDetail id="e-1" onOpenTrace={vi.fn()} onBack={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('Replay request')).toBeTruthy());
+    fireEvent.click(screen.getByText('Replay request'));
+    await waitFor(() => expect(screen.getByText('Request replay is disabled.')).toBeTruthy());
   });
 });
 

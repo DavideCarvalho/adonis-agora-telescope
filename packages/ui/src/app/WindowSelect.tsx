@@ -1,3 +1,11 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './primitives/select.js';
+
 /** A small trailing-window picker (5m … 7d) shared by the Pulse and Exceptions views. */
 const WINDOWS: { label: string; ms: number }[] = [
   { label: '5m', ms: 300_000 },
@@ -16,17 +24,22 @@ export function WindowSelect({
   onChange: (ms: number) => void;
 }) {
   return (
-    <select
-      className="select"
-      aria-label="time window"
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
+    <Select
+      value={String(value)}
+      onValueChange={(next) => {
+        if (typeof next === 'string') onChange(Number(next));
+      }}
     >
-      {WINDOWS.map((w) => (
-        <option key={w.ms} value={w.ms}>
-          {w.label}
-        </option>
-      ))}
-    </select>
+      <SelectTrigger aria-label="time window">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
+        {WINDOWS.map((w) => (
+          <SelectItem key={w.ms} value={String(w.ms)}>
+            {w.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

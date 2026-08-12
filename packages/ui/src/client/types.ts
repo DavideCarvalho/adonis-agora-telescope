@@ -278,3 +278,329 @@ export interface Envelope<T> {
   data: T;
   meta?: Record<string, unknown>;
 }
+
+// ── retention (`GET <base>/retention`) ──────────────────────────────────────
+
+/** One entry type recording below 100%, from the resolved sampling config. */
+export interface RetentionSamplingRate {
+  type: string;
+  rate: number;
+}
+
+/** The static retention/sampling posture — no live pruner run history. */
+export interface RetentionInfo {
+  enabled: boolean;
+  afterMs: number;
+  keepLast: number | null;
+  intervalMs: number;
+  sampling: RetentionSamplingRate[];
+}
+
+// ── extension dashboards (`GET <base>/meta`, `GET <base>/ext/:ext/data/:provider`) ─────────────
+// Mirrors the core extension SDK's panel IR (`src/extension/types.ts`) exactly — the SPA is a pure
+// consumer of whatever an extension (e.g. a sibling lib) contributed at boot.
+
+/** A navigable entry type contributed by an extension. */
+export interface ExtensionEntryType {
+  id: string;
+  label: string;
+  /** A CSS color (any valid `color` value) for the nav dot. */
+  dot: string;
+}
+
+/** Threshold coloring for a numeric panel. `direction` says which way is worse. */
+export interface PanelThresholds {
+  warn: number;
+  bad: number;
+  direction: 'up-bad' | 'down-bad';
+}
+
+/** A bind from a panel to a named server-side provider + an opaque query object. */
+export interface DataBinding {
+  provider: string;
+  query?: Record<string, unknown>;
+}
+
+/** A deep-link out of a table cell. `href` starting with `#` is unsupported here (no router);
+ *  anything else is rendered as a plain link, opened in a new tab when `external`. */
+export interface LinkSpec {
+  href: string;
+  external?: boolean;
+}
+
+export interface PanelColumn {
+  key: string;
+  label: string;
+  link?: LinkSpec;
+}
+
+export type Panel =
+  | {
+      kind: 'stat';
+      title: string;
+      data: DataBinding;
+      format?: 'number' | 'percent' | 'duration' | 'rate';
+      spark?: boolean;
+      thresholds?: PanelThresholds;
+    }
+  | {
+      kind: 'timeseries';
+      title: string;
+      data: DataBinding;
+      series: string[];
+      style?: 'area' | 'stacked';
+    }
+  | { kind: 'topN'; title: string; data: DataBinding; limit?: number }
+  | {
+      kind: 'table';
+      title: string;
+      data: DataBinding;
+      columns: PanelColumn[];
+      paged?: boolean;
+    }
+  | {
+      kind: 'distribution';
+      title: string;
+      data: DataBinding;
+      markers?: Array<'p50' | 'p95' | 'p99'>;
+      format?: 'duration' | 'number';
+    }
+  | {
+      kind: 'gauge';
+      title: string;
+      data: DataBinding;
+      min?: number;
+      max?: number;
+      format?: 'number' | 'percent' | 'duration' | 'rate';
+      thresholds?: PanelThresholds;
+    }
+  | { kind: 'breakdown'; title: string; data: DataBinding; style?: 'donut' | 'bar' };
+
+/** A group of panels rendered together with its own column count. */
+export interface DashboardSection {
+  title?: string;
+  cols?: 2 | 3 | 4;
+  panels: Panel[];
+}
+
+/** A declarative dashboard page contributed by an extension. */
+export interface DashboardSpec {
+  id: string;
+  label: string;
+  navGroup?: string;
+  panels: Panel[];
+  sections?: DashboardSection[];
+}
+
+/** `GET <base>/meta` payload. */
+export interface TelescopeMeta {
+  entryTypes: ExtensionEntryType[];
+  dashboards: DashboardSpec[];
+  /** Whether `@adonis-agora/telescope/ai` is installed and configured — gates the "Diagnose with AI"
+   *  action on exception entries. Absent (treated as disabled) on a server predating this field. */
+  ai?: { enabled: boolean };
+  /** Whether `@adonis-agora/telescope/cpu_profiling` is installed — gates the Profiles section. */
+  profiling?: { enabled: boolean };
+  /** Whether the live queue manager capability is enabled — gates the Queues section. */
+  queueManager?: { enabled: boolean };
+}
+
+// ── CPU profiling (`GET/POST <base>/profiles*`) ─────────────────────────────
+
+export interface FlameNode {
+  name: string;
+  file: string;
+  totalMs: number;
+  selfMs: number;
+  totalSamples: number;
+  children: FlameNode[];
+}
+
+export interface HotFrame {
+  name: string;
+  file: string;
+  selfMs: number;
+  selfPct: number;
+}
+
+/** The recorded body of a `cpu_profile` entry (mirrors core `CpuProfileContent`). */
+export interface CpuProfileContent {
+  durationMs: number;
+  sampleCount: number;
+  reason: 'manual' | 'sampled';
+  label: string | null;
+  tree: FlameNode;
+  hot: HotFrame[];
+}
+
+/** `GET <base>/profiles/status` payload. */
+export interface ProfilerStatus {
+  enabled: boolean;
+  sampleRate: number;
+  active: number;
+  maxConcurrent: number;
+  pendingManual: number;
+}
+
+/** `POST <base>/profiles/arm` payload. */
+export interface ArmProfileResult {
+  pendingManual: number;
+}
+
+/** The client's arm outcome — never throws on a "arming unavailable" 4xx, so the UI can render why
+ *  inline (disabled feature, disabled trigger, bad count) instead of an error boundary. */
+export type ArmOutcome = ({ ok: true } & ArmProfileResult) | { ok: false; message: string };
+
+// ── live queue manager (`GET/POST <base>/queues/live*`) ────────────────────
+
+export type QueueState = 'pending' | 'active' | 'delayed' | 'failed' | 'completed';
+export type QueueActionName = 'retry' | 'remove' | 'promote' | 'enqueue';
+
+export interface QueueCounts {
+  pending: number | null;
+  active: number | null;
+  delayed: number | null;
+  failed: number | null;
+  completed: number | null;
+}
+
+export interface QueueSummary {
+  driver: string;
+  queue: string;
+  counts: QueueCounts;
+  actions: QueueActionName[];
+}
+
+export interface QueueJob {
+  id: string;
+  name: string | null;
+  state: QueueState | null;
+  attemptsMade: number | null;
+  maxAttempts: number | null;
+  createdAt: string | null;
+  processedAt: string | null;
+  finishedAt: string | null;
+  failedReason: string | null;
+}
+
+export interface QueueJobDetail extends QueueJob {
+  payload: unknown;
+  result: unknown;
+}
+
+export interface QueueCapabilities {
+  mutationsEnabled: boolean;
+  actions: QueueActionName[];
+}
+
+/** `GET <base>/queues/live` payload. */
+export interface LiveQueues {
+  queues: QueueSummary[];
+  capabilities: QueueCapabilities;
+}
+
+/** The client's job-retry outcome — never throws on a "not supported"/disabled 4xx/501. */
+export type RetryJobOutcome = { ok: true } | { ok: false; message: string };
+
+/** The client's enqueue outcome — never throws on a "not supported"/disabled 4xx/501. */
+export type EnqueueOutcome = { ok: true; id: string | null } | { ok: false; message: string };
+
+// ── live schedules (`GET <base>/schedules/live`) ────────────────────────────
+
+export type ScheduleKind = 'cron' | 'interval' | 'custom';
+export type ScheduleRunStatus = 'completed' | 'failed';
+
+export interface LiveScheduledTask {
+  name: string;
+  kind: ScheduleKind;
+  schedule: string | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastDurationMs: number | null;
+  lastStatus: ScheduleRunStatus | null;
+}
+
+/** `GET <base>/schedules/live` payload. */
+export interface LiveSchedules {
+  tasks: LiveScheduledTask[];
+}
+
+// ── AI exception diagnosis (`POST <base>/exceptions/:id/diagnose`) ─────────
+
+/** A successful `POST .../diagnose` response body. */
+export interface DiagnosisResult {
+  /** Rendered as markdown (heading + confidence/model line + cause + suggested fix). */
+  markdown: string;
+  /** Whether this diagnosis was served from the family-hash cache (vs a fresh model call). */
+  cached: boolean;
+}
+
+/** The client's diagnose outcome — never throws on a "no diagnosis" 4xx/5xx, so the UI can render
+ *  a failure message inline instead of an error boundary. */
+export type DiagnoseOutcome = ({ ok: true } & DiagnosisResult) | { ok: false; message: string };
+
+// ── request replay (`POST <base>/requests/:id/replay`) ─────────────────────
+
+/** The outcome of re-issuing a captured `request` entry against the live server. */
+export interface ReplayResult {
+  status: number;
+  durationMs: number;
+  body: string;
+  error?: string;
+}
+
+/** The client's replay outcome — never throws on a "replay unavailable" 4xx, so the UI can render
+ *  why inline (e.g. "disabled" / "not found") instead of an error boundary. */
+export type ReplayOutcome = ({ ok: true } & ReplayResult) | { ok: false; message: string };
+
+// ── extension panel data shapes (per-kind `resolve()` return value) ────────
+
+export interface StatPanelData {
+  value: number;
+  delta?: number;
+  deltaLabel?: string;
+  spark?: number[];
+}
+
+export interface TimeseriesPanelRow {
+  label: string;
+  [series: string]: string | number;
+}
+
+export interface TimeseriesPanelData {
+  rows: TimeseriesPanelRow[];
+}
+
+export interface TopNPanelItem {
+  label: string;
+  value: number;
+  id?: string;
+}
+
+export interface TopNPanelData {
+  items: TopNPanelItem[];
+}
+
+export interface TablePanelData {
+  rows: Array<Record<string, unknown>>;
+  total?: number;
+  page?: number;
+  limit?: number;
+}
+
+export interface DistributionPanelData {
+  buckets: Array<{ label: string; count: number }>;
+  p50?: number;
+  p95?: number;
+  p99?: number;
+}
+
+export interface GaugePanelData {
+  value: number;
+  min?: number;
+  max?: number;
+}
+
+export interface BreakdownPanelData {
+  segments: Array<{ label: string; value: number; color?: string }>;
+}

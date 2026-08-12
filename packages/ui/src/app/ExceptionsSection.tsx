@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { formatCount, formatRelative } from '../client/format.js';
 import { WindowSelect } from './WindowSelect.js';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './primitives/table.js';
 import { AsyncBlock, Panel, SectionTitle, Sparkline, clickable } from './ui.js';
 import { useMetricsStats } from './use-telescope.js';
 
@@ -25,38 +33,36 @@ export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) =
         skeletonRows={5}
       >
         {(stats) => (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Class</th>
-                  <th>Message</th>
-                  <th className="num">Count</th>
-                  <th>Last seen</th>
-                  <th>Trend</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(stats.exceptions ?? []).map((group) => (
-                  <tr
-                    key={group.key}
-                    className="row-link"
-                    {...clickable(() => onOpenType('exception'))}
-                  >
-                    <td className="mono bad">{group.class}</td>
-                    <td className="mono">{group.message}</td>
-                    <td className="num tnum">{formatCount(group.count)}</td>
-                    <td className="muted" title={group.lastAt}>
-                      {formatRelative(group.lastAt)}
-                    </td>
-                    <td style={{ width: 140 }}>
-                      <Sparkline values={group.overTime} width={140} height={26} color="#f87171" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Class</TableHead>
+                <TableHead>Message</TableHead>
+                <TableHead className="text-right">Count</TableHead>
+                <TableHead>Last seen</TableHead>
+                <TableHead>Trend</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(stats.exceptions ?? []).map((group) => (
+                <TableRow
+                  key={group.key}
+                  className="cursor-pointer hover:bg-brand/5"
+                  {...clickable(() => onOpenType('exception'))}
+                >
+                  <TableCell className="mono text-bad">{group.class}</TableCell>
+                  <TableCell className="mono">{group.message}</TableCell>
+                  <TableCell className="tnum text-right">{formatCount(group.count)}</TableCell>
+                  <TableCell className="text-muted-foreground" title={group.lastAt}>
+                    {formatRelative(group.lastAt)}
+                  </TableCell>
+                  <TableCell style={{ width: 140 }}>
+                    <Sparkline values={group.overTime} width={140} height={26} color="#f87171" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </AsyncBlock>
     </Panel>

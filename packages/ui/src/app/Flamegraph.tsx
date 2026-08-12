@@ -1,0 +1,92 @@
+// Ported from `nestjs-telescope`'s `packages/ui/src/react/components/flamegraph-view.tsx`, restyled
+// onto this package's Tailwind tokens/primitives (no `chart-svg`/hand-rolled classes — the div-based
+// icicle rendering technique itself is unchanged, since it has nothing NestJS-specific about it).
+import { useMemo, useState } from 'react';
+import type { FlameNode } from '../client/types.js';
+import { flameColor, flameDepth, flattenFlame, formatProfileMs } from './flamegraph.js';
+
+const ROW_HEIGHT = 18;
+
+/**
+ * A dependency-light flamegraph (icicle layout, root at top). Renders one absolutely-positioned
+ * `<div>` per visible frame — no canvas, no charting library — sized as a percentage of the
+ * container width so it's responsive. Clicking a frame "zooms" to make it the new 100%-width root;
+ * click the reset control to zoom back out.
+ */
+export function Flamegraph({ tree }: { tree: FlameNode }) {
+  // Zoom focus: the path key of the frame currently treated as the root.
+  const [focusKey, setFocusKey] = useState('0');
+
+  const cells = useMemo(() => flattenFlame(tree), [tree]);
+  const depth = flameDepth(cells);
+
+  // Resolve the focused subtree's x/width so we can rescale all cells to it.
+  const focus = cells.find((c) => c.key === focusKey) ?? cells[0];
+  const focusX = focus?.x ?? 0;
+  const focusWidth = focus?.width ?? 1;
+  const focusDepth = focus?.depth ?? 0;
+
+  if (tree.totalMs <= 0 || cells.length === 0) {
+    return (
+      <div className="flex h-24 items-center justify-center rounded-lg border border-line bg-panel/40 text-xs text-muted-foreground">
+        No samples — the capture was empty.
+      </div>
+    );
+  }
+
+  // Only render cells inside the focused subtree (its descendants), rescaled.
+  const visible = cells.filter((c) => c.key === focusKey || c.key.startsWith(`${focusKey}.`));
+  const rows = depth - focusDepth;
+
+  return (
+    <div>
+      {focusKey !== '0' && (
+        <button
+          type="button"
+          onClick={() => setFocusKey('0')}
+          className="mb-2 rounded border border-line px-2 py-0.5 text-[10px] text-foreground hover:bg-panel-2"
+        >
+          ← Reset zoom
+        </button>
+      )}
+      <div
+        data-testid="flamegraph"
+        className="relative w-full overflow-hidden rounded-lg border border-line bg-background"
+        style={{ height: rows * ROW_HEIGHT + 2 }}
+      >
+        {visible.map((cell) => {
+          const left = ((cell.x - focusX) / focusWidth) * 100;
+          const width = (cell.width / focusWidth) * 100;
+          const top = (cell.depth - focusDepth) * ROW_HEIGHT;
+          const pct = ((cell.node.totalMs / tree.totalMs) * 100).toFixed(1);
+          return (
+            <button
+              type="button"
+              key={cell.key}
+              onClick={() => setFocusKey(cell.key)}
+              title={`${cell.node.name}${cell.node.file ? ` — ${cell.node.file}` : ''}\ntotal ${formatProfileMs(
+                cell.node.totalMs,
+              )} (${pct}%) · self ${formatProfileMs(cell.node.selfMs)}`}
+              className="absolute flex items-center overflow-hidden border border-line-soft/60 px-1 text-left text-[10px] leading-none text-black/80 hover:brightness-110"
+              style={{
+                left: `${left}%`,
+                width: `${width}%`,
+                top,
+                height: ROW_HEIGHT - 1,
+                background:
+                  cell.node.name === '(root)' ? 'var(--line)' : flameColor(cell.node.name),
+              }}
+            >
+              <span
+                className="truncate"
+                style={cell.node.name === '(root)' ? { color: 'var(--text)' } : {}}
+              >
+                {cell.node.name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

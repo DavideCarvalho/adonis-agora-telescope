@@ -1,8 +1,17 @@
 import { useState } from 'react';
-import { formatDuration, formatRelative } from '../client/format.js';
-import type { Waterfall, WaterfallSpan } from '../client/types.js';
+import { formatCount, formatDuration, formatRelative } from '../client/format.js';
+import type { NPlusOnePattern, Waterfall, WaterfallSpan } from '../client/types.js';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './primitives/table.js';
+import { Tabs, TabsList, TabsTab } from './primitives/tabs.js';
 import { AsyncBlock, Panel, SectionTitle, TypeBadge, clickable, typeColor } from './ui.js';
-import { useTraceEntries, useWaterfall } from './use-telescope.js';
+import { useNPlusOne, useTraceEntries, useWaterfall } from './use-telescope.js';
 
 /** A flat waterfall row (depth-first) carrying the geometry for one bar. */
 export interface FlatSpan {
@@ -42,39 +51,96 @@ export function TraceDetail({
   onOpenEntry: (id: string) => void;
   onBack: () => void;
 }) {
-  const [view, setView] = useState<'waterfall' | 'entries'>('waterfall');
+  const [view, setView] = useState<'waterfall' | 'entries' | 'nplusone'>('waterfall');
   return (
-    <div className="stack">
-      <button type="button" className="back" onClick={onBack}>
+    <div className="flex flex-col gap-4">
+      <button
+        type="button"
+        className="w-fit border-0 bg-transparent p-0 pb-1 text-[13px] text-brand"
+        onClick={onBack}
+      >
         ← Back to traces
       </button>
       <Panel>
         <SectionTitle title="Trace" hint={<span className="mono">{traceId.slice(0, 20)}</span>} />
-        <div className="segmented" role="tablist" style={{ marginBottom: 16 }}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === 'waterfall'}
-            onClick={() => setView('waterfall')}
-          >
-            Waterfall
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === 'entries'}
-            onClick={() => setView('entries')}
-          >
-            Entries
-          </button>
-        </div>
+        <Tabs
+          value={view}
+          onValueChange={(next) => {
+            if (typeof next === 'string') setView(next as typeof view);
+          }}
+        >
+          <TabsList className="mb-4">
+            <TabsTab value="waterfall">Waterfall</TabsTab>
+            <TabsTab value="entries">Entries</TabsTab>
+            <TabsTab value="nplusone">N+1</TabsTab>
+          </TabsList>
+        </Tabs>
         {view === 'waterfall' ? (
           <WaterfallView traceId={traceId} onOpenEntry={onOpenEntry} />
-        ) : (
+        ) : view === 'entries' ? (
           <TraceEntries traceId={traceId} onOpenEntry={onOpenEntry} />
+        ) : (
+          <NPlusOneView traceId={traceId} onOpenEntry={onOpenEntry} />
         )}
       </Panel>
     </div>
+  );
+}
+
+function NPlusOneView({
+  traceId,
+  onOpenEntry,
+}: {
+  traceId: string;
+  onOpenEntry: (id: string) => void;
+}) {
+  const state = useNPlusOne(traceId);
+  return (
+    <AsyncBlock
+      state={state}
+      isEmpty={(patterns) => patterns.length === 0}
+      empty="No N+1 query loops detected in this trace."
+      skeletonRows={4}
+    >
+      {(patterns: NPlusOnePattern[]) => (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Query</TableHead>
+              <TableHead>Parent</TableHead>
+              <TableHead className="text-right">×</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {patterns.map((p) => (
+              <TableRow
+                key={p.childFamilyHash}
+                className="cursor-pointer hover:bg-brand/5"
+                {...clickable(() => onOpenEntry(p.representativeId))}
+              >
+                <TableCell
+                  className="mono"
+                  style={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                >
+                  {p.childSql}
+                </TableCell>
+                <TableCell
+                  className="mono text-muted-foreground"
+                  style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                >
+                  {p.parentSql ?? '—'}
+                </TableCell>
+                <TableCell className="tnum text-right">{formatCount(p.count)}</TableCell>
+                <TableCell className="tnum text-right">
+                  {formatDuration(p.totalDurationMs)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </AsyncBlock>
   );
 }
 
@@ -92,9 +158,9 @@ function WaterfallView({
         const rows = flattenWaterfall(waterfall);
         return (
           <>
-            <div className="section-title">
-              <span className="muted">total {formatDuration(waterfall.totalDurationMs)}</span>
-              <span className="hint">{rows.length} spans</span>
+            <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+              <span>total {formatDuration(waterfall.totalDurationMs)}</span>
+              <span>{rows.length} spans</span>
             </div>
             <div className="waterfall">
               {rows.map(({ span, leftPct, widthPct }) => (
@@ -147,32 +213,34 @@ function TraceEntries({
       skeletonRows={5}
     >
       {(entries) => (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Summary</th>
-                <th className="num">Duration</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((e) => (
-                <tr key={e.id} className="row-link" {...clickable(() => onOpenEntry(e.id))}>
-                  <td>
-                    <TypeBadge type={e.type} />
-                  </td>
-                  <td className="mono">{e.summary}</td>
-                  <td className="num tnum">{formatDuration(e.durationMs)}</td>
-                  <td className="muted" title={e.createdAt}>
-                    {formatRelative(e.createdAt)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Type</TableHead>
+              <TableHead>Summary</TableHead>
+              <TableHead className="text-right">Duration</TableHead>
+              <TableHead>Time</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {entries.map((e) => (
+              <TableRow
+                key={e.id}
+                className="cursor-pointer hover:bg-brand/5"
+                {...clickable(() => onOpenEntry(e.id))}
+              >
+                <TableCell>
+                  <TypeBadge type={e.type} />
+                </TableCell>
+                <TableCell className="mono">{e.summary}</TableCell>
+                <TableCell className="tnum text-right">{formatDuration(e.durationMs)}</TableCell>
+                <TableCell className="text-muted-foreground" title={e.createdAt}>
+                  {formatRelative(e.createdAt)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </AsyncBlock>
   );

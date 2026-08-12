@@ -1,4 +1,12 @@
 import type { KeyboardEvent, ReactNode } from 'react';
+import { cn } from './primitives/cn.js';
+
+/**
+ * Shared view helpers for every section — ported from hand-rolled `.panel`/`.badge`/`.bar`/`.empty`
+ * CSS classes to Tailwind utilities + the vendored `./primitives` on Base UI, matching
+ * `@dudousxd/nestjs-telescope-ui`'s equivalents. Every export keeps its ORIGINAL name and signature
+ * so call sites across the app didn't need to change, only what each renders internally.
+ */
 
 /**
  * Props that make a non-button element (a table row, a waterfall row) keyboard-activatable: a click
@@ -23,7 +31,7 @@ export function clickable(onActivate: () => void) {
 /**
  * A stable, high-contrast color per entry type — used for the type badge dot, the trace-type dots,
  * and the waterfall bars, so a `query` span reads the same everywhere. Unknown types fall back to a
- * neutral tone. Hues echo the Agora palette accents.
+ * neutral tone.
  */
 export const TYPE_COLORS: Record<string, string> = {
   request: '#34d399',
@@ -56,33 +64,46 @@ export function typeLabel(type: string): string {
 }
 
 export function Panel({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={`panel${className ? ` ${className}` : ''}`}>{children}</section>;
+  return (
+    <section
+      className={cn(
+        'rounded-2xl border border-line bg-gradient-to-b from-panel-2 to-panel p-[18px]',
+        className,
+      )}
+    >
+      {children}
+    </section>
+  );
 }
 
 export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
   return (
-    <div className="panel stat">
-      <div className="label">{label}</div>
-      <div className="value mono tnum">{value}</div>
-      {sub !== undefined && <div className="sub">{sub}</div>}
+    <div className="rounded-2xl border border-line bg-gradient-to-b from-panel-2 to-panel p-[18px]">
+      <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mono tnum text-2xl font-semibold tracking-tight">{value}</div>
+      {sub !== undefined && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
     </div>
   );
 }
 
 export function SectionTitle({ title, hint }: { title: string; hint?: ReactNode }) {
   return (
-    <div className="section-title">
-      <h2>{title}</h2>
-      {hint !== undefined && <span className="hint">{hint}</span>}
+    <div className="mb-3.5 flex items-center justify-between gap-3">
+      <h2 className="m-0 text-sm tracking-wide">{title}</h2>
+      {hint !== undefined && <span className="text-xs text-muted-foreground">{hint}</span>}
     </div>
   );
 }
 
 /** The colored type badge (dot + label), tinted by {@link typeColor}. */
 export function TypeBadge({ type }: { type: string }) {
+  const color = typeColor(type);
   return (
-    <span className="badge" style={{ color: typeColor(type) }}>
-      <span className="dot" />
+    <span
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-transparent px-2.5 py-0.5 text-[11px] font-medium"
+      style={{ color, backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)` }}
+    >
+      <span className="h-[7px] w-[7px] rounded-full" style={{ background: 'currentColor' }} />
       {typeLabel(type)}
     </span>
   );
@@ -92,21 +113,24 @@ export function TypeBadge({ type }: { type: string }) {
 export function ShareBar({ fraction, color }: { fraction: number; color?: string }) {
   const pct = Math.max(0, Math.min(1, fraction)) * 100;
   return (
-    <div className="bar" role="presentation">
-      <span style={{ width: `${pct}%`, ...(color ? { background: color } : {}) }} />
+    <div className="h-1.5 min-w-[60px] overflow-hidden rounded-full bg-line" role="presentation">
+      <span
+        className="block h-full rounded-full bg-brand"
+        style={{ width: `${pct}%`, ...(color ? { background: color } : {}) }}
+      />
     </div>
   );
 }
 
 /**
  * A dependency-free SVG sparkline over a numeric series. Renders a filled area under a stroked line;
- * an all-zero / empty series renders a flat baseline. `color` defaults to the primary.
+ * an all-zero / empty series renders a flat baseline. `color` defaults to the brand accent.
  */
 export function Sparkline({
   values,
   width = 320,
   height = 40,
-  color = 'var(--primary)',
+  color = 'var(--accent)',
 }: {
   values: number[];
   width?: number;
@@ -137,7 +161,7 @@ export function Sparkline({
 
 export function Skeleton({ rows = 4 }: { rows?: number | undefined }) {
   return (
-    <div className="stack" aria-hidden>
+    <div className="flex flex-col gap-4" aria-hidden>
       {Array.from({ length: rows }, (_, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: static placeholder rows, never reordered.
         <div key={i} className="skeleton" style={{ width: `${90 - i * 8}%` }} />
@@ -147,11 +171,17 @@ export function Skeleton({ rows = 4 }: { rows?: number | undefined }) {
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty">{children}</div>;
+  return (
+    <div className="px-2.5 py-6 text-center text-[13px] text-muted-foreground">{children}</div>
+  );
 }
 
 export function ErrorNote({ error }: { error: Error }) {
-  return <div className="err">Failed to load: {error.message}</div>;
+  return (
+    <div className="px-2.5 py-5 text-center text-[13px] text-bad">
+      Failed to load: {error.message}
+    </div>
+  );
 }
 
 /**

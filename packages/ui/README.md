@@ -11,7 +11,12 @@ Part of the Agora ecosystem.
 - **Entries** — the entries list with type + free-text filters and an **SSE live tail** that prepends
   new entries as they are recorded. Rows deep-link to the entry detail and the trace waterfall.
 - **Entry detail** — the full entry: a type-aware header (method/url/status for requests), a metadata
-  list, and the pretty-printed `content`.
+  list, and the pretty-printed `content`. Exception/`client_exception` entries additionally get an
+  **AI diagnosis** panel (shown only when `@adonis-agora/telescope/ai` is installed and configured) —
+  "Diagnose with AI" calls the Anthropic-backed `DiagnosisCoordinator` and renders a probable cause +
+  suggested fix, cached by exception family so re-opening the same error doesn't burn a second model
+  call. `request` entries get a **Replay** action that re-issues the captured request against the live
+  server (disabled by default server-side; the panel surfaces why when it is).
 - **Traces** — recent traces with their type mix, plus a per-trace **waterfall** (hand-rolled, no chart
   library) and a trace-scoped entries view.
 - **Exceptions** — exception groups (class + message) over a window, with counts and trend sparklines.
@@ -48,7 +53,12 @@ export default defineConfig({
 
 ## Design
 
-Agora design tokens (AdonisJS violet on a dusk-ink canvas, warm-paper in light), theme-aware
-(`prefers-color-scheme` + a `data-theme` toggle), responsive, and dependency-light: hand-rolled SVG
-sparklines and a CSS waterfall, a tiny `useAsync` instead of a query library, and native `EventSource`
-for the live tail.
+Tailwind + a vendored shadcn-style component layer on [Base UI](https://base-ui.com) (`button`,
+`badge`, `dialog`, `tabs`, `tooltip`, `popover`, `input`, `select`, `table` — `src/app/primitives/`),
+on the **Aviary** design tokens shared across the Agora ecosystem's consoles — same neutrals/status
+hues as `@dudousxd/nestjs-telescope-ui` (this dashboard's NestJS sibling), same magenta `--accent`,
+so the two Telescope dashboards match pixel-for-pixel regardless of host framework. Dark-mode-first
+with a `.light`-class override (persisted to `localStorage`), responsive. Still dependency-light where
+it counts: hand-rolled SVG sparklines and a CSS waterfall (a dense, grid-based timeline that loses
+legibility as pure utilities), a tiny `useAsync` instead of a query library, and native `EventSource`
+for the live tail — no react-router, no charting library, no table library.
