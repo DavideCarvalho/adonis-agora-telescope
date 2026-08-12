@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DavideCarvalho/adonis-telescope.git",
+    "url": "git+https://github.com/DavideCarvalho/adonis-agora-telescope.git",
     "directory": "packages/ui"
   },
   "author": "Davi Carvalho <davi@goflip.ai>",
