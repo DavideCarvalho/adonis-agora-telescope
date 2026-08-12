@@ -31,26 +31,26 @@ importers:
         version: 1.5.10(@swc/core@1.15.47)(rollup@4.62.2)
       vitest:
         specifier: 3.2.7
-        version: 3.2.7(@types/node@20.19.43)(jiti@1.21.7)(jsdom@25.0.1)(yaml@2.9.0)
+        version: 3.2.7(@types/node@20.19.43)(jiti@1.21.7)(jsdom@25.0.1(supports-color@10.2.2))(supports-color@10.2.2)(yaml@2.9.0)
 
   packages/core:
     dependencies:
       '@adonisjs/cache':
         specifier: ^2.1.0
-        version: 2.1.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2))(knex@3.2.10(better-sqlite3@12.11.1))
+        version: 2.1.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2)(supports-color@10.2.2))(knex@3.2.10(better-sqlite3@12.11.1)(supports-color@10.2.2))
       '@adonisjs/mail':
         specifier: ^10.2.0
-        version: 10.3.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))(@types/node@20.19.43)(edge.js@6.5.1)(luxon@3.7.2)
+        version: 10.3.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))(@types/node@20.19.43)(edge.js@6.5.1)(luxon@3.7.2)
     devDependencies:
       '@adonisjs/assembler':
         specifier: 8.4.0
         version: 8.4.0(typescript@5.9.3)
       '@adonisjs/core':
         specifier: 7.4.0
-        version: 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1)
+        version: 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1)
       '@adonisjs/lucid':
         specifier: 22.4.2
-        version: 22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2)
+        version: 22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2)(supports-color@10.2.2)
       '@anthropic-ai/sdk':
         specifier: 0.116.0
         version: 0.116.0
@@ -74,13 +74,13 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 3.2.7
-        version: 3.2.7(@types/node@20.19.43)(jiti@1.21.7)(jsdom@25.0.1)(yaml@2.9.0)
+        version: 3.2.7(@types/node@20.19.43)(jiti@1.21.7)(jsdom@25.0.1(supports-color@10.2.2))(supports-color@10.2.2)(yaml@2.9.0)
 
   packages/ui:
     dependencies:
-      '@base-ui-components/react':
-        specifier: 1.0.0-rc.0
-        version: 1.0.0-rc.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@base-ui/react':
+        specifier: 1.0.0
+        version: 1.0.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -96,7 +96,7 @@ importers:
         version: link:../core
       '@adonisjs/core':
         specifier: 7.4.0
-        version: 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1)
+        version: 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1)
       '@testing-library/react':
         specifier: 16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -111,13 +111,13 @@ importers:
         version: 19.2.4(@types/react@19.2.18)
       '@vitejs/plugin-react':
         specifier: 4.7.0
-        version: 4.7.0(vite@6.4.3(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.0))
+        version: 4.7.0(supports-color@10.2.2)(vite@6.4.3(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.0))
       autoprefixer:
         specifier: 10.5.4
         version: 10.5.4(postcss@8.5.26)
       jsdom:
         specifier: 25.0.1
-        version: 25.0.1
+        version: 25.0.1(supports-color@10.2.2)
       postcss:
         specifier: 8.5.26
         version: 8.5.26
@@ -138,7 +138,7 @@ importers:
         version: 6.4.3(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.0)
       vitest:
         specifier: 3.2.7
-        version: 3.2.7(@types/node@20.19.43)(jiti@1.21.7)(jsdom@25.0.1)(yaml@2.9.0)
+        version: 3.2.7(@types/node@20.19.43)(jiti@1.21.7)(jsdom@25.0.1(supports-color@10.2.2))(supports-color@10.2.2)(yaml@2.9.0)
 
 packages:
 
@@ -498,10 +498,9 @@ packages:
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
 
-  '@base-ui-components/react@1.0.0-rc.0':
-    resolution: {integrity: sha512-9lhUFbJcbXvc9KulLev1WTFxS/alJRBWDH/ibKSQaNvmDwMFS2gKp1sTeeldYSfKuS/KC1w2MZutc0wHu2hRHQ==}
+  '@base-ui/react@1.0.0':
+    resolution: {integrity: sha512-4USBWz++DUSLTuIYpbYkSgy1F9ZmNG9S/lXvlUN6qMK0P0RlW+6eQmDUB4DgZ7HVvtXl4pvi4z5J2fv6Z3+9hg==}
     engines: {node: '>=14.0.0'}
-    deprecated: Package was renamed to @base-ui/react
     peerDependencies:
       '@types/react': ^17 || ^18 || ^19
       react: ^17 || ^18 || ^19
@@ -510,9 +509,8 @@ packages:
       '@types/react':
         optional: true
 
-  '@base-ui-components/utils@0.2.2':
-    resolution: {integrity: sha512-rNJCD6TFy3OSRDKVHJDzLpxO3esTV1/drRtWNUpe7rCpPN9HZVHUCuP+6rdDYDGWfXnQHbqi05xOyRP2iZAlkw==}
-    deprecated: Package was renamed to @base-ui/utils
+  '@base-ui/utils@0.2.3':
+    resolution: {integrity: sha512-/CguQ2PDaOzeVOkllQR8nocJ0FFIDqsWIcURsVmm53QGo8NhFNpePjNlyPIB41luxfOqnG7PU0xicMEw3ls7XQ==}
     peerDependencies:
       '@types/react': ^17 || ^18 || ^19
       react: ^17 || ^18 || ^19
@@ -3421,7 +3419,7 @@ snapshots:
     transitivePeerDependencies:
       - babel-plugin-macros
 
-  '@adonisjs/bodyparser@11.0.4(@adonisjs/http-server@9.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/events@10.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0)(@adonisjs/logger@7.1.1)(@boringnode/encryption@1.0.1)(youch@4.1.1))':
+  '@adonisjs/bodyparser@11.0.4(@adonisjs/http-server@9.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/events@10.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0)(@adonisjs/logger@7.1.1)(@boringnode/encryption@1.0.1)(youch@4.1.1))(supports-color@10.2.2)':
     dependencies:
       '@adonisjs/http-server': 9.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/events@10.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0)(@adonisjs/logger@7.1.1)(@boringnode/encryption@1.0.1)(youch@4.1.1)
       '@poppinss/macroable': 1.1.2
@@ -3429,20 +3427,20 @@ snapshots:
       '@poppinss/multiparty': 3.0.0
       '@poppinss/qs': 6.15.0
       '@poppinss/utils': 7.0.1
-      file-type: 22.0.1
+      file-type: 22.0.1(supports-color@10.2.2)
       inflation: 2.1.0
       media-typer: 1.1.0
       raw-body: 3.0.2
     transitivePeerDependencies:
       - supports-color
 
-  '@adonisjs/cache@2.1.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2))(knex@3.2.10(better-sqlite3@12.11.1))':
+  '@adonisjs/cache@2.1.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2)(supports-color@10.2.2))(knex@3.2.10(better-sqlite3@12.11.1)(supports-color@10.2.2))':
     dependencies:
       '@adonisjs/assembler': 8.4.0(typescript@5.9.3)
-      '@adonisjs/core': 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1)
-      bentocache: 1.6.1(knex@3.2.10(better-sqlite3@12.11.1))
+      '@adonisjs/core': 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1)
+      bentocache: 1.6.1(knex@3.2.10(better-sqlite3@12.11.1)(supports-color@10.2.2))
     optionalDependencies:
-      '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2)
+      '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2)(supports-color@10.2.2)
     transitivePeerDependencies:
       - '@aws-sdk/client-dynamodb'
       - ioredis
@@ -3454,11 +3452,11 @@ snapshots:
     dependencies:
       '@poppinss/utils': 7.0.1
 
-  '@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1)':
+  '@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1)':
     dependencies:
       '@adonisjs/ace': 14.1.0(youch@4.1.1)
       '@adonisjs/application': 9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0)
-      '@adonisjs/bodyparser': 11.0.4(@adonisjs/http-server@9.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/events@10.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0)(@adonisjs/logger@7.1.1)(@boringnode/encryption@1.0.1)(youch@4.1.1))
+      '@adonisjs/bodyparser': 11.0.4(@adonisjs/http-server@9.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/events@10.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0)(@adonisjs/logger@7.1.1)(@boringnode/encryption@1.0.1)(youch@4.1.1))(supports-color@10.2.2)
       '@adonisjs/config': 6.1.0
       '@adonisjs/env': 7.0.0
       '@adonisjs/events': 10.2.0(@adonisjs/application@9.0.1(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.0.0))(@adonisjs/fold@11.0.0)
@@ -3557,10 +3555,10 @@ snapshots:
       abstract-logging: 2.0.1
       pino: 10.3.1
 
-  '@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2)':
+  '@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@12.11.1)(luxon@3.7.2)(supports-color@10.2.2)':
     dependencies:
-      '@adonisjs/core': 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1)
-      '@adonisjs/presets': 3.0.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))
+      '@adonisjs/core': 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1)
+      '@adonisjs/presets': 3.0.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))
       '@faker-js/faker': 10.5.0
       '@poppinss/hooks': 7.3.0
       '@poppinss/macroable': 1.1.2
@@ -3570,8 +3568,8 @@ snapshots:
       fast-deep-equal: 3.1.3
       igniculus: 1.5.0
       kleur: 4.1.5
-      knex: 3.2.10(better-sqlite3@12.11.1)
-      knex-dynamic-connection: 5.1.0(better-sqlite3@12.11.1)
+      knex: 3.2.10(better-sqlite3@12.11.1)(supports-color@10.2.2)
+      knex-dynamic-connection: 5.1.0(better-sqlite3@12.11.1)(supports-color@10.2.2)
       pretty-hrtime: 1.0.3
       slash: 5.1.0
       tarn: 3.0.2
@@ -3589,9 +3587,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@adonisjs/mail@10.3.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))(@types/node@20.19.43)(edge.js@6.5.1)(luxon@3.7.2)':
+  '@adonisjs/mail@10.3.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))(@types/node@20.19.43)(edge.js@6.5.1)(luxon@3.7.2)':
     dependencies:
-      '@adonisjs/core': 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1)
+      '@adonisjs/core': 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1)
       '@poppinss/macroable': 1.1.2
       '@poppinss/object-builder': 1.1.0
       '@types/nodemailer': 8.0.1
@@ -3613,9 +3611,9 @@ snapshots:
       - moment-timezone
       - rrule
 
-  '@adonisjs/presets@3.0.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1))':
+  '@adonisjs/presets@3.0.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(@adonisjs/core@7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1))':
     dependencies:
-      '@adonisjs/core': 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(youch@4.1.1)
+      '@adonisjs/core': 7.4.0(@adonisjs/assembler@8.4.0(typescript@5.9.3))(edge.js@6.5.1)(supports-color@10.2.2)(youch@4.1.1)
     optionalDependencies:
       '@adonisjs/assembler': 8.4.0(typescript@5.9.3)
 
@@ -3693,20 +3691,20 @@ snapshots:
 
   '@babel/compat-data@7.29.7': {}
 
-  '@babel/core@7.29.7':
+  '@babel/core@7.29.7(supports-color@10.2.2)':
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/generator': 7.29.7
       '@babel/helper-compilation-targets': 7.29.7
-      '@babel/helper-module-transforms': 7.29.7(@babel/core@7.29.7)
+      '@babel/helper-module-transforms': 7.29.7(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2)
       '@babel/helpers': 7.29.7
       '@babel/parser': 7.29.7
       '@babel/template': 7.29.7
-      '@babel/traverse': 7.29.7
+      '@babel/traverse': 7.29.7(supports-color@10.2.2)
       '@babel/types': 7.29.7
       '@jridgewell/remapping': 2.3.5
       convert-source-map: 2.0.0
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@10.2.2)
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -3731,19 +3729,19 @@ snapshots:
 
   '@babel/helper-globals@7.29.7': {}
 
-  '@babel/helper-module-imports@7.29.7':
+  '@babel/helper-module-imports@7.29.7(supports-color@10.2.2)':
     dependencies:
-      '@babel/traverse': 7.29.7
+      '@babel/traverse': 7.29.7(supports-color@10.2.2)
       '@babel/types': 7.29.7
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/helper-module-transforms@7.29.7(@babel/core@7.29.7)':
+  '@babel/helper-module-transforms@7.29.7(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2)':
     dependencies:
-      '@babel/core': 7.29.7
-      '@babel/helper-module-imports': 7.29.7
+      '@babel/core': 7.29.7(supports-color@10.2.2)
+      '@babel/helper-module-imports': 7.29.7(supports-color@10.2.2)
       '@babel/helper-validator-identifier': 7.29.7
-      '@babel/traverse': 7.29.7
+      '@babel/traverse': 7.29.7(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -3764,14 +3762,14 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.7
 
-  '@babel/plugin-transform-react-jsx-self@7.29.7(@babel/core@7.29.7)':
+  '@babel/plugin-transform-react-jsx-self@7.29.7(@babel/core@7.29.7(supports-color@10.2.2))':
     dependencies:
-      '@babel/core': 7.29.7
+      '@babel/core': 7.29.7(supports-color@10.2.2)
       '@babel/helper-plugin-utils': 7.29.7
 
-  '@babel/plugin-transform-react-jsx-source@7.29.7(@babel/core@7.29.7)':
+  '@babel/plugin-transform-react-jsx-source@7.29.7(@babel/core@7.29.7(supports-color@10.2.2))':
     dependencies:
-      '@babel/core': 7.29.7
+      '@babel/core': 7.29.7(supports-color@10.2.2)
       '@babel/helper-plugin-utils': 7.29.7
 
   '@babel/runtime@7.29.7': {}
@@ -3782,7 +3780,7 @@ snapshots:
       '@babel/parser': 7.29.7
       '@babel/types': 7.29.7
 
-  '@babel/traverse@7.29.7':
+  '@babel/traverse@7.29.7(supports-color@10.2.2)':
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/generator': 7.29.7
@@ -3790,7 +3788,7 @@ snapshots:
       '@babel/parser': 7.29.7
       '@babel/template': 7.29.7
       '@babel/types': 7.29.7
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -3799,10 +3797,10 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@base-ui-components/react@1.0.0-rc.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@base-ui/react@1.0.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@babel/runtime': 7.29.7
-      '@base-ui-components/utils': 0.2.2(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@base-ui/utils': 0.2.3(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@floating-ui/react-dom': 2.1.9(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@floating-ui/utils': 0.2.12
       react: 19.2.8
@@ -3813,7 +3811,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.18
 
-  '@base-ui-components/utils@0.2.2(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@base-ui/utils@0.2.3(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@babel/runtime': 7.29.7
       '@floating-ui/utils': 0.2.12
@@ -4480,9 +4478,9 @@ snapshots:
       '@types/react': 19.2.18
       '@types/react-dom': 19.2.4(@types/react@19.2.18)
 
-  '@tokenizer/inflate@0.4.1':
+  '@tokenizer/inflate@0.4.1(supports-color@10.2.2)':
     dependencies:
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@10.2.2)
       token-types: 6.1.2
     transitivePeerDependencies:
       - supports-color
@@ -4571,11 +4569,11 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
-  '@vitejs/plugin-react@4.7.0(vite@6.4.3(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.0))':
+  '@vitejs/plugin-react@4.7.0(supports-color@10.2.2)(vite@6.4.3(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.0))':
     dependencies:
-      '@babel/core': 7.29.7
-      '@babel/plugin-transform-react-jsx-self': 7.29.7(@babel/core@7.29.7)
-      '@babel/plugin-transform-react-jsx-source': 7.29.7(@babel/core@7.29.7)
+      '@babel/core': 7.29.7(supports-color@10.2.2)
+      '@babel/plugin-transform-react-jsx-self': 7.29.7(@babel/core@7.29.7(supports-color@10.2.2))
+      '@babel/plugin-transform-react-jsx-source': 7.29.7(@babel/core@7.29.7(supports-color@10.2.2))
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
@@ -4694,7 +4692,7 @@ snapshots:
 
   baseline-browser-mapping@2.10.43: {}
 
-  bentocache@1.6.1(knex@3.2.10(better-sqlite3@12.11.1)):
+  bentocache@1.6.1(knex@3.2.10(better-sqlite3@12.11.1)(supports-color@10.2.2)):
     dependencies:
       '@boringnode/bus': 0.9.0
       '@julr/utils': 1.9.0
@@ -4703,7 +4701,7 @@ snapshots:
       lru-cache: 11.5.1
       p-timeout: 7.0.1
     optionalDependencies:
-      knex: 3.2.10(better-sqlite3@12.11.1)
+      knex: 3.2.10(better-sqlite3@12.11.1)(supports-color@10.2.2)
 
   better-path-resolve@1.0.0:
     dependencies:
@@ -4871,13 +4869,17 @@ snapshots:
 
   dataloader@1.4.0: {}
 
-  debug@4.3.4:
+  debug@4.3.4(supports-color@10.2.2):
     dependencies:
       ms: 2.1.2
+    optionalDependencies:
+      supports-color: 10.2.2
 
-  debug@4.4.3:
+  debug@4.4.3(supports-color@10.2.2):
     dependencies:
       ms: 2.1.3
+    optionalDependencies:
+      supports-color: 10.2.2
 
   decimal.js@10.6.0: {}
 
@@ -5101,9 +5103,9 @@ snapshots:
     dependencies:
       is-unicode-supported: 2.1.0
 
-  file-type@22.0.1:
+  file-type@22.0.1(supports-color@10.2.2):
     dependencies:
-      '@tokenizer/inflate': 0.4.1
+      '@tokenizer/inflate': 0.4.1(supports-color@10.2.2)
       strtok3: 10.3.5
       token-types: 6.1.2
       uint8array-extras: 1.5.0
@@ -5240,17 +5242,17 @@ snapshots:
       statuses: 2.0.2
       toidentifier: 1.0.1
 
-  http-proxy-agent@7.0.2:
+  http-proxy-agent@7.0.2(supports-color@10.2.2):
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
-  https-proxy-agent@7.0.6:
+  https-proxy-agent@7.0.6(supports-color@10.2.2):
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -5357,15 +5359,15 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
-  jsdom@25.0.1:
+  jsdom@25.0.1(supports-color@10.2.2):
     dependencies:
       cssstyle: 4.6.0
       data-urls: 5.0.0
       decimal.js: 10.6.0
       form-data: 4.0.6
       html-encoding-sniffer: 4.0.0
-      http-proxy-agent: 7.0.2
-      https-proxy-agent: 7.0.6
+      http-proxy-agent: 7.0.2(supports-color@10.2.2)
+      https-proxy-agent: 7.0.6(supports-color@10.2.2)
       is-potential-custom-element-name: 1.0.1
       nwsapi: 2.2.24
       parse5: 7.3.0
@@ -5404,10 +5406,10 @@ snapshots:
 
   kleur@4.1.5: {}
 
-  knex-dynamic-connection@5.1.0(better-sqlite3@12.11.1):
+  knex-dynamic-connection@5.1.0(better-sqlite3@12.11.1)(supports-color@10.2.2):
     dependencies:
-      debug: 4.4.3
-      knex: 3.2.7(better-sqlite3@12.11.1)
+      debug: 4.4.3(supports-color@10.2.2)
+      knex: 3.2.7(better-sqlite3@12.11.1)(supports-color@10.2.2)
     transitivePeerDependencies:
       - better-sqlite3
       - mysql
@@ -5419,11 +5421,11 @@ snapshots:
       - supports-color
       - tedious
 
-  knex@3.2.10(better-sqlite3@12.11.1):
+  knex@3.2.10(better-sqlite3@12.11.1)(supports-color@10.2.2):
     dependencies:
       colorette: 2.0.19
       commander: 10.0.1
-      debug: 4.3.4
+      debug: 4.3.4(supports-color@10.2.2)
       escalade: 3.2.0
       esm: 3.2.25
       get-package-type: 0.1.0
@@ -5440,11 +5442,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  knex@3.2.7(better-sqlite3@12.11.1):
+  knex@3.2.7(better-sqlite3@12.11.1)(supports-color@10.2.2):
     dependencies:
       colorette: 2.0.19
       commander: 10.0.1
-      debug: 4.3.4
+      debug: 4.3.4(supports-color@10.2.2)
       escalade: 3.2.0
       esm: 3.2.25
       get-package-type: 0.1.0
@@ -6236,10 +6238,10 @@ snapshots:
 
   vary@1.1.2: {}
 
-  vite-node@3.2.4(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.0):
+  vite-node@3.2.4(@types/node@20.19.43)(jiti@1.21.7)(supports-color@10.2.2)(yaml@2.9.0):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@10.2.2)
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 6.4.3(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.0)
@@ -6271,7 +6273,7 @@ snapshots:
       jiti: 1.21.7
       yaml: 2.9.0
 
-  vitest@3.2.7(@types/node@20.19.43)(jiti@1.21.7)(jsdom@25.0.1)(yaml@2.9.0):
+  vitest@3.2.7(@types/node@20.19.43)(jiti@1.21.7)(jsdom@25.0.1(supports-color@10.2.2))(supports-color@10.2.2)(yaml@2.9.0):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.7
@@ -6282,7 +6284,7 @@ snapshots:
       '@vitest/spy': 3.2.7
       '@vitest/utils': 3.2.7
       chai: 5.3.3
-      debug: 4.4.3
+      debug: 4.4.3(supports-color@10.2.2)
       expect-type: 1.3.0
       magic-string: 0.30.21
       pathe: 2.0.3
@@ -6294,11 +6296,11 @@ snapshots:
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
       vite: 6.4.3(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.0)
-      vite-node: 3.2.4(@types/node@20.19.43)(jiti@1.21.7)(yaml@2.9.0)
+      vite-node: 3.2.4(@types/node@20.19.43)(jiti@1.21.7)(supports-color@10.2.2)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 20.19.43
-      jsdom: 25.0.1
+      jsdom: 25.0.1(supports-color@10.2.2)
     transitivePeerDependencies:
       - jiti
       - less
