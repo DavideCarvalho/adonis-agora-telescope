@@ -85,23 +85,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Faint blueprint grid + top glow — atmosphere, not noise. */
-.app-bg {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image: radial-gradient(
-      900px 400px at 78% -8%,
-      color-mix(in srgb, var(--accent) 8%, transparent),
-      transparent 70%
-    ), linear-gradient(to right, var(--line-soft) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--line-soft) 1px, transparent 1px);
-  background-size: 100% 100%, 44px 44px, 44px 44px;
-  mask-image: linear-gradient(to bottom, black, black 60%, transparent);
-  opacity: 0.5;
-}
-
 /*
  * Tinted pills/chips: one class per semantic role, each setting background, border and text
  * together. `bg-good/10 border-good/40 text-good` would work too (the `token()` colour functions in

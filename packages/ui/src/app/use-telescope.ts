@@ -111,6 +111,15 @@ export function useMetricsStats(type: string, windowMs: number) {
   return useAsync(() => client.metricsStats(type, windowMs), [client, type, windowMs]);
 }
 
+/** Throughput timeseries (total + per-type breakdown) — backs the Overview/Pulse charts. */
+export function useTimeseries(windowMs: number, buckets?: number, type?: string) {
+  const client = useTelescopeClient();
+  return useAsync(
+    () => client.metricsTimeseries(windowMs, buckets, type),
+    [client, windowMs, buckets, type],
+  );
+}
+
 export function useRetention() {
   const client = useTelescopeClient();
   return useAsync(() => client.retention(), [client]);

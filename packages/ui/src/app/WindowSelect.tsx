@@ -31,7 +31,9 @@ export function WindowSelect({
       }}
     >
       <SelectTrigger aria-label="time window">
-        <SelectValue />
+        <SelectValue>
+          {(v: string | null) => WINDOWS.find((w) => String(w.ms) === v)?.label ?? v}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent align="end">
         {WINDOWS.map((w) => (

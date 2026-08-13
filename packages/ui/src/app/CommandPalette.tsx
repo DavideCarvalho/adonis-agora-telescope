@@ -1,7 +1,6 @@
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ENTRY_TYPES } from '../client/types.js';
 import type { DashboardSpec } from '../client/types.js';
-import { SearchIcon } from './icons.js';
 import { Button } from './primitives/button.js';
 import { cn } from './primitives/cn.js';
 import { Dialog } from './primitives/dialog.js';
@@ -12,6 +11,7 @@ export type PaletteTarget =
   | {
       kind: 'section';
       key:
+        | 'overview'
         | 'pulse'
         | 'entries'
         | 'traces'
@@ -19,7 +19,8 @@ export type PaletteTarget =
         | 'exports'
         | 'profiles'
         | 'queues'
-        | 'schedules';
+        | 'schedules'
+        | 'extensions';
     }
   | { kind: 'entryType'; type: string }
   | { kind: 'dashboard'; id: string };
@@ -33,6 +34,12 @@ interface PaletteAction {
 }
 
 const PAGE_ACTIONS: PaletteAction[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    hint: 'triage grid',
+    target: { kind: 'section', key: 'overview' },
+  },
   {
     id: 'pulse',
     label: 'Pulse',
@@ -180,11 +187,12 @@ export function CommandPalette({
       <Tooltip label="Jump to… (⌘K)">
         <Button
           variant="outline"
-          size="icon"
+          className="normal-case"
           aria-label="open command palette"
+          aria-keyshortcuts="Meta+K Control+K"
           onClick={() => setOpen(true)}
         >
-          <SearchIcon />
+          <span aria-hidden="true">⌘K</span>
         </Button>
       </Tooltip>
 

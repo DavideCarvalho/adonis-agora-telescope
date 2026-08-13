@@ -65,12 +65,7 @@ export function typeLabel(type: string): string {
 
 export function Panel({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <section
-      className={cn(
-        'rounded-2xl border border-line bg-gradient-to-b from-panel-2 to-panel p-[18px]',
-        className,
-      )}
-    >
+    <section className={cn('rounded-lg border border-line bg-panel/40 p-4', className)}>
       {children}
     </section>
   );
@@ -78,19 +73,23 @@ export function Panel({ children, className }: { children: ReactNode; className?
 
 export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-line bg-gradient-to-b from-panel-2 to-panel p-[18px]">
-      <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="mono tnum text-2xl font-semibold tracking-tight">{value}</div>
-      {sub !== undefined && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+    <div className="rounded-lg border border-line bg-panel/40 p-4">
+      <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="tnum text-xl font-semibold tracking-tight">{value}</div>
+      {sub !== undefined && <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>}
     </div>
   );
 }
 
 export function SectionTitle({ title, hint }: { title: string; hint?: ReactNode }) {
   return (
-    <div className="mb-3.5 flex items-center justify-between gap-3">
-      <h2 className="m-0 text-sm tracking-wide">{title}</h2>
-      {hint !== undefined && <span className="text-xs text-muted-foreground">{hint}</span>}
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <h3 className="m-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </h3>
+      {hint !== undefined && <span className="text-[11px] text-muted-foreground">{hint}</span>}
     </div>
   );
 }

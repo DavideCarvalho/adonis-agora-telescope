@@ -43,8 +43,9 @@ export function RetentionIndicator() {
 
   return (
     <Tooltip label={title}>
-      <span className="mono inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11px] text-muted-foreground">
-        retention: {label}
+      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <span className="uppercase tracking-wide text-muted-foreground">retention:</span>
+        <span className="text-muted-foreground">{label}</span>
         {note && (
           <Badge variant="warn" className="ml-0.5 rounded-full px-1.5" title={note}>
             ?

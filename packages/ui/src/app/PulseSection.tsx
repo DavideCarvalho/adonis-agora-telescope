@@ -13,6 +13,8 @@ import {
   Sparkline,
   Stat,
   clickable,
+  typeColor,
+  typeLabel,
 } from './ui.js';
 import { usePulse } from './use-telescope.js';
 
@@ -79,8 +81,13 @@ function PulseBody({
       </div>
 
       <Panel>
-        <SectionTitle title="Throughput" hint={`${throughputSeries.length} buckets`} />
+        <SectionTitle title="Throughput by type" hint={`${throughputSeries.length} buckets`} />
         <Sparkline values={throughputSeries} width={1180} height={64} />
+      </Panel>
+
+      <Panel>
+        <SectionTitle title="Entries by type" />
+        <EntriesByType counts={pulse.counts} />
       </Panel>
 
       <div className="grid grid-cols-2 gap-4">
@@ -152,6 +159,18 @@ function PulseBody({
             empty="No per-user load."
           />
         </Panel>
+
+        <Panel>
+          <SectionTitle title="Slow outgoing HTTP" hint="by p99" />
+          <HotspotList
+            rows={pulse.slowOutgoing.map((r) => ({
+              key: r.route,
+              label: r.route,
+              right: `${formatDuration(r.p99)} · ×${r.count}`,
+            }))}
+            empty="No slow outgoing calls."
+          />
+        </Panel>
       </div>
 
       {pulse.cache && (
@@ -198,6 +217,26 @@ function StatusBars({
         </div>
       ))}
     </div>
+  );
+}
+
+/** Inline `type: count` pairs, one per row, sorted by count descending. */
+function EntriesByType({ counts }: { counts: Record<string, number> }) {
+  const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (rows.length === 0) return <Empty>No entries in this window.</Empty>;
+  return (
+    <ul className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
+      {rows.map(([type, count]) => (
+        <li key={type} className="flex items-center gap-1.5">
+          <span
+            className="h-[7px] w-[7px] shrink-0 rounded-full"
+            style={{ background: typeColor(type) }}
+          />
+          <span className="text-muted-foreground">{typeLabel(type)}:</span>
+          <span className="tnum text-foreground">{formatCount(count)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

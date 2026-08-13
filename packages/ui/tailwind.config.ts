@@ -34,7 +34,14 @@ export default {
   theme: {
     extend: {
       fontFamily: {
+        /*
+         * nestjs-telescope-ui runs the WHOLE console (headers, labels, tables, nav — not just
+         * numeric/code values) in monospace: a `font-mono` class on the shell's root div, which
+         * every descendant inherits. `sans` is pointed at the same stack too, as a safety net for
+         * any element that ends up on the (otherwise unused) default font family.
+         */
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        sans: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       colors: {
         // Aviary tokens, addressable directly.
