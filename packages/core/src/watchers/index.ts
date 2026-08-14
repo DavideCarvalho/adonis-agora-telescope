@@ -1,5 +1,5 @@
 /** Keep in sync with this package's `version` in package.json. */
-export const VERSION = '0.7.0';
+export const VERSION = '0.7.1';
 
 // — shared watcher contract —
 export type { EmitterLike, Watcher } from './emitter.js';

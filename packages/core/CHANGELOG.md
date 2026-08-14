@@ -1,5 +1,13 @@
 # @adonis-agora/telescope
 
+## 0.7.1
+
+### Patch Changes
+
+- [`b3c7ef0`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/b3c7ef05e06d24175d0926a00961c8652e379417) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `enforceGuard` now honors a redirect a custom `authorize` hook already wrote to the response (a `location` header, typically via `ctx.response.redirect(...)`) instead of always overwriting it with the default `401`/`403 { error }` JSON — mirrors `@adonis-agora/durable`'s dashboard guard, which already does this. Lets a host show its own branded "log in" / "access denied" page instead of raw JSON, without needing a separate config hook: redirect from inside `authorize`, return `false`, done.
+
+  `UiResponse` (the framework-light response contract `guard.ts` and the JSON API handlers share) gained `getHeader(name)` to make the check possible; `RecordingResponse` (the in-memory test double) implements it too.
+
 ## 0.7.0
 
 ### Minor Changes
