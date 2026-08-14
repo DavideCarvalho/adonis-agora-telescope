@@ -23,6 +23,12 @@ export interface UiResponse {
   status(code: number): UiResponse;
   /** Set a response header; returns `this` for chaining (Adonis-compatible). */
   header(name: string, value: string): UiResponse;
+  /**
+   * Read a previously-set response header, or `undefined`. Used only to detect whether a custom
+   * `authorize` hook already redirected (set `location`) before returning `false` — see
+   * `enforceGuard` in `guard.ts`.
+   */
+  getHeader(name: string): unknown;
   /** Send a body (object → JSON, string → as-is). Terminal. */
   send(body: unknown): unknown;
 }
@@ -51,6 +57,10 @@ export class RecordingResponse implements UiResponse {
   header(name: string, value: string): this {
     this.headers[name.toLowerCase()] = value;
     return this;
+  }
+
+  getHeader(name: string): unknown {
+    return this.headers[name.toLowerCase()];
   }
 
   send(body: unknown): unknown {

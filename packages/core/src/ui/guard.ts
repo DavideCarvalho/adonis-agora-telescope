@@ -46,10 +46,18 @@ export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Pr
  * return `false`. On success returns `true` and leaves the response untouched for
  * the handler. A `WWW-Authenticate` header is sent on a 401 so a browser can
  * surface a Basic-auth prompt when that scheme is in play.
+ *
+ * Exception: if `authorize` itself already wrote a redirect (a `location` header — typically
+ * `ctx.response.redirect(...)` to the host's own login/access-denied page) before returning `false`,
+ * that redirect stands and this skips its own `401`/`403 { error }` write. Mirrors
+ * `@adonis-agora/durable`'s dashboard guard, which honors the same signal the same way — a host that
+ * wants a branded page instead of raw JSON redirects from inside `authorize` rather than needing a
+ * separate hook.
  */
 export async function enforceGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Promise<boolean> {
   const result = await runGuard(ctx, authorize);
   if (result.allowed) return true;
+  if (ctx.response.getHeader('location')) return false;
   const status = result.status ?? 403;
   ctx.response.status(status);
   if (status === 401) {

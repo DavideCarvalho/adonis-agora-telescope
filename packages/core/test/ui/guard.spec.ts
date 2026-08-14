@@ -63,6 +63,30 @@ describe('enforceGuard', () => {
     expect(await enforceGuard(c, () => false)).toBe(false);
     expect(res.statusCode).toBe(403);
   });
+
+  it('skips its own 401 JSON when authorize already redirected (unauthenticated)', async () => {
+    const { ctx: c, res } = ctx();
+    const denied = await enforceGuard(c, (context) => {
+      context.response.status(302).header('location', '/login');
+      return false;
+    });
+    expect(denied).toBe(false);
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/login');
+    expect(res.sent).toBe(false);
+  });
+
+  it('skips its own 403 JSON when authorize already redirected (credential rejected)', async () => {
+    const { ctx: c, res } = ctx({ token: 'nope' });
+    const denied = await enforceGuard(c, (context) => {
+      context.response.status(302).header('location', '/acesso-negado');
+      return false;
+    });
+    expect(denied).toBe(false);
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/acesso-negado');
+    expect(res.sent).toBe(false);
+  });
 });
 
 describe('default authorize policy', () => {
