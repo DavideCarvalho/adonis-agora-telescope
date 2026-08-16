@@ -1,5 +1,12 @@
 # @adonis-agora/telescope-ui
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`13bc033`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/13bc033fb8bcac304e949a90716a6210677bb94d)]:
+  - @adonis-agora/telescope@0.8.0
+
 ## 0.3.0
 
 ### Minor Changes
