@@ -11,6 +11,7 @@ import type { RequestCaptureOptions } from './request_watcher.js';
 import { type SamplingConfig, resolveSampling } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
+import type { LogLevel, LogsWatcherOptions } from './watchers/logs_watcher.js';
 
 /** Default retention age for the pruner when `prune.after` is omitted. */
 const DEFAULT_PRUNE_AFTER = '24h';
@@ -50,7 +51,7 @@ export interface RedactConfig {
 }
 
 /** The set of watchers this headless slice ships. */
-export type WatcherName = 'request' | 'diagnostics';
+export type WatcherName = 'request' | 'diagnostics' | 'logs';
 
 /**
  * The shape of `config/telescope.ts`. Everything is optional with sane defaults:
@@ -101,6 +102,14 @@ export interface TelescopeConfig {
    * are all-off (record every diagnostics event).
    */
   diagnostics?: DiagnosticsConfig;
+
+  /**
+   * Fine-tunes the `logs` watcher (only meaningful while it is active), which
+   * tees the AdonisJS `Logger` level methods and records each log as a `log`
+   * entry. `minLevel` raises the floor (e.g. `'warn'` drops debug/info) and
+   * `tags` are appended to every recorded log entry. Defaults record everything.
+   */
+  logs?: LogsWatcherOptions;
 
   /**
    * Opt-in request BODY capture, gated so a huge or binary body is never walked
@@ -294,6 +303,8 @@ export interface ResolvedTelescopeConfig {
   watchers: Set<WatcherName>;
   /** Resolved diagnostics-watcher settings (always present; defaults record everything). */
   diagnostics: { exclude: string[]; recordClaimed: boolean };
+  /** Resolved logs-watcher settings (always present; defaults record everything). */
+  logs: { minLevel: LogLevel; tags: string[] };
   /** Opt-in request body-capture gates, or `null` when body capture is off (default). */
   requestCapture: RequestCaptureOptions | null;
   extensions: TelescopeExtension[];
@@ -366,6 +377,10 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     diagnostics: {
       exclude: config.diagnostics?.exclude ?? [],
       recordClaimed: config.diagnostics?.recordClaimed ?? false,
+    },
+    logs: {
+      minLevel: config.logs?.minLevel ?? 'trace',
+      tags: [...(config.logs?.tags ?? [])],
     },
     requestCapture: config.requestCapture ?? null,
     extensions: config.extensions ?? [],

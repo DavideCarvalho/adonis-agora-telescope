@@ -29,6 +29,7 @@ import type { TelescopeStore } from '../src/store.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import { EntryEvents } from '../src/stream/entry_events.js';
 import { StreamingTelescopeStore } from '../src/stream/streaming_store.js';
+import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 
 /**
  * Wires `@adonis-agora/telescope` into the AdonisJS application.
@@ -49,6 +50,7 @@ import { StreamingTelescopeStore } from '../src/stream/streaming_store.js';
 export default class TelescopeProvider {
   private store: TelescopeStore | null = null;
   private diagnosticsWatcher: DiagnosticsWatcher | null = null;
+  private logsWatcher: LogsWatcher | null = null;
   private entryEvents: EntryEvents | null = null;
   private pruner: TelescopePruner | null = null;
   private overloadGuard: OverloadGuard | null = null;
@@ -88,6 +90,19 @@ export default class TelescopeProvider {
       });
       watcher.start();
       this.diagnosticsWatcher = watcher;
+    }
+
+    // Tee the app logger into telescope. `LoggerLike` is a structural slice of the
+    // AdonisJS logger (level methods), so the container's logger fits without a
+    // hard import — keeps this provider decoupled from a specific logger version.
+    if (config.watchers.has('logs')) {
+      const logger = this.app.container.make('logger') as LoggerLike;
+      const watcher = new LogsWatcher({
+        minLevel: config.logs.minLevel,
+        tags: config.logs.tags,
+      });
+      watcher.start(logger);
+      this.logsWatcher = watcher;
     }
 
     // Build the extension registry from `config.extensions` and publish it so the UI can serve each
@@ -215,6 +230,8 @@ export default class TelescopeProvider {
     this.pruner = null;
     this.diagnosticsWatcher?.stop();
     this.diagnosticsWatcher = null;
+    this.logsWatcher?.stop();
+    this.logsWatcher = null;
     this.entryEvents?.clear();
     this.entryEvents = null;
     resetTelescopeRuntime();

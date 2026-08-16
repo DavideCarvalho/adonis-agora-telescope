@@ -35,6 +35,19 @@ describe('resolveConfig', () => {
     expect(c.watchers.has('diagnostics')).toBe(true);
   });
 
+  it('enables the logs watcher and threads its settings', () => {
+    const c = resolveConfig({ watchers: ['logs'], logs: { minLevel: 'warn', tags: ['app'] } });
+    expect(c.watchers.has('logs')).toBe(true);
+    expect(c.logs.minLevel).toBe('warn');
+    expect(c.logs.tags).toEqual(['app']);
+  });
+
+  it('defaults logs settings to record everything', () => {
+    const c = resolveConfig({ watchers: ['logs'] });
+    expect(c.logs.minLevel).toBe('trace');
+    expect(c.logs.tags).toEqual([]);
+  });
+
   it('defaults diagnostics.exclude to an empty list', () => {
     expect(resolveConfig().diagnostics.exclude).toEqual([]);
   });
