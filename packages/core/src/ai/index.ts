@@ -1,5 +1,5 @@
 /** Keep in sync with this package's `version` in package.json. */
-export const VERSION = '0.7.1';
+export const VERSION = '0.8.0';
 
 // — diagnoser —
 export { TelescopeAiDiagnoser } from './telescope_ai_diagnoser.js';
