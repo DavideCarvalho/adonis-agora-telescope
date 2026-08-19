@@ -1,0 +1,42 @@
+{{{
+  exports({ to: app.configPath('telescope_cpu_profiling.ts') })
+}}}
+import { defineConfig } from '@adonis-agora/telescope/cpu_profiling'
+
+/**
+ * Configuration for '@adonis-agora/telescope/cpu_profiling'. On-demand V8 CPU
+ * captures via node:inspector, rendered as a flamegraph in the dashboard.
+ *
+ * Profiling carries real overhead (a running sampling profiler slows the process it
+ * profiles), so it is OFF by default. While disabled the middleware hook is a single
+ * boolean check and node:inspector is never required.
+ */
+export default defineConfig({
+  /**
+   * Master switch. Set to true to enable capture.
+   */
+  enabled: false,
+
+  /**
+   * Fraction (0-1) of requests captured automatically. 0 — the default — means
+   * captures only happen when explicitly armed from the dashboard, which itself
+   * requires cpuProfiling.armEnabled in config/telescope_ui.ts.
+   */
+  // sampleRate: 0,
+
+  /**
+   * Maximum concurrent captures, keeping overhead bounded under load. Default 2.
+   */
+  // maxConcurrent: 2,
+
+  /**
+   * Captures shorter than this many ms are discarded (not worth an entry). Default 5.
+   */
+  // minDurationMs: 5,
+
+  /**
+   * V8 sampling interval in microseconds — lower is finer-grained and costlier.
+   * Default 1000, floored at 100.
+   */
+  // samplingIntervalMicros: 1000,
+})

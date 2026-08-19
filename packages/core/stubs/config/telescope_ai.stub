@@ -1,0 +1,57 @@
+{{{
+  exports({ to: app.configPath('telescope_ai.ts') })
+}}}
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/ai'
+
+/**
+ * Configuration for '@adonis-agora/telescope/ai'. Diagnosis is on when an Anthropic API
+ * key resolves from the environment; with no key the diagnoser is a safe no-op.
+ *
+ * Add ANTHROPIC_API_KEY to your .env and validate it in start/env.ts:
+ *   ANTHROPIC_API_KEY: Env.schema.string.optional()
+ */
+export default defineConfig({
+  /**
+   * Master switch. Set to false to disable diagnosis entirely.
+   */
+  // enabled: true,
+
+  /**
+   * The Anthropic API key — sourced from the environment, never hardcoded.
+   */
+  apiKey: env.get('ANTHROPIC_API_KEY'),
+
+  /**
+   * Bring your OWN model client instead. Any object with a messages.create method
+   * matching the Anthropic Messages shape is accepted, and takes precedence over
+   * apiKey — telescope then never constructs the Anthropic SDK itself.
+   */
+  // client: myModelClient,
+
+  /**
+   * Claude model id. Defaults to 'claude-sonnet-4-6' (best speed/intelligence
+   * balance). Use 'claude-opus-4-8' for the most capable diagnosis, or
+   * 'claude-haiku-4-5-20251001' for the cheapest.
+   */
+  // model: 'claude-sonnet-4-6',
+
+  /**
+   * Hard cap on generated tokens per diagnosis. Default 1024.
+   */
+  // maxTokens: 1024,
+
+  /**
+   * How long a cached diagnosis stays fresh, in ms. An exception family is
+   * diagnosed once, then served from cache until this elapses. Defaults to 24h.
+   */
+  // cacheTtlMs: 24 * 60 * 60 * 1000,
+
+  /**
+   * Per-diagnosis wall-clock timeout, in ms, enforced by the diagnosis coordinator
+   * that backs the dashboard's Diagnose button, the MCP diagnose_exception tool and
+   * the alerter's 'Probable cause (AI)' section. A slower model call is abandoned
+   * (the caller proceeds without the AI note). Default 8000; 0 or less disables it.
+   */
+  // timeoutMs: 8000,
+})

@@ -1,0 +1,78 @@
+{{{
+  exports({ to: app.configPath('telescope_alerts.ts') })
+}}}
+import { defineConfig } from '@adonis-agora/telescope/alerts'
+
+/**
+ * Configuration for '@adonis-agora/telescope/alerts'. By default alerting is on, polls
+ * the telescope store every 30s for brand-new exception families, and logs each
+ * alert to the console. Add a Slack or generic webhook channel to ship alerts off-box.
+ */
+export default defineConfig({
+  /**
+   * Master switch. Set to false to disable alerting entirely.
+   */
+  // enabled: true,
+
+  /**
+   * Delivery destinations. Each fired alert is sent to every channel concurrently;
+   * one channel failing never blocks the others. Accepts declarative specs or
+   * pre-built channel objects (slackChannel/webhookChannel/customChannel).
+   */
+  // channels: [
+  //   { type: 'console' },
+  //   { type: 'slack', url: env.get('TELESCOPE_SLACK_WEBHOOK') },
+  //   { type: 'webhook', url: env.get('TELESCOPE_ALERT_WEBHOOK') },
+  // ],
+
+  /**
+   * Rules to evaluate.
+   *  - { type: 'new-exception', window } — page the first time an exception family
+   *    is seen within window (and again after it elapses).
+   *  - { type: 'every-exception', window? } — page for EVERY exception, not just new
+   *    families, still rate-limited per family by cooldown. The optional window only
+   *    counts occurrences shown on the alert; it does not gate firing.
+   *  - { type: 'exception-rate', window, threshold } — page when >= threshold
+   *    exceptions are recorded in the trailing window.
+   *  - { type: 'metric-threshold', metric, window, comparator, threshold, minSamples? }
+   *    — page when a windowed metric crosses a threshold, and AUTO-RESOLVE when it
+   *    clears. metric is one of 'request-p95-ms', 'request-p99-ms', 'query-p95-ms',
+   *    'query-p99-ms', 'cache-hit-rate', 'exception-count'; comparator is 'gte' or
+   *    'lte'. minSamples (default 1) guards a percentile rule against a single
+   *    outlier on a quiet host, and is ignored for 'exception-count'.
+   *
+   * Only the FIRST rule of each type is evaluated — list one rule per type.
+   */
+  // rules: [
+  //   { type: 'new-exception', window: '1h' },
+  //   { type: 'metric-threshold', metric: 'request-p99-ms', window: '5m', comparator: 'gte', threshold: 800 },
+  // ],
+
+  /**
+   * External dashboard URL — when set, Slack alerts include a deep link to the entry.
+   */
+  // dashboardUrl: 'https://telescope.example.com/',
+
+  /**
+   * Poll cadence and re-notify cooldown (duration strings).
+   */
+  // every: '30s',
+  // cooldown: '15m',
+
+  /**
+   * Reporting instance identifier carried on every alert payload. Default 'telescope'.
+   */
+  // instanceId: 'api-eu-west-1',
+
+  /**
+   * Optional IP-to-geo resolver. Called ONLY when an exception alert fires and
+   * carries a client IP; the result renders as a coarse 'Location' field on channels
+   * that support it. Telescope ships no geo database — you own the lookup and any
+   * caching. Return null (or throw) to omit the field.
+   */
+  // geoLookup: async (ip) => {
+  //   const res = await fetch('https://ipapi.example/' + ip)
+  //   const body = await res.json()
+  //   return { city: body.city, country: body.country, countryCode: body.country_code }
+  // },
+})

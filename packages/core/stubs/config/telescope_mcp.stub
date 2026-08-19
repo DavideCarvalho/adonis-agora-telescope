@@ -1,0 +1,48 @@
+{{{
+  exports({ to: app.configPath('telescope_mcp.ts') })
+}}}
+import { defineConfig } from '@adonis-agora/telescope/mcp'
+
+/**
+ * Configuration for '@adonis-agora/telescope/mcp'. Exposes the captured telemetry to
+ * a coding agent (Claude Code, Cursor, …) over the Model Context Protocol as a
+ * JSON-RPC endpoint at 'POST /telescope/mcp'.
+ *
+ * Access reuses the SAME guard as the dashboard: allowed automatically outside
+ * production, and in production only when a token / basic credential — or a custom
+ * authorize hook — permits it. A denial is returned as a JSON-RPC -32001 error
+ * (MCP has no transport-level 401).
+ */
+export default defineConfig({
+  /**
+   * Master switch. Set to false to register no routes at all.
+   */
+  // enabled: true,
+
+  /**
+   * URL the JSON-RPC endpoint mounts at.
+   */
+  // path: '/telescope/mcp',
+
+  /**
+   * Access-decision hook (identical to the UI/metrics guard). Return true to allow
+   * the request. Delegate to your own app auth here, e.g.:
+   */
+  // authorize: (ctx) => ctx.auth?.user?.isAdmin === true,
+
+  /**
+   * Built-in credentials for the default policy (ignored when authorize is set):
+   *  - token: allow 'Authorization: Bearer <token>' or '?token=<token>'
+   *  - basic: allow HTTP Basic auth
+   */
+  // credentials: {
+  //   token: env.get('TELESCOPE_MCP_TOKEN'),
+  // },
+
+  /**
+   * Which tools to expose. Omit for all six ('list_entries', 'get_entry',
+   * 'get_trace', 'get_waterfall', 'get_health', 'diagnose_exception'). Restrict to
+   * a read-only surface, e.g.:
+   */
+  // tools: ['list_entries', 'get_entry', 'get_trace', 'get_waterfall', 'get_health'],
+})
