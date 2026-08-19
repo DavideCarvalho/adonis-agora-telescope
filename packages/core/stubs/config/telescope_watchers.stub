@@ -1,0 +1,120 @@
+{{{
+  exports({ to: app.configPath('telescope_watchers.ts') })
+}}}
+import { defineConfig } from '@adonis-agora/telescope/watchers'
+
+/**
+ * Configuration for '@adonis-agora/telescope/watchers'. By default only the Lucid
+ * 'query' watcher is enabled — its db:query event is verified against the installed
+ * '@adonisjs/lucid' types. Every other watcher is opt-in.
+ */
+export default defineConfig({
+  /**
+   * Master switch. Set to false to start no per-technology watcher.
+   */
+  // enabled: true,
+
+  /**
+   * Active watchers. Omit one to disable it.
+   *  - 'query'         — records every Lucid SQL query (sql, bindings, duration, connection).
+   *  - 'mail'          — records every email sent (mail:sent).
+   *  - 'cache'         — records @adonisjs/cache hit/miss/write/delete events.
+   *  - 'http-client'   — records every outbound fetch call (method, url, status, duration).
+   *  - 'logs'          — records AdonisJS logger output as 'log' entries. The CORE
+   *                      config can also start this watcher, with minLevel/tags
+   *                      options this one has no place for — enable it in ONE place
+   *                      only. Whichever provider boots first owns the tap; the other
+   *                      is ignored with a warning, so nothing is recorded twice.
+   *  - 'queue'         — records @adonisjs/queue job executions (optional peer). No-op
+   *                      when the peer is absent.
+   *  - 'events'        — records every event emitted through the core Emitter (onAny),
+   *                      with an ignore-list (db:query / mail:sent are excluded by default).
+   *  - 'redis'         — records @adonisjs/redis commands (optional peer; wraps the
+   *                      ioredis sendCommand). No-op when the peer is absent.
+   *  - 'profiling'     — publishes the opt-in profile()/startProfile() timing-span
+   *                      helpers. Wrap a code section to record its label, duration
+   *                      and in-span marks. Zero cost until enabled AND used.
+   *  - 'schedule'      — publishes the opt-in scheduleTask()/recordScheduledRun()
+   *                      helpers. AdonisJS ships no scheduler event to tap, so this
+   *                      is EXPLICIT integration: wrap the closure you hand your
+   *                      scheduler with scheduleTask('name', fn), or call
+   *                      recordScheduledRun(...) from your own scheduler callback.
+   *  - 'queue-manager' — publishes the Live Queue Manager driver behind the queue
+   *                      console (list / inspect / retry / enqueue). This is a live
+   *                      control surface, not an entry watcher — configure it under
+   *                      'queueManager' below.
+   */
+  // watchers: ['query'],
+
+  /**
+   * Tuning for the Lucid 'query' watcher (enabled by default). It records every
+   * SQL query Lucid emits on db:query, grouped by normalized SQL template so the
+   * Pulse slow-query and N+1 cards can roll up 'the same query'.
+   */
+  // query: {
+  //   // Queries at/above this many ms get a 'slow' tag. Default 500.
+  //   slowMs: 500,
+  //   // Keep the raw bound VALUES. Off by default — bindings carry PII/secrets, so
+  //   // they are redacted to '[REDACTED]' placeholders (arity preserved). Default false.
+  //   captureBindings: false,
+  //   // Connection names (case-insensitive) whose queries are NOT recorded.
+  //   ignoreConnections: [],
+  //   // Normalize SQL into the familyHash grouping key (collapse whitespace, replace
+  //   // literals with '?'). Off hashes the raw SQL verbatim. Default true.
+  //   normalize: true,
+  // },
+
+  /**
+   * Tuning for the 'http-client' (outbound) watcher. Outbound HTTP is OPT-IN:
+   * AdonisJS has no single built-in client, so nothing is monkey-patched. Wrap a
+   * fetch with instrumentFetch(fetch) (from '@adonis-agora/telescope/watchers')
+   * and hand it to your client — it inherits the settings below.
+   */
+  // httpClient: {
+  //   // Outbound calls at/above this many ms get a 'slow' tag. Default 1000.
+  //   slowMs: 1000,
+  //   // Hosts (exact, case-insensitive; may include a port) whose calls are not recorded.
+  //   ignoreHosts: [],
+  //   // Record request/response body SIZES (bytes, never the bytes). Default false.
+  //   captureBodies: false,
+  // },
+
+  /**
+   * Tuning for the 'profiling' watcher. Add 'profiling' to watchers, then wrap a
+   * code section with profile('label', fn) (or bracket it with startProfile) —
+   * both imported from '@adonis-agora/telescope/watchers'.
+   */
+  // profiling: {
+  //   // Spans at/above this many ms get a 'slow' tag. Default 100.
+  //   slowMs: 100,
+  //   // Spans below this many ms are discarded (too short to keep). Default 0.
+  //   minDurationMs: 0,
+  // },
+
+  /**
+   * Tuning for the 'schedule' watcher. Add 'schedule' to watchers, then wrap the
+   * closure you hand your scheduler with scheduleTask('name', fn) (or call
+   * recordScheduledRun(...)) — both from '@adonis-agora/telescope/watchers'.
+   */
+  // schedule: {
+  //   // Runs at/above this many ms get a 'slow' tag. Default 1000.
+  //   slowMs: 1000,
+  // },
+
+  /**
+   * Config for the 'queue-manager' capability — the driver behind the dashboard's
+   * live queue console. Add 'queue-manager' to watchers to publish it.
+   *  - queues  — REQUIRED to get anything. @adonisjs/queue has no queue-enumeration
+   *              API (queue names only exist as strings at dispatch time), so there
+   *              is nothing to auto-discover. Default [] (the console reports
+   *              'not configured').
+   *  - adapter — which configured queue adapter to resolve. Omit for the default one.
+   *
+   * The console's MUTATING actions (retry / enqueue) are additionally gated by
+   * queueActions.enabled in config/telescope_ui.ts, and are off by default.
+   */
+  // queueManager: {
+  //   queues: ['default', 'emails'],
+  //   // adapter: 'redis',
+  // },
+})

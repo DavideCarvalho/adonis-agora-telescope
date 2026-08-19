@@ -58,14 +58,20 @@ The provider binds `TelescopeAiDiagnoser` into the container (even when disabled
 gather its trace for context, and diagnose:
 
 ```ts title="app/controllers/diagnose_controller.ts"
+import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
 import { TelescopeService } from '@adonis-agora/telescope'
 import { TelescopeAiDiagnoser } from '@adonis-agora/telescope/ai'
 
+@inject()
 export default class DiagnoseController {
+  constructor(
+    private telescope: TelescopeService,
+    private diagnoser: TelescopeAiDiagnoser,
+  ) {}
+
   async show({ params, response }: HttpContext) {
-    const telescope = await this.app.container.make(TelescopeService)
-    const diagnoser = await this.app.container.make(TelescopeAiDiagnoser)
+    const { telescope, diagnoser } = this
 
     const entry = await telescope.find(params.id)
     if (!entry || entry.type !== 'exception') {

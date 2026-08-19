@@ -81,22 +81,38 @@ export class LogsWatcher {
   private readonly minLevelIndex: number;
   private readonly extraTags: readonly string[];
   private logger: LoggerLike | null = null;
+  /** The levels THIS instance teed, so `stop()` never unwinds another watcher's tap. */
+  private readonly teedLevels: LogLevel[] = [];
 
   constructor(options: LogsWatcherOptions = {}) {
     this.minLevelIndex = LOG_LEVELS.indexOf(options.minLevel ?? 'trace');
     this.extraTags = options.tags ?? [];
   }
 
-  /** Tee the level methods on `logger`. Idempotent per instance. */
+  /**
+   * Tee the level methods on `logger`. Idempotent per instance AND per logger: a
+   * level already teed (by this watcher or another one) is left alone, so a logger
+   * is never wrapped twice and a line is never recorded twice.
+   *
+   * The `'logs'` watcher can be enabled from TWO places — `config/telescope.ts`
+   * (with `logs.minLevel` / `logs.tags`) and `config/telescope_watchers.ts` (with no
+   * options). Only the first one to boot owns the tap; the second finds the logger
+   * already teed, warns once naming both config keys, and becomes inert — including
+   * its `stop()`, which would otherwise untee the owner's tap on shutdown.
+   */
   start(logger: LoggerLike): void {
     if (this.logger) return;
-    this.logger = logger;
     const watcher = this;
+    let alreadyTeed = false;
 
     for (let index = 0; index < LOG_LEVELS.length; index++) {
       const level: LogLevel = LOG_LEVELS[index] as LogLevel;
       const original = logger[level] as TeedMethod | undefined;
-      if (typeof original !== 'function' || original[TEED]) continue;
+      if (typeof original !== 'function') continue;
+      if (original[TEED]) {
+        alreadyTeed = true;
+        continue;
+      }
 
       const teed = function teedLevel(this: unknown, ...args: unknown[]): void {
         // Nested log (e.g. our own failure logging) — call the original but
@@ -117,15 +133,33 @@ export class LogsWatcher {
       teed[TEED] = true;
       teed.__telescopeOriginal__ = original;
       logger[level] = teed;
+      this.teedLevels.push(level);
     }
+
+    if (this.teedLevels.length === 0) {
+      if (alreadyTeed) {
+        console.warn(
+          "Telescope: the 'logs' watcher is already tapping this logger, so this second " +
+            'one records nothing (its minLevel/tags are ignored). Enable it in ONE place: ' +
+            "either `watchers: ['logs']` in config/telescope.ts (which also accepts a `logs` " +
+            "options block) or `watchers: ['logs']` in config/telescope_watchers.ts.",
+        );
+      }
+      return;
+    }
+    this.logger = logger;
   }
 
-  /** Restore the original level methods on the tapped instance. */
+  /**
+   * Restore the level methods THIS watcher teed. A watcher that never took the tap
+   * (because another one already held it) restores nothing, so shutting it down
+   * leaves the owner's tap intact.
+   */
   stop(): void {
     const logger = this.logger;
     if (!logger) return;
     this.logger = null;
-    for (const level of LOG_LEVELS) {
+    for (const level of this.teedLevels.splice(0)) {
       const current = logger[level] as TeedMethod | undefined;
       if (current?.[TEED] && current.__telescopeOriginal__) {
         logger[level] = current.__telescopeOriginal__;

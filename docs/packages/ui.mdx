@@ -47,20 +47,24 @@ node ace configure @adonis-agora/telescope   # then pick "UI" at the prompt
 </Tabs>
 
 Selecting **UI** registers `@adonis-agora/telescope/ui_provider` and publishes
-`config/telescope_ui.ts`. Open `http://localhost:3333/telescope`.
+`config/telescope_ui.ts`. That gives you the JSON API and the live stream — `curl
+http://localhost:3333/telescope/api/entries` works immediately.
+
+It does **not** give you a page. `http://localhost:3333/telescope` answers `404` until you also
+install [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui), which owns the
+mount root and serves the console that consumes these routes.
 
 ## How it mounts
 
-On boot the provider:
+On boot the provider reads `config/telescope_ui.ts` and registers routes under the configured
+prefix on your app's router: the JSON API under `<path>/api/*`, the SSE stream at
+`<path>/api/stream`, and — when you configure `dashboardAuth` — the login and logout routes.
+Everything that serves recorded data runs the `authorize` guard first. It reads the same live
+store the watchers write to, so the API always reflects what was just captured.
 
-1. reads `config/telescope_ui.ts`;
-2. resolves the live store from the core's runtime slot (same handle the watchers record
-   through — no DI);
-3. registers routes under the configured prefix via the AdonisJS router — the JSON API under
-   `<path>/api/*`, the SSE stream at `<path>/api/stream` (plus optional `dashboardAuth`
-   login/logout routes), each behind the `authorize` guard. It does **not** serve a page at
-   the prefix root; the [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui)
-   SPA provider owns `<path>` and `<path>/*`.
+It serves nothing at the prefix root itself: `<path>` and `<path>/*` belong to the
+[`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui) SPA provider, which is why
+the two packages can be mounted, gated and upgraded independently.
 
 <Callout type="warn">
 If `@adonis-agora/telescope` isn't enabled/booted, the store slot is `null` and the provider
@@ -76,19 +80,100 @@ exist until the core is running.
 | `GET <path>/api/entries/:id`       | One entry with full `content`, or 404.                      |
 | `GET <path>/api/trace/:traceId`    | Every entry on a trace.                                     |
 | `GET <path>/api/stats`             | `{ count, topFamilies, topTags }`.                          |
-| `GET <path>/api/stream`            | SSE live-tail of newly recorded entries.                    |
-| `GET <path>/api/metrics/stats\|timeseries\|traces\|waterfall/:traceId\|n-plus-one/:traceId` | Metrics analytics used by the SPA. |
+| `GET <path>/api/retention`         | How long data survives here — see [Retention](#retention).  |
+| `GET <path>/api/meta`              | What this install can do — see [Capability discovery](#capability-discovery). |
+| `GET <path>/api/stream` *(if `stream` enabled)* | SSE live-tail of newly recorded entries.       |
+| `GET <path>/api/metrics/stats`     | Windowed latency/throughput/error aggregates.               |
+| `GET <path>/api/metrics/timeseries` | Bucketed series for the charts.                            |
+| `GET <path>/api/metrics/traces`    | Recent traces, newest first.                                |
+| `GET <path>/api/metrics/waterfall/:traceId` | One trace as a waterfall.                          |
+| `GET <path>/api/metrics/n-plus-one/:traceId` | Repeated-query loops detected on one trace.       |
 | `GET <path>/api/metrics/pulse` *(if Pulse enabled)* | Pulse rollup snapshot.                        |
 | `POST <path>/api/requests/:id/replay` *(if replay enabled)* | Replay a captured request.        |
-| `GET <path>/api/meta` *(if any extension)*           | Contributed dashboards + entry types.     |
+| `POST <path>/api/exceptions/:id/diagnose` *(if [`ai`](/docs/telescope/packages/ai) configured)* | Diagnose one exception — see [Diagnosing an exception](#diagnosing-an-exception). |
 | `GET <path>/api/ext/:ext/data/:provider` *(if any extension)* | One data provider's result.      |
 | `GET/POST <path>/api/profiles*` *(if [`cpu_profiling`](/docs/telescope/packages/cpu-profiling) installed)* | Captured CPU profiles + arm trigger. |
 | `GET <path>/api/schedules/live`    | Registered schedules + computed next-run, joined with last-run — see [Live Schedules](/docs/telescope/packages/watchers#live-schedules--registering-what-exists-not-just-what-ran). |
 | `GET/POST <path>/api/queues/live*` *(if `queue-manager` watcher enabled)* | Live queue list/inspect/retry/enqueue — see [Live Queue Manager](/docs/telescope/packages/watchers#live-queue-manager). |
 
-The dashboard HTML is read once per process and cached; the API base path is injected into
-it at render time. See the [dashboard tour](/docs/telescope/dashboard) for the full API
-shape and query parameters.
+See the [dashboard tour](/docs/telescope/dashboard) for the full API shape and query parameters.
+
+### Capability discovery
+
+`GET <path>/api/meta` answers unconditionally and describes what this particular install can
+do, so a front end can hide the buttons that would fail:
+
+```json
+{
+  "data": {
+    "entryTypes": [],
+    "dashboards": [],
+    "ai": { "enabled": true },
+    "profiling": { "enabled": false },
+    "queueManager": { "enabled": false }
+  }
+}
+```
+
+`entryTypes` and `dashboards` list what [extensions](/docs/telescope/concepts/extensions) have
+contributed — both empty arrays when none are installed. The three flags say whether AI
+diagnosis has a model to call, whether CPU profiling is available, and whether a live queue
+driver is wired. The shipped console uses them to decide whether to render the **Diagnose**
+button, the **Profiles** view and the queue console at all.
+
+### Retention
+
+`GET <path>/api/retention` reports the retention posture — how aggressively data is deleted and
+which entry types are being sampled — so a viewer can tell "there is nothing here" apart from
+"it was already pruned":
+
+```json
+{
+  "data": {
+    "enabled": true,
+    "afterMs": 86400000,
+    "keepLast": 10000,
+    "intervalMs": 60000,
+    "sampling": [{ "type": "query", "rate": 0.1 }]
+  }
+}
+```
+
+`enabled` is whether a [pruner](/docs/telescope/concepts/performance) is armed at all;
+`afterMs` is the age cutoff, `keepLast` the count cap (`null` when unset) and `intervalMs` the
+cycle cadence. `sampling` lists only the entry types recording below 100% — a type kept at rate
+`1` is omitted, so an empty array means nothing is being sampled away. The endpoint reports
+configuration, not live pruner state: it never tells you when the last cycle ran.
+
+The types are exported for anyone building against it:
+
+```ts
+import type {
+  RetentionInfo,           // the `data` payload above
+  RetentionOptions,        // { prune?, sampling? } — what the API is constructed with
+  RetentionPruneOptions,   // { enabled, afterMs, keepLast?, intervalMs }
+  RetentionSamplingRate,   // { type, rate }
+} from '@adonis-agora/telescope/ui'
+```
+
+### Diagnosing an exception
+
+When [`@adonis-agora/telescope/ai`](/docs/telescope/packages/ai) is installed and has a model to
+call, `POST <path>/api/exceptions/:id/diagnose` runs a diagnosis over one exception entry and
+returns it as rendered Markdown:
+
+```sh
+curl -X POST http://localhost:3333/telescope/api/exceptions/01JX.../diagnose
+# { "data": { "markdown": "**Probable cause** …", "cached": true } }
+```
+
+Diagnoses are cached per exception family, so asking twice about the same error costs one model
+call — `cached: true` tells you which answer you got. Append `?force=true` to spend a fresh call
+anyway, which is what the console's re-run control does after you have changed the code.
+
+The endpoint answers `404` when AI diagnosis isn't configured for this dashboard or the id isn't
+an exception (server or browser-reported), and `502` when the model call failed or ran past its
+timeout. This is the route behind the **Diagnose** button in the console's exception detail view.
 
 ## Configuration
 
@@ -109,6 +194,7 @@ export default defineConfig({
 | `path`        | `/telescope`   | URL prefix (normalized to leading slash, no trailing slash).   |
 | `authorize`   | default policy | Access-decision hook — [Dashboard auth](/docs/telescope/dashboard/auth). |
 | `credentials` | `{}`           | Built-in token / HTTP Basic gate for the default policy.        |
+| `dashboardAuth` | unset        | Built-in login page + signed session cookie — [Dashboard auth](/docs/telescope/dashboard/auth#built-in-login-screen). |
 | `replay`      | `{ enabled: false }` | Request-replay gate — see [Request replay](#request-replay).      |
 | `cpuProfiling` | `{ armEnabled: false }` | Gate for `POST <path>/api/profiles/arm` — see [CPU profiling](/docs/telescope/packages/cpu-profiling#arming-a-capture). |
 | `queueActions` | `{ enabled: false }` | Gate for the queue console's `retry`/`enqueue` mutations — see [Live Queue Manager](/docs/telescope/packages/watchers#live-queue-manager). |
@@ -166,12 +252,53 @@ fetch-shaped transport (tests pass a fake so they never hit the network).
 
 ## Build your own UI
 
-The data lives behind the documented JSON API, so the shipped dashboard is optional.
-Disable it and point your own front end (an admin page, a Grafana panel, a CLI) at the same
-`<path>/api/*` endpoints, or read `TelescopeService` directly. The `@adonis-agora/telescope/ui`
-subpath also exports its framework-light building blocks — `TelescopeApi`,
-`renderDashboard`, the `enforceGuard` guard, and `toSummary` / `buildQuery` helpers — if you
-want to assemble a custom mount.
+The data lives behind the documented JSON API, so the shipped console is optional. Disable it
+and point your own front end (an admin page, a Grafana panel, a CLI) at the same `<path>/api/*`
+endpoints, or read `TelescopeService` directly. The `@adonis-agora/telescope/ui` subpath also
+exports its framework-light building blocks — `TelescopeApi`, the `enforceGuard` guard, the
+`toSummary` / `buildQuery` helpers, and `renderDashboard`, a single self-contained HTML page you
+can serve from a route of your own — if you want to assemble a custom mount.
+
+### Mounting on something that isn't AdonisJS
+
+The API handlers never see an AdonisJS `HttpContext`. They take a `UiHttpContext`, a two-field
+shape you can satisfy from any server:
+
+```ts
+import type { UiHttpContext, UiRequest, UiResponse } from '@adonis-agora/telescope/ui'
+
+interface UiRequest {
+  method(): string
+  qs(): Record<string, unknown>
+  header(name: string): string | undefined
+}
+
+interface UiResponse {
+  status(code: number): UiResponse
+  header(name: string, value: string): UiResponse
+  getHeader(name: string): unknown
+  send(body: unknown): unknown
+}
+```
+
+`getHeader` is **required**, not optional. It is what lets the guard notice that your
+`authorize` hook already redirected before it writes a `403` body — see [Redirecting instead of
+answering JSON](/docs/telescope/dashboard/auth#redirecting-instead-of-answering-json). An adapter
+that omits it will not type-check.
+
+Everything the built-in login flow needs is exported too, if you want to mount that surface by
+hand rather than letting the provider register it:
+
+| Export | What it does |
+| ------ | ------------ |
+| `resolveDashboardAuth(options)` | Validates and resolves a `dashboardAuth` block; `null` when unconfigured, throws when configured but unusable. |
+| `performLogin(auth, body, basePath)` | Runs the whole login decision with no HTTP types — returns `ok` (with the cookie value and where to go next), `bad-request`, or `unauthorized`. |
+| `readSession(auth, cookieValue)` | Verifies a session cookie, or `null`. |
+| `decideDashboardAuth(auth, cookieValue, mode, requestUrl)` | The guard decision itself: allow, redirect, or unauthorized. |
+| `enforceDashboardAuth(ctx, auth, mode, basePath)` | The AdonisJS-flavoured wrapper that also writes the `302` or the `401`. |
+| `sanitizeReturnTo(candidate, fallback)` | The open-redirect guard on the post-login destination — only same-origin, root-relative paths survive. |
+| `renderLoginPage(basePath)` | The server-rendered login HTML. |
+| `SESSION_COOKIE_NAME` | `'telescope_dashboard_session'`. |
 
 ## Peer dependencies
 

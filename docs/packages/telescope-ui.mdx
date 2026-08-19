@@ -1,24 +1,24 @@
 ---
 title: "@adonis-agora/telescope-ui"
 icon: AppWindow
-description: The observability dashboard SPA — a dependency-light React single-page app (entries + live tail, entry detail, traces & waterfall, exception groups, Pulse health) served by a thin AdonisJS provider under the same prefix and behind the same auth guard as the core JSON API it consumes.
+description: The observability console SPA — a React single-page app with ten sections (overview, entries + live tail, traces & waterfall, Pulse, exception groups, live queues, live schedules, exports, CPU profiles, extension dashboards), a command palette and a light/dark theme, served by a thin AdonisJS provider under the same prefix and behind the same auth guard as the core JSON API it consumes.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import { Callout } from 'fumadocs-ui/components/callout'
 
-`@adonis-agora/telescope-ui` is a **separate, optional package**: a React single-page dashboard
-that renders Telescope's captured telemetry — an entries list with a live tail, entry detail,
-trace + waterfall views, exception groups, and the [Pulse](/docs/telescope/packages/pulse) health
-snapshot. A thin AdonisJS provider serves the built SPA as static assets under the **same** prefix
-the core UI provider mounts its JSON API on, behind the **same** [auth guard](/docs/telescope/dashboard/auth).
+`@adonis-agora/telescope-ui` is a **separate, optional package**: the React single-page console
+that renders everything Telescope captured. A thin AdonisJS provider serves the pre-built SPA
+under the **same** prefix the core UI provider mounts its JSON API on, behind the **same**
+[auth guard](/docs/telescope/dashboard/auth).
 
-<Callout type="info">
-This replaces the core `@adonis-agora/telescope/ui` provider's legacy **inline-HTML** dashboard at the
-prefix root. When this package is installed the core provider stops registering the inline page and
-keeps only `<path>/api/*`; the SPA owns `<path>` and `<path>/*`. Static API routes take precedence
-over the SPA's wildcard in the AdonisJS router, so the API always wins. If you don't want the React
-SPA, don't install this package — the core inline dashboard is still there.
+<Callout type="warn">
+Without this package there is **no page**. The core `@adonis-agora/telescope/ui` subpath serves
+`<path>/api/*` and nothing else, so `http://localhost:3333/telescope` answers `404` until you
+install this one. The core is genuinely headless: if you don't want a React console, consume the
+[JSON API](/docs/telescope/packages/ui) or the [headless
+service](/docs/telescope/packages/core#headless-api) directly, or serve the self-contained
+`renderDashboard(apiBase)` HTML from a route of your own.
 </Callout>
 
 ## Install
@@ -67,30 +67,79 @@ It needs the core UI to be enabled (that is the backend the SPA talks to); if
 
 ## What it shows
 
-The SPA is dependency-light (React 19, no data-fetching or component framework) and calls the
-core's own read routes — it holds no server-side state of its own:
+The console holds no server-side state of its own — every view is a call to the core's read
+routes. Ten sections sit in the left sidebar, in this order:
 
-- **Entries** — a filterable list with a **live tail** over the `<path>/api/stream` SSE feed.
-- **Entry detail** — one entry's full `content`, tags and trace linkage.
-- **Traces & waterfall** — every entry on a trace, plus the span waterfall.
-- **Exceptions** — grouped exception families.
-- **Pulse** — the [health rollup](/docs/telescope/packages/pulse) over a selectable window.
+| Section | What you get |
+| ------- | ------------ |
+| **Overview** | The triage landing page, and where you start. Requests, error rate (green at zero, amber above it, red past 5%), failed jobs and slow routes across the top; then recent failures, N+1 hotspots, the slowest entries, queues needing attention, slowest jobs, load by user, a throughput sparkline, a by-type breakdown, and the current retention posture. |
+| **Entries** | The full entries table — time, type, one-line summary, duration, tags — filterable by type and free-text search, with a **Live tail** toggle that streams new entries in as they are recorded. Active filters show as removable pills. |
+| **Traces** | Recent traces, newest-active first: the root label, a colored dot per entry type on the trace, entry count, total duration, last activity. Opening one shows the waterfall and any N+1 loops detected on it. |
+| **Pulse** | The [health rollup](/docs/telescope/packages/pulse) over a selectable window — throughput, error rate, status breakdown, and top-N cards for slowest entries, slow routes, exceptions, N+1 hotspots, load by user and cache hit ratio. |
+| **Exceptions** | Exceptions grouped by class and message over a window, each with its occurrence count, when it was last seen, and a sparkline of when it fired. |
+| **Queues** | The live queue console — see [Live Queue Manager](/docs/telescope/packages/watchers#live-queue-manager). Queue counts, job lookup by id, one job's full record, and (when you enable them) **Retry** and **Enqueue**. Counts the driver genuinely cannot report show as `—` rather than a fabricated zero. |
+| **Schedules** | Every registered scheduled task with its computed next run, joined with its last recorded run — see [Live Schedules](/docs/telescope/packages/watchers#live-schedules--registering-what-exists-not-just-what-ran). |
+| **Exports** | Filter the entries feed, pick a row limit and a format, download it — see [Exports](#exports). |
+| **Profiles** | Captured [CPU profiles](/docs/telescope/packages/cpu-profiling): a flamegraph plus a hot-functions table, with an **Arm capture** control for grabbing the next N requests. |
+| **Extensions** | The dashboards contributed by installed [extensions](/docs/telescope/concepts/extensions), rendered from their declarative panel specs. Each contributed dashboard also gets its own row in the sidebar, so an installed extension feels first-class. |
+
+Under those, a **Watchers** sub-nav lists every entry type as a colored dot. Clicking one jumps to
+Entries pre-filtered to that type. The list is the twelve built-in types plus any type an
+extension contributed that isn't already one of them.
+
+The Queues, Profiles and AI-diagnosis surfaces are gated on what the install actually supports —
+the console asks `<path>/api/meta` and, when a capability is off, renders an empty state telling
+you which config key turns it on rather than a button that would fail.
+
+### Getting around
+
+- **Command palette** — `⌘K` on macOS, `Ctrl-K` elsewhere (the same chord closes it), or the `⌘K`
+  button in the header. Type to filter, arrow keys to move, Enter to go. It lists every section,
+  a `Entries: <type>` jump for each entry type, and one entry per extension dashboard. It's a
+  navigator, not a search over your entries.
+- **Retention indicator** — a `retention: 24h` chip in the header, reading the same posture the
+  Overview panel shows, so you can tell "nothing happened" apart from "it was already pruned". A
+  `?` badge appears next to it when some entry type is being sampled below 100%, because then the
+  counts on screen undercount reality.
+- **Theme** — a header toggle flips light and dark. The choice is remembered in `localStorage`
+  under `telescope-theme`; the default is dark.
+- **Entry actions** — an exception's detail view offers **Diagnose with AI** (and a **Re-run**
+  that spends a fresh model call) when [`ai`](/docs/telescope/packages/ai) is configured; a
+  request's detail view offers **Replay request**. Both are always user-initiated.
+
+### Exports
+
+The Exports section is entirely client-side — there is no server export endpoint. It runs one
+ordinary `<path>/api/entries` query with the type, search and row limit you pick (up to 500, the
+same cap the API enforces), then hands the browser the result as a file:
+
+- **JSON** — the entries as pretty-printed JSON.
+- **CSV** — RFC 4180, columns `id, type, createdAt, durationMs, tags, familyHash, traceId, summary`.
+
+What you get is the list projection, the same rows the Entries table shows, so an export carries
+no entry `content` — content is searched server-side but never written into the file. Files are
+named `telescope-export-<type>-<timestamp>.<ext>`, and the last ten exports of the session are
+listed underneath so you can see what you already pulled.
 
 ## How it mounts
 
-The provider serves the Vite build (`dist/spa`) as static assets:
+The provider serves the Vite build as static assets, on exactly two routes:
 
 | Route              | Serves                                                                    |
 | ------------------ | ------------------------------------------------------------------------- |
-| `GET <mount>`      | `302` → `<mount>/` (canonical trailing slash so relative assets resolve). |
-| `GET <mount>/`     | The SPA shell (`index.html`), with the resolved API base injected.        |
+| `GET <mount>`      | The SPA shell, with the resolved API base injected.                       |
 | `GET <mount>/*`    | A built asset, or the SPA shell as a fallback (so a deep link still boots).|
 
+There is no separate trailing-slash route and no redirect between the two forms: AdonisJS treats
+`<mount>` and `<mount>/` as the same route, and the shell's asset URLs are rewritten to absolute
+paths so they resolve either way.
+
 `<mount>` defaults to `config('telescope_ui').path` (`/telescope`), so the SPA and the JSON API
-share a prefix and the SPA's `<path>/api/*` calls line up. Every route runs the same `authorize`
+share a prefix and the SPA's `<path>/api/*` calls line up. The core provider's static API routes
+take precedence over this wildcard, so the API always wins. Both routes run the same `authorize`
 guard as the API, plus the [`dashboardAuth`](/docs/telescope/dashboard/auth#built-in-login-screen)
-session guard when configured (a page navigation with no valid session is redirected to the login
-page).
+session guard when configured — a page navigation with no valid session is redirected to the login
+page rather than answered with JSON.
 
 ## Configuration
 
@@ -116,23 +165,109 @@ export default defineConfig({
 | `dashboard.enabled` | `true`           | Mount the SPA. `false` keeps the static routes off.    |
 | `dashboard.path`    | `telescope_ui.path` | Override the SPA mount path.                        |
 
+The console's mutating actions are gated by the core config, not this block: `replay`,
+`cpuProfiling.armEnabled` and `queueActions.enabled` are each off by default — see
+[`@adonis-agora/telescope/ui`](/docs/telescope/packages/ui#configuration).
+
 ## The client (build your own)
 
-The package also exports a typed, framework-agnostic client at `@adonis-agora/telescope-ui/client`
-— the same one the SPA uses — for embedding Telescope data in your own admin UI:
+The package also exports a typed client at `@adonis-agora/telescope-ui/client` — the very one the
+console uses, with no React and no dependencies of its own — for embedding Telescope data in your
+own admin UI:
 
 ```ts
 import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
 
 const client = new TelescopeClient({ baseUrl: '/telescope/api' })
-const entries = await client.listEntries({ type: 'exception' })
+const entries = await client.listEntries({ type: 'exception', limit: 20 })
 ```
 
-Notable exports: `TelescopeClient`, `TelescopeApiError`, type `TelescopeClientOptions`, plus the
-shared entry `types`, `format` helpers, and `api-base` resolver.
+`new TelescopeClient(options?)` takes `baseUrl` (defaults to the base resolved for the current
+page), `fetch` (inject your own for tests) and `limit` (the default list cap, `50`). Every request
+is sent same-origin, so it inherits whatever session already gates the dashboard.
+
+### Reading
+
+| Method | Returns |
+| ------ | ------- |
+| `listEntries(query?)` | `EntrySummary[]` for a `{ type, tag, traceId, search, before, limit }` filter. |
+| `getEntry(id)` | One `Entry` with its full `content`. |
+| `entriesByTrace(traceId)` | Every entry on one trace. |
+| `stats(limit?, type?)` | Count plus the busiest families and tags. |
+| `metricsStats(type, windowMs?, buckets?)` | The per-type analytics block for one entry type. |
+| `metricsTimeseries(windowMs?, buckets?, type?)` | Bucketed throughput, total and by type. |
+| `traces(limit?)` | Recent traces, newest-active first. |
+| `waterfall(traceId)` | One trace as a nested span tree. |
+| `nPlusOne(traceId, threshold?)` | Repeated-query loops on one trace. |
+| `pulse(windowMs?, topN?)` | The whole [Pulse](/docs/telescope/packages/pulse) rollup. |
+| `retention()` | The retention posture: cutoff, count cap, cadence, sampled types. |
+| `meta()` | Extension entry types and dashboards, plus the `ai` / `profiling` / `queueManager` flags. Resolves to an empty result rather than throwing when nothing is contributed. |
+| `extData(ext, provider, query?)` | One extension data provider's result. |
+| `streamUrl()` | The SSE URL for the live tail — hand it to `new EventSource(...)`. |
+
+### Profiles, queues and schedules
+
+| Method | Returns |
+| ------ | ------- |
+| `profilerStatus()` | Sampling and arm state, or `null` when CPU profiling isn't installed. |
+| `profiles(limit?)` | Captured profiles, newest first, without the frame tree. |
+| `profile(id)` | One profile's full entry: flamegraph tree plus hot frames. |
+| `armProfile(count, label?)` | Arms a capture of the next `count` requests, optionally filtered by route label. |
+| `liveQueues()` | Configured queues, their counts and what the driver can actually do — `null` when no queue driver is wired. |
+| `queueJob(queue, id)` | One job's record including payload and result, or `null`. |
+| `retryJob(queue, id)` | Retries one job. |
+| `enqueueJob(queue, payload, name?)` | Dispatches a new job. |
+| `liveSchedules()` | Registered schedules joined with their last run. |
+
+### Acting on an entry
+
+| Method | Returns |
+| ------ | ------- |
+| `diagnoseException(entryId, force?)` | An AI diagnosis of one exception. `force` spends a fresh model call instead of the cached answer. |
+| `replayRequest(entryId)` | Re-issues a captured request against the live server. |
+
+<Callout type="info">
+The five methods that act rather than read — `diagnoseException`, `replayRequest`, `armProfile`,
+`retryJob`, `enqueueJob` — never reject on an HTTP error. They resolve to a discriminated
+`{ ok: true, … }` / `{ ok: false, message }`, because "replay is disabled on this install" is a
+message to render, not an exception to catch. `liveQueues`, `queueJob` and `profilerStatus`
+similarly resolve to `null` when the feature isn't installed. Everything else throws a
+`TelescopeApiError` carrying the HTTP `status`.
+</Callout>
+
+### Helpers
+
+The same subpath exports the presentation helpers the console formats with, so your own UI can
+render numbers identically:
+
+| Export | What it does |
+| ------ | ------------ |
+| `formatDuration(ms)` | `840µs`, `4.2ms`, `1.24s`, `1m 3s` — or `—` for a missing value. |
+| `formatCount(n)` | `1,234,567`, or `—`. |
+| `formatPercent(ratio, digits?)` | Takes a 0–1 ratio: `0.0473` → `4.7%`. |
+| `formatTime(iso)` | Local wall-clock time, `10:04:31`. |
+| `formatRelative(iso, now?)` | `just now`, `12s ago`, `3m ago`, `4d ago`. |
+| `formatWindow(ms)` | A coarse window label: `5m`, `1h`, `7d`. |
+| `truncate(value, max?)` | Clips to `max` characters (default 80) with an ellipsis. |
+
+Plus the API-base resolution the SPA bootstraps with: `resolveApiBase()` returns the base injected
+into the shell by the provider, falling back to `deriveApiBase(location.pathname)` — which is just
+"the dashboard's own path, with `/api` appended unless it's already there". Pass an explicit
+`baseUrl` to `TelescopeClient` and neither is consulted.
+
+`ENTRY_TYPES` is the tuple of the twelve built-in entry types (`request`, `query`, `exception`,
+`client_exception`, `job`, `mail`, `cache`, `redis`, `event`, `log`, `http-client`, `diagnostic`) —
+useful for building a type filter. `Entry['type']` is a plain string, so a custom watcher or an
+extension can record types outside that list.
+
+Every wire shape is exported as a type too — `Entry`, `EntrySummary`, `EntriesQuery`,
+`StatsResult`, `TimeseriesReport`, `TraceSummary`, `Waterfall`, `NPlusOnePattern`, `PulseSummary`,
+`RetentionInfo`, `TelescopeMeta`, `Panel`, `DashboardSpec`, `CpuProfileContent`, `LiveQueues`,
+`LiveSchedules` and the rest.
 
 ## Peer dependencies
 
-`@adonis-agora/telescope` (the backend) and `@adonisjs/core` (`^7.3.0`, optional peer). React and
-Vite are dev-only — the published package ships the pre-built SPA, so there is no build step in
-your app.
+`@adonis-agora/telescope` (the backend) and `@adonisjs/core` (`^7.3.0`, optional peer). React,
+Tailwind CSS and Vite are dev-only — the published package ships the pre-built SPA, so there is no
+build step in your app. The console itself is built with Tailwind and [Base
+UI](https://base-ui.com); the `/client` subpath is plain TypeScript with no dependencies at all.

@@ -31,15 +31,18 @@ import {
  * bundled API. The SPA calls the telescope core's own real read routes (`<path>/api/*`) and the SSE
  * live stream (`<path>/api/stream`).
  *
- * It REPLACES the core provider's legacy inline-HTML dashboard at the prefix root (which the core
- * provider no longer registers when this package is installed): the SPA now owns `<path>` and
- * `<path>/*`, while the core provider keeps `<path>/api/*`. Static route segments take precedence
- * over the SPA's `<path>/*` wildcard in the AdonisJS router, so the API routes always win.
+ * This provider owns the prefix root: the SPA serves `<path>` and `<path>/*`, while the core
+ * provider keeps `<path>/api/*`. The core no longer routes its inline-HTML dashboard at all
+ * (`renderDashboard` stays exported for a host that wants to serve it itself), so without this
+ * package `<path>` is a 404. Static route segments take precedence over the SPA's `<path>/*`
+ * wildcard in the AdonisJS router, so the API routes always win.
  *
  * Routes (mount = `config('telescope_ui').path`, default `/telescope`):
- * - `GET <mount>`   → `302` to `<mount>/` (canonical trailing slash so relative assets resolve)
- * - `GET <mount>/`  → the SPA shell (`index.html`, with the resolved API base injected)
+ * - `GET <mount>`   → the SPA shell (`index.html`, with the resolved API base injected)
  * - `GET <mount>/*` → a built asset, or the SPA shell as a fallback (client-rendered console)
+ *
+ * There is deliberately no separate `<mount>/` route and no redirect between the two forms — see
+ * {@link boot}'s note on why registering both would collide.
  *
  * Enable/disable and override the mount via the optional `config('telescope_ui').dashboard` block.
  */

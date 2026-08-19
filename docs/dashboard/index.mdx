@@ -25,12 +25,11 @@ npm i @adonis-agora/telescope
 node ace configure @adonis-agora/telescope   # pick "UI"
 ```
 
-`configure` registers `@adonis-agora/telescope/ui_provider` and publishes
-`config/telescope_ui.ts`. On boot the provider resolves the live store from the core's
-runtime slot (the same handle the watchers record through — no DI), and registers the
-API + SSE routes under the configured prefix. It does **not** install a page — that's the
-separate `@adonis-agora/telescope-ui` package, and the core `configure` prompt above doesn't
-add it for you:
+`configure` registers `@adonis-agora/telescope/ui_provider`, publishes `config/telescope_ui.ts`,
+and mounts the API + SSE routes under the configured prefix against the same live store the
+watchers write to. It does **not** install a page — that's the separate
+`@adonis-agora/telescope-ui` package, and the core `configure` prompt above doesn't add it for
+you:
 
 ```sh
 npm i @adonis-agora/telescope-ui
@@ -57,17 +56,31 @@ the core is running.
 
 ## What it shows
 
-The dashboard reads the JSON API and lays out:
+The console is a client of the JSON API below and nothing else. Its left sidebar carries ten
+sections:
 
-- **Entries, newest-first** — every captured `request`, `query`, `exception`,
-  `diagnostic`, `mail`, and `cache` entry, filterable by type, tag and free-text search.
-- **Per-entry detail** — the full type-specific `content` for one entry (the SQL +
-  bindings for a query, the stack for an exception, the envelope payload for a diagnostic).
-- **Traces** — every entry recorded under one trace id, so you can replay an entire
-  request's story: the request, its queries, the diagnostics it published, and the
-  exception that ended it.
-- **Stats** — total count, the busiest families (`topFamilies`), and the most common tags
-  (`topTags`).
+- **Overview** — the triage landing page: error rate, failed jobs, slow routes, recent failures,
+  N+1 hotspots, load by user, and the current retention posture.
+- **Entries** — every captured entry, newest-first, filterable by type and free-text search, with
+  a **Live tail** toggle that streams new ones in over SSE. Opening a row shows the full
+  type-specific `content` — the SQL and bindings for a query, the stack for an exception, the
+  payload for a diagnostic.
+- **Traces** — every entry recorded under one trace id, so you can replay a whole request's
+  story: the request, its queries, the diagnostics it published, and the exception that ended it,
+  laid out as a waterfall with any N+1 loops flagged.
+- **Pulse** — the [health rollup](/docs/telescope/packages/pulse) over a selectable window.
+- **Exceptions** — exceptions grouped by class and message, with occurrence counts and a
+  when-it-fired sparkline.
+- **Queues** and **Schedules** — the live consoles for jobs and scheduled tasks.
+- **Exports** — download a filtered slice of the entries feed as JSON or CSV.
+- **Profiles** — captured [CPU flamegraphs](/docs/telescope/packages/cpu-profiling).
+- **Extensions** — dashboards contributed by installed
+  [extensions](/docs/telescope/concepts/extensions).
+
+A **Watchers** sub-nav below them jumps straight to Entries filtered to one entry type, and `⌘K`
+(`Ctrl-K`) opens a command palette over everything. The full tour, including what each section
+shows and how the capability-gated views behave, is on the
+[`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui#what-it-shows) page.
 
 ## The JSON API
 
@@ -81,12 +94,38 @@ guard first.
 | `GET <path>/api/entries/:id`          | One entry with its full `content`, or 404.                                 |
 | `GET <path>/api/trace/:traceId`       | Every entry under a trace, newest-first.                                   |
 | `GET <path>/api/stats`                | `{ count, topFamilies, topTags }`. `?limit=` caps each top-N; `?type=` scopes `topFamilies`. |
+| `GET <path>/api/retention`            | The retention posture: whether a pruner is armed, its cutoff and cadence, and which entry types record below 100%. Configuration, not live pruner state. |
+| `GET <path>/api/meta`                 | What this install can do: extension-contributed `entryTypes` and `dashboards`, plus `ai`, `profiling` and `queueManager` enabled flags. Always available. |
+| `GET <path>/api/stream`               | Server-Sent Events: every newly recorded entry, already redacted and post-sampling. Present unless `stream` is disabled in `config/telescope.ts`. |
 
-When an [extension](/docs/telescope/concepts/extensions) is registered, two more appear:
+Analytics, all windowed and all reading the same stored entries the tables show:
+
+| Endpoint                                        | Returns                                                  |
+| ----------------------------------------------- | -------------------------------------------------------- |
+| `GET <path>/api/metrics/stats`                  | Latency, throughput and error aggregates over a window.  |
+| `GET <path>/api/metrics/timeseries`             | The same aggregates bucketed for charting.               |
+| `GET <path>/api/metrics/traces`                 | Recent traces, newest first.                             |
+| `GET <path>/api/metrics/waterfall/:traceId`     | One trace laid out as a waterfall.                       |
+| `GET <path>/api/metrics/n-plus-one/:traceId`    | Repeated-query loops detected on one trace.              |
+| `GET <path>/api/metrics/pulse`                  | The [Pulse](/docs/telescope/packages/pulse) health rollup. Present unless `pulse` is disabled. |
+
+Actions, each off by default and answering `403` until you turn it on:
+
+| Endpoint                                          | Returns                                                |
+| ------------------------------------------------- | ------------------------------------------------------ |
+| `POST <path>/api/requests/:id/replay`             | Re-issues a captured request against the local server — see [Request replay](/docs/telescope/packages/ui#request-replay). |
+| `POST <path>/api/exceptions/:id/diagnose`         | An AI diagnosis of one exception as Markdown, cached per family; `?force=true` spends a fresh call. Needs [`ai`](/docs/telescope/packages/ai). |
+| `POST <path>/api/profiles/arm`                    | Arms a [CPU capture](/docs/telescope/packages/cpu-profiling) for the next requests. |
+| `POST <path>/api/queues/live/:queue/jobs/:id/retry` | Retries one job in the live queue console.           |
+| `POST <path>/api/queues/live/:queue/enqueue`      | Dispatches a new job from the console.                 |
+
+And the read-only surfaces the console's newer views bind to:
 
 | Endpoint                                       | Returns                                                  |
 | ---------------------------------------------- | -------------------------------------------------------- |
-| `GET <path>/api/meta`                          | The dashboards + entry types contributed by every extension. |
+| `GET <path>/api/profiles`, `.../profiles/:id`, `.../profiles/status` | Captured CPU profiles, one flamegraph, and whether profiling is armed. |
+| `GET <path>/api/schedules/live`                | Registered schedules with their computed next run, joined with their last recorded run. |
+| `GET <path>/api/queues/live`, `.../queues/live/:queue/jobs/:id` | Live queue state and one job's record.  |
 | `GET <path>/api/ext/:ext/data/:provider`       | One extension data provider's result (namespaced by owner). |
 
 Each list entry comes back as an `EntrySummary` — `id`, `type`, `familyHash`, `tags`,
@@ -118,6 +157,10 @@ export default defineConfig({
 | `path`        | `/telescope`   | URL prefix. Normalized to a leading slash, no trailing slash.               |
 | `authorize`   | default policy | Access-decision hook. See [Dashboard auth](/docs/telescope/dashboard/auth). |
 | `credentials` | `{}`           | Built-in token / basic gate for the default policy.                         |
+| `dashboardAuth` | unset        | Built-in login page + signed session cookie. See [Dashboard auth](/docs/telescope/dashboard/auth#built-in-login-screen). |
+| `replay`      | `{ enabled: false }` | Gate for request replay.                                              |
+| `cpuProfiling` | `{ armEnabled: false }` | Gate for arming a CPU capture from the console.                  |
+| `queueActions` | `{ enabled: false }` | Gate for the queue console's retry / enqueue actions.               |
 
 <Callout type="info">
 Change `path` to something non-obvious (e.g. `/__telescope`) as defense in depth, but it

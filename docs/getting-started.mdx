@@ -115,16 +115,23 @@ Telescope is headless first: the dashboard is optional, and everything it shows 
 served from `TelescopeService`. Resolve it from the container and read entries back.
 
 ```ts title="app/controllers/inspector_controller.ts"
+import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
 import { TelescopeService } from '@adonis-agora/telescope'
 
+@inject()
 export default class InspectorController {
+  constructor(private telescope: TelescopeService) {}
+
   async index({ response }: HttpContext) {
-    const telescope = await this.app.container.make(TelescopeService)
-    return response.json(await telescope.list({ limit: 50 }))
+    return response.json(await this.telescope.list({ limit: 50 }))
   }
 }
 ```
+
+`@inject()` on the class asks the container to construct the controller's dependencies from
+their constructor types, so `TelescopeService` arrives already resolved. A controller has no
+`app` of its own, so reaching for `this.app.container.make(...)` inside one will not compile.
 
 The full surface:
 

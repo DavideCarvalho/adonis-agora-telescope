@@ -106,6 +106,54 @@ describe('LogsWatcher', () => {
       expect((entries[0]?.content as LogEntryContent).message).toBe('keep me');
     });
 
+    it('records a line ONCE when two watchers tap the same logger', async () => {
+      // Both `config/telescope.ts` and `config/telescope_watchers.ts` can enable the
+      // 'logs' watcher, so two providers can each start one against the SAME logger.
+      const logger = fakeLogger();
+      const warnings: unknown[][] = [];
+      const originalWarn = console.warn;
+      console.warn = (...args: unknown[]) => warnings.push(args);
+      try {
+        new LogsWatcher().start(logger);
+        new LogsWatcher().start(logger);
+      } finally {
+        console.warn = originalWarn;
+      }
+
+      logger.info?.('once please');
+      await flush();
+
+      expect(await store.count()).toBe(1);
+      expect(warnings).toHaveLength(1);
+      expect(String(warnings[0]?.[0])).toContain("'logs' watcher is already tapping");
+    });
+
+    it('a second watcher stopping does not untee the first one', async () => {
+      const logger = fakeLogger();
+      const owner = new LogsWatcher();
+      owner.start(logger);
+      const teed = logger.info;
+
+      const loser = new LogsWatcher();
+      const originalWarn = console.warn;
+      console.warn = () => {};
+      try {
+        loser.start(logger);
+      } finally {
+        console.warn = originalWarn;
+      }
+      loser.stop();
+
+      // The owner still holds the tap, so logging still records.
+      expect(logger.info).toBe(teed);
+      logger.info?.('still watched');
+      await flush();
+      expect(await store.count()).toBe(1);
+
+      owner.stop();
+      expect(logger.info).not.toBe(teed);
+    });
+
     it('restores the original methods on stop()', async () => {
       const logger = fakeLogger();
       const original = logger.info;

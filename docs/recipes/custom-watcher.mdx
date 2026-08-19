@@ -119,11 +119,14 @@ Start the watcher in a provider's `boot()` and stop it in `shutdown()`, resolvin
 application emitter from the container:
 
 ```ts title="providers/app_provider.ts"
+import type { ApplicationService } from '@adonisjs/core/types'
 import type { EmitterLike } from '@adonis-agora/telescope/watchers'
 import { QueueWatcher } from '#telescope/queue_watcher'
 
 export default class AppProvider {
   private watcher = new QueueWatcher()
+
+  constructor(protected app: ApplicationService) {}
 
   async boot() {
     const emitter = (await this.app.container.make('emitter')) as unknown as EmitterLike
@@ -138,8 +141,10 @@ export default class AppProvider {
 
 <Callout type="info">
 You don't need to wire your watcher into `@adonis-agora/telescope/watchers`' config — that config
-only controls the *built-in* `query`/`mail`/`cache` watchers. A custom watcher is just a
-class you start yourself, recording through the same runtime store.
+only controls the *built-in* watchers that package ships (`query`, `mail`, `cache`,
+`http-client`, `logs`, `queue`, `events`, `redis`, `profiling`, `schedule` and
+`queue-manager`). A custom watcher is just a class you start yourself, recording through the
+same runtime store.
 </Callout>
 
 <Callout type="warn">

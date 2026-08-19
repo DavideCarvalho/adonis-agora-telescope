@@ -48,20 +48,78 @@ onto the **server** middleware stack, and publishes `config/telescope.ts`.
 
 | Watcher       | Type         | How it runs                          | Records                                         |
 | ------------- | ------------ | ------------------------------------ | ----------------------------------------------- |
-| Request       | `request`    | `server` middleware                  | method, url (no query string), status, durationMs, traceId |
+| Request       | `request`    | `server` middleware                  | method, url (no query string), status, durationMs, traceId, optionally the body |
 | Exception     | `exception`  | auto, in the request middleware      | name, message, stack, method, url, traceId      |
-| Diagnostics   | `diagnostic` | `DiagnosticsWatcher`, started at boot | every `agora:<lib>:<event>` publish envelope    |
+| Diagnostics   | `diagnostic` | started at boot                      | every `agora:<lib>:<event>` publish envelope    |
+| Logs          | `log`        | started at boot, off by default      | level, message, structured context, traceId     |
 
 The request and exception watchers come from the same middleware: it records the request
 in a `finally`, and catches + records any thrown error before re-throwing it untouched.
 The diagnostics watcher subscribes to every Agora channel (current and future). See
 [Capture & correlation](/docs/telescope/concepts/capture) for the full mechanics.
 
+### Request body capture
+
+By default a `request` entry has no `body` field at all. That is the right default — bodies are
+the most likely place for a password, a card number or a 40 MB upload — but it is also the
+difference between seeing the payload that broke a checkout and guessing at it. Turn it on with a
+`requestCapture` block:
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  requestCapture: {},   // on, with the safe defaults below
+})
+```
+
+Three gates decide, in that order, whether a body is captured. They run **before** redaction, so
+a huge or binary body is never walked at all; a body that any gate rejects is replaced by a short
+marker string like `[Skipped: 200000 bytes > 131072 bytes]`, leaving every other field intact.
+
+| Gate | Default | What it does |
+| ---- | ------- | ------------ |
+| `maxBodyBytes` | `131072` (128 KiB) | Skips anything bigger. The size is read in constant time from `content-length` or a string/buffer length — never by serializing a parsed body. Set `false` to drop the size gate entirely. |
+| `skipBodyContentTypes` | `application/octet-stream`, `application/offset+octet-stream`, `multipart/form-data` | Content types whose payload is never worth capturing. A string matches as a case-insensitive prefix, so `'multipart/form-data'` still matches a `; boundary=…` suffix; a `RegExp` is tested as-is. |
+| `skipBody` | none | Your own predicate over `{ method, url, contentType, body }`. Return `true` to skip. |
+
+```ts
+requestCapture: {
+  maxBodyBytes: 65_536,
+  skipBody: ({ url }) => url.startsWith('/webhooks/'),
+}
+```
+
+Captured bodies go through the normal [redaction](/docs/telescope/concepts/protection) pass like
+any other content, so configured sensitive keys are still masked — but a body you never capture
+is the only body that definitely cannot leak.
+
+### Muting noisy diagnostics
+
+The diagnostics watcher records every event any Agora library publishes, which for a chatty
+channel (an upload progress event, say) can drown the timeline. `diagnostics.exclude` takes the
+exact `lib:event` keys the dashboard's "busiest events" panel shows:
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  diagnostics: {
+    exclude: ['media:upload.progress'],
+  },
+})
+```
+
+The events stay live on their channel for every other subscriber — an OTel exporter, your own
+watcher — they simply are not recorded here.
+
+The second knob is `recordClaimed`. When a sibling library ships its own Telescope watcher, it
+*claims* the events it records as typed entries, and the generic diagnostics watcher skips them
+so the same event isn't stored twice. Set `recordClaimed: true` to record both the typed entry
+and the raw envelope — useful while debugging a bridge, wasteful in production. `exclude` mutes
+an event either way. `isDiagnosticClaimed(key)` is exported if you want to check who owns a key.
+
 ### Manual exception capture
 
 For non-HTTP code (queue workers, ace commands, your exception handler), call
-`recordException` — it reads the runtime store with no DI, is a no-op when Telescope is
-off, and never throws:
+`recordException` — it needs no injection, is a no-op when Telescope is off, and never
+throws:
 
 ```ts
 import { recordException } from '@adonis-agora/telescope'
@@ -91,8 +149,14 @@ export default defineConfig({
 | `enabled`    | `true`                        | Master switch; `false` records nothing and starts no watcher.         |
 | `store`      | `'memory'`                    | Which named driver in `stores` is active, or a `TelescopeStore` instance. |
 | `stores`     | `{}`                          | Named [storage drivers](/docs/telescope/packages/storages) (`storage.memory` / `storage.lucid`). |
-| `watchers`   | `['request', 'diagnostics']`  | Which built-in watchers run.                                          |
+| `watchers`   | `['request', 'diagnostics']`  | Which built-in watchers run — any of `request`, `diagnostics`, `logs`. |
+| `diagnostics`| `{ exclude: [], recordClaimed: false }` | [Mutes noisy events](#muting-noisy-diagnostics) and decides whether already-claimed ones are recorded twice. |
+| `logs`       | `{ minLevel: 'trace', tags: [] }` | Floor and extra tags for the `logs` watcher.                    |
+| `requestCapture` | _off_                     | [Request body capture](#request-body-capture) and its gates.          |
 | `extensions` | `[]`                          | [Extensions](/docs/telescope/concepts/extensions) to register at boot. |
+
+The full key list — sampling, pulse, prune, overload, redaction, client errors — is on the
+[configuration reference](/docs/telescope/reference/configuration#core--configtelescopets).
 
 ## Headless API
 
@@ -138,7 +202,10 @@ The package surface, grouped:
 - **Runtime (advanced)** — `getTelescopeRuntime`, `setTelescopeRuntime`,
   `resetTelescopeRuntime`, `setTelescopeExtensionRegistry`.
 - **Structural readers** — `currentTraceId`, `getContextAccessor`,
-  `getDiagnosticsRegistry`, `isDiagnosticEvent`.
+  `getDiagnosticsRegistry`, `isDiagnosticEvent`, `isDiagnosticClaimed`.
+- **Protection (advanced)** — `TelescopePruner`, `OverloadGuard`, `setTelescopePaused`;
+  types `PruneRun`, `PruneTrigger`. See
+  [Retention & overload protection](/docs/telescope/concepts/protection).
 
 <Callout type="info">
 The runtime exports (`getTelescopeRuntime`, …) are how the other packages reach the live

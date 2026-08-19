@@ -18,16 +18,30 @@ core watchers in `@adonis-agora/telescope` and more in the `@adonis-agora/telesc
 
 | Watcher                | Subpath                      | Entry type   | Records                                              |
 | ---------------------- | ---------------------------- | ------------ | --------------------------------------------------- |
-| Request                | `@adonis-agora/telescope`           | `request`    | Each inbound HTTP request — method, url, status, duration. |
+| Request                | `@adonis-agora/telescope`           | `request`    | Each inbound HTTP request — method, url, status, duration, and optionally the body. |
 | Exception              | `@adonis-agora/telescope`           | `exception`  | Any error thrown by the HTTP pipeline (auto), or recorded manually. |
 | Diagnostics            | `@adonis-agora/telescope`           | `diagnostic` | Every `agora:<lib>:<event>` publish.                 |
+| Logs                   | `@adonis-agora/telescope` *or* `/watchers` | `log` | Every line written through the AdonisJS logger.  |
 | Lucid query            | `@adonis-agora/telescope/watchers`  | `query`      | Each `db:query` — SQL, bindings, duration, connection. |
 | Mail                   | `@adonis-agora/telescope/watchers`  | `mail`       | Each `mail:sent` — mailer, from, to, subject.        |
 | Cache                  | `@adonis-agora/telescope/watchers`  | `cache`      | `@adonisjs/cache` hit / miss / write / delete / clear. |
+| HTTP client            | `@adonis-agora/telescope/watchers`  | `http-client`| Each OUTBOUND call made through an instrumented `fetch`. |
+| Queue                  | `@adonis-agora/telescope/watchers`  | `job`        | Each queue job execution.                            |
+| Events                 | `@adonis-agora/telescope/watchers`  | `event`      | Every event emitted through the core emitter.        |
+| Redis                  | `@adonis-agora/telescope/watchers`  | `redis`      | Each Redis command.                                  |
+| Profiling              | `@adonis-agora/telescope/watchers`  | `profile`    | A timed code section you wrapped with `profile()` / `startProfile()`. |
+| Schedule               | `@adonis-agora/telescope/watchers`  | `scheduled_task` | One scheduled-task run you recorded with `scheduleTask()` / `recordScheduledRun()`. |
+| Client errors          | `@adonis-agora/telescope`           | `client_exception` | A browser-reported error, [ingested over HTTP](/docs/telescope/packages/client-errors). |
+| CPU profiling          | `@adonis-agora/telescope/cpu_profiling` | `cpu_profile` | A [V8 sampling capture](/docs/telescope/packages/cpu-profiling) rendered as a flamegraph. |
 
-The built-in request watcher runs as **server middleware**; the diagnostics watcher
-is started by the core provider at boot; the per-technology watchers subscribe to the
-AdonisJS event emitter. They all share one rule:
+There is one more entry in `@adonis-agora/telescope/watchers` that isn't a watcher at all:
+`queue-manager` publishes the driver behind the dashboard's [live queue
+console](/docs/telescope/packages/watchers#live-queue-manager). It records nothing — it reads
+and acts on queues that already exist.
+
+The built-in request watcher runs as **server middleware**; the diagnostics and logs watchers
+are started by a provider at boot; the per-technology watchers subscribe to the AdonisJS event
+emitter. They all share one rule:
 
 <Callout type="warn">
 **A watcher must never break the thing it observes.** Every recording path is
@@ -62,10 +76,33 @@ A watcher does not build a full `Entry`; it builds a `RecordInput` (just `type`,
 The store fills in `id`, `sequence`, `createdAt`, and resolves `traceId` / `origin`
 from context when omitted.
 
-The built-in `EntryType` constant names the recorded types — `Request`, `Diagnostic`,
-`Query`, `Exception`, `Mail`, `Cache` — plus reserved values (`Job`, `Redis`, `Event`,
-`Log`) so a future watcher records under a stable, already-documented type without a
-breaking change.
+The built-in `EntryType` constant names every recorded type:
+
+| Constant           | `type` value        | Recorded by                                   |
+| ------------------ | ------------------- | --------------------------------------------- |
+| `Request`          | `request`           | the request middleware                        |
+| `Diagnostic`       | `diagnostic`        | the diagnostics watcher                       |
+| `Query`            | `query`             | the Lucid query watcher                       |
+| `Job`              | `job`               | the queue watcher                             |
+| `Exception`        | `exception`         | the exception watcher, or `recordException`   |
+| `ClientException`  | `client_exception`  | the [client-error endpoint](/docs/telescope/packages/client-errors) |
+| `Mail`             | `mail`              | the mail watcher                              |
+| `Cache`            | `cache`             | the cache watcher                             |
+| `Redis`            | `redis`             | the redis watcher                             |
+| `Event`            | `event`             | the events watcher                            |
+| `Log`              | `log`               | the logs watcher                              |
+| `HttpClient`       | `http-client`       | the http-client watcher                       |
+| `Profile`          | `profile`           | the profiling watcher's `profile()` helpers   |
+| `ScheduledTask`    | `scheduled_task`    | the schedule watcher's helpers                |
+| `CpuProfile`       | `cpu_profile`       | the [CPU profiling](/docs/telescope/packages/cpu-profiling) feature |
+
+`Profile` and `CpuProfile` are easy to confuse: the first is a timing span you instrumented by
+hand, the second is a real V8 sampling capture with a flamegraph.
+
+`Entry['type']` is a plain string, not a union over that list, so a
+[custom watcher](/docs/telescope/recipes/custom-watcher) or an
+[extension](/docs/telescope/concepts/extensions) can record its own types without waiting for a
+release.
 
 ### familyHash — grouping "the same thing"
 
@@ -116,7 +153,8 @@ on, so it must be deterministic across processes.
 
 Queue workers, ace commands, and your `app/exceptions/handler.ts` aren't wrapped by
 the middleware. Capture there with `recordException` — it reads the active store from
-the runtime slot (no DI), is a no-op when Telescope is off, and **never throws**:
+the live store with nothing to inject, is a no-op when Telescope is off, and **never
+throws**:
 
 ```ts title="app/exceptions/handler.ts"
 import { recordException } from '@adonis-agora/telescope'

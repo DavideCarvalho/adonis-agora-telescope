@@ -153,11 +153,20 @@ export default defineConfig({
 
 When configured, the provider mounts three routes and stamps a session guard on the dashboard:
 
-| Route                   | Serves                                                                    |
-| ----------------------- | ------------------------------------------------------------------------ |
-| `GET <path>/login`      | The server-rendered login page (a static route, so it takes precedence). |
-| `POST <path>/login`     | Runs the `login` hook; on success mints the signed session cookie.       |
-| `GET <path>/logout`     | Clears the session cookie.                                                |
+| Route                   | Serves                                                                    | Guarded |
+| ----------------------- | ------------------------------------------------------------------------ | ------- |
+| `GET <path>/login`      | The server-rendered login page (a static route, so it takes precedence). | No      |
+| `POST <path>/login`     | Runs the `login` hook; on success mints the signed session cookie.       | No      |
+| `GET <path>/logout`     | Clears the session cookie, then redirects to the login page.             | No      |
+
+Those three sit **outside** both guards, in every environment — they have to, or you could
+never reach the page that mints a session, and the `authorize` policy would deny you before
+you ever saw a login form. They are the login surface itself, so treat them accordingly: the
+page renders no server-supplied text (the `returnTo` and `error` values are read client-side
+from the query string, never echoed into the HTML), every credential failure answers a uniform
+`401` so the endpoint cannot be used to enumerate users, and the `POST` does nothing but run
+your `login` hook. What they never expose is recorded data — every entry, trace, metric and
+stream still sits behind both guards.
 
 <Callout type="info">
 `dashboardAuth` is **additive** and composes **with** `authorize` — both must pass. An
@@ -185,16 +194,41 @@ denial cases so clients and browsers behave correctly:
 | Denied, **no** credential presented                        | `401`  | "Authenticate" — sends `WWW-Authenticate` so a browser prompts. |
 | Denied, a credential **was** presented but rejected        | `403`  | "Forbidden" — wrong token/password.                |
 | `authorize` **threw**                                      | `403`  | Fail-closed — a buggy hook never accidentally opens the door. |
+| Denied, but the hook already set a `location` header       | —      | The hook's redirect stands; the guard writes no status and no body. |
 
 "Presented a credential" means an `Authorization` header was present or a `?token=` was in
 the query string.
 
 <Callout type="warn">
-The guard runs on **every** route — every `/api/*` endpoint (including the SSE stream and
-the extension surface) and the `@adonis-agora/telescope-ui` SPA routes. There is no
-unguarded endpoint, so you cannot accidentally leave the JSON API open while gating the
-page.
+The guard runs on every route that serves recorded data — every `/api/*` endpoint (including
+the SSE stream, the metrics rollups and the extension surface) and the
+`@adonis-agora/telescope-ui` SPA routes. You cannot accidentally leave the JSON API open while
+gating the page. The one exception is the `dashboardAuth` login surface described above
+(`GET`/`POST <path>/login` and `GET <path>/logout`), which is unguarded by necessity and only
+exists when you configure `dashboardAuth`.
 </Callout>
+
+### Redirecting instead of answering JSON
+
+If your `authorize` hook redirects — sets a `location` header, typically via
+`ctx.response.redirect(...)` — and then returns `false`, the guard leaves that redirect alone
+instead of overwriting it with a `403` JSON body. That is the hook for sending an
+unauthenticated visitor to your own product's login page rather than a bare
+`{ "error": "Forbidden" }`:
+
+```ts
+// config/telescope_ui.ts
+export default defineConfig({
+  authorize: (ctx) => {
+    if (ctx.auth?.user?.isAdmin === true) return true
+    ctx.response.redirect('/login?next=/telescope')
+    return false
+  },
+})
+```
+
+The redirect wins only when the hook returns `false`; returning `true` proceeds to the handler
+as usual, redirect or not.
 
 ## Security notes
 

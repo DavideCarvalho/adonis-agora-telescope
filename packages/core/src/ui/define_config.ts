@@ -107,7 +107,7 @@ export interface ReplayConfig {
   enabled?: boolean;
   /**
    * The local server port the replay targets (`127.0.0.1:<port>`). When omitted,
-   * the `PORT` env var is used, falling back to 3000.
+   * the `PORT` env var is used, falling back to 3333 (the AdonisJS default).
    */
   port?: number;
   /** Per-call timeout in ms. Default 30000. */

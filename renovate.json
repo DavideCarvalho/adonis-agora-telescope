@@ -4,6 +4,11 @@
   "rangeStrategy": "pin",
   "packageRules": [
     {
+      "//": "`rangeStrategy: pin` above is for real dependencies. `engines.node` is a COMPATIBILITY range, not a version to pin: pinning it to a single build (which renovate did in #8, rewriting `>=20.6.0` to `v26.7.0`) warns on every install on any other Node and fails hard under engine-strict.",
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    },
+    {
       "matchDepTypes": ["dependencies", "devDependencies"],
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true

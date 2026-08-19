@@ -7,6 +7,7 @@ import {
   type TelescopeMcpConfig,
   resolveConfig,
 } from '../src/mcp/define_config.js';
+import { VERSION } from '../src/mcp/index.js';
 import type { DiagnoseExceptionHook } from '../src/mcp/server.js';
 import { TelescopeMcpServer } from '../src/mcp/server.js';
 import { MetricsService } from '../src/metrics/metrics_service.js';
@@ -92,7 +93,10 @@ export default class TelescopeMcpProvider {
 
     const server = new TelescopeMcpServer(service, metrics, {
       tools: config.tools,
-      serverInfo: { name: 'adonis-telescope', version: '0.4.0' },
+      // Reported to the MCP client on `initialize`. Sourced from the package's own
+      // VERSION const (kept in lockstep with package.json by `scripts/sync-version.mjs`)
+      // so a release bump can never leave a stale version on the wire.
+      serverInfo: { name: 'adonis-telescope', version: VERSION },
       ...(diagnose !== undefined ? { diagnose } : {}),
     });
 
