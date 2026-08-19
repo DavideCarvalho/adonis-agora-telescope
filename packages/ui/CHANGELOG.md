@@ -1,5 +1,22 @@
 # @adonis-agora/telescope-ui
 
+## 1.0.1
+
+### Patch Changes
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/23) [`7335b3f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7335b3f4ffe1c885b63c1f909e9d5f2af2e94679) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Publish a Node.js engine RANGE instead of one exact version. Both packages declared
+  `engines.node: "v26.7.0"` — a single pinned build, written by a renovate "pin dependencies" run
+  that treated a compatibility range as a version to pin. Every install
+  on any other Node emitted an engine warning, and an `engine-strict` install failed outright. Both
+  now declare `>=20.6.0`, the version the code actually requires, and renovate is configured to
+  leave `engines` alone so the fix survives the next cycle.
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/23) [`7335b3f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7335b3f4ffe1c885b63c1f909e9d5f2af2e94679) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Correct the package description. It advertised a "dependency-light React SPA" with five views;
+  the published package depends on Base UI, `class-variance-authority`, `clsx` and `tailwind-merge`
+  and is built with Tailwind CSS, and the console has grown an overview, CPU profiles, live queue
+  and schedule consoles, extension pages and client-side exports. The description now says so, and
+  notes that the `/client` subpath remains a dependency-free fetch client.
+
 ## 1.0.0
 
 ### Patch Changes

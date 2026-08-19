@@ -1,5 +1,45 @@
 # @adonis-agora/telescope
 
+## 0.8.1
+
+### Patch Changes
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/23) [`7335b3f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7335b3f4ffe1c885b63c1f909e9d5f2af2e94679) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Publish a Node.js engine RANGE instead of one exact version. Both packages declared
+  `engines.node: "v26.7.0"` — a single pinned build, written by a renovate "pin dependencies" run
+  that treated a compatibility range as a version to pin. Every install
+  on any other Node emitted an engine warning, and an `engine-strict` install failed outright. Both
+  now declare `>=20.6.0`, the version the code actually requires, and renovate is configured to
+  leave `engines` alone so the fix survives the next cycle.
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/23) [`7335b3f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7335b3f4ffe1c885b63c1f909e9d5f2af2e94679) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Make the `logs` watcher safe to enable from both config files.
+
+  `watchers: ['logs']` can be set in `config/telescope.ts` (where it also accepts a `logs`
+  options block) and in `config/telescope_watchers.ts`. With both set, the second watcher to
+  boot silently did nothing — and then unteed the FIRST watcher's tap on shutdown, so the
+  logger was left half-instrumented. It now detects that the logger is already tapped, warns
+  once naming both config keys, and stays fully inert: it records nothing and its `stop()`
+  restores only what it teed itself.
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/23) [`7335b3f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7335b3f4ffe1c885b63c1f909e9d5f2af2e94679) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Report the real package version over MCP. The `initialize` handshake advertised a hardcoded
+  `0.4.0` regardless of the installed version; it now reads the package's own `VERSION`, which
+  the release pipeline keeps in lockstep with `package.json`.
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/23) [`7335b3f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7335b3f4ffe1c885b63c1f909e9d5f2af2e94679) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Restore the seven `config/*.stub` files, which shipped empty.
+
+  Every config stub the package publishes — `telescope.stub`, `telescope_watchers.stub`,
+  `telescope_ui.stub`, `telescope_ai.stub`, `telescope_alerts.stub`, `telescope_mcp.stub` and
+  `telescope_cpu_profiling.stub` — was a zero-byte file in the published tarball, so
+  `node ace add @adonis-agora/telescope` wrote an EMPTY `config/telescope.ts` (and an empty file
+  for each feature you selected) into your app. Only the migration stub had content.
+
+  The stubs are rebuilt from the current config surface, including everything that landed since
+  they were lost: the `logs` watcher and its `logs` block, `diagnostics.exclude` /
+  `diagnostics.recordClaimed`, `requestCapture`, `redact.perType`, `sampling`, `nPlusOne`, `pulse`,
+  `clientErrors`, `dashboardAuth`, `cpuProfiling.armEnabled`, `queueActions`, `queueManager`, the
+  `every-exception` and `metric-threshold` alert rules, `alerts.geoLookup`, and the whole
+  `telescope_cpu_profiling` config. A test now fails the build if any shipped stub is empty, lacks
+  its `exports(...)` header, or carries a backtick in its body — the defect that emptied them.
+
 ## 0.8.0
 
 ### Minor Changes
