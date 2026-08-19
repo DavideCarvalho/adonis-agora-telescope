@@ -1,6 +1,8 @@
 {{{
   exports({ to: app.configPath('telescope_ui.ts') })
 }}}
+/** Uncomment alongside any example below that reads env.get(...). */
+// import env from '#start/env'
 import { defineConfig } from '@adonis-agora/telescope/ui'
 
 /**
@@ -25,7 +27,12 @@ export default defineConfig({
    * (the guard answers 401 when no credential was presented, 403 when one was and
    * was rejected). Delegate to your own app auth here, e.g.:
    */
-  // authorize: (ctx) => ctx.auth?.user?.isAdmin === true,
+  // authorize: async (ctx) => {
+  //   // The provider passes your real HttpContext through at runtime; the declared
+  //   // parameter is a framework-light slice, so narrow it to reach your own auth.
+  //   const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
+  //   return auth.user?.isAdmin === true
+  // },
 
   /**
    * Built-in credentials for the default policy (ignored when authorize is set).

@@ -146,7 +146,10 @@ import { defineConfig } from '@adonis-agora/telescope/ui'
 export default defineConfig({
   enabled: true,           // false → register no routes at all
   path: '/telescope',      // API at <path>/api/*; the telescope-ui SPA mounts the page at the root
-  // authorize: (ctx) => ctx.auth?.user?.isAdmin === true,
+  // authorize: (ctx) => {
+  //   const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
+  //   return auth.user?.isAdmin === true
+  // },
   // credentials: { token: env.get('TELESCOPE_UI_TOKEN') },
 })
 ```

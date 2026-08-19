@@ -97,16 +97,27 @@ gate is ignored (your hook is the whole policy).
 import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
-  authorize: (ctx) => ctx.auth?.user?.isAdmin === true,
+  authorize: (ctx) => {
+    const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
+    return auth.user?.isAdmin === true
+  },
 })
 ```
+
+The narrowing is the price of the guard being framework-light. The hook's declared parameter is a
+minimal `{ request, response }` shape, but the provider passes your **real** `HttpContext` straight
+through — so `auth`, `session` and the rest are genuinely there at runtime, and you name the slice
+you rely on to reach them.
 
 ```ts
 // Async — resolve a user and check a role.
 export default defineConfig({
   async authorize(ctx) {
-    await ctx.auth?.check()
-    return ctx.auth?.user?.role === 'admin'
+    const { auth } = ctx as unknown as {
+      auth: { check(): Promise<boolean>; user?: { role?: string } }
+    }
+    await auth.check()
+    return auth.user?.role === 'admin'
   },
 })
 ```
@@ -114,8 +125,9 @@ export default defineConfig({
 <Callout type="info">
 The guard takes a deliberately minimal HTTP context (`request.qs()`, `request.header()`,
 and a `response`), and a real AdonisJS `HttpContext` satisfies it structurally — so the
-real `ctx` is passed straight through and your hook can reach `ctx.auth`, `ctx.session`,
-etc.
+real `ctx` is passed straight through and your hook really can reach `auth`, `session` and
+the rest at runtime. They are not on the *declared* type, though, so narrow `ctx` to the
+slice you need (as above) rather than reaching for them directly.
 </Callout>
 
 ## Built-in login screen
@@ -220,7 +232,8 @@ unauthenticated visitor to your own product's login page rather than a bare
 // config/telescope_ui.ts
 export default defineConfig({
   authorize: (ctx) => {
-    if (ctx.auth?.user?.isAdmin === true) return true
+    const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
+    if (auth.user?.isAdmin === true) return true
     ctx.response.redirect('/login?next=/telescope')
     return false
   },
