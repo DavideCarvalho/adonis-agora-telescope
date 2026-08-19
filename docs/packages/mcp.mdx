@@ -48,8 +48,8 @@ node ace configure @adonis-agora/telescope   # then pick "MCP" at the prompt
 </Tabs>
 
 Selecting **MCP** registers `@adonis-agora/telescope/mcp_provider` and publishes
-`config/telescope_mcp.ts`. On boot the provider resolves the live store from the core's
-runtime slot (no DI) and mounts a JSON-RPC transport at `path`.
+`config/telescope_mcp.ts`. On boot it mounts a JSON-RPC endpoint at `path`, reading the same
+live store everything else in Telescope reads — an agent sees exactly what the dashboard sees.
 
 <Callout type="warn">
 If `@adonis-agora/telescope` isn't enabled/booted, the store slot is `null` and the provider
@@ -110,8 +110,8 @@ rather than failing — mirroring the default-open dashboard posture.
 
 ## The transport
 
-The route is a thin JSON-RPC surface — it runs the auth guard, then hands the parsed `body`
-and the `authorized` flag to a plain, testable `TelescopeMcpServer`:
+One path, three verbs. Every call runs the same auth guard as the dashboard before anything
+else:
 
 | Method                              | Behaviour                                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------ |
@@ -120,13 +120,15 @@ and the `authorized` flag to a plain, testable `TelescopeMcpServer`:
 | `DELETE <path>`                     | `200` no-op — there is no session to terminate.                          |
 
 Point your agent's MCP client at `https://your-app.example.com/telescope/mcp` (adding the
-token as the guard expects). The server advertises protocol revision `2025-06-18` and
-`serverInfo` `{ name: 'adonis-telescope', version: '0.4.0' }`.
+token as the guard expects). The server advertises protocol revision `2025-06-18`, and
+identifies itself as `adonis-telescope` at the installed package version.
 
 ## Notable exports
 
-- `TelescopeMcpServer` — the hand-rolled JSON-RPC server (no SDK dependency); types
-  `TelescopeMcpServerOptions`, `JsonRpcRequest`, `McpToolSpec`, `DiagnoseExceptionHook`.
+- `TelescopeMcpServer` — the JSON-RPC server itself, usable standalone (it takes a parsed body
+  and an `authorized` flag and returns a response object, so you can mount it on any transport
+  or exercise it in a test without an HTTP server); types `TelescopeMcpServerOptions`,
+  `JsonRpcRequest`, `McpToolSpec`, `DiagnoseExceptionHook`.
 - `MCP_TOOLS` — the full tool catalogue; `MCP_TOOL_NAMES`, type `McpToolName`.
 - Error codes `MCP_UNAUTHORIZED` (`-32001`), `MCP_METHOD_NOT_FOUND` (`-32601`),
   `MCP_INTERNAL_ERROR` (`-32603`).

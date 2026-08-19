@@ -153,7 +153,8 @@ on, so it must be deterministic across processes.
 
 Queue workers, ace commands, and your `app/exceptions/handler.ts` aren't wrapped by
 the middleware. Capture there with `recordException` — it reads the active store from
-the runtime slot (no DI), is a no-op when Telescope is off, and **never throws**:
+the live store with nothing to inject, is a no-op when Telescope is off, and **never
+throws**:
 
 ```ts title="app/exceptions/handler.ts"
 import { recordException } from '@adonis-agora/telescope'

@@ -116,6 +116,21 @@ runs idempotent `CREATE TABLE IF NOT EXISTS` DDL on first use), or call the expo
 migration.
 </Callout>
 
+#### The second table
+
+`autoCreateTable` also creates a small companion table, `telescope_schema_meta`. It holds one
+row per entries table it manages — the table's name, a fingerprint of the schema the store last
+reconciled, and when — and exists purely so a boot that finds a matching fingerprint can skip
+re-issuing the (idempotent but chatty) `CREATE TABLE` and four `CREATE INDEX` statements. A
+fresh database, a schema change, or a Telescope upgrade that alters the shape produces a
+mismatch, the DDL runs once, and the fingerprint is re-cached.
+
+You will see it in your database if you use `autoCreateTable`; it is safe to drop (it is
+recreated, and the next boot simply pays for the DDL once). It is **not** created when you run
+the published migration and leave `autoCreateTable` off — with a migrated schema there is
+nothing to reconcile. The name is exported as `SCHEMA_META_TABLE_NAME` if you need to exclude
+it from a backup or a schema diff.
+
 ### Programmatic API
 
 For tests, scripts, or a hand-wired store instance, the core also exports:

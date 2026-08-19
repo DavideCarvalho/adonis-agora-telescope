@@ -89,16 +89,83 @@ Each `Panel` binds to a named data provider and declares how to draw the result:
 | `stat`         | A single number (+ optional spark, thresholds) | `{ value, delta?, deltaLabel?, spark? }`                  |
 | `timeseries`   | A line/area chart                | `{ rows: Array<{ label } & Record<string, number>> }`                   |
 | `topN`         | A ranked list                    | `{ items: Array<{ label, value, id? }> }`                               |
-| `table`        | A table (cells can deep-link)    | `{ rows: Array<Record<string, unknown>> }`                              |
+| `table`        | A table (cells can deep-link)    | `{ rows: Array<Record<string, unknown>> }`, or `{ rows, total, page, limit }` when `paged` |
 | `distribution` | A histogram with p50/p95/p99     | `{ buckets: Array<{ label, count }>, p50?, p95?, p99? }`                |
 | `gauge`        | A gauge with thresholds          | `{ value, min?, max? }`                                                  |
 | `breakdown`    | A donut/bar breakdown            | `{ segments: Array<{ label, value, color? }> }`                         |
 
 A panel references its data through a `DataBinding` — `{ provider, query? }` — where
 `provider` names a `DataProvider` and `query` is an opaque object passed through to it.
-Table columns can carry a `LinkSpec` (`{ href, external? }`) whose `href` is a template
-with `{key}` placeholders filled from the row — so a cell deep-links to a durable run,
-a Telescope trace, etc.
+
+### Tuning how a panel is drawn
+
+Every kind takes a few optional keys beyond `title` and `data`:
+
+| Key | On | Effect |
+| --- | -- | ------ |
+| `format` | `stat`, `gauge` | `'number'`, `'percent'`, `'duration'` or `'rate'` — how the value is written out. |
+| `thresholds` | `stat`, `gauge` | `{ warn, bad, direction }`, where `direction` is `'up-bad'` (latency, errors) or `'down-bad'` (hit rate, success rate). The panel colours itself accordingly. |
+| `accent` | `stat` | A CSS colour for the card's accent, when the default doesn't fit the metric. |
+| `spark` | `stat` | Draws a sparkline under the number. Turning it on means your provider must also return `spark: number[]`. |
+| `style` | `timeseries` | `'area'` or `'stacked'`. |
+| `series` | `timeseries` | **Required** — the row keys to plot, in order. |
+| `limit` | `topN` | How many rows to show. |
+| `markers` | `distribution` | Which percentile markers to draw: any of `'p50'`, `'p95'`, `'p99'`. |
+| `format` | `distribution` | `'duration'` or `'number'` for the bucket labels. |
+| `min` / `max` | `gauge` | The gauge's ends. |
+| `style` | `breakdown` | `'donut'` or `'bar'`. |
+| `paged` | `table` | Adds pagination — and changes the provider contract, see below. |
+| `cols` | `DashboardSection` | `2`, `3` or `4` — the column count for that section's panels. |
+
+### Deep-linking out of a table
+
+Table columns can carry a `LinkSpec` — `{ href, external? }` — whose `href` is a template with
+`{key}` placeholders filled from the row (each value URL-encoded; a `null` becomes empty):
+
+```ts
+columns: [
+  { key: 'runId', label: 'Run', link: { href: '/durable/runs/{runId}' } },
+  { key: 'traceId', label: 'Trace', link: { href: '#/traces/{traceId}' } },
+]
+```
+
+The leading character decides where it goes. An href starting with `#/` is a route **inside the
+Telescope console** — today the one such route is `#/traces/{traceId}`, the trace waterfall, so
+that is the shape to use when a row should link to "show me this trace". Anything else is a real
+navigation into **your** application's own pages; set `external: true` when it should open in a
+new tab.
+
+### Paged tables
+
+A `table` panel with `paged: true` renders prev/next controls and a "Page X of Y" label. That
+changes what the bound provider must return: instead of a bare `{ rows }`, it must answer
+
+```ts
+{ rows, total, page, limit }
+```
+
+where `total` is the **full, unpaginated** row count (that is what makes "of Y" computable) and
+`page` / `limit` echo what was asked for. The console re-resolves the provider on every page
+turn, merging `page` (1-based) and `limit` on top of the panel's own static `query`. Both arrive
+as **strings**, like every other query value, so coerce them:
+
+```ts
+{
+  name: 'durable.runs',
+  async resolve(query, ctx) {
+    const page = Math.max(1, Number(query?.page ?? 1))
+    const limit = Math.max(1, Number(query?.limit ?? 25))
+    const { rows, total } = await fetchRuns({ offset: (page - 1) * limit, limit })
+    return { rows, total, page, limit }
+  },
+}
+```
+
+<Callout type="warn">
+A provider that returns a bare `{ rows }` to a `paged: true` panel still renders its rows, but
+the pager has nothing to count with — it reports a single page and the next button never enables.
+Set `paged` and the four-field return shape together, or neither.
+</Callout>
 
 ### The dashboard-id convention
 

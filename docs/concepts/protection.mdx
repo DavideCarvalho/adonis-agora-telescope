@@ -52,8 +52,32 @@ Each cycle deletes everything older than `now - after` via the store's `prune(cu
 the delete is guarded, so a slow or throwing store is captured on the run and never propagates.
 The pruner keeps the last 100 runs (newest-first) in an in-memory ring for a future dashboard —
 prune runs are deliberately **not** stored as entries (they would be pruned themselves and add
-write load to the very store retention is meant to shrink). Call `pruneNow()` to run one cycle on
-demand.
+write load to the very store retention is meant to shrink).
+
+### Driving the pruner yourself
+
+The provider arms one for you, but `TelescopePruner` is exported so you can run retention from an
+ace command, a scheduled task, or an admin endpoint of your own:
+
+```ts
+import { TelescopePruner, TelescopeService, resolveConfig } from '@adonis-agora/telescope'
+
+const telescope = await app.container.make(TelescopeService)
+const pruner = new TelescopePruner(
+  telescope.telescopeStore,
+  resolveConfig(app.config.get('telescope')).prune,
+)
+
+const deleted = await pruner.pruneNow()          // run one cycle now; resolves to a count
+const history = pruner.getRuns()                 // the last 100 runs, newest-first
+const nextAt = pruner.getNextRunAtMs()           // predicted next scheduled cycle, or null
+pruner.start()                                   // arm the timer; stop() disarms it
+```
+
+Each recorded run is a `PruneRun` — `{ at, trigger, durationMs, deletedTotal, error? }` — where
+`trigger` (a `PruneTrigger`) is `'scheduled'` for a timer cycle and `'manual'` for a `pruneNow()`.
+A cycle whose delete threw still records a run, carrying the message in `error`; it is never
+raised at you.
 
 ## Overload guard
 
@@ -98,6 +122,30 @@ the guard degrades to a no-op.
 
 Pausing/resuming is logged (`Event-loop p99 lag …ms >= …ms — pausing Telescope capture.` /
 `… recovered — resuming …`), so an operator can see when Telescope stepped aside.
+
+### Pausing on purpose
+
+`setTelescopePaused(true)` flips the same flag by hand, and every ingestion point honours it
+immediately — useful around a bulk import or a migration that would otherwise flood the store
+with millions of uninteresting queries:
+
+```ts
+import { setTelescopePaused } from '@adonis-agora/telescope'
+
+setTelescopePaused(true)
+try {
+  await importEverything()
+} finally {
+  setTelescopePaused(false)
+}
+```
+
+Always restore it in a `finally`: the flag is process-global and nothing else will turn it back
+on. Note the [alerter](/docs/telescope/packages/alerts#when-rules-do-and-dont-run) also honours
+it, so threshold rules will not evaluate while you are paused.
+
+`OverloadGuard` itself is exported too, if you want to run the sampler against your own pause
+controller rather than the built-in one.
 
 See [Performance](/docs/telescope/concepts/performance) for the rest of the "cheap by
 construction" story.

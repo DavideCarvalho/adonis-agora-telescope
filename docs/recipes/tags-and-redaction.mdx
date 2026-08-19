@@ -112,11 +112,40 @@ safeRecord(
 This is rarely needed — the central scrubber already runs on every entry — but it lets a
 custom watcher mask before recording (e.g. so the pre-redaction value never lives in memory).
 
+## Sampling is already built in
+
+Before writing any of the code below: if all you want is "record less", the `sampling` key on
+`config/telescope.ts` does it with no code at all, on the same write path, with tail-sampling
+built in.
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  sampling: {
+    default: 1,                                          // keep everything by default
+    cache: 0.1,                                          // …but only a tenth of cache entries
+    query: { rate: 0.05, keepErrors: true, keepSlowMs: 500 },
+  },
+})
+```
+
+A bare number is a uniform keep-rate for every type; a per-type map lets each type carry its own
+rate, with the reserved `default` key covering the rest. A rule object is the tail-sampling form:
+keep `rate` of the ordinary traffic but **always** retain what matters — anything that looks like
+an error (`keepErrors`) and anything slower than `keepSlowMs`. `sampling: 0.1` is the whole
+config for "keep 10% of everything".
+
+A sampled-out entry is never persisted, and the dashboard's
+[retention indicator](/docs/telescope/packages/telescope-ui#getting-around) tells viewers which
+types are recording below 100% so nobody reads a sampled count as the real one.
+
+Reach for a custom store only when the decision needs something sampling can't express — a
+per-URL rule, a lookup, a rewrite.
+
 ## Drop or sample noise with a wrapping store
 
-To filter or sample *across all watchers* in one place, wrap your real store and decide in
-`record` whether to persist. Because everything records through the one `TelescopeStore`,
-this is the single choke point.
+To filter, rewrite or drop *across all watchers* on a rule sampling cannot express, wrap your
+real store and decide in `record` whether to persist. Because everything records through the one
+`TelescopeStore`, this is the single choke point.
 
 ```ts title="app/telescope/filtering_store.ts"
 import type { TelescopeStore, Entry, RecordInput, EntryQuery } from '@adonis-agora/telescope'
@@ -173,7 +202,9 @@ single watcher. Return a synthetic, non-persisted `Entry` for dropped/sampled in
 caller's `await store.record(...)` still resolves (watchers ignore the result anyway).
 
 <Callout type="info">
-For tail-style sampling — *keep everything that errored, sample the rest* — branch on the
-entry's tags in `shouldSample`: always persist `status:5xx`, `exception:*`, or `cache:miss`,
-and only sample the boring successes.
+If your `shouldSample` is turning into "keep everything that errored, sample the rest", that is
+exactly what the built-in [`sampling`](#sampling-is-already-built-in) config's
+`{ rate, keepErrors, keepSlowMs }` rules do — and they compose with the pruner and the dashboard's
+retention indicator, which a hand-rolled store does not. Keep the wrapping store for the rules
+sampling genuinely cannot express, like dropping one specific URL.
 </Callout>

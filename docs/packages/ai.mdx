@@ -140,9 +140,9 @@ one of them degrades gracefully when AI is not configured — the tool and the a
 without a diagnosis, and the dashboard hides the button. It adds three properties on top of the
 raw diagnoser:
 
-- **Optional / lazy** — constructed with `diagnoser: null` when AI is unconfigured, in which case
-  `isConfigured()` is `false` and every call returns `null`. Nothing imports the Anthropic SDK
-  through it; the provider supplies the concrete diagnoser.
+- **Optional** — with AI unconfigured, `isConfigured()` is `false` and every call resolves to
+  `null` rather than throwing, so a caller can ask unconditionally. The Anthropic SDK is never
+  loaded on that path.
 - **De-duped** — concurrent diagnose calls for the **same** exception family share one in-flight
   promise, so an MCP request and an alert firing at once never trigger two model calls (and
   completed diagnoses are still cached by family hash).
