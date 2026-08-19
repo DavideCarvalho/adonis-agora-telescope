@@ -1,6 +1,8 @@
 {{{
   exports({ to: app.configPath('telescope_alerts.ts') })
 }}}
+/** Uncomment alongside any example below that reads env.get(...). */
+// import env from '#start/env'
 import { defineConfig } from '@adonis-agora/telescope/alerts'
 
 /**
@@ -72,7 +74,7 @@ export default defineConfig({
    */
   // geoLookup: async (ip) => {
   //   const res = await fetch('https://ipapi.example/' + ip)
-  //   const body = await res.json()
+  //   const body = (await res.json()) as { city?: string; region?: string; country?: string; country_code?: string }
   //   return { city: body.city, country: body.country, countryCode: body.country_code }
   // },
 })

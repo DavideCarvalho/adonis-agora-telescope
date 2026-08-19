@@ -99,7 +99,7 @@
   "sideEffects": ["**/registry.js", "**/registry.ts"],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs && pnpm run copy:assets",
-    "copy:stubs": "mkdir -p dist/stubs/config dist/stubs/database/migrations && cp stubs/config/telescope.stub dist/stubs/config/telescope.stub && cp stubs/config/telescope_watchers.stub dist/stubs/config/telescope_watchers.stub && cp stubs/config/telescope_ui.stub dist/stubs/config/telescope_ui.stub && cp stubs/config/telescope_ai.stub dist/stubs/config/telescope_ai.stub && cp stubs/config/telescope_alerts.stub dist/stubs/config/telescope_alerts.stub && cp stubs/config/telescope_mcp.stub dist/stubs/config/telescope_mcp.stub && cp stubs/config/telescope_cpu_profiling.stub dist/stubs/config/telescope_cpu_profiling.stub && cp stubs/database/migrations/create_telescope_entries_table.stub dist/stubs/database/migrations/create_telescope_entries_table.stub",
+    "copy:stubs": "rm -rf dist/stubs && mkdir -p dist/stubs && cp -R stubs/. dist/stubs/",
     "copy:assets": "mkdir -p dist/src/ui && cp src/ui/dashboard.html dist/src/ui/dashboard.html",
     "prepack": "pnpm run build",
     "test": "vitest run --passWithNoTests",
