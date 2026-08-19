@@ -33,14 +33,15 @@ you have already fetched.
 
 ## `MetricsService`
 
-The stateful entry point. Construct it with a store (resolve the live one from the
-[`TelescopeService`](/docs/telescope/packages/core#headless-api)) and optional tuning:
+The stateful entry point. Construct it with a store — the live one is exposed by
+[`TelescopeService`](/docs/telescope/packages/core#headless-api) as `telescopeStore` — plus
+optional tuning:
 
 ```ts
 import { MetricsService, TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
-const metrics = new MetricsService(telescope.store, {
+const metrics = new MetricsService(telescope.telescopeStore, {
   slowMs: 100,            // duration (ms) at/above which an entry counts as "slow". Default 100.
   defaultBuckets: 60,     // timeseries buckets when a query omits `buckets`. Default 60 (max 500).
   scanCap: 50_000,        // safety cap on entries scanned per request; surfaced via `truncated`.
