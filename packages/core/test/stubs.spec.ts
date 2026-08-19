@@ -50,7 +50,10 @@ describe('shipped stubs', () => {
 
   it('finds every stub configure.ts publishes', () => {
     const relative = sourceStubs.map((path) =>
-      path.slice(join(packageRoot, 'stubs').length + 1).split('\\').join('/'),
+      path
+        .slice(join(packageRoot, 'stubs').length + 1)
+        .split('\\')
+        .join('/'),
     );
     for (const expected of PUBLISHED_STUBS) {
       expect(relative).toContain(expected);
@@ -91,7 +94,10 @@ describe('shipped stubs', () => {
     const stubsRoot = join(packageRoot, 'stubs');
     const distRoot = join(packageRoot, 'dist', 'stubs');
     const relative = (root: string) => (path: string) =>
-      path.slice(root.length + 1).split('\\').join('/');
+      path
+        .slice(root.length + 1)
+        .split('\\')
+        .join('/');
     expect(distStubs.map(relative(distRoot)).sort()).toEqual(
       sourceStubs.map(relative(stubsRoot)).sort(),
     );
