@@ -48,23 +48,46 @@ node ace configure @adonis-agora/telescope   # then pick "Alerts" at the prompt
 Selecting **Alerts** registers `@adonis-agora/telescope/alerts_provider` and publishes
 `config/telescope_alerts.ts`.
 
-## How it hooks in (polling)
+## How it hooks in
 
-The headless core does not expose a "new entry" event, and this package intentionally does
-**not** modify core. Instead the provider starts an `ExceptionPoller` that reads the
-telescope store on an interval (default 30s) for `exception` entries recorded since the
-previous poll — a high-water mark on `createdAt` — and feeds them to the `Alerter`.
+The alerter watches the same store everything else reads. Every `every` interval (default 30s)
+it picks up the `exception` entries recorded since the last look and evaluates your rules
+against them. Nothing is instrumented or intercepted — if an exception made it into Telescope,
+the alerter sees it.
 
-<Callout type="info">
-The store resolves through the core's runtime slot (the same handle the watchers record
-through) — no DI. The poll timer is `unref`'d, so alerting never keeps the process alive on
-its own, and a store failure during a poll is logged and retried, not thrown. The poller
-starts from "now" at boot, so it never alerts on the whole pre-existing backlog.
+Two consequences worth knowing:
+
+- **Alerts are as late as the interval.** A `30s` cadence means up to 30 seconds between the
+  error and the page. Shorten `every` if that matters; the work per cycle is proportional to
+  what was recorded, not to how often you ask.
+- **Only what was recorded is alertable.** Exceptions arrive automatically once the core's
+  request middleware is wired, and whenever you call `recordException` yourself. An exception
+  that [sampling](/docs/telescope/concepts/performance) dropped never reaches a rule.
+
+Alerting starts from "now" at boot, so restarting your app never re-pages the whole backlog,
+and it never keeps the process alive on its own. A store failure during a cycle is logged and
+retried on the next one rather than thrown at your app.
+
+### When rules do and don't run
+
+Two behaviours regularly surprise people:
+
+<Callout type="warn">
+**Only the first rule of each exception type is evaluated.** `new-exception`,
+`every-exception` and `exception-rate` are each looked up once, by type — list two
+`new-exception` rules and the second is silently ignored. Configure at most one of each and
+express the variations through its `window` and `threshold`. (`metric-threshold` is the
+exception: every one of those is evaluated, so a p99 rule and a cache-hit-rate rule happily
+coexist.)
 </Callout>
 
-This requires that `exception` entries are actually being recorded — which they are as soon
-as the core's request middleware is wired (it auto-captures HTTP exceptions), or whenever
-you call `recordException` manually.
+<Callout type="info">
+**`metric-threshold` rules pause while Telescope is shedding load.** When the
+[overload guard](/docs/telescope/concepts/performance#overload-protection) pauses capture
+because the event loop is lagging, threshold evaluation stops too — so an already-firing alert
+is neither re-raised nor spuriously auto-resolved on data Telescope wasn't recording. The
+exception rules keep evaluating whatever did get through.
+</Callout>
 
 ## Configuration
 
@@ -140,8 +163,11 @@ type AlertRule =
   crosses the threshold (`comparator: 'gte' | 'lte'`). The metrics are derived from the **same**
   windowed aggregation the [Pulse](/docs/telescope/packages/pulse) / stats views use, so an
   alert means exactly what the dashboard shows — page on `request-p99-ms >= 800` (a slow
-  endpoint), `cache-hit-rate <= 0.8`, or an `exception-count >= N` spike. `minSamples` guards a
-  percentile rule against a single slow request on a quiet host.
+  endpoint), `cache-hit-rate <= 0.8`, or an `exception-count >= N` spike. `minSamples`
+  (default 1) guards a percentile or ratio rule against a single slow request on a quiet host —
+  below that many samples in the window the rule holds its current state instead of deciding.
+  It is deliberately **ignored for `exception-count`**, where a count of zero is a real,
+  meaningful value that has to be able to auto-resolve a firing spike.
 
 The exception rules are rate-limited by `cooldown` (per-rule for rate, per-family for
 `new-exception` and `every-exception` — each on its own independent per-family clock, so
@@ -191,9 +217,9 @@ resolve signal.
 
 The `new-exception` rule's only state is a `NewExceptionTracker` — a bounded in-memory map
 (default cap **10,000** families, oldest-evicted) of family → last-seen. It's per-process
-by design: in a multi-replica deployment the same family may be reported new once per pod
-(a documented v1 caveat). The `window` check discards stale last-seen times, so it doubles
-as the re-occurrence detector.
+by design: in a multi-replica deployment the same family is reported new once per replica, so
+budget your cooldown accordingly. The `window` check discards stale last-seen times, so it
+doubles as the re-occurrence detector.
 
 ## Channels
 
@@ -257,7 +283,7 @@ interface AlertPayload {
     isNew: boolean                 // occurrences === 1 — a first occurrence vs a recurrence
     entryId: string                // for the dashboard deep link
   }
-  diagnosis?: {          // AI probable-cause, on new-exception alerts when AI is configured
+  diagnosis?: {          // AI probable-cause, on exception alerts when AI is configured
     cause: string
     fix: string
     confidence: string
@@ -280,8 +306,8 @@ with `componentStack`/`extra` `null` and `client: false`.
 
 Every fired exception alert carries `isNew` — `true` when this is the family's first
 occurrence in the window (`occurrences === 1`), `false` on a recurrence. Channels badge the
-two distinctly so on-call can triage urgency at a glance: the **Slack** channel prepends
-**🆕 New** or **🔁 Recurring** to the header. This matters most with the
+two distinctly so on-call can triage urgency at a glance: the **Slack** channel appends
+**· 🆕 New** or **· 🔁 Recurring** to the end of the header line. This matters most with the
 [`every-exception`](#rules) rule, which pages on repeats as well as first sightings.
 
 Beyond the core error fields, the Slack channel renders these enriched fields as context
@@ -296,7 +322,7 @@ Beyond the core error fields, the Slack channel renders these enriched fields as
 | `geo`                        | a **Location** context field — `🇺🇸 City, Region, Country` (see [Geo-enrichment](#geo-enrichment)) |
 | `componentStack`             | a fenced **Component stack:** code block (`client_exception` only)       |
 | `extra`                      | a fenced **Extra:** JSON block (`client_exception` only)                 |
-| `isNew`                      | the **🆕 New** / **🔁 Recurring** header badge                          |
+| `isNew`                      | a **· 🆕 New** / **· 🔁 Recurring** suffix on the header line            |
 
 <Callout type="info">
 Slack caps a section's `fields` array at 10 items, and a fully-enriched exception (instance,
@@ -308,12 +334,14 @@ channel carries **all** of these fields verbatim; the `console` channel logs a o
 summary (`class: message (route) — N× in window`).
 </Callout>
 
-### AI probable-cause on new-exception alerts
+### AI probable-cause on exception alerts
 
-When [AI diagnosis](/docs/telescope/packages/ai) is installed, a `new-exception` alert is
-enriched with a `diagnosis` — the [coordinator](/docs/telescope/packages/ai#the-diagnosis-coordinator)
+When [AI diagnosis](/docs/telescope/packages/ai) is installed, every alert a `new-exception` or
+an `every-exception` rule fires is enriched with a `diagnosis` — the
+[coordinator](/docs/telescope/packages/ai#the-diagnosis-coordinator)
 runs a time-bounded, fail-safe diagnosis of the offending exception and the alerter attaches a
-compact `{ cause, fix, confidence, model }` summary to the payload. Slack renders it as a
+compact `{ cause, fix, confidence, model }` summary to the payload. The rate rules carry no
+single offending entry, so they are never enriched. Slack renders it as a
 **"Probable cause (AI)"** section; the raw webhook carries it verbatim. The diagnose hook is
 guarded, so a diagnosis failure (or a slow model) never blocks or breaks the alert — the alert
 simply goes out without the section. Omit AI and alerts behave exactly as before.

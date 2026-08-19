@@ -134,10 +134,11 @@ cross-process sharing.
 
 `TelescopeAiDiagnoser.diagnose` is the low-level call. On top of it sits the
 **`DiagnosisCoordinator`** — the single seam the [MCP `diagnose_exception`](/docs/telescope/packages/mcp)
-tool and the [alerter](/docs/telescope/packages/alerts#ai-probable-cause-on-new-exception-alerts)
-both call. The AI provider publishes it on the core runtime slot (no DI); both consumers read it
-from there and degrade gracefully when it is absent. It adds three properties on top of the raw
-diagnoser:
+tool, the dashboard's **Diagnose** button and the
+[alerter](/docs/telescope/packages/alerts#ai-probable-cause-on-exception-alerts) all call. Every
+one of them degrades gracefully when AI is not configured — the tool and the alert simply go out
+without a diagnosis, and the dashboard hides the button. It adds three properties on top of the
+raw diagnoser:
 
 - **Optional / lazy** — constructed with `diagnoser: null` when AI is unconfigured, in which case
   `isConfigured()` is `false` and every call returns `null`. Nothing imports the Anthropic SDK

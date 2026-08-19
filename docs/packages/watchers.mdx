@@ -259,8 +259,8 @@ and it's fully reversible. A reentrancy guard prevents an infinite record→log�
 ## Queue watcher
 
 Records every **`@adonisjs/queue` job execution** as a `job` entry — the queue, job name,
-payload, outcome, attempts and duration, correlated to the active trace. This is an
-**optional peer** watcher: with `@adonisjs/queue` absent it is a pure no-op.
+payload, outcome, attempts and duration, correlated to the active trace. Nothing here imports
+`@adonisjs/queue`, so with the package absent this watcher is a pure no-op.
 
 ```ts
 interface JobEntryContent {
@@ -409,7 +409,7 @@ double.
 
 Records **every Redis command issued through `@adonisjs/redis`** as a `redis` entry — the
 command, its arguments, the connection and the round-trip duration, correlated to the active
-trace. Like the queue watcher this is an **optional peer** watcher: with `@adonisjs/redis`
+trace. Like the queue watcher it never imports the package it observes, so with `@adonisjs/redis`
 absent it no-ops.
 
 ```ts
@@ -604,12 +604,18 @@ walks through a full example.
 
 ## Peer dependencies
 
-`@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache`, `@adonisjs/queue`, `@adonisjs/redis`
-and `cron-parser` are all **optional** peers — install only the ones whose watcher/capability
-you enable. With none installed the package still loads; the watchers simply have nothing to
-subscribe to (the queue and events watchers idle on a channel/emitter nobody feeds, the redis
+`@adonisjs/lucid`, `@adonisjs/mail`, `@adonisjs/cache` and `cron-parser` are declared **optional
+peers** — install only the ones whose watcher you enable. With none installed the package still
+loads; those watchers simply have nothing to subscribe to.
+
+`@adonisjs/queue` and `@adonisjs/redis` are **not** declared at all, optional or otherwise.
+Their watchers never import them: the queue watcher listens on a Node diagnostics channel the
+queue engine publishes on, the redis watcher wraps the command method on a manager it is handed,
+and the Live Queue Manager calls an adapter structurally. So they cost you nothing when the
+packages are absent — the queue and events watchers idle on a channel nobody feeds, the redis
 watcher no-ops on a `null` manager, the Live Queue Manager reports `configured: false`, and
-Live Schedules' `nextRunAt` is always `null`).
+Live Schedules' `nextRunAt` is always `null` — and equally, npm will never install them for you.
+Add them to your own `package.json` when you want them.
 
 <Callout type="info">
 The `queue`, `events` and `redis` watchers currently expose **no `config/telescope_watchers.ts`

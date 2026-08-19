@@ -38,9 +38,12 @@ export default defineConfig({
 | `enabled`    | `boolean`                        | `true`                        | Master switch. `false` records nothing and starts no watcher.   |
 | `store`      | `string \| TelescopeStore`       | `'memory'`                    | Which named driver in `stores` is active, or a [store instance](/docs/telescope/concepts/storage). |
 | `stores`     | `Record<string, StoreProvider>`  | `{}`                          | Named [storage drivers](/docs/telescope/packages/storages) built with the `storage` factory (`storage.memory` / `storage.lucid`). |
-| `watchers`   | `WatcherName[]`                  | `['request', 'diagnostics']`  | Which built-in watchers run. Omit a name to disable it.          |
+| `watchers`   | `WatcherName[]`                  | `['request', 'diagnostics']`  | Any of `request`, `diagnostics`, `logs`. Omit a name to disable it. |
+| `diagnostics`| `{ exclude?, recordClaimed? }`   | `{ exclude: [], recordClaimed: false }` | Mute noisy `lib:event` keys with `exclude`; `recordClaimed` also records events a lib-specific watcher already recorded as a typed entry. |
+| `logs`       | `{ minLevel?, tags? }`           | `{ minLevel: 'trace', tags: [] }` | Tuning for the `logs` watcher: raise the floor (`'warn'` drops debug/info) and append tags to every log entry. |
+| `requestCapture` | `{ maxBodyBytes?, skipBodyContentTypes?, skipBody? }` | _off_ | Opt-in request BODY capture. See [Request body capture](/docs/telescope/packages/core#request-body-capture). |
 | `extensions` | `TelescopeExtension[]`           | `[]`                          | [Extensions](/docs/telescope/concepts/extensions) registered at boot. |
-| `redact`     | `{ enabled?, keys? }`            | `{ enabled: true, keys: [] }` | [Sensitive-data redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction) — masks sensitive keys in every entry's content before persistence. |
+| `redact`     | `{ enabled?, keys?, perType? }`  | `{ enabled: true, keys: [], perType: {} }` | [Sensitive-data redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction) — masks sensitive keys in every entry's content before persistence. `perType` raises the numeric size bounds for one entry type. |
 | `sampling`   | `number \| SamplingConfig`       | _record everything_           | Tail-sampling on the write path (bare keep-rate, or per-type rules keeping errors/slow). |
 | `pulse`      | `{ enabled?, windowMs?, topN?, buckets?, slowRouteMs?, cards? }` | `enabled`, 1h window | The [Pulse](/docs/telescope/packages/pulse) health rollup + its `/api/metrics/pulse` route. |
 | `nPlusOne`   | `{ enabled?, threshold? }`       | `{ enabled: true, threshold: 3 }` | N+1 query-loop detection thresholds (read-only analysis).   |
@@ -54,7 +57,12 @@ Redaction is **on by default**. Every entry's `content` is scrubbed at the store
 a built-in set of sensitive keys (`authorization`, `cookie`, `set-cookie`, `password`,
 `token`, `api_key`, `secret`, `client_secret`, `private_key`, …) is masked with `[REDACTED]`,
 case-insensitively, at any depth. Add your own with `redact: { keys: ['ssn'] }`, or disable
-it with `redact: { enabled: false }`. See [Built-in redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction).
+it with `redact: { enabled: false }`. `perType` overrides only the NUMERIC bounds
+(`maxDepth`, `maxStringLength`, `maxArrayLength`, `maxNodes`, `maxContentBytes`) for one entry
+type — useful to let exception stacks keep a bigger byte budget than high-volume request
+entries, e.g. `redact: { perType: { exception: { maxContentBytes: 64_000 } } }`. Masking stays
+global on purpose: which keys are secret is a security invariant, not a per-type preference.
+See [Built-in redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction).
 </Callout>
 
 <Callout type="info">
@@ -79,11 +87,12 @@ export default defineConfig({
 | Key          | Type                        | Default     | Description                                              |
 | ------------ | --------------------------- | ----------- | ------------------------------------------------------- |
 | `enabled`    | `boolean`                   | `true`      | Master switch for per-technology watchers.             |
-| `watchers`   | `WatcherName[]`             | `['query']` | Any of `query`, `mail`, `cache`, `http-client`, `logs`, `queue`, `events`, `redis`, `profiling`, `schedule`. |
+| `watchers`   | `WatcherName[]`             | `['query']` | Any of `query`, `mail`, `cache`, `http-client`, `logs`, `queue`, `events`, `redis`, `profiling`, `schedule`, `queue-manager`. |
 | `query`      | `QueryWatcherConfig`        | see below   | `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `normalize` (`true`). |
 | `httpClient` | `HttpClientWatcherConfig`   | see below   | `slowMs` (1000), `ignoreHosts`, `captureBodies` (`false`). |
 | `profiling`  | `ProfilingWatcherConfig`    | see below   | `slowMs` (100), `minDurationMs` (0).                   |
 | `schedule`   | `ScheduleWatcherConfig`     | see below   | `slowMs` (1000).                                       |
+| `queueManager` | `QueueManagerWatcherConfig` | `{ queues: [] }` | `queues` (required to surface anything — queue names cannot be discovered), `adapter` (which configured adapter to use). |
 
 <Callout type="warn">
 Only `query` is on by default — it's the verified one. Enable the rest knowing some event
@@ -91,6 +100,13 @@ contracts are best-effort (those packages aren't installed in this repo). Query 
 redacted unless `query.captureBindings` is on, and `profiling`/`schedule` are user-driven (they
 publish opt-in helpers rather than tapping an event). And remember Lucid only emits `db:query`
 when its connection `debug` is on. See [Watchers](/docs/telescope/packages/watchers).
+</Callout>
+
+<Callout type="warn">
+`'logs'` appears in **both** watcher lists — here and in `config/telescope.ts`, where it also
+takes a `logs: { minLevel, tags }` block. Enable it in exactly one place. Whichever provider
+boots first owns the logger tap; the other one warns and stays inert, so its options are simply
+ignored.
 </Callout>
 
 ## Dashboard UI — `config/telescope_ui.ts`
@@ -114,6 +130,8 @@ export default defineConfig({
 | `credentials` | `{ token?, basic? }`                  | `{}`           | Built-in token / HTTP Basic gate (ignored when `authorize` is set). |
 | `dashboardAuth` | `{ secret, ttl?, login }`           | _unset_        | Built-in [session login screen](/docs/telescope/dashboard/auth#built-in-login-screen) (fails closed at boot without `secret`/`login`). |
 | `replay`      | `{ enabled?, port?, timeoutMs? }`     | _disabled_     | Request replay from the dashboard — off by default (a captured `POST`/`DELETE` re-runs). |
+| `cpuProfiling`| `{ armEnabled? }`                     | _disabled_     | Whether the console may ARM a [CPU capture](/docs/telescope/packages/cpu-profiling#arming-a-capture). Reading captured profiles is never gated by this. |
+| `queueActions`| `{ enabled? }`                        | _disabled_     | Whether the [queue console](/docs/telescope/packages/watchers#live-queue-manager) may retry or enqueue jobs. Reading it is never gated by this. |
 | `dashboard`   | `{ enabled?, path? }`                 | `enabled`      | Toggles / re-mounts the [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui) SPA. |
 
 `credentials.token` allows `Authorization: Bearer <token>` or `?token=<token>`;
@@ -142,15 +160,22 @@ export default defineConfig({
 | -------------- | ------------------- | --------------------------------------------- | ---------------------------------------------------------- |
 | `enabled`      | `boolean`           | `true`                                        | Master switch.                                             |
 | `channels`     | `ChannelConfig[]`   | `[{ type: 'console' }]`                        | `{type:'slack',url}` / `{type:'webhook',url}` / `{type:'console'}` / a channel object. |
-| `rules`        | `AlertRule[]`       | `[{ type: 'new-exception', window: '1h' }]`   | `new-exception`, `exception-rate` (`+ threshold`), and stateful `metric-threshold` rules (raise/auto-resolve). |
+| `rules`        | `AlertRule[]`       | `[{ type: 'new-exception', window: '1h' }]`   | `new-exception`, `every-exception` (fires on repeats too; `window` optional and display-only), `exception-rate` (`+ threshold`), and stateful `metric-threshold` rules (raise/auto-resolve). |
 | `dashboardUrl` | `string`            | _unset_                                       | External dashboard URL — enables Slack deep links.        |
 | `every`        | `string`            | `'30s'`                                        | Poll cadence (`ms`/`s`/`m`/`h`/`d`).                       |
 | `cooldown`     | `string`            | `'15m'`                                        | Per-rule / per-family re-notify suppression.              |
 | `instanceId`   | `string`            | `'telescope'`                                  | Reporting instance id on every payload.                   |
+| `geoLookup`    | `(ip) => AlertGeoLocation \| null` | _unset_                        | Optional IP-to-geo resolver rendering a coarse **Location** on exception alerts. Telescope ships no geo database — see [Geo-enrichment](/docs/telescope/packages/alerts#geo-enrichment). |
 
 <Callout type="warn">
 Duration strings are validated at boot — an unparseable `every`/`cooldown`/`window` throws
 (fail-closed). Valid units: `ms`, `s`, `m`, `h`, `d`. See [Alerts](/docs/telescope/packages/alerts).
+</Callout>
+
+<Callout type="warn">
+Only the **first** rule of each exception type is evaluated — list two `new-exception` rules and
+the second is silently ignored. `metric-threshold` is the exception: every one of those runs.
+See [When rules do and don't run](/docs/telescope/packages/alerts#when-rules-do-and-dont-run).
 </Callout>
 
 **Env:** `TELESCOPE_SLACK_WEBHOOK`, `TELESCOPE_ALERT_WEBHOOK` (your names).
@@ -203,6 +228,29 @@ export default defineConfig({
 | `credentials` | `{ token?, basic? }` | `{}`          | Built-in gate for the default policy.                            |
 | `tools`       | `McpToolName[]`   | all six          | Which tools to expose. See [`@adonis-agora/telescope/mcp`](/docs/telescope/packages/mcp). |
 
+## CPU profiling — `config/telescope_cpu_profiling.ts`
+
+```ts
+import { defineConfig } from '@adonis-agora/telescope/cpu_profiling'
+
+export default defineConfig({
+  enabled: true,
+  // sampleRate: 0,
+  // maxConcurrent: 2,
+})
+```
+
+| Key                      | Type      | Default | Description                                                       |
+| ------------------------ | --------- | ------- | ----------------------------------------------------------------- |
+| `enabled`                | `boolean` | `false` | Master switch. **Off by default** — a running sampling profiler slows the process it profiles. |
+| `sampleRate`             | `number`  | `0`     | Fraction (0–1) of requests captured automatically. `0` means captures only happen when armed. |
+| `maxConcurrent`          | `number`  | `2`     | Maximum concurrent captures, bounding overhead under load.        |
+| `minDurationMs`          | `number`  | `5`     | Captures shorter than this are discarded.                         |
+| `samplingIntervalMicros` | `number`  | `1000`  | V8 sampling interval in microseconds — lower is finer-grained and costlier. Floored at 100. |
+
+Arming a capture from the dashboard additionally requires `cpuProfiling.armEnabled` in
+`config/telescope_ui.ts`. See [CPU profiling](/docs/telescope/packages/cpu-profiling).
+
 ## Providers registered by `configure`
 
 For reference, `node ace configure @adonis-agora/telescope` registers the core provider and — for
@@ -217,7 +265,14 @@ is a subpath of the one `@adonis-agora/telescope` package:
 | alerts    | `@adonis-agora/telescope/alerts_provider`       | —                                       |
 | ai        | `@adonis-agora/telescope/ai_provider`           | binds `TelescopeAiDiagnoser`, publishes the diagnosis coordinator |
 | mcp       | `@adonis-agora/telescope/mcp_provider`          | JSON-RPC route registered at boot       |
-| dashboard SPA | `@adonis-agora/telescope-ui/telescope_ui_dashboard_provider` | separate package; serves the React SPA under the UI prefix |
+| cpu_profiling | `@adonis-agora/telescope/cpu_profiling_provider` | publishes the profiler the UI's profile routes read |
+
+One provider is **not** offered at the prompt and has to be added by hand, because it lives in a
+separate package you install yourself:
+
+| Package                        | Provider import path                                        | Serves                          |
+| ------------------------------ | ----------------------------------------------------------- | ------------------------------- |
+| `@adonis-agora/telescope-ui`   | `@adonis-agora/telescope-ui/telescope_ui_dashboard_provider` | the React console under the UI prefix |
 
 Storage is **not a separate package** — the `memory` and `lucid` drivers are built into
 `@adonis-agora/telescope` and selected in `config/telescope.ts`. `node ace configure @adonis-agora/telescope`
