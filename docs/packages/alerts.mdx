@@ -83,7 +83,7 @@ coexist.)
 
 <Callout type="info">
 **`metric-threshold` rules pause while Telescope is shedding load.** When the
-[overload guard](/docs/telescope/concepts/performance#overload-protection) pauses capture
+[overload guard](/docs/telescope/concepts/protection#overload-guard) pauses capture
 because the event loop is lagging, threshold evaluation stops too — so an already-firing alert
 is neither re-raised nor spuriously auto-resolved on data Telescope wasn't recording. The
 exception rules keep evaluating whatever did get through.

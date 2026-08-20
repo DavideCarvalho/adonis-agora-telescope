@@ -90,7 +90,7 @@ Raise `limit` for more history, lower it to shrink the footprint. There is no
 unbounded growth mode.
 
 The AI diagnoser and the alerts tracker are similarly bounded: the
-[diagnosis cache](/docs/telescope/packages/ai#caching) is a TTL'd LRU capped at 500
+[diagnosis cache](/docs/telescope/packages/ai#how-it-works) is a TTL'd LRU capped at 500
 families, and the [`new-exception` tracker](/docs/telescope/packages/alerts#deduplication)
 is a count-capped map (default 10,000 families) — so a host that throws a long tail of
 unique error families can't grow either without limit.
