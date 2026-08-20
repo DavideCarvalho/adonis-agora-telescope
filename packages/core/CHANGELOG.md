@@ -1,5 +1,21 @@
 # @adonis-agora/telescope
 
+## 0.8.4
+
+### Patch Changes
+
+- Fix the published package missing `dist/stubs/main.js`.
+
+  `configure.ts` imports `{ stubsRoot } from './stubs/main.js'`, but the build ran
+  `copy:stubs` _after_ `tsc` and the script did `rm -rf dist/stubs && cp -R stubs/. dist/stubs/`
+  — wiping the freshly compiled `dist/stubs/main.js` and leaving only the raw
+  `stubs/main.ts` behind. Every published version so far has therefore failed at
+  `node ace configure` with `ERR_MODULE_NOT_FOUND` for `./stubs/main.js`.
+
+  `copy:stubs` now only copies the stub templates (`config/`, `database/`) into
+  `dist/stubs/` instead of deleting and replacing the whole directory, so the
+  compiled `main.js` survives and ships in the tarball.
+
 ## 0.8.3
 
 ### Patch Changes

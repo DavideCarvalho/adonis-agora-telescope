@@ -1,6 +1,6 @@
 {
   "name": "@adonis-agora/telescope",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "Laravel Telescope-style headless observability for AdonisJS — records HTTP requests and every Agora diagnostics event as queryable entries, plus opt-in subpaths for per-technology watchers, a web dashboard, AI exception diagnosis, and alerting.",
   "license": "MIT",
   "repository": {
@@ -94,12 +94,19 @@
       "default": "./dist/providers/telescope_cpu_profiling_provider.js"
     }
   },
-  "files": ["dist/", "README.md", "CHANGELOG.md"],
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "//sideEffects": "registry.ts publishes the telescope runtime handle on a Symbol.for() global slot at import time — process-global state a bundler told sideEffects:false could tree-shake. The rest is pure.",
-  "sideEffects": ["**/registry.js", "**/registry.ts"],
+  "sideEffects": [
+    "**/registry.js",
+    "**/registry.ts"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs && pnpm run copy:assets",
-    "copy:stubs": "rm -rf dist/stubs && mkdir -p dist/stubs && cp -R stubs/. dist/stubs/",
+    "copy:stubs": "mkdir -p dist/stubs && cp -R stubs/config dist/stubs/ && cp -R stubs/database dist/stubs/",
     "copy:assets": "mkdir -p dist/src/ui && cp src/ui/dashboard.html dist/src/ui/dashboard.html",
     "prepack": "pnpm run build",
     "test": "vitest run --passWithNoTests",
