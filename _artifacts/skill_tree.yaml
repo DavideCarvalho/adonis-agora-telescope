@@ -1,0 +1,103 @@
+# Skill tree for adonis-telescope. Flat structure (skills/<name>/SKILL.md), no router.
+# Every skill is type `core`. Each entry carries its owning `package`.
+
+structure: flat
+router: false
+
+skills:
+  - name: telescope-setup
+    type: core
+    package: "@adonis-agora/telescope"
+    path: packages/core/skills/telescope-setup/SKILL.md
+    description: >-
+      Install and configure @adonis-agora/telescope — node ace configure codemods,
+      TelescopeMiddleware on the server stack, config/telescope.ts with defineConfig
+      + the storage factory, the headless TelescopeService query API, recordException,
+      and opt-in requestCapture body gates.
+    sources:
+      - "DavideCarvalho/adonis-telescope:README.md"
+      - "DavideCarvalho/adonis-telescope:docs/getting-started.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/packages/core.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/reference/configuration.mdx"
+      - "DavideCarvalho/adonis-telescope:packages/core/src/define_config.ts"
+      - "DavideCarvalho/adonis-telescope:packages/core/src/service.ts"
+
+  - name: telescope-watchers
+    type: core
+    package: "@adonis-agora/telescope"
+    path: packages/core/skills/telescope-watchers/SKILL.md
+    description: >-
+      Capture sources in @adonis-agora/telescope — the built-in request/diagnostics/
+      logs watchers, the @adonis-agora/telescope/watchers subpath (Lucid query watcher
+      with its debug-flag caveat, mail/cache/http-client/logs/queue/events/redis,
+      profile()/scheduleTask() helpers), and writing custom watchers with safeRecord.
+    sources:
+      - "DavideCarvalho/adonis-telescope:docs/concepts/capture.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/packages/watchers.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/recipes/custom-watcher.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/recipes/request-context.mdx"
+      - "DavideCarvalho/adonis-telescope:packages/core/src/watchers/index.ts"
+
+  - name: telescope-storage-retention
+    type: core
+    package: "@adonis-agora/telescope"
+    path: packages/core/skills/telescope-storage-retention/SKILL.md
+    description: >-
+      Storage, retention, redaction and sampling in @adonis-agora/telescope — the
+      storage.memory ring buffer vs storage.lucid SQL driver, the TelescopeStore
+      contract, prune/overload protection, redact keys/perType bounds, tail-sampling,
+      the create_telescope_entries_table migration, and custom store rules.
+    sources:
+      - "DavideCarvalho/adonis-telescope:docs/concepts/storage.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/concepts/protection.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/packages/storages.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/recipes/custom-storage.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/recipes/tags-and-redaction.mdx"
+      - "DavideCarvalho/adonis-telescope:packages/core/src/stores/factory.ts"
+
+  - name: telescope-alerts-ai
+    type: core
+    package: "@adonis-agora/telescope"
+    path: packages/core/skills/telescope-alerts-ai/SKILL.md
+    description: >-
+      Alerting, AI diagnosis and client-error ingestion in @adonis-agora/telescope —
+      config/telescope_alerts.ts rules (new-exception/every-exception/exception-rate/
+      metric-threshold) and channels (slack/webhook/console/custom), geoLookup,
+      config/telescope_ai.ts + TelescopeAiDiagnoser Claude diagnosis, and the
+      clientErrors sendBeacon endpoint.
+    sources:
+      - "DavideCarvalho/adonis-telescope:docs/packages/alerts.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/packages/ai.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/packages/client-errors.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/recipes/ai-exception-diagnosis.mdx"
+      - "DavideCarvalho/adonis-telescope:packages/core/src/alerts/index.ts"
+
+  - name: telescope-access-mcp
+    type: core
+    package: "@adonis-agora/telescope"
+    path: packages/core/skills/telescope-access-mcp/SKILL.md
+    description: >-
+      Dashboard access control and MCP in @adonis-agora/telescope — the authorize/
+      credentials/dashboardAuth guard in config/telescope_ui.ts (401 vs 403,
+      redirect-wins, fail-closed boot), the replay/queueActions/cpuProfiling mutation
+      gates, and config/telescope_mcp.ts JSON-RPC tools behind the same guard.
+    sources:
+      - "DavideCarvalho/adonis-telescope:docs/dashboard/auth.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/packages/mcp.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/packages/ui.mdx"
+      - "DavideCarvalho/adonis-telescope:packages/core/src/ui/index.ts"
+
+  - name: telescope-ui-dashboard
+    type: core
+    package: "@adonis-agora/telescope-ui"
+    path: packages/ui/skills/telescope-ui-dashboard/SKILL.md
+    description: >-
+      Mount and consume the @adonis-agora/telescope-ui React console — the
+      telescope_ui_dashboard_provider registered after ui_provider in adonisrc.ts,
+      the ten-section SPA over <path>/api/*, the dependency-free TelescopeClient from
+      /client, /api/meta capability discovery, mutation gates, and client-side exports.
+    sources:
+      - "DavideCarvalho/adonis-telescope:docs/packages/telescope-ui.mdx"
+      - "DavideCarvalho/adonis-telescope:docs/dashboard/index.mdx"
+      - "DavideCarvalho/adonis-telescope:packages/ui/package.json"
+      - "DavideCarvalho/adonis-telescope:packages/ui/src/client/index.ts"
