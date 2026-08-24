@@ -94,17 +94,9 @@
       "default": "./dist/providers/telescope_cpu_profiling_provider.js"
     }
   },
-  "files": [
-    "dist/",
-    "README.md",
-    "CHANGELOG.md",
-    "skills"
-  ],
+  "files": ["dist/", "README.md", "CHANGELOG.md", "skills"],
   "//sideEffects": "registry.ts publishes the telescope runtime handle on a Symbol.for() global slot at import time — process-global state a bundler told sideEffects:false could tree-shake. The rest is pure.",
-  "sideEffects": [
-    "**/registry.js",
-    "**/registry.ts"
-  ],
+  "sideEffects": ["**/registry.js", "**/registry.ts"],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs && pnpm run copy:assets",
     "copy:stubs": "mkdir -p dist/stubs && cp -R stubs/config dist/stubs/ && cp -R stubs/database dist/stubs/",
