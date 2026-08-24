@@ -94,16 +94,9 @@
       "default": "./dist/providers/telescope_cpu_profiling_provider.js"
     }
   },
-  "files": [
-    "dist/",
-    "README.md",
-    "CHANGELOG.md"
-  ],
+  "files": ["dist/", "README.md", "CHANGELOG.md", "skills"],
   "//sideEffects": "registry.ts publishes the telescope runtime handle on a Symbol.for() global slot at import time — process-global state a bundler told sideEffects:false could tree-shake. The rest is pure.",
-  "sideEffects": [
-    "**/registry.js",
-    "**/registry.ts"
-  ],
+  "sideEffects": ["**/registry.js", "**/registry.ts"],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs && pnpm run copy:assets",
     "copy:stubs": "mkdir -p dist/stubs && cp -R stubs/config dist/stubs/ && cp -R stubs/database dist/stubs/",
@@ -143,6 +136,7 @@
     "@adonisjs/core": "7.4.0",
     "@adonisjs/lucid": "22.4.2",
     "@anthropic-ai/sdk": "0.116.0",
+    "@tanstack/intent": "^0.3.2",
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "20.19.43",
     "better-sqlite3": "12.11.1",
@@ -161,6 +155,7 @@
     "observability",
     "diagnostics",
     "tracing",
-    "agora"
+    "agora",
+    "tanstack-intent"
   ]
 }

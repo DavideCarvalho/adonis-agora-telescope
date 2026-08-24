@@ -29,7 +29,7 @@
       "default": "./dist/src/client/index.js"
     }
   },
-  "files": ["dist/", "README.md", "CHANGELOG.md"],
+  "files": ["dist/", "README.md", "CHANGELOG.md", "skills"],
   "sideEffects": false,
   "scripts": {
     "build": "vite build && tsc -p tsconfig.server.json",
@@ -56,6 +56,7 @@
   "devDependencies": {
     "@adonis-agora/telescope": "workspace:*",
     "@adonisjs/core": "7.4.0",
+    "@tanstack/intent": "^0.3.2",
     "@testing-library/react": "16.3.2",
     "@types/node": "20.19.43",
     "@types/react": "19.2.18",
@@ -84,6 +85,7 @@
     "react",
     "tracing",
     "pulse",
-    "agora"
+    "agora",
+    "tanstack-intent"
   ]
 }

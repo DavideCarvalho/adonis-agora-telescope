@@ -1,0 +1,456 @@
+# Domain map for adonis-telescope (TanStack Intent agent skills)
+# Generated autonomously by mining README.md, DESIGN.md, docs/** and packages/*/src.
+# ONE domain map for the whole monorepo; skills scoped to the two published packages.
+# Fully autonomous run — no maintainer interview (see gaps at the bottom).
+
+library: adonis-telescope
+description: >-
+  Laravel Telescope-style HEADLESS observability for AdonisJS. One published package
+  (@adonis-agora/telescope) whose subpaths ship per-technology watchers, the dashboard
+  JSON API + SSE, Claude AI exception diagnosis, alerts, MCP and CPU profiling; the
+  React console is a separate pre-built package (@adonis-agora/telescope-ui).
+
+# Versions read from packages/*/package.json at scaffolding time.
+versions:
+  "@adonis-agora/telescope": "0.8.4"
+  "@adonis-agora/telescope-ui": "1.0.2"
+
+# Client-facing PUBLIC packages a consumer actually imports. Skills target these.
+primary_packages:
+  - name: "@adonis-agora/telescope"
+    dir: packages/core
+    role: Headless core + every optional feature as a subpath — telescope_provider,
+      TelescopeMiddleware, defineConfig/storage, watchers + watchers_provider,
+      ui + ui_provider, ai, alerts, mcp, cpu_profiling providers, extension SDK.
+  - name: "@adonis-agora/telescope-ui"
+    dir: packages/ui
+    role: Pre-built React SPA console served by a thin AdonisJS provider behind the
+      same guard as the core JSON API, plus the dependency-free TelescopeClient
+      on the /client subpath.
+
+domains:
+  - id: setup
+    title: Install, configure & query the headless core
+    package: "@adonis-agora/telescope"
+    surface:
+      - "node ace configure @adonis-agora/telescope"
+      - "defineConfig({ enabled, store, stores, watchers, extensions, redact })"
+      - storage.memory({ limit }) / storage.lucid({ connection })
+      - TelescopeService: list/find/byTrace/count/topFamilies/topTags/getHealth
+      - recordException(error, ctx?)
+      - requestCapture gates (maxBodyBytes/skipBodyContentTypes/skipBody)
+    key_facts:
+      - configure registers telescope_provider, plugs TelescopeMiddleware onto the
+        SERVER middleware stack, and publishes config/telescope.ts.
+      - Core is headless — /telescope answers 404 until the telescope-ui SPA package
+        is installed and its provider registered AFTER ui_provider.
+      - Request entries carry NO body unless a requestCapture block opts in.
+      - Controllers must use @inject() — a controller has no app.container to reach.
+
+  - id: watchers
+    title: Capture sources — built-in, per-technology & custom watchers
+    package: "@adonis-agora/telescope"
+    surface:
+      - "watchers: ['request', 'diagnostics'] (+ 'logs') in config/telescope.ts"
+      - "@adonis-agora/telescope/watchers subpath + config/telescope_watchers.ts"
+      - Watcher contract { type, start(emitter), stop() } over structural EmitterLike
+      - safeRecord(input, source) guarded recorder; currentTraceId()
+      - profile()/startProfile(), scheduleTask()/registerSchedule()
+    key_facts:
+      - Only the Lucid query watcher is on by default in the watchers subpath.
+      - Lucid emits db:query only when the connection debug flag is on (or a
+        listener exists at report time) — otherwise queries silently vanish.
+      - "'logs' exists in BOTH config files; whichever provider boots first owns
+        the logger tap, the other warns and stays inert."
+      - Query bindings are redacted to [REDACTED] placeholders unless
+        query.captureBindings is true.
+      - "@adonisjs/queue and @adonisjs/redis are NOT declared peers — their watchers
+        idle when the host does not install them itself."
+
+  - id: storage
+    title: Storage drivers, retention, redaction & sampling
+    package: "@adonis-agora/telescope"
+    surface:
+      - "TelescopeStore contract: record/get/list/count/prune/clear"
+      - "storage.memory({ limit }) ring buffer; storage.lucid({ connection?, tableName?, autoCreateTable?, maxEntries? })"
+      - "prune { after, keepLast, intervalMs } background pruner (off unless present)"
+      - "overload guard { maxEventLoopLagMs, startupGraceMs }; setTelescopePaused()"
+      - "redact { enabled, keys, perType }; sampling number | { rate, keepErrors, keepSlowMs }"
+      - create_telescope_entries_table migration
+    key_facts:
+      - memory driver is per-process and lost on restart; lucid is the production
+        driver (optional peer imported lazily only when selected).
+      - No store auto-prunes by age — the pruner is armed ONLY by supplying a prune
+        block; an unbounded lucid table grows forever without it.
+      - Custom stores MUST resolve traceId (currentTraceId()) and origin
+        (isBatchOrigin ?? 'manual') in record or correlation silently breaks.
+      - Sampling is a retention trade-off, never a security control; redaction
+        always runs at the store boundary.
+
+  - id: alerts_ai
+    title: Alerting, AI diagnosis & client-error ingestion
+    package: "@adonis-agora/telescope"
+    surface:
+      - "config/telescope_alerts.ts: channels/rules/every/cooldown/dashboardUrl/geoLookup"
+      - "AlertRule: new-exception | every-exception | exception-rate | metric-threshold"
+      - "channel helpers slackChannel/webhookChannel/consoleChannel/customChannel"
+      - "config/telescope_ai.ts: apiKey/model/maxTokens/cacheTtlMs/timeoutMs"
+      - TelescopeAiDiagnoser.diagnose(entry, { related, force })
+      - "clientErrors { enabled, path, maxBodyBytes, rateLimit, authorize }"
+    key_facts:
+      - Only the FIRST rule of each exception type evaluates — a second
+        new-exception rule is silently ignored (metric-threshold exempt).
+      - Alerts poll every `every` (30s default); exceptions dropped by sampling
+        never reach a rule.
+      - A keyless AI config is treated as DISABLED — diagnose resolves null and
+        the dashboard hides the button.
+      - clientErrors route is only REGISTERED when enabled:true — while off it
+        does not exist at all (not a 404).
+
+  - id: access_mcp
+    title: Dashboard access control & the MCP endpoint
+    package: "@adonis-agora/telescope"
+    surface:
+      - "config/telescope_ui.ts: authorize(ctx), credentials { token, basic }, dashboardAuth { secret, ttl, login }"
+      - defaultAuthorize — allow outside production, deny in production
+      - 401 vs 403 semantics; authorize throw => 403 fail-closed
+      - "config/telescope_mcp.ts: path/authorize/credentials/tools"
+      - replay/cpuProfiling.armEnabled/queueActions mutation gates
+    key_facts:
+      - authorize REPLACES the built-in credentials gate (ignored when set);
+        dashboardAuth composes WITH authorize (both must pass).
+      - The authorize hook receives the REAL HttpContext but its declared type is
+        framework-light — narrow ctx to reach auth/session.
+      - MCP has no transport-level 401 — denial rides inside the JSON-RPC envelope
+        as -32001 MCP_UNAUTHORIZED.
+      - dashboardAuth missing secret or login throws at boot (fail closed).
+
+  - id: ui_dashboard
+    title: The React console & programmatic client
+    package: "@adonis-agora/telescope-ui"
+    surface:
+      - "@adonis-agora/telescope-ui/telescope_ui_dashboard_provider (register AFTER ui_provider)"
+      - "new TelescopeClient({ baseUrl?, fetch?, limit? }) from /client"
+      - GET <path>/api/meta capability discovery
+      - formatDuration/formatCount/formatPercent/formatRelative helpers, ENTRY_TYPES
+    key_facts:
+      - Without this package there is NO page — the core ui subpath serves only
+        <path>/api/*.
+      - Acting methods (diagnoseException/replayRequest/armProfile/retryJob/
+        enqueueJob) NEVER reject — they resolve { ok, message }.
+      - liveQueues/queueJob/profilerStatus resolve null when the feature is not wired.
+      - Exports are client-side list projections — entry content is never written
+        to the file.
+
+skills:
+  - name: telescope-setup
+    slug: telescope-setup
+    domain: setup
+    type: core
+    packages: ["@adonis-agora/telescope"]
+    covers: [configure codemod, defineConfig, storage factory, TelescopeMiddleware,
+      TelescopeService query API, recordException, requestCapture]
+    failure_modes:
+      - mistake: expecting a dashboard page from the core alone
+        mechanism: the core ui subpath mounts only <path>/api/*; /telescope 404s until
+          @adonis-agora/telescope-ui is installed and registered after ui_provider.
+        source: docs/packages/ui.mdx; docs/packages/telescope-ui.mdx
+        priority: HIGH
+        status: active
+        skills: ['telescope-setup', 'telescope-ui-dashboard']
+      - mistake: assuming request bodies are captured by default
+        mechanism: request entries have no body field unless a requestCapture block
+          opts in; agents that expect payloads guess instead of seeing them.
+        source: docs/packages/core.mdx (Request body capture)
+        priority: HIGH
+        status: active
+      - mistake: resolving TelescopeService via app.container inside a controller
+        mechanism: a controller has no `app`; constructor injection via @inject() is
+          the supported path.
+        source: docs/getting-started.mdx (Step 3 note)
+        priority: MEDIUM
+        status: active
+      - mistake: registering the provider without the server-stack middleware
+        mechanism: configure wires TelescopeMiddleware onto the server stack; a
+          hand-rolled adonisrc entry without it records nothing.
+        source: docs/reference/configuration.mdx (Providers table)
+        priority: HIGH
+        status: active
+  - name: telescope-watchers
+    slug: telescope-watchers
+    domain: watchers
+    type: core
+    packages: ["@adonis-agora/telescope"]
+    covers: ["config/telescope_watchers.ts", LucidQueryWatcher, MailWatcher,
+      CacheWatcher, HttpClientWatcher, LogsWatcher, QueueWatcher, EventsWatcher,
+      RedisWatcher, ProfilingWatcher, ScheduleWatcher, safeRecord, custom Watcher]
+    failure_modes:
+      - mistake: enabling the query watcher without Lucid debug
+        mechanism: Lucid only emits db:query when the connection debug flag is on or
+          a listener exists at report time — the watcher looks enabled yet records
+          zero queries.
+        source: docs/packages/watchers.mdx (Query watcher callout);
+          docs/getting-started.mdx Step 5
+        priority: CRITICAL
+        status: active
+        skills: ['telescope-watchers']
+      - mistake: enabling the logs watcher in both config files
+        mechanism: whichever provider boots first owns the logger tap; the other
+          warns and stays inert so its minLevel/tags options are silently ignored.
+        source: docs/reference/configuration.mdx ('logs' callout)
+        priority: HIGH
+        status: active
+      - mistake: building entry content outside safeRecord
+        mechanism: content building runs on the host thread; a throwing custom
+          watcher breaks the very code path it observes. safeRecord swallows and
+          warn-logs instead.
+        source: docs/concepts/capture.mdx (warn callout); docs/recipes/custom-watcher.mdx
+        priority: HIGH
+        status: active
+      - mistake: non-idempotent watcher start/stop
+        mechanism: double-subscribing records duplicate entries; leaked subscriptions
+          keep recording after shutdown.
+        source: docs/recipes/custom-watcher.mdx (warn callout)
+        priority: MEDIUM
+        status: active
+      - mistake: waiting for queue/redis watchers without installing the engines
+        mechanism: "@adonisjs/queue and @adonisjs/redis are not declared peers, so
+          npm never installs them; the watchers idle on channels nobody feeds."
+        source: docs/packages/watchers.mdx (Peer dependencies)
+        priority: MEDIUM
+        status: active
+  - name: telescope-storage-retention
+    slug: telescope-storage-retention
+    domain: storage
+    type: core
+    packages: ["@adonis-agora/telescope"]
+    covers: [storage.memory, storage.lucid, TelescopeStore contract, prune,
+      overload guard, redact, sampling, create_telescope_entries_table]
+    failure_modes:
+      - mistake: shipping the memory driver to production
+        mechanism: the ring buffer is per-process and lost on restart; a cluster
+          shows different slices and nothing survives a deploy.
+        source: docs/concepts/storage.mdx (memory driver warn)
+        priority: HIGH
+        status: active
+      - mistake: switching to lucid without arming retention
+        mechanism: no store auto-prunes by age; without a prune block a persistent
+          table grows forever (memory eviction is by count, not time).
+        source: docs/concepts/protection.mdx (info callout); docs/packages/storages.mdx
+        priority: HIGH
+        status: active
+      - mistake: custom store skipping traceId/origin resolution
+        mechanism: record must read currentTraceId() and validate BatchOrigin;
+          skipping it silently breaks trace correlation everywhere downstream.
+        source: docs/recipes/custom-storage.mdx (load-bearing lines)
+        priority: HIGH
+        status: active
+      - mistake: importing services/db at provider-boot time
+        mechanism: the facade default export is undefined until app.booted(); inside
+          a provider resolve app.container.make('lucid.db') instead.
+        source: docs/packages/storages.mdx (Programmatic API note)
+        priority: MEDIUM
+        status: active
+      - mistake: treating sampling as a security control
+        mechanism: sampling decides what is stored, not what is scrubbed; only
+          redaction (which always runs) keeps secrets out.
+        source: docs/packages/advanced.mdx (sampling warn)
+        priority: MEDIUM
+        status: active
+      - mistake: misreading prune keepLast semantics
+        mechanism: keepLast retains the newest N of the MATCHED-AND-DOOMED set, not
+          of the whole table.
+        source: docs/concepts/storage.mdx (Retention and pruning)
+        priority: MEDIUM
+        status: active
+  - name: telescope-alerts-ai
+    slug: telescope-alerts-ai
+    domain: alerts_ai
+    type: core
+    packages: ["@adonis-agora/telescope"]
+    covers: ["config/telescope_alerts.ts", AlertRule, slackChannel, customChannel,
+      geoLookup, Alerter, "config/telescope_ai.ts", TelescopeAiDiagnoser,
+      DiagnosisCoordinator, clientErrors, sendBeacon reporter]
+    failure_modes:
+      - mistake: listing two rules of the same exception type
+        mechanism: new-exception/every-exception/exception-rate are looked up once
+          by type; the duplicate is silently ignored (metric-threshold exempt).
+        source: docs/packages/alerts.mdx (When rules do and don't run);
+          docs/reference/configuration.mdx (alerts callout)
+        priority: HIGH
+        status: active
+      - mistake: expecting sampled-out exceptions to page
+        mechanism: alerts evaluate only what was recorded — sampling and the overload
+          shed drop entries before any rule sees them; polling also adds up to
+          `every` latency.
+        source: docs/packages/alerts.mdx (How it hooks in)
+        priority: MEDIUM
+        status: active
+        skills: ['telescope-alerts-ai', 'telescope-storage-retention']
+      - mistake: shipping AI config without a resolvable key
+        mechanism: a keyless install is treated as disabled — diagnose resolves null
+          forever and the dashboard hides the Diagnose button with no error.
+        source: docs/packages/ai.mdx (warn callout); docs/recipes/ai-exception-diagnosis.mdx
+        priority: HIGH
+        status: active
+      - mistake: short cooldown with every-exception
+        mechanism: cooldown is the only thing rate-limiting repeats per family; a
+          tight error loop re-pages once per cooldown — a self-inflicted storm.
+        source: docs/packages/alerts.mdx (cooldown tuning info)
+        priority: MEDIUM
+        status: active
+      - mistake: probing for the client-error endpoint while disabled
+        mechanism: the POST route is only registered when clientErrors.enabled —
+          while off it does not exist (no 404 handler to discover).
+        source: docs/packages/client-errors.mdx (Disabled by default warn)
+        priority: MEDIUM
+        status: active
+  - name: telescope-access-mcp
+    slug: telescope-access-mcp
+    domain: access_mcp
+    type: core
+    packages: ["@adonis-agora/telescope"]
+    covers: [defaultAuthorize, credentials token/basic, authorize hook,
+      dashboardAuth login screen, 401-vs-403 guard, replay/queueActions/armEnabled
+      gates, "config/telescope_mcp.ts", MCP tools]
+    failure_modes:
+      - mistake: relying on an obscure path instead of the guard in production
+        mechanism: the default policy DENIES production until a credential or
+          authorize hook permits it; renaming path is defense in depth, not auth.
+        source: docs/dashboard/auth.mdx (default policy + security notes)
+        priority: CRITICAL
+        status: active
+        skills: ['telescope-access-mcp']
+      - mistake: setting credentials and an authorize hook expecting both to run
+        mechanism: authorize IS the whole policy — the built-in credentials gate is
+          ignored whenever authorize is set.
+        source: docs/dashboard/auth.mdx (Delegate to your app's auth)
+        priority: MEDIUM
+        status: active
+      - mistake: reaching for ctx.auth without narrowing the context
+        mechanism: the hook's declared parameter is a framework-light slice; auth/
+          session exist at runtime only after narrowing ctx (as unknown as {...}).
+        source: docs/dashboard/auth.mdx (narrowing info callout)
+        priority: MEDIUM
+        status: active
+      - mistake: exposing MCP in production without a token credential
+        mechanism: MCP has no transport-level 401 — denial arrives as JSON-RPC
+          -32001 MCP_UNAUTHORIZED and compliant clients just fail.
+        source: docs/packages/mcp.mdx (guard info callout)
+        priority: HIGH
+        status: active
+      - mistake: configuring dashboardAuth without secret or login
+        mechanism: both are required; the gate fails closed with a boot error rather
+          than shipping an un-mintable session wall.
+        source: docs/dashboard/auth.mdx (Built-in login screen warn)
+        priority: MEDIUM
+        status: active
+  - name: telescope-ui-dashboard
+    slug: telescope-ui-dashboard
+    domain: ui_dashboard
+    type: core
+    packages: ["@adonis-agora/telescope-ui"]
+    covers: [telescope_ui_dashboard_provider, adonisrc provider order, TelescopeClient,
+      "/api/meta capabilities", mutation gates, format helpers, ENTRY_TYPES]
+    failure_modes:
+      - mistake: opening /telescope with only the core installed
+        mechanism: the SPA is a separate package; the core prefix serves only
+          <path>/api/* and the page 404s until telescope-ui is added.
+        source: docs/packages/telescope-ui.mdx (warn); docs/packages/ui.mdx (Install)
+        priority: HIGH
+        status: active
+        skills: ['telescope-ui-dashboard', 'telescope-setup']
+      - mistake: registering the SPA provider before ui_provider
+        mechanism: the console consumes the core UI JSON API; registered first it has
+          no backend and serves nothing.
+        source: docs/packages/telescope-ui.mdx (Install); docs/getting-started.mdx Step 6
+        priority: HIGH
+        status: active
+      - mistake: expecting replay/arm/retry buttons to work out of the box
+        mechanism: replay, cpuProfiling.armEnabled and queueActions are each disabled
+          by default and answer 403 even when their feature is enabled.
+        source: docs/packages/ui.mdx (Configuration + Request replay);
+          docs/packages/cpu-profiling.mdx (arm callout)
+        priority: HIGH
+        status: active
+      - mistake: try/catching the client's acting methods
+        mechanism: diagnoseException/replayRequest/armProfile/retryJob/enqueueJob
+          resolve { ok:false, message } instead of rejecting; liveQueues and friends
+          resolve null when unwired.
+        source: docs/packages/telescope-ui.mdx (info callout)
+        priority: MEDIUM
+        status: active
+      - mistake: expecting exported CSV/JSON files to contain entry content
+        mechanism: exports are client-side projections of the list endpoint; content
+          is searchable server-side but never written into the file.
+        source: docs/packages/telescope-ui.mdx (Exports)
+        priority: MEDIUM
+        status: active
+
+tensions:
+  - name: capture richness vs bounded safety
+    skills: ['telescope-watchers', 'telescope-storage-retention']
+    description: Bodies and bindings make debugging concrete but grow entries and
+      widen the leak surface; redaction bounds and byte caps exist to compensate.
+    implication: Agents enabling captureBindings/requestCapture forget the redaction
+      budget (perType numeric bounds) and the memory footprint of high-volume types.
+  - name: observability completeness vs retention cost
+    skills: ['telescope-storage-retention', 'telescope-alerts-ai']
+    description: Tail-sampling shrinks the store but sampled-out exceptions never
+      reach an alert rule.
+    implication: Agents sample aggressively then wonder why an incident never paged —
+      keepErrors/keepSlowMs must protect the types alerting depends on.
+  - name: dev openness vs production lockdown
+    skills: ['telescope-setup', 'telescope-access-mcp']
+    description: The default policy is open outside production and denied inside it,
+      so the same config that "just works" locally 401s/403s in prod.
+    implication: Agents treat the dev experience as proof of correctness and ship
+      without a credential or authorize hook.
+  - name: console power vs mutation risk
+    skills: ['telescope-ui-dashboard', 'telescope-access-mcp']
+    description: Replay, queue retry/enqueue and CPU-arm are genuinely dangerous
+      actions and are gated off independently of the features themselves.
+    implication: Agents enable a feature (cpu_profiling, queue-manager) and assume
+      its console actions work without flipping the *ui* config gate too.
+
+cross_references:
+  - from: telescope-setup
+    to: telescope-ui-dashboard
+    reason: Setup ends headless; mounting the page is the natural next task.
+  - from: telescope-watchers
+    to: telescope-storage-retention
+    reason: Everything watchers record flows through the store decorators — bounds,
+      redaction and pruning decide whether capture is safe to leave on.
+  - from: telescope-alerts-ai
+    to: telescope-watchers
+    reason: Rules evaluate only what watchers recorded; capture gaps become alert gaps.
+  - from: telescope-access-mcp
+    to: telescope-ui-dashboard
+    reason: The SPA sits behind exactly the same guard and mutation gates.
+  - from: telescope-ui-dashboard
+    to: telescope-access-mcp
+    reason: Enabling console actions requires the ui-side gates documented here.
+
+gaps:
+  - skill: all
+    question: Priority ranking among the optional subpaths (mcp vs cpu_profiling vs
+      client-errors) for future dedicated skills.
+    context: Fully autonomous run — no maintainer interview; skills cover the two
+      published packages with alerts/AI/access folded into core skills.
+    status: open
+  - skill: all
+    question: Real-world failure frequencies (provider ordering, dual logs config,
+      lucid-without-prune).
+    context: No GitHub issue mining was performed this session; failure modes are
+      sourced from docs callouts and source comments, which are unusually detailed.
+    status: open
+  - skill: telescope-setup
+    question: Whether teams commonly hand-roll provider wiring instead of letting
+      `node ace configure` register the middleware.
+    context: Assumed from the providers table in the configuration reference; no
+      telemetry confirms it.
+    status: open
+  - skill: telescope-ui-dashboard
+    question: Whether the dashboard.path override is used to hide the SPA in practice.
+    context: Documented but rare; left out of Common Mistakes for lack of evidence.
+    status: open
