@@ -130,6 +130,34 @@ the rest at runtime. They are not on the *declared* type, though, so narrow `ctx
 slice you need (as above) rather than reaching for them directly.
 </Callout>
 
+### Role-based gate via `@adonis-agora/authz`
+
+If you use `@adonis-agora/authz` for RBAC (roles live in `user_roles`, or come from the
+token claim), the `authorizeByRoles` helper removes the narrowing entirely — same
+semantics as the `requireRole` middleware, in the `(ctx) => boolean` shape the dashboard
+expects:
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@adonis-agora/telescope/ui'
+import { authorizeByRoles } from '@adonis-agora/authz'
+
+export default defineConfig({
+  authorize: authorizeByRoles({ roles: ['ADMIN'] }),
+})
+```
+
+- The user comes from `ctx.auth.getUser()` (authkit) or `ctx.auth.user` (any guard), so it
+  works with or without authkit.
+- `effectiveRoles` includes global token claims **and** app-level DB roles; `roles` is
+  any-of (passes when the user holds at least one).
+- No authenticated user → `false` (the guard answers `401`/`403`, or honors a redirect you
+  write).
+- It accepts any context shape (the dashboards type `authorize` differently), reading
+  `ctx.auth` structurally and never touching AdonisJS internals.
+
+The same helper works across every `@adonis-agora` dashboard — telescope, durable, media
+and agent — so one RBAC gate config reads the same everywhere.
+
 ## Built-in login screen
 
 For a shared, human-facing dashboard, the `authorize` hook and static credentials are awkward —
