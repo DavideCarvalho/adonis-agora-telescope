@@ -32,13 +32,21 @@ const entrySummary: EntrySummary = {
   sequence: 1,
   createdAt: '2026-07-13T10:00:00.000Z',
   summary: 'GET /users → 200',
+  userLabel: 'ada@example.com',
 };
 
 const fullEntry: Entry = {
   id: 'e-1',
   type: 'request',
   familyHash: 'req:GET:/users',
-  content: { method: 'GET', url: '/users', status: 200, durationMs: 42, traceId: 'trace-abc123' },
+  content: {
+    method: 'GET',
+    url: '/users',
+    status: 200,
+    durationMs: 42,
+    traceId: 'trace-abc123',
+    user: { id: '42', email: 'ada@example.com' },
+  },
   tags: ['status:200'],
   sequence: 1,
   durationMs: 42,

@@ -40,6 +40,11 @@ export interface EntrySummary {
   createdAt: string;
   /** Derived one-liner: `METHOD url → status` | `lib:event` | message | familyHash | type. */
   summary: string;
+  /**
+   * The entry's user (`email` ?? `id`), when its content carried a captured user
+   * (e.g. a `request` or `client_exception`).
+   */
+  userLabel?: string;
 }
 
 /** A full captured entry (from `GET <base>/entries/:id`). `content` is type-specific. */
@@ -63,6 +68,12 @@ export interface RequestEntryContent {
   status: number | null;
   durationMs: number;
   traceId: string | null;
+  /**
+   * The authenticated user at request time, when the host exposes `ctx.auth.user`
+   * (Adonis @adonisjs/auth / authkit guard). Only `id` and `email` are captured —
+   * never the full model. `null` when unauthenticated or not exposed.
+   */
+  user: { id: string; email?: string } | null;
 }
 
 /** The AND-composed filter set the `/entries` list route accepts. */
