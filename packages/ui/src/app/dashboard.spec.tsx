@@ -13,6 +13,7 @@ import { EntriesSection } from './EntriesSection.js';
 import { EntryDetail } from './EntryDetail.js';
 import { ExceptionsSection } from './ExceptionsSection.js';
 import { PulseSection } from './PulseSection.js';
+import { TraceDetail } from './TraceDetail.js';
 import { TracesSection } from './TracesSection.js';
 import {
   EventSourceFactoryContext,
@@ -350,6 +351,22 @@ describe('ExceptionsSection', () => {
     await waitFor(() => expect(screen.getByText('ValidationError')).toBeTruthy());
     expect(client.metricsStats).toHaveBeenCalledWith('exception', 3_600_000);
     expect(screen.getByText('email is required')).toBeTruthy();
+  });
+});
+
+describe('TraceDetail', () => {
+  it('shows the request entry user in the trace header', async () => {
+    const client = fakeClient({
+      entriesByTrace: vi.fn().mockResolvedValue([
+        { ...entrySummary, type: 'request', userLabel: 'ada@example.com' },
+        { ...entrySummary, id: 'q-1', type: 'query', summary: 'select 1', userLabel: undefined },
+      ]),
+    });
+    renderWith(
+      client,
+      <TraceDetail traceId="trace-abc123" onOpenEntry={vi.fn()} onBack={vi.fn()} />,
+    );
+    await waitFor(() => expect(screen.getByText(/ada@example\.com/)).toBeTruthy());
   });
 });
 

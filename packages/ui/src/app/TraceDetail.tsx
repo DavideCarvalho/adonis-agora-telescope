@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { formatCount, formatDuration, formatRelative } from '../client/format.js';
-import type { NPlusOnePattern, Waterfall, WaterfallSpan } from '../client/types.js';
+import type { EntrySummary, NPlusOnePattern, Waterfall, WaterfallSpan } from '../client/types.js';
 import {
   Table,
   TableBody,
@@ -11,7 +11,7 @@ import {
 } from './primitives/table.js';
 import { Tabs, TabsList, TabsTab } from './primitives/tabs.js';
 import { AsyncBlock, Panel, SectionTitle, TypeBadge, clickable, typeColor } from './ui.js';
-import { useNPlusOne, useTraceEntries, useWaterfall } from './use-telescope.js';
+import { type AsyncState, useNPlusOne, useTraceEntries, useWaterfall } from './use-telescope.js';
 
 /** A flat waterfall row (depth-first) carrying the geometry for one bar. */
 export interface FlatSpan {
@@ -52,6 +52,12 @@ export function TraceDetail({
   onBack: () => void;
 }) {
   const [view, setView] = useState<'waterfall' | 'entries' | 'nplusone'>('waterfall');
+  const entriesState = useTraceEntries(traceId);
+  const userLabel = useMemo(() => {
+    const list = entriesState.data ?? [];
+    const request = list.find((e) => e.type === 'request' && e.userLabel);
+    return request?.userLabel ?? null;
+  }, [entriesState.data]);
   return (
     <div className="flex flex-col gap-4">
       <button
@@ -63,6 +69,9 @@ export function TraceDetail({
       </button>
       <Panel>
         <SectionTitle title="Trace" hint={<span className="mono">{traceId.slice(0, 20)}</span>} />
+        <p className="mb-3 text-xs text-muted-foreground">
+          user: <span className="text-foreground">{userLabel ?? '—'}</span>
+        </p>
         <Tabs
           value={view}
           onValueChange={(next) => {
@@ -78,7 +87,7 @@ export function TraceDetail({
         {view === 'waterfall' ? (
           <WaterfallView traceId={traceId} onOpenEntry={onOpenEntry} />
         ) : view === 'entries' ? (
-          <TraceEntries traceId={traceId} onOpenEntry={onOpenEntry} />
+          <TraceEntries state={entriesState} onOpenEntry={onOpenEntry} />
         ) : (
           <NPlusOneView traceId={traceId} onOpenEntry={onOpenEntry} />
         )}
@@ -198,13 +207,12 @@ function WaterfallView({
 }
 
 function TraceEntries({
-  traceId,
+  state,
   onOpenEntry,
 }: {
-  traceId: string;
+  state: AsyncState<EntrySummary[]>;
   onOpenEntry: (id: string) => void;
 }) {
-  const state = useTraceEntries(traceId);
   return (
     <AsyncBlock
       state={state}
