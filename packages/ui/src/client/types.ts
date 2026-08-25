@@ -181,6 +181,8 @@ export interface TraceSummary {
   lastAt: string;
   totalDurationMs: number;
   rootLabel?: string;
+  /** The request entry's user label (`email` ?? `id`), when the trace has one. */
+  userLabel?: string;
 }
 
 export interface WaterfallSpan {

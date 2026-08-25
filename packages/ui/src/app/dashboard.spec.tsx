@@ -223,6 +223,12 @@ describe('EntriesSection', () => {
     renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('No entries match these filters.')).toBeTruthy());
   });
+
+  it('shows the user column', async () => {
+    const client = fakeClient();
+    renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('ada@example.com')).toBeTruthy());
+  });
 });
 
 describe('EntryDetail', () => {
@@ -379,5 +385,13 @@ describe('TracesSection', () => {
     expect(client.traces).toHaveBeenCalled();
     fireEvent.click(screen.getByText('GET /users'));
     expect(onOpenTrace).toHaveBeenCalledWith('trace-abc123');
+  });
+
+  it('shows the user column', async () => {
+    const client = fakeClient({
+      traces: vi.fn().mockResolvedValue([{ ...traceSummary, userLabel: 'ada@example.com' }]),
+    });
+    renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('ada@example.com')).toBeTruthy());
   });
 });
