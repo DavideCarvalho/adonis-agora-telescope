@@ -233,6 +233,13 @@ describe('EntryDetail', () => {
     expect(screen.getByText('e-1')).toBeTruthy();
     expect(screen.getByText(/view trace/)).toBeTruthy();
   });
+
+  it('shows the authenticated user for a request entry', async () => {
+    const client = fakeClient();
+    renderWith(client, <EntryDetail id="e-1" onOpenTrace={vi.fn()} onBack={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('/users')).toBeTruthy());
+    expect(screen.getByText('ada@example.com')).toBeTruthy();
+  });
 });
 
 describe('EntryDetail — AI diagnosis', () => {

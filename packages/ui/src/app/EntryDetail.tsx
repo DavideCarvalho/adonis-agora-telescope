@@ -85,6 +85,8 @@ export function EntryDetail({
                     '—'
                   )}
                 </dd>
+                <dt className="text-muted-foreground">User</dt>
+                <dd className="m-0">{entryUserLabel(entry) ?? '—'}</dd>
               </dl>
               {entry.tags.length > 0 && (
                 <div className="mt-3.5 flex flex-wrap gap-1">
@@ -105,6 +107,14 @@ export function EntryDetail({
 
 function isRequest(entry: Entry): boolean {
   return entry.type === 'request' && typeof entry.content === 'object' && entry.content !== null;
+}
+
+/** The captured authenticated user's label (`email` ?? `id`), when the entry's content carried one. */
+function entryUserLabel(entry: Entry): string | null {
+  const content = entry.content as { user?: { id?: string; email?: string } | null } | null;
+  const user = content?.user;
+  if (!user) return null;
+  return user.email ?? user.id ?? null;
 }
 
 function isException(entry: Entry): boolean {
