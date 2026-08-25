@@ -148,3 +148,44 @@ describe('TelescopeApi', () => {
     expect(body.data.topFamilies.map((f) => f.key)).toEqual(['billing:invoice-paid']);
   });
 });
+
+describe('toSummary user label', () => {
+  it('derives userLabel from a request entry content.user (email wins)', async () => {
+    const store = new InMemoryTelescopeStore();
+    await store.record({
+      type: 'request',
+      content: {
+        method: 'GET',
+        url: '/me',
+        status: 200,
+        durationMs: 5,
+        traceId: 'trace-u',
+        user: { id: '42', email: 'ada@example.com' },
+      },
+      tags: ['method:GET'],
+      traceId: 'trace-u',
+      durationMs: 5,
+      origin: 'http',
+    });
+    const api = new TelescopeApi(new TelescopeService(store));
+    const { ctx: c, res } = ctx();
+    await api.list(c);
+    const body = res.body as { data: { userLabel?: string }[] };
+    expect(body.data[0]?.userLabel).toBe('ada@example.com');
+  });
+
+  it('omits userLabel when content has no user', async () => {
+    const store = new InMemoryTelescopeStore();
+    await store.record({
+      type: 'diagnostic',
+      content: { lib: 'billing', event: 'invoice-paid' },
+      tags: ['lib:billing'],
+      origin: 'manual',
+    });
+    const api = new TelescopeApi(new TelescopeService(store));
+    const { ctx: c, res } = ctx();
+    await api.list(c);
+    const body = res.body as { data: Record<string, unknown>[] };
+    expect('userLabel' in (body.data[0] ?? {})).toBe(false);
+  });
+});

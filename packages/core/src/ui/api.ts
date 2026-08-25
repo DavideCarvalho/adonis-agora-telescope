@@ -306,10 +306,13 @@ export interface EntrySummary {
   sequence: number;
   createdAt: string;
   summary: string;
+  /** The request entry's user (`email` ?? `id`), when the entry carried one. */
+  userLabel?: string;
 }
 
 /** Project an entry to its {@link EntrySummary}. */
 export function toSummary(entry: Entry): EntrySummary {
+  const userLabel = userLabelOf(entry);
   return {
     id: entry.id,
     type: entry.type,
@@ -321,7 +324,18 @@ export function toSummary(entry: Entry): EntrySummary {
     createdAt:
       entry.createdAt instanceof Date ? entry.createdAt.toISOString() : String(entry.createdAt),
     summary: summarize(entry),
+    ...(userLabel !== undefined ? { userLabel } : {}),
   };
+}
+
+/** Derive a display label from a request entry's `content.user` (`email` ?? `id`). */
+function userLabelOf(entry: Entry): string | undefined {
+  const content = entry.content as { user?: unknown } | null | undefined;
+  const user = content?.user;
+  if (typeof user !== 'object' || user === null) return undefined;
+  const record = user as { id?: unknown; email?: unknown };
+  if (typeof record.email === 'string' && record.email.length > 0) return record.email;
+  return typeof record.id === 'string' ? record.id : undefined;
 }
 
 /** Build a short one-line description suited to a list row. */
