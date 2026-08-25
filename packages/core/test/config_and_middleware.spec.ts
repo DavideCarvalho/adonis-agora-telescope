@@ -235,3 +235,42 @@ describe('context accessor integration', () => {
     expect((entry?.content as { traceId: string | null }).traceId).toBe('ctx-trace');
   });
 });
+
+describe('recordRequest user capture', () => {
+  it('records the authenticated user from ctx.auth', async () => {
+    const store = new InMemoryTelescopeStore();
+    await recordRequest(
+      store,
+      {
+        request: { method: () => 'GET', url: () => '/me' },
+        response: { statusCode: 200 },
+        auth: { user: { id: 42, email: 'ada@example.com' } },
+      } as unknown as HttpContextLike,
+      Date.now(),
+    );
+    const entry = (await store.list())[0];
+    expect((entry?.content as { user: unknown }).user).toEqual({
+      id: '42',
+      email: 'ada@example.com',
+    });
+  });
+
+  it('records user null when the context has no auth user', async () => {
+    const store = new InMemoryTelescopeStore();
+    await recordRequest(store, stubCtx(), Date.now());
+    const entry = (await store.list())[0];
+    expect((entry?.content as { user: unknown }).user).toBeNull();
+  });
+
+  it('resolves user defensively when auth.user is malformed or throws', async () => {
+    const store = new InMemoryTelescopeStore();
+    const bogus = {
+      request: { method: () => 'GET', url: () => '/' },
+      response: { statusCode: 200 },
+      auth: { get user() { throw new Error('boom'); } },
+    } as unknown as HttpContextLike;
+    await recordRequest(store, bogus, Date.now());
+    const entry = (await store.list())[0];
+    expect((entry?.content as { user: unknown }).user).toBeNull();
+  });
+});
