@@ -188,4 +188,76 @@ describe('toSummary user label', () => {
     const body = res.body as { data: Record<string, unknown>[] };
     expect('userLabel' in (body.data[0] ?? {})).toBe(false);
   });
+
+  it('omits userLabel when a request entry carries a null user', async () => {
+    const store = new InMemoryTelescopeStore();
+    await store.record({
+      type: 'request',
+      content: {
+        method: 'GET',
+        url: '/public',
+        status: 200,
+        durationMs: 5,
+        traceId: 'trace-anon',
+        user: null,
+      },
+      tags: ['method:GET'],
+      traceId: 'trace-anon',
+      durationMs: 5,
+      origin: 'http',
+    });
+    const api = new TelescopeApi(new TelescopeService(store));
+    const { ctx: c, res } = ctx();
+    await api.list(c);
+    const body = res.body as { data: Record<string, unknown>[] };
+    expect('userLabel' in (body.data[0] ?? {})).toBe(false);
+  });
+
+  it('falls back to the user id when email is missing', async () => {
+    const store = new InMemoryTelescopeStore();
+    await store.record({
+      type: 'request',
+      content: {
+        method: 'GET',
+        url: '/me',
+        status: 200,
+        durationMs: 5,
+        traceId: 'trace-u1',
+        user: { id: 'u-1' },
+      },
+      tags: ['method:GET'],
+      traceId: 'trace-u1',
+      durationMs: 5,
+      origin: 'http',
+    });
+    const api = new TelescopeApi(new TelescopeService(store));
+    const { ctx: c, res } = ctx();
+    await api.list(c);
+    const body = res.body as { data: { userLabel?: string }[] };
+    expect(body.data[0]?.userLabel).toBe('u-1');
+  });
+
+  it('falls back to the user id when email is empty', async () => {
+    const store = new InMemoryTelescopeStore();
+    await store.record({
+      type: 'request',
+      content: {
+        method: 'GET',
+        url: '/me',
+        status: 200,
+        durationMs: 5,
+        traceId: 'trace-u2',
+        user: { id: 'u-1', email: '' },
+      },
+      tags: ['method:GET'],
+      traceId: 'trace-u2',
+      durationMs: 5,
+      origin: 'http',
+    });
+    const api = new TelescopeApi(new TelescopeService(store));
+    const { ctx: c, res } = ctx();
+    await api.list(c);
+    const body = res.body as { data: { userLabel?: string }[] };
+    expect(body.data[0]?.userLabel).toBe('u-1');
+  });
 });

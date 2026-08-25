@@ -306,7 +306,10 @@ export interface EntrySummary {
   sequence: number;
   createdAt: string;
   summary: string;
-  /** The request entry's user (`email` ?? `id`), when the entry carried one. */
+  /**
+   * The entry's user (`email` ?? `id`), when its content carried a captured user
+   * (e.g. a `request` or `client_exception`).
+   */
   userLabel?: string;
 }
 

@@ -89,6 +89,20 @@ describe('summarizeTraces', () => {
     const [summary] = summarizeTraces(entries);
     expect(summary?.userLabel).toBe('ada@example.com');
   });
+
+  it('falls back to the user id on the trace summary when email is missing', () => {
+    seq = 0;
+    const entries = [
+      entry({
+        traceId: 'trace-u1',
+        type: EntryType.Request,
+        content: { method: 'GET', url: '/me', user: { id: 'u-1' } },
+      }),
+      entry({ traceId: 'trace-u1', type: EntryType.Query }),
+    ];
+    const [summary] = summarizeTraces(entries);
+    expect(summary?.userLabel).toBe('u-1');
+  });
 });
 
 describe('buildWaterfall', () => {
