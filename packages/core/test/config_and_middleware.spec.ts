@@ -152,6 +152,25 @@ describe('TelescopeMiddleware', () => {
     expect(await store.list({ type: 'request' })).toHaveLength(1);
   });
 
+  it('records the authenticated user from ctx.auth.user on the request entry', async () => {
+    const store = new InMemoryTelescopeStore();
+    setTelescopeRuntime(store, true);
+    const mw = new TelescopeMiddleware();
+    await mw.handle(
+      {
+        request: { method: () => 'GET', url: () => '/me' },
+        response: { statusCode: 200 },
+        auth: { user: { id: 'u-7', email: 'ada@example.com' } },
+      } as never,
+      async () => {},
+    );
+    const entry = (await store.list({ type: 'request' }))[0];
+    expect((entry?.content as { user: unknown }).user).toEqual({
+      id: 'u-7',
+      email: 'ada@example.com',
+    });
+  });
+
   it('does not record when the request watcher is disabled', async () => {
     const store = new InMemoryTelescopeStore();
     setTelescopeRuntime(store, false);
