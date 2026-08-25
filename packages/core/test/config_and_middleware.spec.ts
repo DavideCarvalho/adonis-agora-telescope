@@ -286,7 +286,11 @@ describe('recordRequest user capture', () => {
     const bogus = {
       request: { method: () => 'GET', url: () => '/' },
       response: { statusCode: 200 },
-      auth: { get user() { throw new Error('boom'); } },
+      auth: {
+        get user() {
+          throw new Error('boom');
+        },
+      },
     } as unknown as HttpContextLike;
     await recordRequest(store, bogus, Date.now());
     const entry = (await store.list())[0];
