@@ -13,7 +13,7 @@ import { AsyncBlock, Panel, SectionTitle, TypeBadge } from './ui.js';
 import { useEntry, useMeta, useTelescopeClient } from './use-telescope.js';
 
 const CODE_CLASS =
-  'm-0 mt-3 overflow-x-auto whitespace-pre rounded-lg border border-line bg-background p-3.5 font-mono text-xs leading-relaxed text-foreground';
+  'm-0 mt-3 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-line bg-background p-3.5 font-mono text-xs leading-relaxed text-foreground';
 
 /** The full entry view: type-aware header, a metadata list, and the pretty-printed `content`. Plus,
  *  for exception/client_exception entries, the AI diagnosis panel, and for `request` entries, the
@@ -41,7 +41,7 @@ export function EntryDetail({
       </button>
       <AsyncBlock state={state} empty="Entry not found." skeletonRows={5}>
         {(entry) => (
-          <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[2fr_1fr]">
+          <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <Panel>
               <SectionTitle title="Content" hint={<TypeBadge type={entry.type} />} />
               {isRequest(entry) && <RequestHeader content={entry.content as RequestEntryContent} />}
@@ -54,7 +54,7 @@ export function EntryDetail({
 
             <Panel>
               <SectionTitle title="Details" />
-              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-[13px]">
+              <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]">
                 <dt className="text-muted-foreground">ID</dt>
                 <dd className="mono m-0 break-words">{entry.id}</dd>
                 <dt className="text-muted-foreground">Type</dt>

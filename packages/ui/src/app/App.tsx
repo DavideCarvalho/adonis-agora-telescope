@@ -243,7 +243,7 @@ export function App() {
             </span>
           </header>
 
-          <main className="min-w-0 flex-1 p-4">
+          <main className="min-w-0 flex-1 overflow-x-hidden p-4">
             {entryId ? (
               <EntryDetail id={entryId} onOpenTrace={openTrace} onBack={() => setEntryId(null)} />
             ) : traceId ? (
