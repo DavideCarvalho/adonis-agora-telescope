@@ -631,6 +631,12 @@ Create `/tmp/telescope-stub/server.mjs`:
 ```
 Expected: `docScrollWidth > innerWidth` and a non-empty `overflowing` list → this confirms and names the exact element(s). **Record the culprit(s) here** (e.g. `SECTION.panel`/`PRE`/`DL`) — the fix in Task 10 targets exactly those.
 
+> **REPRODUCED (2026-08-25, real Chrome, stub at `localhost:4310/telescope/`, exception entry with long lines + 50KB base64):**
+> - `document.documentElement.scrollWidth` = **627424** vs `window.innerWidth` = 1280.
+> - The content `<pre>` is **626878px wide** with `preHasOwnScroll: false` (no internal scrollbar).
+> - **Culprit:** `EntryDetail`'s `md:grid-cols-[2fr_1fr]` — the grid items (`Panel` sections, `overflow: visible`) default to `min-width: auto`, so the `2fr` track expands to the pre's min-content; the pre's own `overflow-x-auto` does NOT constrain the track in Chrome. Fix = `minmax(0,…)` tracks + `max-w-full` on the pre + `overflow-x-hidden` guard on `<main>`.
+> - **After fix:** `docSW` = 1280 (== innerW); `pre.scrollWidth` 626878 > `pre.clientWidth` 636 (pre now scrolls internally). Exceptions groups table with a 3000-char message: `docSW` 1280. UI tests 80/80, typecheck clean.
+
 **Step 4: Do not commit scratch files.**
 
 ### Task 10: Fix the overflow + verify
@@ -862,7 +868,7 @@ git commit -m "feat(entre-textos): liga durableTelescopeExtension e bumpa @adoni
 - [ ] Baseline reported before edits (Task 1).
 - [ ] Core: request entries carry `content.user` (id+email) from `ctx.auth.user`; `EntrySummary`/`TraceSummary` expose `userLabel`; unit tests prove all three.
 - [ ] UI: User shown in EntryDetail, TraceDetail header, Entries + Traces columns (component tests).
-- [ ] Overflow: reproduced in a browser, fixed, and re-verified (`scrollWidth <= innerWidth`).
+- [x] Overflow: reproduced in a browser, fixed, and re-verified (`scrollWidth <= innerWidth`).
 - [ ] Hash routing: `useHashRoute` with parse/format unit tests; App navigates exclusively via hash; back/forward + deep links verified.
 - [ ] Lib CI: changesets pushed, version PR merged, both packages published to npm.
 - [ ] App: deps bumped to the published versions, durable extension wired, `tsc` 0 errors, committed on a branch (NOT pushed).
