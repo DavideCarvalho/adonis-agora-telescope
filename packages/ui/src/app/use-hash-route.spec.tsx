@@ -26,6 +26,16 @@ describe('parseHash', () => {
   it('parses entries type query', () => {
     expect(parseHash('#/entries?type=query')).toEqual({ name: 'entries', type: 'query' });
   });
+  it('parses bare entries without a type', () => {
+    expect(parseHash('#/entries')).toEqual({ name: 'entries' });
+  });
+  it('decodes ids and degrades on malformed percent-encoding', () => {
+    expect(parseHash('#/entries/100%')).toEqual({ name: 'entry', id: '100%' });
+    expect(parseHash('#/entries/caf%C3%A9%2F100%25')).toEqual({ name: 'entry', id: 'café/100%' });
+  });
+  it('ignores trailing segments on section routes', () => {
+    expect(parseHash('#/overview/extra')).toEqual({ name: 'overview' });
+  });
   it('parses deep links', () => {
     expect(parseHash('#/entries/e-1')).toEqual({ name: 'entry', id: 'e-1' });
     expect(parseHash('#/traces/t-1')).toEqual({ name: 'trace', traceId: 't-1' });
@@ -45,6 +55,13 @@ describe('formatHash', () => {
       '#/extensions/durable.workflows',
     );
   });
+  it('encodes ids with spaces, slashes and non-ASCII', () => {
+    expect(formatHash({ name: 'entry', id: 'café/100%' })).toBe('#/entries/caf%C3%A9%2F100%25');
+  });
+  it('formats extensions without a dashboard as the bare section', () => {
+    expect(formatHash({ name: 'extensions' })).toBe('#/extensions');
+    expect(formatHash({ name: 'extensions', dashboardId: null })).toBe('#/extensions');
+  });
 });
 
 describe('useHashRoute', () => {
@@ -63,5 +80,11 @@ describe('useHashRoute', () => {
 
     fireEvent.click(screen.getByText('go'));
     expect(window.location.hash).toBe('#/entries?type=query');
+    act(() => {
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(screen.getByTestId('route').textContent).toBe(
+      JSON.stringify({ name: 'entries', type: 'query' }),
+    );
   });
 });

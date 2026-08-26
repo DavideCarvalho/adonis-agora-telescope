@@ -38,6 +38,8 @@ export function parseHash(hash: string): TelescopeRoute {
   const parts = path.split('/').filter((segment) => segment !== '');
   const first = parts[0];
 
+  // Only the first segment selects the route; deeper segments carry a detail id where supported,
+  // and any extra trailing segments are intentionally ignored.
   switch (first) {
     case 'overview':
       return { name: 'overview' };
