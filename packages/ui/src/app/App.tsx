@@ -19,6 +19,7 @@ import { MoonIcon, SunIcon } from './icons.js';
 import { Button } from './primitives/button.js';
 import { Tooltip, TooltipProvider } from './primitives/tooltip.js';
 import { typeColor, typeLabel } from './ui.js';
+import { useHashRoute } from './use-hash-route.js';
 import { useMeta } from './use-telescope.js';
 
 type SectionKey =
@@ -105,17 +106,14 @@ function watcherItemClass(active: boolean): string {
  * deep-dive without leaving the section it was opened from.
  *
  * Matches `@dudousxd/nestjs-telescope-ui`'s `DashboardLayout` structurally (sidebar nav, not top
- * tabs; monospace shell; flat black background; dense panels) — this dashboard has no router
- * (state-based section switching instead of `HashRouter`), so navigation is `go()`/`setSection`
- * rather than `<NavLink>`.
+ * tabs; monospace shell; flat black background; dense panels) — but with a hash router instead of
+ * `HashRouter`/`<NavLink>`: the URL (`#/entries?type=…`, `#/entries/<id>`, `#/traces/<id>` …) is the
+ * single source of truth, so deep links, browser back/forward and programmatic navigation all
+ * converge on the same state.
  */
 export function App() {
-  const [section, setSection] = useState<SectionKey>('overview');
-  const [entryId, setEntryId] = useState<string | null>(null);
-  const [traceId, setTraceId] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark' | null>(() => readStoredTheme());
-  const [entryPreset, setEntryPreset] = useState<{ type: string; nonce: number } | null>(null);
-  const [dashboardId, setDashboardId] = useState<string | null>(null);
+  const { route, navigate } = useHashRoute();
   const meta = useMeta();
 
   useEffect(() => {
@@ -125,33 +123,24 @@ export function App() {
     storeTheme(theme);
   }, [theme]);
 
-  const openEntry = (id: string) => setEntryId(id);
-  const openTrace = (id: string) => {
-    setEntryId(null);
-    setTraceId(id);
-  };
-  const go = (key: SectionKey) => {
-    setEntryId(null);
-    setTraceId(null);
-    setSection(key);
-  };
-  const openType = (type: string) => {
-    setEntryId(null);
-    setTraceId(null);
-    setEntryPreset({ type, nonce: Date.now() });
-    setSection('entries');
-  };
+  // On first load with an empty hash, land on the overview (also gives the URL a deep-linkable
+  // hash so a plain page visit doesn't fight the route parse).
+  useEffect(() => {
+    if (window.location.hash === '') window.location.hash = '#/overview';
+  }, []);
 
-  const navigate = (target: PaletteTarget) => {
+  const go = (key: SectionKey) => navigate({ name: key });
+  const openEntry = (id: string) => navigate({ name: 'entry', id });
+  const openTrace = (traceId: string) => navigate({ name: 'trace', traceId });
+  const openType = (type: string) => navigate({ name: 'entries', type });
+
+  const onPaletteNavigate = (target: PaletteTarget) => {
     if (target.kind === 'section') {
-      go(target.key);
+      navigate({ name: target.key });
     } else if (target.kind === 'entryType') {
-      openType(target.type);
+      navigate({ name: 'entries', type: target.type });
     } else {
-      setEntryId(null);
-      setTraceId(null);
-      setDashboardId(target.id);
-      setSection('extensions');
+      navigate({ name: 'extensions', dashboardId: target.id });
     }
   };
 
@@ -165,7 +154,10 @@ export function App() {
           <span className="px-3 text-base font-semibold text-brand">Telescope</span>
           <nav className="flex flex-col gap-1" aria-label="sections">
             {NAV.map((item) => {
-              const active = !entryId && !traceId && section === item.key;
+              const active =
+                item.key === 'extensions'
+                  ? route.name === 'extensions' && route.dashboardId == null
+                  : route.name === item.key;
               return (
                 <button
                   key={item.key}
@@ -182,15 +174,8 @@ export function App() {
               <button
                 key={d.id}
                 type="button"
-                className={navItemClass(
-                  !entryId && !traceId && section === 'extensions' && dashboardId === d.id,
-                )}
-                onClick={() => {
-                  setEntryId(null);
-                  setTraceId(null);
-                  setDashboardId(d.id);
-                  setSection('extensions');
-                }}
+                className={navItemClass(route.name === 'extensions' && route.dashboardId === d.id)}
+                onClick={() => navigate({ name: 'extensions', dashboardId: d.id })}
               >
                 {d.label}
               </button>
@@ -204,7 +189,7 @@ export function App() {
               <button
                 key={type.id}
                 type="button"
-                className={watcherItemClass(section === 'entries' && entryPreset?.type === type.id)}
+                className={watcherItemClass(route.name === 'entries' && route.type === type.id)}
                 onClick={() => openType(type.id)}
               >
                 <span
@@ -221,7 +206,10 @@ export function App() {
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex items-center justify-end gap-3 border-b border-line px-4 py-2">
             <RetentionIndicator />
-            <CommandPalette dashboards={meta.data?.dashboards ?? []} onNavigate={navigate} />
+            <CommandPalette
+              dashboards={meta.data?.dashboards ?? []}
+              onNavigate={onPaletteNavigate}
+            />
             <Tooltip label="Toggle light / dark">
               <Button
                 variant="outline"
@@ -243,46 +231,52 @@ export function App() {
             </span>
           </header>
 
-          <main className="min-w-0 flex-1 p-4">
-            {entryId ? (
-              <EntryDetail id={entryId} onOpenTrace={openTrace} onBack={() => setEntryId(null)} />
-            ) : traceId ? (
-              <TraceDetail
-                traceId={traceId}
-                onOpenEntry={openEntry}
-                onBack={() => setTraceId(null)}
+          <main className="min-w-0 flex-1 overflow-x-hidden p-4">
+            {route.name === 'entry' ? (
+              <EntryDetail
+                id={route.id}
+                onOpenTrace={openTrace}
+                onBack={() => navigate({ name: 'entries' })}
               />
-            ) : section === 'overview' ? (
+            ) : route.name === 'trace' ? (
+              <TraceDetail
+                traceId={route.traceId}
+                onOpenEntry={openEntry}
+                onBack={() => navigate({ name: 'traces' })}
+              />
+            ) : route.name === 'overview' ? (
               <OverviewSection
                 onOpenTrace={openTrace}
                 onOpenEntry={openEntry}
                 onOpenQueues={() => go('queues')}
               />
-            ) : section === 'pulse' ? (
+            ) : route.name === 'pulse' ? (
               <PulseSection onOpenTrace={openTrace} />
-            ) : section === 'entries' ? (
+            ) : route.name === 'entries' ? (
               <EntriesSection
-                key={entryPreset?.nonce ?? 'default'}
+                key={route.type ?? 'default'}
                 onOpenEntry={openEntry}
                 onOpenTrace={openTrace}
-                {...(entryPreset ? { presetType: entryPreset.type } : {})}
+                {...(route.type !== undefined ? { presetType: route.type } : {})}
               />
-            ) : section === 'traces' ? (
+            ) : route.name === 'traces' ? (
               <TracesSection onOpenTrace={openTrace} />
-            ) : section === 'exceptions' ? (
-              <ExceptionsSection onOpenType={() => go('entries')} />
-            ) : section === 'schedules' ? (
+            ) : route.name === 'exceptions' ? (
+              <ExceptionsSection
+                onOpenType={() => navigate({ name: 'entries', type: 'exception' })}
+              />
+            ) : route.name === 'schedules' ? (
               <SchedulesLiveSection />
-            ) : section === 'queues' ? (
+            ) : route.name === 'queues' ? (
               <QueueManagerSection />
-            ) : section === 'profiles' ? (
+            ) : route.name === 'profiles' ? (
               <ProfilesSection />
-            ) : section === 'exports' ? (
+            ) : route.name === 'exports' ? (
               <ExportsSection />
             ) : (
               <ExtensionsSection
-                selectedId={dashboardId}
-                onSelect={setDashboardId}
+                selectedId={route.dashboardId ?? null}
+                onSelect={(id) => navigate({ name: 'extensions', dashboardId: id })}
                 onOpenTrace={openTrace}
               />
             )}

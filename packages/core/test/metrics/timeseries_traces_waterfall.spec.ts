@@ -75,6 +75,34 @@ describe('summarizeTraces', () => {
     expect(a?.totalDurationMs).toBe(25);
     expect(a?.rootLabel).toBe('GET /users');
   });
+
+  it('carries the request entry user label onto the trace summary', () => {
+    seq = 0;
+    const entries = [
+      entry({
+        traceId: 'trace-u',
+        type: EntryType.Request,
+        content: { method: 'GET', url: '/me', user: { id: '42', email: 'ada@example.com' } },
+      }),
+      entry({ traceId: 'trace-u', type: EntryType.Query }),
+    ];
+    const [summary] = summarizeTraces(entries);
+    expect(summary?.userLabel).toBe('ada@example.com');
+  });
+
+  it('falls back to the user id on the trace summary when email is missing', () => {
+    seq = 0;
+    const entries = [
+      entry({
+        traceId: 'trace-u1',
+        type: EntryType.Request,
+        content: { method: 'GET', url: '/me', user: { id: 'u-1' } },
+      }),
+      entry({ traceId: 'trace-u1', type: EntryType.Query }),
+    ];
+    const [summary] = summarizeTraces(entries);
+    expect(summary?.userLabel).toBe('u-1');
+  });
 });
 
 describe('buildWaterfall', () => {

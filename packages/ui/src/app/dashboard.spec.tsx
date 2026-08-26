@@ -13,6 +13,7 @@ import { EntriesSection } from './EntriesSection.js';
 import { EntryDetail } from './EntryDetail.js';
 import { ExceptionsSection } from './ExceptionsSection.js';
 import { PulseSection } from './PulseSection.js';
+import { TraceDetail } from './TraceDetail.js';
 import { TracesSection } from './TracesSection.js';
 import {
   EventSourceFactoryContext,
@@ -32,13 +33,21 @@ const entrySummary: EntrySummary = {
   sequence: 1,
   createdAt: '2026-07-13T10:00:00.000Z',
   summary: 'GET /users → 200',
+  userLabel: 'ada@example.com',
 };
 
 const fullEntry: Entry = {
   id: 'e-1',
   type: 'request',
   familyHash: 'req:GET:/users',
-  content: { method: 'GET', url: '/users', status: 200, durationMs: 42, traceId: 'trace-abc123' },
+  content: {
+    method: 'GET',
+    url: '/users',
+    status: 200,
+    durationMs: 42,
+    traceId: 'trace-abc123',
+    user: { id: '42', email: 'ada@example.com' },
+  },
   tags: ['status:200'],
   sequence: 1,
   durationMs: 42,
@@ -214,6 +223,12 @@ describe('EntriesSection', () => {
     renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('No entries match these filters.')).toBeTruthy());
   });
+
+  it('shows the user column', async () => {
+    const client = fakeClient();
+    renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('ada@example.com')).toBeTruthy());
+  });
 });
 
 describe('EntryDetail', () => {
@@ -224,6 +239,13 @@ describe('EntryDetail', () => {
     expect(client.getEntry).toHaveBeenCalledWith('e-1');
     expect(screen.getByText('e-1')).toBeTruthy();
     expect(screen.getByText(/view trace/)).toBeTruthy();
+  });
+
+  it('shows the authenticated user for a request entry', async () => {
+    const client = fakeClient();
+    renderWith(client, <EntryDetail id="e-1" onOpenTrace={vi.fn()} onBack={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('/users')).toBeTruthy());
+    expect(screen.getByText('ada@example.com')).toBeTruthy();
   });
 });
 
@@ -338,6 +360,22 @@ describe('ExceptionsSection', () => {
   });
 });
 
+describe('TraceDetail', () => {
+  it('shows the request entry user in the trace header', async () => {
+    const client = fakeClient({
+      entriesByTrace: vi.fn().mockResolvedValue([
+        { ...entrySummary, type: 'request', userLabel: 'ada@example.com' },
+        { ...entrySummary, id: 'q-1', type: 'query', summary: 'select 1', userLabel: undefined },
+      ]),
+    });
+    renderWith(
+      client,
+      <TraceDetail traceId="trace-abc123" onOpenEntry={vi.fn()} onBack={vi.fn()} />,
+    );
+    await waitFor(() => expect(screen.getByText(/ada@example\.com/)).toBeTruthy());
+  });
+});
+
 describe('TracesSection', () => {
   it('lists traces from /metrics/traces', async () => {
     const client = fakeClient();
@@ -347,5 +385,13 @@ describe('TracesSection', () => {
     expect(client.traces).toHaveBeenCalled();
     fireEvent.click(screen.getByText('GET /users'));
     expect(onOpenTrace).toHaveBeenCalledWith('trace-abc123');
+  });
+
+  it('shows the user column', async () => {
+    const client = fakeClient({
+      traces: vi.fn().mockResolvedValue([{ ...traceSummary, userLabel: 'ada@example.com' }]),
+    });
+    renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('ada@example.com')).toBeTruthy());
   });
 });

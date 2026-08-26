@@ -170,6 +170,7 @@ export function EntriesSection({
                   <TableHead>Time</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Summary</TableHead>
+                  <TableHead>User</TableHead>
                   <TableHead className="text-right">Duration</TableHead>
                   <TableHead>Tags</TableHead>
                 </TableRow>
@@ -191,6 +192,7 @@ export function EntriesSection({
                       <TypeBadge type={e.type} />
                     </TableCell>
                     <TableCell className="mono">{e.summary}</TableCell>
+                    <TableCell className="text-muted-foreground">{e.userLabel ?? '—'}</TableCell>
                     <TableCell className="tnum text-right">
                       {formatDuration(e.durationMs)}
                     </TableCell>

@@ -15,6 +15,8 @@ export interface TraceSummary {
   totalDurationMs: number;
   /** The request entry's "METHOD url" label, when the trace has one. */
   rootLabel?: string;
+  /** The request entry's user label (`email` ?? `id`), when the trace has one. */
+  userLabel?: string;
 }
 
 export interface SummarizeTracesOptions {
@@ -34,6 +36,16 @@ function asRequestLabel(content: unknown): string | undefined {
   return method !== undefined ? `${method} ${url}` : url;
 }
 
+/** Extract the request entry's user label (`email` ?? `id`) from its content, when present. */
+function asRequestUserLabel(content: unknown): string | undefined {
+  if (typeof content !== 'object' || content === null) return undefined;
+  const record = content as { user?: unknown };
+  if (typeof record.user !== 'object' || record.user === null) return undefined;
+  const user = record.user as { id?: unknown; email?: unknown };
+  if (typeof user.email === 'string' && user.email.length > 0) return user.email;
+  return typeof user.id === 'string' ? user.id : undefined;
+}
+
 interface TraceAccumulator {
   traceId: string;
   entryCount: number;
@@ -42,6 +54,7 @@ interface TraceAccumulator {
   lastAt: Date;
   totalDurationMs: number;
   rootLabel?: string;
+  userLabel?: string;
 }
 
 /**
@@ -88,6 +101,10 @@ export function summarizeTraces(
       const label = asRequestLabel(entry.content);
       if (label !== undefined) accumulator.rootLabel = label;
     }
+    if (accumulator.userLabel === undefined && entry.type === EntryType.Request) {
+      const label = asRequestUserLabel(entry.content);
+      if (label !== undefined) accumulator.userLabel = label;
+    }
   }
 
   const summaries: TraceSummary[] = [];
@@ -100,6 +117,7 @@ export function summarizeTraces(
       lastAt: accumulator.lastAt,
       totalDurationMs: accumulator.totalDurationMs,
       ...(accumulator.rootLabel !== undefined ? { rootLabel: accumulator.rootLabel } : {}),
+      ...(accumulator.userLabel !== undefined ? { userLabel: accumulator.userLabel } : {}),
     });
   }
 

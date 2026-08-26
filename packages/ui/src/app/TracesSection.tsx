@@ -27,6 +27,7 @@ export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) 
             <TableHeader>
               <TableRow>
                 <TableHead>Trace</TableHead>
+                <TableHead>User</TableHead>
                 <TableHead>Types</TableHead>
                 <TableHead className="text-right">Entries</TableHead>
                 <TableHead className="text-right">Total</TableHead>
@@ -41,6 +42,7 @@ export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) 
                   {...clickable(() => onOpenTrace(t.traceId))}
                 >
                   <TableCell className="mono">{t.rootLabel ?? t.traceId.slice(0, 16)}</TableCell>
+                  <TableCell className="text-muted-foreground">{t.userLabel ?? '—'}</TableCell>
                   <TableCell>
                     <span className="flex items-center gap-1.5">
                       {t.types.map((type) => (

@@ -20,6 +20,12 @@ export interface RequestEntryContent {
    * means no body was exposed (e.g. a GET, or a stub without a `body()` accessor).
    */
   body?: unknown;
+  /**
+   * The authenticated user at request time, when the host exposes `ctx.auth.user`
+   * (Adonis @adonisjs/auth / authkit guard). Only `id` and `email` are captured —
+   * never the full model. `null` when unauthenticated or not exposed.
+   */
+  user: { id: string; email?: string } | null;
 }
 
 /**
@@ -105,6 +111,8 @@ export interface ResponseLike {
 export interface HttpContextLike {
   request: RequestLike;
   response: ResponseLike['response'];
+  /** The auth guard, when the host registered one (`ctx.auth`). Optional. */
+  auth?: { user?: unknown };
 }
 
 /** Options for {@link recordRequest}. */
@@ -120,6 +128,11 @@ export interface RecordRequestOptions {
    * pre-existing behavior: no `body` field on the entry).
    */
   capture?: RequestCaptureOptions;
+  /**
+   * Override the user resolved from `ctx.auth`; pass `null` to force "no user".
+   * Omit to resolve from the context (default).
+   */
+  user?: { id: string; email?: string } | null;
 }
 
 /** First string value of a header read via the platform accessor. */
@@ -193,6 +206,28 @@ function gateRequestBody(request: RequestLike, capture: ResolvedRequestCapture):
 }
 
 /**
+ * Read the authenticated user off a (possibly absent) `ctx.auth`, extracting only
+ * `id` + `email`. Strictly defensive: any throw or malformed shape yields `null`,
+ * so a hostile/odd auth model can never break (or crash) request capture.
+ */
+export function resolveRequestUser(ctx: HttpContextLike): { id: string; email?: string } | null {
+  try {
+    const user = ctx.auth?.user;
+    if (user === null || user === undefined) return null;
+    const record = user as Record<string, unknown>;
+    const id = record.id;
+    if (typeof id !== 'string' && typeof id !== 'number') return null;
+    const email = record.email;
+    return {
+      id: String(id),
+      ...(typeof email === 'string' && email.length > 0 ? { email } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The pure, framework-agnostic core of the HTTP request watcher: build a
  * `request` {@link RecordInput} from a (stubbable) HttpContext-like value and a
  * start timestamp, and record it. Kept out of the middleware so it is trivially
@@ -208,6 +243,7 @@ export async function recordRequest(
   const url = stripQuery(ctx.request.url());
   const status = typeof ctx.response.statusCode === 'number' ? ctx.response.statusCode : null;
   const durationMs = options.durationMs ?? Math.max(0, Date.now() - startedAt);
+  const user = options.user === undefined ? resolveRequestUser(ctx) : options.user;
 
   // Body capture (gated). Only when the caller opted in AND the request exposes a
   // body accessor. The gate runs HERE — before the store's synchronous redaction
@@ -226,6 +262,7 @@ export async function recordRequest(
       status,
       durationMs,
       traceId: options.traceId ?? null,
+      user,
       ...(captureBody !== undefined ? { body: captureBody } : {}),
     },
     durationMs,
