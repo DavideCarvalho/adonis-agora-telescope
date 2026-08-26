@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 0.9.0
+
+### Minor Changes
+
+- [#32](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/32) [`91e701a`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/91e701ab8f22f7546d0a41416de24debfb2dffaf) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - feat: request entries capturam o usuário autenticado (`ctx.auth.user` → `id`/`email`, defensivo) com `userLabel` nas projeções de entries/traces; UI mostra o usuário em detail/trace/listas, navegação por hash routes com deep links (`#/entries/:id`, `#/traces/:id`, `#/entries?type=`, ...) e contenção de overflow horizontal no content de exception
+
 ## 0.8.5
 
 ### Patch Changes
