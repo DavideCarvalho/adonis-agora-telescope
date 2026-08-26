@@ -106,8 +106,12 @@ function ExtensionsBody({
 }) {
   const active = dashboards.find((d) => d.id === selectedId) ?? dashboards[0];
 
+  // Auto-sync only when a specific dashboard was actually selected (non-null). With `selectedId ===
+  // null` the "first dashboard" is a render default (`?? dashboards[0]` above), not a navigation
+  // action — the URL must stay `#/extensions` so browser Back isn't polluted. A non-null id that no
+  // longer exists still re-syncs to the first dashboard.
   useEffect(() => {
-    if (active && active.id !== selectedId) onSelect(active.id);
+    if (selectedId !== null && active && active.id !== selectedId) onSelect(active.id);
   }, [active, selectedId, onSelect]);
 
   if (!active) return null;
