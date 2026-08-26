@@ -279,6 +279,22 @@ describe('recordRequest user capture', () => {
     await recordRequest(store, stubCtx(), Date.now());
     const entry = (await store.list())[0];
     expect((entry?.content as { user: unknown }).user).toBeNull();
+    expect(entry?.tags.some((tag) => tag.startsWith('user:'))).toBe(false);
+  });
+
+  it('tags the request entry with user:<id> when a user is present', async () => {
+    const store = new InMemoryTelescopeStore();
+    await recordRequest(
+      store,
+      {
+        request: { method: () => 'GET', url: () => '/me' },
+        response: { statusCode: 200 },
+        auth: { user: { id: 'u-7', email: 'ada@example.com' } },
+      } as unknown as HttpContextLike,
+      Date.now(),
+    );
+    const entry = (await store.list())[0];
+    expect(entry?.tags).toContain('user:u-7');
   });
 
   it('resolves user defensively when auth.user is malformed or throws', async () => {

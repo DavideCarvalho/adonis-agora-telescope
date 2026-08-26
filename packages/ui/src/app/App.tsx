@@ -134,6 +134,11 @@ export function App() {
   const openTrace = (traceId: string) => navigate({ name: 'trace', traceId });
   const openType = (type: string) => navigate({ name: 'entries', type });
 
+  const goBack = (fallback: 'entries' | 'traces') => {
+    if (typeof window !== 'undefined' && window.history.length > 1) window.history.back();
+    else navigate({ name: fallback });
+  };
+
   const onPaletteNavigate = (target: PaletteTarget) => {
     if (target.kind === 'section') {
       navigate({ name: target.key });
@@ -233,16 +238,12 @@ export function App() {
 
           <main className="min-w-0 flex-1 overflow-x-hidden p-4">
             {route.name === 'entry' ? (
-              <EntryDetail
-                id={route.id}
-                onOpenTrace={openTrace}
-                onBack={() => navigate({ name: 'entries' })}
-              />
+              <EntryDetail id={route.id} onOpenTrace={openTrace} onBack={() => goBack('entries')} />
             ) : route.name === 'trace' ? (
               <TraceDetail
                 traceId={route.traceId}
                 onOpenEntry={openEntry}
-                onBack={() => navigate({ name: 'traces' })}
+                onBack={() => goBack('traces')}
               />
             ) : route.name === 'overview' ? (
               <OverviewSection

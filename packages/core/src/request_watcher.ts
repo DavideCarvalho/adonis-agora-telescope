@@ -267,7 +267,11 @@ export async function recordRequest(
     },
     durationMs,
     origin: 'http',
-    tags: [`method:${method}`, ...(status !== null ? [`status:${status}`] : [])],
+    tags: [
+      `method:${method}`,
+      ...(status !== null ? [`status:${status}`] : []),
+      ...(user?.id ? [`user:${user.id}`] : []),
+    ],
     ...(options.traceId !== undefined ? { traceId: options.traceId } : {}),
   };
 
