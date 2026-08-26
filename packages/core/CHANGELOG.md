@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 0.9.1
+
+### Patch Changes
+
+- [#34](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/34) [`7565d6e`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7565d6eb5227ce039d8af2abd7e81011b1cc145f) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - feat: request entries agora carregam tag `user:<id>` (Pulse load-by-user); UI: botão Back in-app preserva contexto via history (fallback pra seção) + teste App-level de navegação por hash
+
 ## 0.9.0
 
 ### Minor Changes
