@@ -9,7 +9,15 @@ import {
 } from '../../src/ui/request_replay.js';
 
 function content(over: Partial<RequestEntryContent> = {}): RequestEntryContent {
-  return { method: 'GET', url: '/users', status: 200, durationMs: 5, traceId: null, user: null, ...over };
+  return {
+    method: 'GET',
+    url: '/users',
+    status: 200,
+    durationMs: 5,
+    traceId: null,
+    user: null,
+    ...over,
+  };
 }
 
 /** A transport that records the call it received and returns a canned response. */
