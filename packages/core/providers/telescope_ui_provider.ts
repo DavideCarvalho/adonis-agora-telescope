@@ -195,10 +195,8 @@ export default class TelescopeUiProvider {
     }
 
     // Dashboard page: served by the `@adonis-agora/telescope-ui` SPA provider (it mounts the built
-    // Vite app at the prefix root, behind this same `authorize` guard). The legacy self-contained
-    // inline-HTML dashboard (`renderDashboard`) is no longer auto-routed here; it remains exported
-    // from `@adonis-agora/telescope/ui` for embedding. This provider owns only the JSON API + SSE
-    // under `<path>/api/*`, which the SPA consumes.
+    // Vite app at the prefix root, behind this same `authorize` guard). This provider owns only the
+    // JSON API + SSE under `<path>/api/*`, which the SPA — or a front end of your own — consumes.
 
     // JSON API.
     router

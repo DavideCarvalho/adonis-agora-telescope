@@ -1,10 +1,8 @@
 /**
- * Pure helpers for the paged extension-dashboard table. These are the SOURCE OF
- * TRUTH for the pagination math and the deep-link templating that the
- * server-rendered `dashboard.html` mirrors in its inline JS. Kept framework-free
- * and side-effect-free so the logic is unit-tested directly (dashboard.html's
- * inline `<script>` is a static asset that can't import, so it carries a faithful
- * mirror of these two functions).
+ * Pure helpers for the paged extension-dashboard table: the pagination math and the deep-link
+ * templating a dashboard renders a `{ kind: 'table', paged: true }` panel with. Kept framework-free
+ * and side-effect-free so the logic is unit-tested directly and any front end (the
+ * `@adonis-agora/telescope-ui` console, or one of your own over the JSON API) can share it.
  */
 
 /**
