@@ -221,6 +221,10 @@ It **fails closed at boot**: a configured-but-missing `secret` or `login` throws
 than shipping an un-mintable gate. A `login` hook that throws is treated as a denial (logged once,
 never surfaced), every credential failure returns a **uniform** `401` (no user-enumeration), and
 the post-login `returnTo` is validated against open redirects (same-origin, root-relative only).
+The page itself is a plain HTML form that works without JavaScript — a form submit is answered
+with a redirect (to `returnTo`, or back to the form with the error shown) — and its inline script
+and style carry `@adonisjs/shield`'s request nonce, so a `script-src 'self' @nonce` policy keeps
+the page working.
 </Callout>
 
 ## Guard behaviour
@@ -270,6 +274,54 @@ export default defineConfig({
 
 The redirect wins only when the hook returns `false`; returning `true` proceeds to the handler
 as usual, redirect or not.
+
+### The access-denied page
+
+The `{ "error": ... }` JSON above is what the **API** answers with — the console's own `fetch`
+calls expect it. A refused **page** navigation (the `@adonis-agora/telescope-ui` shell or its
+assets) gets a real page instead: a dark card in the console's visual language showing the
+status, a sentence explaining the refusal, a "Back to app" link and, when `dashboardAuth` is
+configured, a "Sign in" button. The statuses are the same as the table above; the
+`WWW-Authenticate` challenge rides on the page's `401` only when `credentials.basic` is
+configured (so the native browser prompt appears exactly when it can be answered — the page is
+what a dismissed prompt reveals), and is left off for a host gating on its own `authorize`. It carries no inline script, so a nonce'd `script-src`
+CSP cannot break it (its one inline `<style>` picks up `@adonisjs/shield`'s request nonce).
+
+Tweak it with `accessDenied` — every field optional:
+
+```ts title="config/telescope_ui.ts"
+export default defineConfig({
+  accessDenied: {
+    brand: 'Entre Textos',           // eyebrow + <title>; default "Telescope"
+    title: 'Sem acesso',             // default depends on the refusal
+    message: 'Peça ao admin para liberar o console de observabilidade.',
+    homeHref: '/admin',              // "Back to app"; default "/", `false` hides it
+    homeLabel: 'Voltar',
+    loginHref: '/entrar',            // default: the built-in login page when one exists
+    loginLabel: 'Entrar',
+    accent: '#f59e0b',               // any CSS colour; default: the console's magenta
+  },
+})
+```
+
+Or replace it. Pass a function and it receives the refusal (`status`, `reason` —
+`'unauthenticated'` or `'forbidden'` — `basePath`, `loginHref`, and the CSP `nonce` when there is
+one) plus the same context the `authorize` hook gets. Return an HTML string to have it served with
+the right status; answer the request yourself and return nothing to make the guard stand down:
+
+```ts title="config/telescope_ui.ts"
+export default defineConfig({
+  accessDenied: (info, ctx) => {
+    if (info.reason === 'unauthenticated') {
+      ctx.response.status(302).header('location', `/login?next=${info.basePath}`)
+      return
+    }
+    return `<!doctype html><title>${info.status}</title><h1>Sem acesso</h1>`
+  },
+})
+```
+
+An `authorize` hook that already wrote a redirect still wins, with or without `accessDenied`.
 
 ## Security notes
 
