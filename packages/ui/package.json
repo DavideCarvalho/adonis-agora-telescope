@@ -1,6 +1,6 @@
 {
   "name": "@adonis-agora/telescope-ui",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Observability dashboard for @adonis-agora/telescope — a React SPA (overview, entries + live tail, entry detail, traces & waterfall, exception groups, Pulse health, CPU profiles, live queues and schedules, extension pages, client-side exports) built with Tailwind CSS and Base UI, served by a thin AdonisJS provider behind the same auth guard as the JSON API. Ships a dependency-free fetch client on the /client subpath. Part of the Agora ecosystem.",
   "license": "MIT",
   "repository": {
