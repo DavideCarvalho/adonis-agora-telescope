@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EntryType } from '../../src/entry.js';
 import { setTelescopeRuntime } from '../../src/registry.js';
-import { type CacheEntryContent, CacheWatcher, buildCacheEntry } from '../../src/watchers/index.js';
+import { buildCacheEntry, type CacheEntryContent, CacheWatcher } from '../../src/watchers/index.js';
 import {
   clearStore,
   fakeEmitter,
@@ -79,7 +79,7 @@ describe('CacheWatcher', () => {
 
       const entries = await store.list({ type: EntryType.Cache });
       expect(entries).toHaveLength(1);
-      expect((entries[0]?.content as CacheEntryContent).key).toBe('z');
+      expect((entries[0]!.content as CacheEntryContent).key).toBe('z');
     });
   });
 

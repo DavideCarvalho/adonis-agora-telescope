@@ -27,7 +27,7 @@ describe('SamplingTelescopeStore', () => {
 
     expect(await inner.count()).toBe(1);
     const [kept] = await inner.list();
-    expect((kept?.content as { level: string }).level).toBe('error');
+    expect((kept!.content as { level: string }).level).toBe('error');
   });
 
   it('is a pass-through for reads', async () => {

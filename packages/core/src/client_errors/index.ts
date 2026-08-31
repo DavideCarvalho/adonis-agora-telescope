@@ -3,12 +3,12 @@ export {
   DEFAULT_CLIENT_ERRORS_PATH,
   DEFAULT_MAX_BODY_BYTES,
   DEFAULT_RATE_LIMIT_PER_MINUTE,
-  resolveClientErrors,
   type ResolvedClientErrorsConfig,
+  resolveClientErrors,
 } from './config.js';
 export {
-  ClientErrorIngestor,
   type ClientErrorHttpContext,
+  ClientErrorIngestor,
   type ClientErrorIngestorDeps,
   type ClientErrorRequest,
   type ClientErrorResponse,

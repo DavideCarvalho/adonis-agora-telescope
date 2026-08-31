@@ -4,7 +4,7 @@ import {
   LucidTelescopeStore,
   SCHEMA_META_TABLE_NAME,
 } from '../src/stores/lucid.js';
-import { type TestHarness, makeHarness } from './lucid_helpers.js';
+import { makeHarness, type TestHarness } from './lucid_helpers.js';
 
 /**
  * The schema fingerprint gate that wraps the `autoCreateTable` DDL in `doInit`.

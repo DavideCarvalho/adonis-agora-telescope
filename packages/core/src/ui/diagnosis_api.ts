@@ -1,8 +1,8 @@
 import type { ExceptionEntryContent } from '../ai/diagnoser.js';
 import type { DiagnosisCoordinator } from '../ai/diagnosis_coordinator.js';
 import { formatDiagnosisMarkdown } from '../ai/diagnosis_coordinator.js';
-import { EntryType } from '../entry.js';
 import type { Entry } from '../entry.js';
+import { EntryType } from '../entry.js';
 import type { TelescopeService } from '../service.js';
 import type { UiHttpContext } from './http.js';
 

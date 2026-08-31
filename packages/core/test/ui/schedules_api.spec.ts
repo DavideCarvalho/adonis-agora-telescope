@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resetTelescopeRuntime, setTelescopeRuntime } from '../../src/registry.js';
 import { TelescopeService } from '../../src/service.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
-import { RecordingResponse, type UiHttpContext, makeRequest } from '../../src/ui/http.js';
+import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
 import { SchedulesApi } from '../../src/ui/schedules_api.js';
 import { ScheduleWatcher } from '../../src/watchers/schedule_watcher.js';
 

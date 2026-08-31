@@ -1,6 +1,6 @@
 import { type Entry, EntryType } from '../entry.js';
 import { buildHistogram, estimatePercentileFromHistogram } from './rollup.js';
-import { type TimeseriesReport, bucketTimeseries } from './timeseries.js';
+import { bucketTimeseries, type TimeseriesReport } from './timeseries.js';
 
 /**
  * Per-type analytics over a window of stored entries. Ported from

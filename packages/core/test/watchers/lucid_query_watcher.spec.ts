@@ -3,11 +3,11 @@ import { EntryType } from '../../src/entry.js';
 import { detectNPlusOne } from '../../src/query/n_plus_one.js';
 import { setTelescopePaused, setTelescopeRuntime } from '../../src/registry.js';
 import {
+  buildQueryEntry,
   DB_QUERY_EVENT,
   type DbQueryEventLike,
   LucidQueryWatcher,
   type QueryEntryContent,
-  buildQueryEntry,
 } from '../../src/watchers/index.js';
 import {
   clearStore,
@@ -152,7 +152,7 @@ describe('LucidQueryWatcher', () => {
 
       const entries = await store.list({ type: EntryType.Query });
       expect(entries).toHaveLength(1);
-      expect((entries[0]?.content as QueryEntryContent).connection).toBe('primary');
+      expect((entries[0]!.content as QueryEntryContent).connection).toBe('primary');
     });
 
     it('sheds new entries while the runtime is paused', async () => {

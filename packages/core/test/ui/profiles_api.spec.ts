@@ -4,7 +4,7 @@ import { ProfilerService } from '../../src/profiling/profiler_service.js';
 import type { CpuProfileContent } from '../../src/profiling/types.js';
 import { TelescopeService } from '../../src/service.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
-import { RecordingResponse, type UiHttpContext, makeRequest } from '../../src/ui/http.js';
+import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
 import { ProfilesApi } from '../../src/ui/profiles_api.js';
 
 function ctx(qs: Record<string, unknown> = {}): { ctx: UiHttpContext; res: RecordingResponse } {

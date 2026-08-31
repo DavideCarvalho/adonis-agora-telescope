@@ -1,4 +1,4 @@
-import { type VariantProps, cva } from 'class-variance-authority';
+import { cva, type VariantProps } from 'class-variance-authority';
 import { forwardRef } from 'react';
 import { cn } from './cn.js';
 
@@ -7,7 +7,7 @@ import { cn } from './cn.js';
  * `adonis-durable/packages/dashboard/src/app/ui/badge.tsx`.
  */
 export const badgeVariants = cva(
-  'inline-flex items-center gap-1.5 rounded border px-1.5 text-[10px] leading-relaxed',
+  'inline-flex items-center gap-1.5 rounded-sm border px-1.5 text-[10px] leading-relaxed',
   {
     variants: {
       variant: {

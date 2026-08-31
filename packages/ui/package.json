@@ -29,7 +29,12 @@
       "default": "./dist/src/client/index.js"
     }
   },
-  "files": ["dist/", "README.md", "CHANGELOG.md", "skills"],
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "skills"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "vite build && tsc -p tsconfig.server.json",
@@ -48,29 +53,29 @@
     }
   },
   "dependencies": {
-    "@base-ui/react": "1.0.0",
+    "@base-ui/react": "1.7.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "tailwind-merge": "3.6.0"
   },
   "devDependencies": {
     "@adonis-agora/telescope": "workspace:*",
-    "@adonisjs/core": "7.4.0",
-    "@tanstack/intent": "^0.3.2",
-    "@testing-library/react": "16.3.2",
-    "@types/node": "20.19.43",
+    "@adonisjs/core": "7.5.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@tanstack/intent": "^0.3.7",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "26.4.0",
     "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.4",
-    "@vitejs/plugin-react": "4.7.0",
-    "autoprefixer": "10.5.4",
-    "jsdom": "25.0.1",
+    "@types/react-dom": "19.2.5",
+    "@vitejs/plugin-react": "6.1.1",
+    "jsdom": "30.0.1",
     "postcss": "8.5.26",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "tailwindcss": "3.4.19",
-    "typescript": "5.9.3",
-    "vite": "6.4.3",
-    "vitest": "3.2.7"
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=20.6.0"

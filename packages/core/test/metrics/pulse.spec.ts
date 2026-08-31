@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EntryType } from '../../src/entry.js';
-import { PulseService, summarizePulse } from '../../src/metrics/pulse.js';
 import type { PulseOptions } from '../../src/metrics/pulse.js';
+import { PulseService, summarizePulse } from '../../src/metrics/pulse.js';
 import { TelescopeService } from '../../src/service.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 

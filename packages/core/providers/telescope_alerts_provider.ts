@@ -2,7 +2,7 @@ import type { ApplicationService } from '@adonisjs/core/types';
 import type { ExceptionEntryContent } from '../src/ai/diagnoser.js';
 import { Alerter } from '../src/alerts/alerter.js';
 import { AlerterService } from '../src/alerts/alerter_service.js';
-import { type TelescopeAlertsConfig, resolveConfig } from '../src/alerts/define_config.js';
+import { resolveConfig, type TelescopeAlertsConfig } from '../src/alerts/define_config.js';
 import { ExceptionPoller } from '../src/alerts/exception_source.js';
 import type { Entry } from '../src/entry.js';
 import { MetricsService } from '../src/metrics/metrics_service.js';

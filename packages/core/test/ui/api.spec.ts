@@ -3,7 +3,7 @@ import type { RecordInput } from '../../src/entry.js';
 import { TelescopeService } from '../../src/service.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import { TelescopeApi } from '../../src/ui/api.js';
-import { RecordingResponse, type UiHttpContext, makeRequest } from '../../src/ui/http.js';
+import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
 
 function ctx(qs: Record<string, unknown> = {}): { ctx: UiHttpContext; res: RecordingResponse } {
   const res = new RecordingResponse();

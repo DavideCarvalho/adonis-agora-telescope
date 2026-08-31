@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
-import { type BatchOrigin, type Entry, type RecordInput, isBatchOrigin } from '../entry.js';
+import { type BatchOrigin, type Entry, isBatchOrigin, type RecordInput } from '../entry.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
 
 /**

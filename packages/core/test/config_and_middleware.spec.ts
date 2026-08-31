@@ -165,7 +165,7 @@ describe('TelescopeMiddleware', () => {
       async () => {},
     );
     const entry = (await store.list({ type: 'request' }))[0];
-    expect((entry?.content as { user: unknown }).user).toEqual({
+    expect((entry!.content as { user: unknown }).user).toEqual({
       id: 'u-7',
       email: 'ada@example.com',
     });
@@ -251,7 +251,7 @@ describe('context accessor integration', () => {
     await recordRequest(store, stubCtx(), Date.now());
     const entry = (await store.list())[0];
     expect(entry?.traceId).toBe('ctx-trace');
-    expect((entry?.content as { traceId: string | null }).traceId).toBe('ctx-trace');
+    expect((entry!.content as { traceId: string | null }).traceId).toBe('ctx-trace');
   });
 });
 
@@ -268,7 +268,7 @@ describe('recordRequest user capture', () => {
       Date.now(),
     );
     const entry = (await store.list())[0];
-    expect((entry?.content as { user: unknown }).user).toEqual({
+    expect((entry!.content as { user: unknown }).user).toEqual({
       id: '42',
       email: 'ada@example.com',
     });
@@ -278,7 +278,7 @@ describe('recordRequest user capture', () => {
     const store = new InMemoryTelescopeStore();
     await recordRequest(store, stubCtx(), Date.now());
     const entry = (await store.list())[0];
-    expect((entry?.content as { user: unknown }).user).toBeNull();
+    expect((entry!.content as { user: unknown }).user).toBeNull();
     expect(entry?.tags.some((tag) => tag.startsWith('user:'))).toBe(false);
   });
 
@@ -310,6 +310,6 @@ describe('recordRequest user capture', () => {
     } as unknown as HttpContextLike;
     await recordRequest(store, bogus, Date.now());
     const entry = (await store.list())[0];
-    expect((entry?.content as { user: unknown }).user).toBeNull();
+    expect((entry!.content as { user: unknown }).user).toBeNull();
   });
 });

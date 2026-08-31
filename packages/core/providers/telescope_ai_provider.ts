@@ -1,5 +1,5 @@
 import type { ApplicationService } from '@adonisjs/core/types';
-import { type TelescopeAiConfig, resolveConfig } from '../src/ai/define_config.js';
+import { resolveConfig, type TelescopeAiConfig } from '../src/ai/define_config.js';
 import { DiagnosisCoordinator } from '../src/ai/diagnosis_coordinator.js';
 import { createDiagnoser } from '../src/ai/factory.js';
 import { TelescopeAiDiagnoser } from '../src/ai/telescope_ai_diagnoser.js';

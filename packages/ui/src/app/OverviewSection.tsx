@@ -6,21 +6,21 @@ import type {
   RetentionInfo,
   TimeseriesReport,
 } from '../client/types.js';
-import { WindowSelect } from './WindowSelect.js';
 import { cn } from './primitives/cn.js';
 import {
   AsyncBlock,
+  clickable,
   Empty,
   Panel,
   SectionTitle,
   ShareBar,
   Sparkline,
   Stat,
-  clickable,
   typeColor,
   typeLabel,
 } from './ui.js';
 import { useLiveQueues, usePulse, useRetention, useTimeseries } from './use-telescope.js';
+import { WindowSelect } from './WindowSelect.js';
 
 /** A queue backlog at/above this is "needs attention" even with zero failures. */
 const QUEUE_WAITING_ATTENTION_THRESHOLD = 100;

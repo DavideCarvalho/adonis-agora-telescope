@@ -42,12 +42,12 @@ export function Dialog({
   return (
     <DialogRoot open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Backdrop className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
+        <DialogPrimitive.Backdrop className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs" />
         <DialogPrimitive.Popup
           {...(initialFocus ? { initialFocus } : {})}
           {...popupProps}
           className={cn(
-            'rise fixed left-1/2 top-[12vh] z-50 w-[min(560px,92vw)] -translate-x-1/2 overflow-hidden rounded-lg border border-line bg-panel-2 text-foreground shadow-2xl focus-visible:outline-none',
+            'rise fixed left-1/2 top-[12vh] z-50 w-[min(560px,92vw)] -translate-x-1/2 overflow-hidden rounded-lg border border-line bg-panel-2 text-foreground shadow-2xl focus-visible:outline-hidden',
             className,
           )}
         >

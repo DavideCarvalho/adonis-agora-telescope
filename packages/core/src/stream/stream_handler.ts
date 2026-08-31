@@ -1,5 +1,5 @@
 import { type EntrySummary, toSummary } from '../ui/api.js';
-import { type SseSink, formatSseFrame, formatSseHeartbeat } from '../ui/http.js';
+import { formatSseFrame, formatSseHeartbeat, type SseSink } from '../ui/http.js';
 import type { EntryEvents } from './entry_events.js';
 
 /** Default keep-alive interval, mirroring the NestJS original's 15s heartbeat. */

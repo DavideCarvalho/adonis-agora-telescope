@@ -1,6 +1,92 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * shadcn's semantic class names (`bg-background`, `text-muted-foreground`, `border-border`, …) are
+ * wired here to the Aviary console tokens declared in `:root` below, NOT to shadcn's own defaults.
+ * Vendored primitives under `src/app/primitives/` therefore inherit the console palette with no
+ * per-component theming, and flip with the `.light` root class for free.
+ *
+ * This is a port of `@dudousxd/nestjs-telescope-ui`'s theme (this console's NestJS sibling — same
+ * product, same tokens, same `--accent` magenta) so the AdonisJS dashboard matches it 1:1 rather
+ * than reinventing the palette.
+ *
+ * `@theme inline` makes the utilities reference `var(--panel)` etc. directly, and Tailwind v4's
+ * native `color-mix()` opacity modifiers keep `bg-panel/40`, `border-line/60` and friends working —
+ * the Tailwind 3 "colour function" trap the old `tailwind.config.ts` worked around is gone.
+ */
+@theme inline {
+  /*
+   * nestjs-telescope-ui runs the WHOLE console (headers, labels, tables, nav — not just
+   * numeric/code values) in monospace: a `font-mono` class on the shell's root div, which every
+   * descendant inherits. `sans` is pointed at the same stack too, as a safety net for any element
+   * that ends up on the (otherwise unused) default font family.
+   */
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Aviary tokens, addressable directly. */
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-live: var(--live);
+
+  /*
+   * The brand hue. Deliberately NOT called `accent`: shadcn's `accent` is a muted HOVER SURFACE,
+   * and wiring it to `--accent` puts solid brand-coloured blocks under every hover.
+   */
+  --color-brand: var(--accent);
+  --color-brand-foreground: var(--bg);
+
+  /*
+   * shadcn's semantic names, mapped per the Aviary token table. Three of these are traps because
+   * the two vocabularies reuse the same word:
+   *   - shadcn `accent` is a subtle HOVER SURFACE, not the brand hue.
+   *   - shadcn `muted` is a SURFACE; Aviary `--muted` is dim TEXT, hence `muted-foreground`.
+   */
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--accent);
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--bg);
+  --color-secondary: var(--panel-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--panel-2);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--panel-2);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--bad);
+  --color-destructive-foreground: var(--bg);
+  --color-popover: var(--panel-2);
+  --color-popover-foreground: var(--text);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--text);
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 /*
  * ─────────────────────────────────────────────────────────────────────────────

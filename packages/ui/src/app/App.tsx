@@ -1,23 +1,23 @@
 import { useEffect, useState } from 'react';
-import { ENTRY_TYPES } from '../client/types.js';
 import type { ExtensionEntryType } from '../client/types.js';
+import { ENTRY_TYPES } from '../client/types.js';
 import { CommandPalette, type PaletteTarget } from './CommandPalette.js';
 import { EntriesSection } from './EntriesSection.js';
 import { EntryDetail } from './EntryDetail.js';
 import { ExceptionsSection } from './ExceptionsSection.js';
 import { ExportsSection } from './ExportsSection.js';
 import { ExtensionsSection } from './ExtensionsSection.js';
+import { MoonIcon, SunIcon } from './icons.js';
 import { OverviewSection } from './OverviewSection.js';
 import { ProfilesSection } from './ProfilesSection.js';
 import { PulseSection } from './PulseSection.js';
+import { Button } from './primitives/button.js';
+import { Tooltip, TooltipProvider } from './primitives/tooltip.js';
 import { QueueManagerSection } from './QueueManagerSection.js';
 import { RetentionIndicator } from './RetentionIndicator.js';
 import { SchedulesLiveSection } from './SchedulesLiveSection.js';
 import { TraceDetail } from './TraceDetail.js';
 import { TracesSection } from './TracesSection.js';
-import { MoonIcon, SunIcon } from './icons.js';
-import { Button } from './primitives/button.js';
-import { Tooltip, TooltipProvider } from './primitives/tooltip.js';
 import { typeColor, typeLabel } from './ui.js';
 import { useHashRoute } from './use-hash-route.js';
 import { useMeta } from './use-telescope.js';
@@ -228,7 +228,7 @@ export function App() {
               </Button>
             </Tooltip>
             <span
-              className="inline-flex items-center gap-1.5 rounded border border-good/30 bg-good/10 px-2.5 py-1 text-xs uppercase tracking-wide text-good"
+              className="inline-flex items-center gap-1.5 rounded-sm border border-good/30 bg-good/10 px-2.5 py-1 text-xs uppercase tracking-wide text-good"
               title="Telescope is capturing live"
             >
               <span className="live-dot" aria-hidden="true" />

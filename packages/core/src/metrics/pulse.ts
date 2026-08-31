@@ -4,11 +4,11 @@ import type { EntryQuery, TelescopeStore } from '../store.js';
 import {
   type CacheStats,
   type LatencyStats,
-  type StatusBreakdown,
   percentile,
+  type StatusBreakdown,
   summarizeStats,
 } from './stats.js';
-import { type TimeseriesReport, bucketTimeseries } from './timeseries.js';
+import { bucketTimeseries, type TimeseriesReport } from './timeseries.js';
 
 /**
  * The Pulse feature — an aggregated "at a glance" health rollup over recorded

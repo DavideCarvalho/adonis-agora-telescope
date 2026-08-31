@@ -1,6 +1,6 @@
 import type { Entry, RecordInput } from '../entry.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
-import { type SamplingConfig, passesSampling } from './sampling.js';
+import { passesSampling, type SamplingConfig } from './sampling.js';
 
 /**
  * A {@link TelescopeStore} decorator that applies tail-sampling on the WRITE

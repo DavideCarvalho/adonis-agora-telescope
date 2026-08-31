@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resolveConfig } from '../../src/watchers/define_config.js';
 import type { ProfileEntryContent } from '../../src/watchers/profiling_watcher.js';
 import {
-  ProfilingWatcher,
   buildProfileEntry,
+  ProfilingWatcher,
   profile,
   startProfile,
 } from '../../src/watchers/profiling_watcher.js';

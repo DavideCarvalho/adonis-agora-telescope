@@ -1,15 +1,15 @@
 import type { Entry } from '../entry.js';
 import {
-  type NPlusOneInsight,
-  type NPlusOnePattern,
   detectNPlusOne,
   detectNPlusOnePatterns,
+  type NPlusOneInsight,
+  type NPlusOnePattern,
 } from '../query/n_plus_one.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
-import { type StatsResult, estimateLatencyPercentiles, summarizeStats } from './stats.js';
-import { type TimeseriesReport, bucketTimeseries } from './timeseries.js';
-import { type TraceSummary, summarizeTraces } from './traces.js';
-import { type Waterfall, buildWaterfall } from './waterfall.js';
+import { estimateLatencyPercentiles, type StatsResult, summarizeStats } from './stats.js';
+import { bucketTimeseries, type TimeseriesReport } from './timeseries.js';
+import { summarizeTraces, type TraceSummary } from './traces.js';
+import { buildWaterfall, type Waterfall } from './waterfall.js';
 
 const DEFAULT_BUCKETS = 60;
 const MAX_BUCKETS = 500;

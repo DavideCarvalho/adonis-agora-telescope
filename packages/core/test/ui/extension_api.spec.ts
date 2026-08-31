@@ -4,7 +4,7 @@ import { ExtensionRegistry } from '../../src/extension/registry.js';
 import type { ExtensionContext, TelescopeExtension } from '../../src/extension/types.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import { ExtensionApi } from '../../src/ui/extension_api.js';
-import { RecordingResponse, makeRequest } from '../../src/ui/http.js';
+import { makeRequest, RecordingResponse } from '../../src/ui/http.js';
 
 function setup() {
   const store = new InMemoryTelescopeStore();

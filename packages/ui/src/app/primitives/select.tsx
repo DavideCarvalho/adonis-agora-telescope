@@ -21,7 +21,7 @@ export const SelectTrigger = forwardRef<
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        'inline-flex items-center justify-between gap-1.5 rounded-md border border-line bg-panel px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
+        'inline-flex items-center justify-between gap-1.5 rounded-md border border-line bg-panel px-2.5 py-1.5 text-xs text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring data-disabled:cursor-not-allowed data-disabled:opacity-50',
         className,
       )}
       {...props}
@@ -47,7 +47,7 @@ export const SelectContent = forwardRef<
         <SelectPrimitive.Popup
           ref={ref}
           className={cn(
-            'min-w-[8rem] overflow-hidden rounded-md border border-line bg-popover p-1 text-popover-foreground shadow-lg',
+            'min-w-32 overflow-hidden rounded-md border border-line bg-popover p-1 text-popover-foreground shadow-lg',
             className,
           )}
           {...props}
@@ -67,7 +67,7 @@ export const SelectItem = forwardRef<
     <SelectPrimitive.Item
       ref={ref}
       className={cn(
-        'relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs text-foreground outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-panel-2 data-[selected]:text-brand',
+        'relative flex cursor-default select-none items-center rounded-xs px-2 py-1.5 text-xs text-foreground outline-hidden data-disabled:pointer-events-none data-disabled:opacity-50 data-[highlighted]:bg-panel-2 data-[selected]:text-brand',
         className,
       )}
       {...props}

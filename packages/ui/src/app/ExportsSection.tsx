@@ -93,7 +93,7 @@ export function ExportsSection() {
             value={type}
             onValueChange={(next) => setType(typeof next === 'string' ? next : '')}
           >
-            <SelectTrigger aria-label="export type" className="min-w-[9rem]">
+            <SelectTrigger aria-label="export type" className="min-w-36">
               <SelectValue>{(v: string | null) => (v ? v : 'All types')}</SelectValue>
             </SelectTrigger>
             <SelectContent>

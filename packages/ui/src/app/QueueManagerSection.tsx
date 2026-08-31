@@ -4,7 +4,7 @@ import type { QueueJobDetail, QueueSummary } from '../client/types.js';
 import { Badge } from './primitives/badge.js';
 import { Button } from './primitives/button.js';
 import { Input } from './primitives/input.js';
-import { AsyncBlock, Empty, Panel, SectionTitle, clickable } from './ui.js';
+import { AsyncBlock, clickable, Empty, Panel, SectionTitle } from './ui.js';
 import { useLiveQueues, useMeta, useTelescopeClient } from './use-telescope.js';
 
 function QueueCounts({ queue }: { queue: QueueSummary }) {
@@ -64,7 +64,7 @@ function JobDetail({
         </div>
       </div>
       {job.failedReason && (
-        <div className="rounded border border-bad/30 bg-bad/10 p-2 text-bad">
+        <div className="rounded-sm border border-bad/30 bg-bad/10 p-2 text-bad">
           {job.failedReason}
         </div>
       )}
@@ -80,7 +80,7 @@ function JobDetail({
         <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
           Payload
         </div>
-        <pre className="mono max-h-40 overflow-auto rounded bg-background p-2 text-[10px]">
+        <pre className="mono max-h-40 overflow-auto rounded-sm bg-background p-2 text-[10px]">
           {JSON.stringify(job.payload, null, 2)}
         </pre>
       </div>
@@ -128,7 +128,7 @@ function EnqueueForm({ queue }: { queue: string }) {
         value={payload}
         onChange={(e) => setPayload(e.target.value)}
         rows={4}
-        className="mono w-full rounded-md border border-line bg-panel px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="mono w-full rounded-md border border-line bg-panel px-2.5 py-1.5 text-xs text-foreground focus:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
         placeholder="{}"
       />
       <div className="flex items-center gap-2">
@@ -172,9 +172,9 @@ export function QueueManagerSection() {
         <SectionTitle title="Queue Manager" />
         <Empty>
           The live queue manager is not configured. Enable the{' '}
-          <code className="mono rounded bg-panel-2 px-1 text-brand">queue-manager</code> watcher and
-          set{' '}
-          <code className="mono rounded bg-panel-2 px-1 text-brand">
+          <code className="mono rounded-sm bg-panel-2 px-1 text-brand">queue-manager</code> watcher
+          and set{' '}
+          <code className="mono rounded-sm bg-panel-2 px-1 text-brand">
             telescope_watchers.queueManager.queues
           </code>{' '}
           to the queue names you want surfaced — <code className="mono">@boringnode/queue</code> has

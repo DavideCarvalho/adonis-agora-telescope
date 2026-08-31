@@ -4,11 +4,11 @@ import { RedactingTelescopeStore } from '../../src/redaction/redacting_store.js'
 import { setTelescopeRuntime } from '../../src/registry.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import {
+  buildLogEntry,
+  extractLog,
   type LogEntryContent,
   type LoggerLike,
   LogsWatcher,
-  buildLogEntry,
-  extractLog,
 } from '../../src/watchers/index.js';
 import { clearStore, flush, installStore } from './helpers.js';
 
@@ -103,7 +103,7 @@ describe('LogsWatcher', () => {
 
       const entries = await store.list({ type: EntryType.Log });
       expect(entries).toHaveLength(1);
-      expect((entries[0]?.content as LogEntryContent).message).toBe('keep me');
+      expect((entries[0]!.content as LogEntryContent).message).toBe('keep me');
     });
 
     it('records a line ONCE when two watchers tap the same logger', async () => {

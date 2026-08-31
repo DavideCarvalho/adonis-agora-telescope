@@ -110,4 +110,4 @@ export function resolveConfig(config: TelescopeAiConfig = {}): ResolvedTelescope
   };
 }
 
-export { DEFAULT_MODEL, DEFAULT_MAX_TOKENS, DEFAULT_TIMEOUT_MS };
+export { DEFAULT_MAX_TOKENS, DEFAULT_MODEL, DEFAULT_TIMEOUT_MS };

@@ -176,7 +176,7 @@ export function ProfilesSection() {
         <SectionTitle title="CPU Profiles" />
         <Empty>
           CPU profiling is not installed for this dashboard. Enable it with the{' '}
-          <code className="mono rounded bg-panel-2 px-1 text-brand">
+          <code className="mono rounded-sm bg-panel-2 px-1 text-brand">
             @adonis-agora/telescope/cpu_profiling
           </code>{' '}
           provider. It is opt-in because it carries real CPU overhead; when off there is zero cost

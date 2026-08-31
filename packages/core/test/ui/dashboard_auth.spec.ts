@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   type DashboardAuthOptions,
-  type ResolvedDashboardAuth,
   decideDashboardAuth,
   performLogin,
+  type ResolvedDashboardAuth,
   readSession,
   resolveDashboardAuth,
   sanitizeReturnTo,

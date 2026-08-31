@@ -3,8 +3,8 @@ import { setTelescopeQueueManager } from '../src/registry.js';
 import { CacheWatcher } from '../src/watchers/cache_watcher.js';
 import {
   type ResolvedTelescopeWatchersConfig,
-  type TelescopeWatchersConfig,
   resolveConfig,
+  type TelescopeWatchersConfig,
 } from '../src/watchers/define_config.js';
 import type { EmitterLike, Watcher } from '../src/watchers/emitter.js';
 import { EventsWatcher } from '../src/watchers/events_watcher.js';

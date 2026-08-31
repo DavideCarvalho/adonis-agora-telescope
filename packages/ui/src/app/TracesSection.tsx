@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from './primitives/table.js';
-import { AsyncBlock, Panel, SectionTitle, clickable, typeColor } from './ui.js';
+import { AsyncBlock, clickable, Panel, SectionTitle, typeColor } from './ui.js';
 import { useTraces } from './use-telescope.js';
 
 /** The recent-traces list: root label, the type mix (colored dots), entry count, total time. */

@@ -1,6 +1,6 @@
 import type { TelescopeService } from '../service.js';
 import type { ScheduleEntryContent, ScheduleRunStatus } from '../watchers/schedule_watcher.js';
-import { type RegisteredSchedule, listRegisteredSchedules } from '../watchers/schedule_watcher.js';
+import { listRegisteredSchedules, type RegisteredSchedule } from '../watchers/schedule_watcher.js';
 import type { UiHttpContext } from './http.js';
 
 /**

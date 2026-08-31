@@ -4,10 +4,10 @@ import { RedactingTelescopeStore } from '../../src/redaction/redacting_store.js'
 import { setTelescopeRuntime } from '../../src/registry.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import {
+  buildEventEntry,
   type EmitterAnyLike,
   type EventEntryContent,
   EventsWatcher,
-  buildEventEntry,
 } from '../../src/watchers/index.js';
 import { clearStore, flush, installStore } from './helpers.js';
 
@@ -81,7 +81,7 @@ describe('EventsWatcher', () => {
 
       const entries = await store.list({ type: EntryType.Event });
       expect(entries).toHaveLength(1);
-      expect((entries[0]?.content as EventEntryContent).name).toBe('user:registered');
+      expect((entries[0]!.content as EventEntryContent).name).toBe('user:registered');
     });
 
     it('resolves a class-based event to its constructor name', async () => {
@@ -94,7 +94,7 @@ describe('EventsWatcher', () => {
 
       const entries = await store.list({ type: EntryType.Event });
       expect(entries).toHaveLength(1);
-      expect((entries[0]?.content as EventEntryContent).name).toBe('OrderShipped');
+      expect((entries[0]!.content as EventEntryContent).name).toBe('OrderShipped');
     });
 
     it('stops recording after stop()', async () => {
@@ -127,7 +127,7 @@ describe('EventsWatcher', () => {
 
     const entries = await inner.list({ type: EntryType.Event });
     expect(entries).toHaveLength(1);
-    const payload = (entries[0]?.content as EventEntryContent).payload as Record<string, unknown>;
+    const payload = (entries[0]!.content as EventEntryContent).payload as Record<string, unknown>;
     expect(payload.password).toBe('[REDACTED]');
     expect(payload.email).toBe('a@b.c');
   });

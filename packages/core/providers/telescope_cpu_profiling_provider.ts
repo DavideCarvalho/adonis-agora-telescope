@@ -1,5 +1,5 @@
 import type { ApplicationService } from '@adonisjs/core/types';
-import { type TelescopeCpuProfilingConfig, resolveConfig } from '../src/profiling/define_config.js';
+import { resolveConfig, type TelescopeCpuProfilingConfig } from '../src/profiling/define_config.js';
 import { ProfilerService } from '../src/profiling/profiler_service.js';
 import { setTelescopeCpuProfiler } from '../src/registry.js';
 
