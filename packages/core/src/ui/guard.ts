@@ -1,3 +1,8 @@
+import {
+  type AccessDeniedInfo,
+  type AccessDeniedOption,
+  resolveAccessDeniedPage,
+} from './access_denied_page.js';
 import type { AuthorizeHook } from './define_config.js';
 import type { UiHttpContext } from './http.js';
 
@@ -65,4 +70,79 @@ export async function enforceGuard(ctx: UiHttpContext, authorize: AuthorizeHook)
   }
   ctx.response.send({ error: result.message ?? 'Forbidden' });
   return false;
+}
+
+/** What {@link enforcePageGuard} needs to serve (or delegate) the access-denied page. */
+export interface PageGuardOptions {
+  /** The console's mount (`/telescope`) — reported to a custom renderer as `basePath`. */
+  basePath: string;
+  /** The built-in login page (`<path>/login`), present only when `dashboardAuth` is configured. */
+  loginHref?: string;
+  /** The host's `telescope_ui.accessDenied` option — tweak the built-in page, or render it. */
+  accessDenied?: AccessDeniedOption<UiHttpContext> | null;
+  /** The request's CSP nonce, applied to the page's inline `<style>`. */
+  nonce?: string;
+  /**
+   * Send the `WWW-Authenticate: Basic …` challenge on a `401`. Default `true` (what the JSON guard
+   * always did). Browsers answer that header with a native username/password prompt, which only
+   * makes sense when the built-in `basic` credentials are configured — for a host gating on its own
+   * `authorize` hook the prompt is noise over the page, so the SPA provider passes `false` then.
+   */
+  challenge?: boolean;
+}
+
+/**
+ * {@link enforceGuard} for a PAGE navigation — the `@adonis-agora/telescope-ui` SPA shell and its
+ * assets. Same decision ({@link runGuard}), same statuses, same "a redirect the hook wrote wins"
+ * rule; what differs is the body: a browser gets the built-in access-denied page (or the host's
+ * `accessDenied` customisation of it) instead of the `{ error }` JSON the API answers with. The
+ * `WWW-Authenticate` challenge still rides on a `401` unless `challenge: false`, so the built-in
+ * `basic` credentials keep prompting natively in a browser — the page is what shows if the prompt
+ * is dismissed.
+ */
+export async function enforcePageGuard(
+  ctx: UiHttpContext,
+  authorize: AuthorizeHook,
+  options: PageGuardOptions,
+): Promise<boolean> {
+  const result = await runGuard(ctx, authorize);
+  if (result.allowed) return true;
+  const answered = () => responseAnswered(ctx);
+  if (answered()) return false;
+
+  const status = result.status === 401 ? 401 : 403;
+  const info: AccessDeniedInfo = {
+    status,
+    reason: status === 401 ? 'unauthenticated' : 'forbidden',
+    basePath: options.basePath,
+    ...(options.loginHref !== undefined ? { loginHref: options.loginHref } : {}),
+    ...(options.nonce !== undefined ? { nonce: options.nonce } : {}),
+  };
+  const html = await resolveAccessDeniedPage(info, options.accessDenied, ctx, answered);
+  if (html === null) return false;
+
+  ctx.response.status(status);
+  if (status === 401 && options.challenge !== false) {
+    ctx.response.header('WWW-Authenticate', 'Basic realm="Telescope", Bearer');
+  }
+  ctx.response.header('content-type', 'text/html; charset=utf-8');
+  ctx.response.header('cache-control', 'no-store, must-revalidate');
+  ctx.response.send(html);
+  return false;
+}
+
+/**
+ * Whether something already answered this request: a redirect (`location` header — the signal the
+ * `authorize` contract has always honoured) or a body already queued. The body check reads
+ * AdonisJS's `response.hasLazyBody` (and {@link RecordingResponse}'s `sent`) structurally, so the
+ * framework-light context stays framework-light.
+ */
+function responseAnswered(ctx: UiHttpContext): boolean {
+  if (ctx.response.getHeader('location')) return true;
+  const response = ctx.response as unknown as {
+    hasLazyBody?: unknown;
+    headersSent?: unknown;
+    sent?: unknown;
+  };
+  return response.hasLazyBody === true || response.headersSent === true || response.sent === true;
 }

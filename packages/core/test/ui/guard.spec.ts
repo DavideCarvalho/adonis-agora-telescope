@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultAuthorize, resolveConfig } from '../../src/ui/define_config.js';
-import { enforceGuard, runGuard } from '../../src/ui/guard.js';
+import { enforceGuard, enforcePageGuard, runGuard } from '../../src/ui/guard.js';
 import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
 
 function ctx(
@@ -159,5 +159,109 @@ describe('resolveConfig', () => {
   it('defaults enabled to true', () => {
     expect(resolveConfig().enabled).toBe(true);
     expect(resolveConfig({ enabled: false }).enabled).toBe(false);
+  });
+});
+
+describe('enforcePageGuard (a BROWSER is refused with a page, not JSON)', () => {
+  const options = { basePath: '/telescope' };
+
+  it('returns true and leaves the response untouched when allowed', async () => {
+    const { ctx: c, res } = ctx();
+    expect(await enforcePageGuard(c, () => true, options)).toBe(true);
+    expect(res.sent).toBe(false);
+  });
+
+  it('serves the 401 page (still with WWW-Authenticate) when no credential was presented', async () => {
+    const { ctx: c, res } = ctx();
+    expect(await enforcePageGuard(c, () => false, options)).toBe(false);
+    expect(res.statusCode).toBe(401);
+    expect(res.headers['www-authenticate']).toContain('Basic');
+    expect(res.headers['content-type']).toBe('text/html; charset=utf-8');
+    expect(res.headers['cache-control']).toBe('no-store, must-revalidate');
+    expect(res.body).toContain('<!doctype html>');
+    expect(res.body).toContain('<h1>Sign in required</h1>');
+    expect(res.body).toContain('Telescope');
+  });
+
+  it('drops the WWW-Authenticate challenge when told to (no basic credentials to answer it)', async () => {
+    const { ctx: c, res } = ctx();
+    expect(await enforcePageGuard(c, () => false, { ...options, challenge: false })).toBe(false);
+    expect(res.statusCode).toBe(401);
+    expect(res.headers['www-authenticate']).toBeUndefined();
+    expect(res.body).toContain('<h1>Sign in required</h1>');
+  });
+
+  it('serves the 403 page when a credential was presented and rejected', async () => {
+    const { ctx: c, res } = ctx({}, { authorization: 'Bearer nope' });
+    expect(await enforcePageGuard(c, () => false, options)).toBe(false);
+    expect(res.statusCode).toBe(403);
+    expect(res.headers['www-authenticate']).toBeUndefined();
+    expect(res.body).toContain('<h1>Access denied</h1>');
+  });
+
+  it('offers the built-in login page when dashboardAuth exists', async () => {
+    const { ctx: c, res } = ctx();
+    await enforcePageGuard(c, () => false, { ...options, loginHref: '/telescope/login' });
+    expect(res.body).toContain('href="/telescope/login"');
+  });
+
+  it('honours the accessDenied options object', async () => {
+    const { ctx: c, res } = ctx();
+    await enforcePageGuard(c, () => false, {
+      ...options,
+      accessDenied: { title: 'Sem acesso', brand: 'Entre Textos', homeHref: '/admin' },
+    });
+    expect(res.body).toContain('<h1>Sem acesso</h1>');
+    expect(res.body).toContain('Entre Textos');
+    expect(res.body).toContain('href="/admin"');
+  });
+
+  it('serves whatever an accessDenied renderer returns, with the refusal info and the ctx', async () => {
+    const { ctx: c, res } = ctx();
+    let seen: unknown[] = [];
+    await enforcePageGuard(c, () => false, {
+      ...options,
+      accessDenied: (info, context) => {
+        seen = [info, context];
+        return '<p>custom</p>';
+      },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toBe('<p>custom</p>');
+    expect(seen[0]).toEqual({ status: 401, reason: 'unauthenticated', basePath: '/telescope' });
+    expect(seen[1]).toBe(c);
+  });
+
+  it('stands down when the renderer answered the request itself', async () => {
+    const { ctx: c, res } = ctx();
+    await enforcePageGuard(c, () => false, {
+      ...options,
+      accessDenied: (_info, context) => {
+        context.response.status(302).header('location', '/login');
+      },
+    });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('/login');
+    expect(res.sent).toBe(false);
+  });
+
+  it('keeps a redirect the authorize hook already wrote', async () => {
+    const { ctx: c, res } = ctx();
+    await enforcePageGuard(
+      c,
+      (context) => {
+        context.response.status(302).header('location', '/login');
+        return false;
+      },
+      options,
+    );
+    expect(res.statusCode).toBe(302);
+    expect(res.sent).toBe(false);
+  });
+
+  it('puts the CSP nonce on the inline <style>', async () => {
+    const { ctx: c, res } = ctx();
+    await enforcePageGuard(c, () => false, { ...options, nonce: 'n0nce' });
+    expect(res.body).toContain('<style nonce="n0nce">');
   });
 });

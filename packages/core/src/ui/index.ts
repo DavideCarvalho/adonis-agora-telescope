@@ -2,6 +2,18 @@
 export const VERSION = '0.10.0';
 
 export type {
+  AccessDeniedInfo,
+  AccessDeniedPageOptions,
+  AccessDeniedReason,
+} from './access_denied_page.js';
+// — the built-in "access denied" page (what a browser sees on a refused page navigation) —
+export {
+  CONSOLE as ACCESS_DENIED_CONSOLE,
+  escapeHtml,
+  renderAccessDeniedPage,
+  resolveAccessDeniedPage,
+} from './access_denied_page.js';
+export type {
   EntrySummary,
   RetentionInfo,
   RetentionOptions,
@@ -34,6 +46,8 @@ export {
   writeSessionCookie,
 } from './dashboard_auth.js';
 export type {
+  AccessDeniedOption,
+  AccessDeniedRenderer,
   AuthorizeHook,
   ReplayConfig,
   ResolvedTelescopeUiConfig,
@@ -45,9 +59,9 @@ export { defaultAuthorize, defineConfig, normalizePath, resolveConfig } from './
 export type { PagedTableData, TablePagination } from './ext_table.js';
 // — paged extension-dashboard tables —
 export { fillLinkHref, tablePagination } from './ext_table.js';
-export type { GuardResult } from './guard.js';
+export type { GuardResult, PageGuardOptions } from './guard.js';
 // — auth guard —
-export { enforceGuard, runGuard } from './guard.js';
+export { enforceGuard, enforcePageGuard, runGuard } from './guard.js';
 export type { SseSink, UiHttpContext, UiRequest, UiResponse } from './http.js';
 // — HTTP shapes (framework-light) —
 export {

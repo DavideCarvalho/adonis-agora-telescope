@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises';
 import {
   type AuthorizeHook,
   enforceDashboardAuth,
-  enforceGuard,
+  enforcePageGuard,
+  type PageGuardOptions,
   type ResolvedDashboardAuth,
   resolveConfig as resolveUiConfig,
   type TelescopeUiConfig,
@@ -27,7 +28,8 @@ import {
  * Serves the `@adonis-agora/telescope-ui` observability SPA (a Vite build in `dist/spa`) as static
  * assets under the SAME prefix the core `telescope_ui` provider mounts its JSON API + SSE stream
  * (`config('telescope_ui').path`, default `/telescope`), behind the SAME `authorize` guard via the
- * core {@link enforceGuard}. This is a thin, idiomatic AdonisJS static server — no NestJS module, no
+ * core {@link enforcePageGuard} (the page-flavoured `enforceGuard`: a refused browser gets the
+ * access-denied page, not the API's JSON). This is a thin, idiomatic AdonisJS static server — no NestJS module, no
  * bundled API. The SPA calls the telescope core's own real read routes (`<path>/api/*`) and the SSE
  * live stream (`<path>/api/stream`).
  *
@@ -71,6 +73,16 @@ export default class TelescopeUiDashboardProvider {
     // The built-in login page is registered by the core `telescope_ui` provider under the resolved
     // `telescope_ui.path`; a page navigation with no valid session redirects there.
     const loginBase = uiConfig.path;
+    // What a refused browser sees (the core guard's JSON is for the API). `basePath` is where THIS
+    // SPA lives, which may differ from `loginBase` when `dashboard.path` overrides the mount.
+    const denial: PageGuardOptions = {
+      basePath: path,
+      ...(auth !== null ? { loginHref: `${loginBase}/login` } : {}),
+      accessDenied: uiConfig.accessDenied,
+      // A browser answers `WWW-Authenticate: Basic` with a native prompt — wanted only when the
+      // built-in `basic` credentials can actually accept it; otherwise it is noise over the page.
+      challenge: uiConfig.credentials.basic !== undefined,
+    };
 
     // Resolve the router from the container — NOT the `@adonisjs/core/services/router` façade,
     // whose default export is populated only inside `app.booted()` (which runs AFTER every
@@ -84,7 +96,7 @@ export default class TelescopeUiDashboardProvider {
     // relative `./assets/*` URLs to absolute `<mount>/assets/*`, so they resolve regardless of the
     // trailing slash — no redirect, no collision.
     router.get(mount, async (ctx) => {
-      if (!(await this.gate(ctx, guard, auth, loginBase))) return;
+      if (!(await this.gate(ctx, guard, auth, loginBase, denial))) return;
       await this.sendIndex(ctx, mount, apiBase);
     });
 
@@ -92,7 +104,7 @@ export default class TelescopeUiDashboardProvider {
     // client-rendered console still boots on a deep link. The static `<mount>/api/*` routes the core
     // provider registers take precedence over this wildcard in the router.
     router.get(`${mount}/*`, async (ctx) => {
-      if (!(await this.gate(ctx, guard, auth, loginBase))) return;
+      if (!(await this.gate(ctx, guard, auth, loginBase, denial))) return;
       const segments = safeAssetSegments(ctx.params['*']);
       if (segments === null) {
         return ctx.response.status(400).json({ error: 'bad asset path' });
@@ -102,19 +114,22 @@ export default class TelescopeUiDashboardProvider {
   }
 
   /**
-   * Run the composed dashboard guard, mirroring the JSON API routes: the `authorize` hook FIRST,
-   * then — only when `dashboardAuth` is configured — the signed-session guard in `page` mode (a
-   * page navigation with no valid session is redirected `302` to the login page). Returns `true` to
-   * proceed; on denial the guard has already written the response and this returns `false`. When
-   * `dashboardAuth` is omitted (`auth === null`) this is exactly the `authorize` guard, unchanged.
+   * Run the composed dashboard guard, mirroring the JSON API routes: the `authorize` hook FIRST
+   * (answering a refused BROWSER with the access-denied page rather than the API's JSON), then —
+   * only when `dashboardAuth` is configured — the signed-session guard in `page` mode (a page
+   * navigation with no valid session is redirected `302` to the login page). Returns `true` to
+   * proceed; on denial the guard has already written the response and this returns `false`.
    */
   private async gate(
     ctx: HttpContext,
     guard: AuthorizeHook,
     auth: ResolvedDashboardAuth | null,
     loginBase: string,
+    denial: PageGuardOptions,
   ): Promise<boolean> {
-    if (!(await enforceGuard(ctx as unknown as UiHttpContext, guard))) return false;
+    const nonce = cspNonce(ctx);
+    const options: PageGuardOptions = nonce !== undefined ? { ...denial, nonce } : denial;
+    if (!(await enforcePageGuard(ctx as unknown as UiHttpContext, guard, options))) return false;
     if (auth === null) return true;
     return enforceDashboardAuth(ctx, auth, 'page', loginBase);
   }
@@ -151,4 +166,14 @@ export default class TelescopeUiDashboardProvider {
       throw error;
     }
   }
+}
+
+/**
+ * The request's CSP nonce when the host runs `@adonisjs/shield` with `@nonce` in its policy (shield
+ * exposes it as `response.nonce`). Read structurally: this package neither depends on shield nor
+ * cares which middleware minted the nonce — only that the page's inline `<style>` carries it.
+ */
+function cspNonce(ctx: HttpContext): string | undefined {
+  const nonce = (ctx.response as unknown as { nonce?: unknown }).nonce;
+  return typeof nonce === 'string' && nonce !== '' ? nonce : undefined;
 }

@@ -44,7 +44,7 @@
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.spa.json --noEmit && tsc -p tsconfig.tests.json"
   },
   "peerDependencies": {
-    "@adonis-agora/telescope": ">=0.7.0 <1.0.0",
+    "@adonis-agora/telescope": ">=0.11.0 <1.0.0",
     "@adonisjs/core": "^7.3.0"
   },
   "peerDependenciesMeta": {

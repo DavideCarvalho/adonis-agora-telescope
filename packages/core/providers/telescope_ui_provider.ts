@@ -7,7 +7,7 @@ import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { TelescopeApi } from '../src/ui/api.js';
-import { performLogin } from '../src/ui/auth.js';
+import { performLogin, sanitizeReturnTo } from '../src/ui/auth.js';
 import {
   clearSessionCookie,
   enforceDashboardAuth,
@@ -154,17 +154,42 @@ export default class TelescopeUiProvider {
         .get(loginPath, async (ctx: HttpContext) => {
           ctx.response.header('content-type', 'text/html; charset=utf-8');
           ctx.response.header('cache-control', 'no-store, must-revalidate');
-          return ctx.response.send(renderLoginPage(config.path));
+          const qs = ctx.request.qs();
+          const nonce = cspNonce(ctx);
+          return ctx.response.send(
+            renderLoginPage(config.path, {
+              ...(nonce !== undefined ? { nonce } : {}),
+              error: qs.error !== undefined,
+              returnTo: qs.returnTo,
+            }),
+          );
         })
         .as('telescope_ui.login.page');
 
       // `POST <path>/login` → verify credentials via the host `login` hook and mint the cookie.
       // Uniform `401` on ANY failure (unknown user, wrong password, or a throwing hook) so there is
       // no user-enumeration; a throwing hook is warn-logged once, never surfaced to the client.
+      // Two callers: the page's own `fetch` (JSON in, JSON out) and, with JavaScript off or its
+      // inline script dropped by a CSP, the same page as a classic form post (form-encoded in, a
+      // redirect out: to `returnTo` on success, back to the login page with `?error` on failure).
       router
         .post(loginPath, async (ctx: HttpContext) => {
-          const outcome = await performLogin(auth, ctx.request.body(), config.path);
+          const body = ctx.request.body();
+          const outcome = await performLogin(auth, body, config.path);
+          const form = isFormPost(ctx);
+          const backToLogin = () =>
+            ctx.response
+              .redirect()
+              .withQs({
+                error: '1',
+                returnTo: sanitizeReturnTo(
+                  (body as { returnTo?: unknown } | null)?.returnTo,
+                  config.path,
+                ),
+              })
+              .toPath(loginPath);
           if (outcome.kind === 'bad-request') {
+            if (form) return backToLogin();
             return ctx.response.status(400).json({ error: outcome.message });
           }
           if (outcome.kind === 'unauthorized') {
@@ -177,9 +202,11 @@ export default class TelescopeUiProvider {
               const logger = await this.app.container.make('logger');
               logger.warn(`dashboardAuth login hook threw; treating as denial. ${message}`);
             }
+            if (form) return backToLogin();
             return ctx.response.status(401).json({ error: outcome.message });
           }
           writeSessionCookie(ctx, auth, outcome.cookieValue);
+          if (form) return ctx.response.redirect().toPath(outcome.redirectTo);
           return ctx.response.status(200).json({ redirectTo: outcome.redirectTo });
         })
         .as('telescope_ui.login.submit');
@@ -473,6 +500,27 @@ interface StreamContext extends UiHttpContext {
 
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * The request's CSP nonce when the host runs `@adonisjs/shield` with `@nonce` in its policy (shield
+ * exposes it as `response.nonce`). Read structurally: this package neither depends on shield nor
+ * cares which middleware minted the nonce — only that the login page's inline `<script>`/`<style>`
+ * carry it, so the policy keeps them instead of silently dropping them.
+ */
+function cspNonce(ctx: HttpContext): string | undefined {
+  const nonce = (ctx.response as unknown as { nonce?: unknown }).nonce;
+  return typeof nonce === 'string' && nonce !== '' ? nonce : undefined;
+}
+
+/**
+ * Whether a login `POST` came from a classic HTML form submit (form-encoded — JavaScript off, or
+ * the page's inline script dropped by a CSP) rather than the page's own JSON `fetch`. Decides
+ * whether the reply is a redirect (a browser navigating) or JSON (a script awaiting it).
+ */
+function isFormPost(ctx: HttpContext): boolean {
+  const type = ctx.request.header('content-type') ?? '';
+  return type.includes('application/x-www-form-urlencoded') || type.includes('multipart/form-data');
 }
 
 /**

@@ -1,9 +1,26 @@
+import type {
+  AccessDeniedOption as GenericAccessDeniedOption,
+  AccessDeniedRenderer as GenericAccessDeniedRenderer,
+} from './access_denied_page.js';
 import {
   type DashboardAuthOptions,
   type ResolvedDashboardAuth,
   resolveDashboardAuth,
 } from './auth.js';
 import type { UiHttpContext } from './http.js';
+
+/**
+ * The function form of {@link TelescopeUiConfig.accessDenied}: render (or answer) a refused page
+ * navigation yourself. Receives the refusal ({@link AccessDeniedInfo}) and the (framework-light)
+ * HTTP context — the real AdonisJS `HttpContext` at runtime, cast down like the `authorize` hook's.
+ * Return an HTML string to have it served; answer the request yourself (a redirect, most commonly)
+ * and return nothing to make the guard stand down; return nothing WITHOUT answering and the
+ * built-in page is served.
+ */
+export type AccessDeniedRenderer = GenericAccessDeniedRenderer<UiHttpContext>;
+
+/** `accessDenied` in either form — an options object for the built-in page, or a renderer. */
+export type AccessDeniedOption = GenericAccessDeniedOption<UiHttpContext>;
 
 /**
  * The decision hook gating the dashboard + JSON API. Return `true` to allow the
@@ -71,6 +88,20 @@ export interface TelescopeUiConfig {
    */
   dashboardAuth?: DashboardAuthOptions;
 
+  /**
+   * What a BROWSER sees when the guard refuses a page navigation — the `@adonis-agora/telescope-ui`
+   * SPA shell or its assets. API requests are unaffected: they keep getting the JSON the SPA relies
+   * on (`401`/`403 { error }`).
+   *
+   * Omit it for the built-in page — a dark card in the console's own visual language, with the
+   * status, a sentence explaining the refusal, a "Back to app" link and, when `dashboardAuth` is
+   * configured, a "Sign in" button. Pass an object to tweak that page (`brand`, `title`, `message`,
+   * `homeHref`, `loginHref`, `accent`, …), or a function to render/answer it yourself — see
+   * {@link AccessDeniedRenderer}. Either way, an `authorize` hook that already wrote a redirect
+   * still wins: the guard never overwrites a `location` header.
+   */
+  accessDenied?: AccessDeniedOption;
+
   // — request replay (additive: keep in its own region for trivial merges) —
   /**
    * Request REPLAY: re-issue a captured `request` entry against the LOCAL server
@@ -123,6 +154,8 @@ export interface ResolvedTelescopeUiConfig {
   credentials: UiCredentials;
   /** Resolved built-in login config, or `null` when `dashboardAuth` is unconfigured. */
   dashboardAuth: ResolvedDashboardAuth | null;
+  /** The host's `accessDenied` option as given, or `null` for the built-in page with defaults. */
+  accessDenied: AccessDeniedOption | null;
   /** Resolved request-replay settings (disabled by default). */
   replay: { enabled: boolean; port?: number; timeoutMs?: number };
   /** Resolved CPU-profiling arm-trigger gate (disabled by default). */
@@ -230,6 +263,7 @@ export function resolveConfig(config: TelescopeUiConfig = {}): ResolvedTelescope
     // Validate + resolve now so a misconfigured secret/login fails closed at boot, not on the first
     // login attempt. `null` when `dashboardAuth` is omitted (behavior unchanged).
     dashboardAuth: resolveDashboardAuth(config.dashboardAuth),
+    accessDenied: config.accessDenied ?? null,
     replay: {
       // Safe default: replay is OFF unless the host explicitly enables it.
       enabled: config.replay?.enabled ?? false,
