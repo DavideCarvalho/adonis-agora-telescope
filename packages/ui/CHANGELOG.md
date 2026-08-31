@@ -1,5 +1,19 @@
 # @adonis-agora/telescope-ui
 
+## 1.1.3
+
+### Patch Changes
+
+- [#38](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/38) [`2c15898`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/2c1589856f0e58afd3bd4d33ab6a266fcf938bb6) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Dashboard: survives a nonce CSP.
+  
+  The provider used to hand the SPA its JSON API base as an inline `<script>` setting
+  `window.__TELESCOPE_DASHBOARD_BASE__`. A host with `script-src 'self' 'nonce-…'` (`@adonisjs/shield`'s
+  `@nonce`, the recommended setup) drops that script silently; the SPA then derived a base from its own
+  URL — right for the usual `<mount>/api` layout, but every request 404s on a custom one, from a
+  console that rendered perfectly well. `injectApiBase` now emits a `<script type="application/json">`
+  data block, which is never executed and so cannot be refused, and `resolveApiBase` reads it first
+  (the global is still honoured after it). Nothing to change on the host.
+
 ## 1.1.2
 
 ### Patch Changes

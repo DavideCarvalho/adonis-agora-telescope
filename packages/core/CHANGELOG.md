@@ -1,5 +1,18 @@
 # @adonis-agora/telescope
 
+## 0.10.0
+
+### Minor Changes
+
+- [#38](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/38) [`2c15898`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/2c1589856f0e58afd3bd4d33ab6a266fcf938bb6) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Remove `renderDashboard` from `@adonis-agora/telescope/ui`, and the `dashboard.html` it served.
+  
+  It was the console before `@adonis-agora/telescope-ui` existed: one self-contained page whose whole
+  UI was an inline `<script>`. Nothing has routed it since the React console replaced it, and it
+  could not have worked under the CSP a shield-hardened host runs (`script-src 'self' 'nonce-…'`
+  drops that script whole, leaving a blank page). The docs no longer offer it as a "build your own
+  UI" option either — that path is the JSON API, which is what the console itself consumes. The
+  `fillLinkHref` / `tablePagination` helpers it mirrored stay exported.
+
 ## 0.9.1
 
 ### Patch Changes
