@@ -1,5 +1,12 @@
 # @adonis-agora/telescope-ui
 
+## 1.1.2
+
+### Patch Changes
+
+- [#36](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/36) [`ac10e00`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/ac10e00db3252fce285bd57f9c40a17c2eaec2bd) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - UI rebuilt on Tailwind 4, React 19 and Vite 8 — same tokens and layout; opacity modifiers now
+  resolve through `color-mix` instead of the old colour-function trick.
+
 ## 1.1.1
 
 ### Patch Changes
