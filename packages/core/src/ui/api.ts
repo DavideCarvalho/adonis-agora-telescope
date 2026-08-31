@@ -1,5 +1,5 @@
-import { EntryType } from '../entry.js';
 import type { Entry } from '../entry.js';
+import { EntryType } from '../entry.js';
 import { MetricsService, type MetricsServiceOptions } from '../metrics/metrics_service.js';
 import { PulseService, type PulseServiceOptions } from '../metrics/pulse.js';
 import type { RequestEntryContent } from '../request_watcher.js';

@@ -1,5 +1,5 @@
-import { EntryType } from '../entry.js';
 import type { Entry } from '../entry.js';
+import { EntryType } from '../entry.js';
 import type { ProfilerService, ProfilerStatus } from '../profiling/profiler_service.js';
 import type { CpuProfileContent } from '../profiling/types.js';
 import type { TelescopeService } from '../service.js';

@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EntryType } from '../../src/entry.js';
 import { setTelescopeRuntime } from '../../src/registry.js';
 import {
+  buildMailEntry,
   MAIL_SENT_EVENT,
   type MailEntryContent,
   MailWatcher,
-  buildMailEntry,
 } from '../../src/watchers/index.js';
 import {
   clearStore,

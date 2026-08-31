@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { formatCount, formatRelative } from '../client/format.js';
-import { WindowSelect } from './WindowSelect.js';
 import {
   Table,
   TableBody,
@@ -9,8 +8,9 @@ import {
   TableHeader,
   TableRow,
 } from './primitives/table.js';
-import { AsyncBlock, Panel, SectionTitle, Sparkline, clickable } from './ui.js';
+import { AsyncBlock, clickable, Panel, SectionTitle, Sparkline } from './ui.js';
 import { useMetricsStats } from './use-telescope.js';
+import { WindowSelect } from './WindowSelect.js';
 
 /**
  * Exception groups: `exception` entries grouped by class + message over a window, with an occurrence

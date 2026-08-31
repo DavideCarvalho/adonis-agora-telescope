@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { EntryType } from '../src/entry.js';
 import { exceptionFamilyHash } from '../src/exception_family_hash.js';
 import {
-  type ExceptionEntryContent,
   buildExceptionInput,
+  type ExceptionEntryContent,
   recordException,
   recordExceptionInStore,
 } from '../src/exception_watcher.js';

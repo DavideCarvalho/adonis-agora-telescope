@@ -10,7 +10,7 @@ import {
   TableRow,
 } from './primitives/table.js';
 import { Tabs, TabsList, TabsTab } from './primitives/tabs.js';
-import { AsyncBlock, Panel, SectionTitle, TypeBadge, clickable, typeColor } from './ui.js';
+import { AsyncBlock, clickable, Panel, SectionTitle, TypeBadge, typeColor } from './ui.js';
 import { type AsyncState, useNPlusOne, useTraceEntries, useWaterfall } from './use-telescope.js';
 
 /** A flat waterfall row (depth-first) carrying the geometry for one bar. */

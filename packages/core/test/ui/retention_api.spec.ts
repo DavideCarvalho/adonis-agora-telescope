@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TelescopeService } from '../../src/service.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import { type RetentionInfo, TelescopeApi } from '../../src/ui/api.js';
-import { RecordingResponse, makeRequest } from '../../src/ui/http.js';
+import { makeRequest, RecordingResponse } from '../../src/ui/http.js';
 
 function ctx() {
   const res = new RecordingResponse();

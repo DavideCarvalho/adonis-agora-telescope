@@ -76,7 +76,7 @@ describe('recordRequest', () => {
     await recordRequest(store, stubCtx('GET', '/', 204), Date.now(), { durationMs: 999 });
     const entry = (await store.list())[0];
     expect(entry?.durationMs).toBe(999);
-    expect((entry?.content as { durationMs: number }).durationMs).toBe(999);
+    expect((entry!.content as { durationMs: number }).durationMs).toBe(999);
   });
 
   it('records an explicit traceId onto the entry and content', async () => {
@@ -84,7 +84,7 @@ describe('recordRequest', () => {
     await recordRequest(store, stubCtx('GET', '/', 200), Date.now(), { traceId: 'tr-9' });
     const entry = (await store.list())[0];
     expect(entry?.traceId).toBe('tr-9');
-    expect((entry?.content as { traceId: string | null }).traceId).toBe('tr-9');
+    expect((entry!.content as { traceId: string | null }).traceId).toBe('tr-9');
   });
 });
 

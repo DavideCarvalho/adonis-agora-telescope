@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Diagnosis } from '../../src/ai/diagnoser.js';
-import { DiagnosisCoordinator } from '../../src/ai/diagnosis_coordinator.js';
 import type { DiagnoserLike } from '../../src/ai/diagnosis_coordinator.js';
+import { DiagnosisCoordinator } from '../../src/ai/diagnosis_coordinator.js';
 import type { RecordInput } from '../../src/entry.js';
 import { TelescopeService } from '../../src/service.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import { DiagnosisApi } from '../../src/ui/diagnosis_api.js';
-import { RecordingResponse, type UiHttpContext, makeRequest } from '../../src/ui/http.js';
+import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
 
 function ctx(): { ctx: UiHttpContext; res: RecordingResponse } {
   const res = new RecordingResponse();

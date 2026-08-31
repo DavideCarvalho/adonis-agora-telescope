@@ -56,11 +56,11 @@ export function EntryDetail({
               <SectionTitle title="Details" />
               <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]">
                 <dt className="text-muted-foreground">ID</dt>
-                <dd className="mono m-0 break-words">{entry.id}</dd>
+                <dd className="mono m-0 wrap-break-word">{entry.id}</dd>
                 <dt className="text-muted-foreground">Type</dt>
                 <dd className="m-0">{entry.type}</dd>
                 <dt className="text-muted-foreground">Family</dt>
-                <dd className="mono m-0 break-words">{entry.familyHash ?? '—'}</dd>
+                <dd className="mono m-0 wrap-break-word">{entry.familyHash ?? '—'}</dd>
                 <dt className="text-muted-foreground">Duration</dt>
                 <dd className="tnum m-0">{formatDuration(entry.durationMs)}</dd>
                 <dt className="text-muted-foreground">Sequence</dt>
@@ -185,7 +185,7 @@ function DiagnosePanel({ entryId, aiEnabled }: { entryId: string; aiEnabled: boo
         <h3 className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
           AI diagnosis
           {isCached && (
-            <span className="rounded bg-panel px-1.5 py-0.5 text-[10px] normal-case text-warn">
+            <span className="rounded-sm bg-panel px-1.5 py-0.5 text-[10px] normal-case text-warn">
               cached
             </span>
           )}
@@ -206,7 +206,7 @@ function DiagnosePanel({ entryId, aiEnabled }: { entryId: string; aiEnabled: boo
         result.ok ? (
           <Markdown source={result.markdown} />
         ) : (
-          <p className="rounded bg-panel p-3 text-xs text-bad">{result.message}</p>
+          <p className="rounded-sm bg-panel p-3 text-xs text-bad">{result.message}</p>
         )
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -270,7 +270,7 @@ function parseMarkdownBlocks(source: string): MarkdownBlock[] {
 function Markdown({ source }: { source: string }) {
   const blocks = parseMarkdownBlocks(source);
   return (
-    <div className="rounded bg-panel p-3">
+    <div className="rounded-sm bg-panel p-3">
       {blocks.map((block) => {
         if (block.kind === 'heading') {
           return (
@@ -340,7 +340,7 @@ function ReplayPanel({ entryId }: { entryId: string }) {
         </p>
       ) : result !== null ? (
         result.ok ? (
-          <div className="rounded bg-panel p-3 text-xs">
+          <div className="rounded-sm bg-panel p-3 text-xs">
             <div className="mono flex items-center gap-3">
               <span className={cn(statusToneClass(result.status))}>{result.status}</span>
               <span className="tnum text-muted-foreground">{result.durationMs}ms</span>
@@ -349,7 +349,7 @@ function ReplayPanel({ entryId }: { entryId: string }) {
             {result.body && <pre className={cn(CODE_CLASS, 'max-h-48')}>{result.body}</pre>}
           </div>
         ) : (
-          <p className="rounded bg-panel p-3 text-xs text-bad">{result.message}</p>
+          <p className="rounded-sm bg-panel p-3 text-xs text-bad">{result.message}</p>
         )
       ) : (
         <p className="text-xs text-muted-foreground">

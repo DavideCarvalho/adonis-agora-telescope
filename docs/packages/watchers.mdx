@@ -593,8 +593,8 @@ internals). AdonisJS has no equivalent object to read a running/stopped flag off
 `cron-parser` has shipped two incompatible top-level shapes across its major versions: v4
 exposes `parseExpression(expr, opts)` directly; v5 moved it to
 `CronExpressionParser.parse(expr, opts)`. `registerSchedule`'s next-run computation tries both,
-so either major version works — a real compatibility gap in `@adonis-agora/durable`'s own
-`cron-parser` usage (which only calls the v4 shape) that this watcher does not repeat.
+so either major version works — the same detection `@adonis-agora/durable` applies to its own
+scheduler, so one installed copy of either major serves both packages.
 </Callout>
 
 ## Building your own watcher

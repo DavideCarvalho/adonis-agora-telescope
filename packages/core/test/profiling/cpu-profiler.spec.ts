@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CpuProfiler } from '../../src/profiling/cpu-profiler.js';
 import type { InspectorSessionLike } from '../../src/profiling/cpu-profiler.js';
+import { CpuProfiler } from '../../src/profiling/cpu-profiler.js';
 import type { V8CpuProfile } from '../../src/profiling/types.js';
 
 const SAMPLE_PROFILE: V8CpuProfile = {

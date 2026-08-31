@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   type AlertChannel,
-  type AlertPayload,
   Alerter,
+  type AlertPayload,
   DEFAULT_RULES,
   ExceptionPoller,
   resolveConfig,

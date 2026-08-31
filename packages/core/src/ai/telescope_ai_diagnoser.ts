@@ -1,7 +1,7 @@
 import type { Entry } from '../entry.js';
 import { type Diagnosis, type ExceptionEntryContent, parseDiagnosis } from './diagnoser.js';
 import { DiagnosisCache, type DiagnosisStore } from './diagnosis_cache.js';
-import { type RelatedEntrySummary, SYSTEM_PROMPT, buildUserPrompt } from './prompt.js';
+import { buildUserPrompt, type RelatedEntrySummary, SYSTEM_PROMPT } from './prompt.js';
 
 /**
  * The minimal slice of the Anthropic SDK client the diagnoser uses. Declared

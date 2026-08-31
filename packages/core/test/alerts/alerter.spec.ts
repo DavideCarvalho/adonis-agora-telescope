@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   type AlertChannel,
-  type AlertPayload,
   Alerter,
+  type AlertPayload,
   type ResolvedAlerts,
 } from '../../src/alerts/index.js';
 import type { Entry } from '../../src/entry.js';

@@ -4,8 +4,8 @@ import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js
 import type { Entry } from '../src/entry.js';
 import {
   type ResolvedTelescopeMcpConfig,
-  type TelescopeMcpConfig,
   resolveConfig,
+  type TelescopeMcpConfig,
 } from '../src/mcp/define_config.js';
 import { VERSION } from '../src/mcp/index.js';
 import type { DiagnoseExceptionHook } from '../src/mcp/server.js';

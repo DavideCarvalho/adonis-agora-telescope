@@ -4,12 +4,12 @@ import { RedactingTelescopeStore } from '../../src/redaction/redacting_store.js'
 import { setTelescopeRuntime } from '../../src/registry.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import {
+  buildRedisEntry,
   type RedisCommandLike,
   type RedisConnectionLike,
   type RedisEntryContent,
   type RedisManagerLike,
   RedisWatcher,
-  buildRedisEntry,
 } from '../../src/watchers/index.js';
 import { clearStore, flush, installStore } from './helpers.js';
 
@@ -102,7 +102,7 @@ describe('RedisWatcher', () => {
 
       const entries = await store.list({ type: EntryType.Redis });
       expect(entries).toHaveLength(1);
-      expect((entries[0]?.content as RedisEntryContent).command).toBe('DEL');
+      expect((entries[0]!.content as RedisEntryContent).command).toBe('DEL');
 
       watcher.stop();
     });
@@ -146,7 +146,7 @@ describe('RedisWatcher', () => {
 
     const entries = await inner.list({ type: EntryType.Redis });
     expect(entries).toHaveLength(1);
-    const args = (entries[0]?.content as RedisEntryContent).args as unknown[];
+    const args = (entries[0]!.content as RedisEntryContent).args as unknown[];
     expect(args[1]).toEqual({ token: '[REDACTED]' });
 
     watcher.stop();

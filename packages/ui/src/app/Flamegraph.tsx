@@ -44,7 +44,7 @@ export function Flamegraph({ tree }: { tree: FlameNode }) {
         <button
           type="button"
           onClick={() => setFocusKey('0')}
-          className="mb-2 rounded border border-line px-2 py-0.5 text-[10px] text-foreground hover:bg-panel-2"
+          className="mb-2 rounded-sm border border-line px-2 py-0.5 text-[10px] text-foreground hover:bg-panel-2"
         >
           ← Reset zoom
         </button>

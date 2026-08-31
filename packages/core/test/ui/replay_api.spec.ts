@@ -4,7 +4,7 @@ import { TelescopeService } from '../../src/service.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import { TelescopeApi } from '../../src/ui/api.js';
 import { resolveConfig } from '../../src/ui/define_config.js';
-import { RecordingResponse, type UiHttpContext, makeRequest } from '../../src/ui/http.js';
+import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
 import type { ReplayTransport } from '../../src/ui/request_replay.js';
 
 function ctx(): { ctx: UiHttpContext; res: RecordingResponse } {

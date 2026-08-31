@@ -5,11 +5,11 @@ import { RedactingTelescopeStore } from '../../src/redaction/redacting_store.js'
 import { setTelescopeRuntime } from '../../src/registry.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import {
+  buildJobEntry,
   type JobEntryContent,
   type JobExecuteMessageLike,
   QUEUE_EXECUTE_CHANNEL,
   QueueWatcher,
-  buildJobEntry,
 } from '../../src/watchers/index.js';
 import { clearStore, flush, installStore } from './helpers.js';
 
@@ -118,7 +118,7 @@ describe('QueueWatcher', () => {
 
     const entries = await inner.list({ type: EntryType.Job });
     expect(entries).toHaveLength(1);
-    const payload = (entries[0]?.content as JobEntryContent).payload as Record<string, unknown>;
+    const payload = (entries[0]!.content as JobEntryContent).payload as Record<string, unknown>;
     expect(payload.password).toBe('[REDACTED]');
     expect(payload.user).toBe('x');
 

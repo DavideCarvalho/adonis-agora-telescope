@@ -94,9 +94,17 @@
       "default": "./dist/providers/telescope_cpu_profiling_provider.js"
     }
   },
-  "files": ["dist/", "README.md", "CHANGELOG.md", "skills"],
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "skills"
+  ],
   "//sideEffects": "registry.ts publishes the telescope runtime handle on a Symbol.for() global slot at import time — process-global state a bundler told sideEffects:false could tree-shake. The rest is pure.",
-  "sideEffects": ["**/registry.js", "**/registry.ts"],
+  "sideEffects": [
+    "**/registry.js",
+    "**/registry.ts"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs && pnpm run copy:assets",
     "copy:stubs": "mkdir -p dist/stubs && cp -R stubs/config dist/stubs/ && cp -R stubs/database dist/stubs/",
@@ -107,10 +115,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json"
   },
   "peerDependencies": {
+    "@adonisjs/cache": "^2.1.0",
     "@adonisjs/core": "^7.3.0",
     "@adonisjs/lucid": "^22.4.0",
     "@adonisjs/mail": "^10.2.0",
-    "@adonisjs/cache": "^2.1.0",
     "@anthropic-ai/sdk": ">=0.32.0 <1.0.0",
     "cron-parser": "^4.0.0 || ^5.0.0"
   },
@@ -132,18 +140,18 @@
     }
   },
   "devDependencies": {
-    "@adonisjs/assembler": "8.4.0",
-    "@adonisjs/core": "7.4.0",
+    "@adonisjs/assembler": "8.5.0",
+    "@adonisjs/core": "7.5.0",
     "@adonisjs/lucid": "22.4.2",
-    "@anthropic-ai/sdk": "0.116.0",
-    "@tanstack/intent": "^0.3.2",
-    "@types/better-sqlite3": "7.6.13",
-    "@types/node": "20.19.43",
-    "better-sqlite3": "12.11.1",
-    "cron-parser": "4.9.0",
+    "@anthropic-ai/sdk": "0.122.0",
+    "@tanstack/intent": "^0.3.7",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.4.0",
+    "better-sqlite3": "13.0.3",
+    "cron-parser": "5.10.0",
     "luxon": "3.7.2",
-    "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=20.6.0"

@@ -8,7 +8,7 @@ import type { TelescopeExtension } from './extension/types.js';
 import { PULSE_CARDS, type PulseCardName } from './metrics/pulse.js';
 import type { RedactBounds } from './redaction/redact.js';
 import type { RequestCaptureOptions } from './request_watcher.js';
-import { type SamplingConfig, resolveSampling } from './sampling/sampling.js';
+import { resolveSampling, type SamplingConfig } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
 import type { LogLevel, LogsWatcherOptions } from './watchers/logs_watcher.js';
@@ -431,10 +431,10 @@ function resolvePrune(prune: TelescopeConfig['prune']): ResolvedTelescopeConfig[
   };
 }
 
-export { storage };
 export type {
   LucidStoreConfig,
   MemoryStoreConfig,
   StoreContext,
   StoreProvider,
 } from './stores/factory.js';
+export { storage };

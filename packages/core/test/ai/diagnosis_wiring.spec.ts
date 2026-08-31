@@ -7,10 +7,10 @@ import {
 } from '../../src/ai/telescope_ai_diagnoser.js';
 import {
   type AlertChannel,
-  type AlertPayload,
   Alerter,
-  type ResolvedAlerts,
+  type AlertPayload,
   formatSlackMessage,
+  type ResolvedAlerts,
 } from '../../src/alerts/index.js';
 import type { Entry } from '../../src/entry.js';
 import { EntryType } from '../../src/entry.js';

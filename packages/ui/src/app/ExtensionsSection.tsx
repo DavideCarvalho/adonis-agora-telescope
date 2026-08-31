@@ -423,7 +423,7 @@ function renderCell(
     return (
       <button
         type="button"
-        className="rounded border border-line px-1.5 py-0.5 text-[11px] text-brand"
+        className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-brand"
         onClick={(e) => {
           e.stopPropagation();
           onOpenTrace(traceId);
@@ -436,7 +436,7 @@ function renderCell(
   if (/^(javascript|data|vbscript):/i.test(href)) return value;
   return (
     <a
-      className="rounded border border-line px-1.5 py-0.5 text-[11px] text-brand"
+      className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-brand"
       href={href}
       target={col.link.external ? '_blank' : undefined}
       rel="noreferrer"

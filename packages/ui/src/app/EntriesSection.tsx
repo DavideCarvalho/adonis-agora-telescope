@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from './primitives/table.js';
-import { AsyncBlock, Panel, SectionTitle, TypeBadge, clickable } from './ui.js';
+import { AsyncBlock, clickable, Panel, SectionTitle, TypeBadge } from './ui.js';
 import { useEntries, useLiveTail } from './use-telescope.js';
 
 /**
@@ -80,7 +80,7 @@ export function EntriesSection({
               value={type}
               onValueChange={(next) => setType(typeof next === 'string' ? next : '')}
             >
-              <SelectTrigger aria-label="filter by type" className="min-w-[9rem]">
+              <SelectTrigger aria-label="filter by type" className="min-w-36">
                 <SelectValue>{(v: string | null) => (v ? v : 'All types')}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -201,7 +201,7 @@ export function EntriesSection({
                         {e.traceId && (
                           <button
                             type="button"
-                            className="rounded border border-line px-1.5 py-0.5 text-[11px] text-brand"
+                            className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-brand"
                             onClick={(ev) => {
                               ev.stopPropagation();
                               onOpenTrace(e.traceId as string);

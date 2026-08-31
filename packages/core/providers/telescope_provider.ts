@@ -6,8 +6,8 @@ import {
 } from '../src/client_errors/index.js';
 import {
   type ResolvedTelescopeConfig,
-  type TelescopeConfig,
   resolveConfig,
+  type TelescopeConfig,
 } from '../src/define_config.js';
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';

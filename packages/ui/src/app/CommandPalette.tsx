@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ENTRY_TYPES } from '../client/types.js';
 import type { DashboardSpec } from '../client/types.js';
+import { ENTRY_TYPES } from '../client/types.js';
 import { Button } from './primitives/button.js';
 import { cn } from './primitives/cn.js';
 import { Dialog } from './primitives/dialog.js';
@@ -214,10 +214,8 @@ export function CommandPalette({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
-          className="w-full border-b border-line bg-transparent px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          className="w-full border-b border-line bg-transparent px-4 py-3 text-sm text-foreground outline-hidden placeholder:text-muted-foreground"
         />
-        {/* biome-ignore lint/a11y/useSemanticElements: composite ARIA listbox popup, see nestjs-telescope-ui's command-palette.tsx for the same pattern. */}
-        {/* biome-ignore lint/a11y/useFocusableInteractive: focus stays on the combobox input; options are tracked via aria-activedescendant. */}
         {/* biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: composite ARIA listbox, see note above. */}
         <ul id={listId} role="listbox" className="max-h-[46vh] overflow-y-auto py-1">
           {results.length === 0 && (
@@ -228,7 +226,6 @@ export function CommandPalette({
             <li
               key={action.id}
               id={`${listId}-${i}`}
-              // biome-ignore lint/a11y/useSemanticElements: composite ARIA option, see note above.
               // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: composite ARIA option, see note above.
               role="option"
               aria-selected={i === highlight}

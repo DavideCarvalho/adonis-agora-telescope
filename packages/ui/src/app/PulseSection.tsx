@@ -1,22 +1,22 @@
 import { useState } from 'react';
 import { formatCount, formatDuration, formatPercent } from '../client/format.js';
 import type { PulseSummary } from '../client/types.js';
-import { WindowSelect } from './WindowSelect.js';
 import { cn } from './primitives/cn.js';
 import { Table, TableBody, TableCell, TableRow } from './primitives/table.js';
 import {
   AsyncBlock,
+  clickable,
   Empty,
   Panel,
   SectionTitle,
   ShareBar,
   Sparkline,
   Stat,
-  clickable,
   typeColor,
   typeLabel,
 } from './ui.js';
 import { usePulse } from './use-telescope.js';
+import { WindowSelect } from './WindowSelect.js';
 
 /**
  * The Pulse "at a glance" health overview, straight from the core `getHealth` rollup: headline

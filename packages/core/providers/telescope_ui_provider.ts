@@ -15,8 +15,8 @@ import {
 } from '../src/ui/dashboard_auth.js';
 import {
   type ResolvedTelescopeUiConfig,
-  type TelescopeUiConfig,
   resolveConfig,
+  type TelescopeUiConfig,
 } from '../src/ui/define_config.js';
 import { DiagnosisApi } from '../src/ui/diagnosis_api.js';
 import { ExtensionApi } from '../src/ui/extension_api.js';

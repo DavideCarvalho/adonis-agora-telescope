@@ -5,9 +5,9 @@ import { RedactingTelescopeStore } from '../../src/redaction/redacting_store.js'
 import { setTelescopePaused, setTelescopeRuntime } from '../../src/registry.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import {
+  buildHttpClientEntry,
   type HttpClientEntryContent,
   HttpClientWatcher,
-  buildHttpClientEntry,
   instrumentFetch,
   markInternalFetch,
 } from '../../src/watchers/index.js';

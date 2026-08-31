@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RecordingSink, formatSseFrame, formatSseHeartbeat } from '../../src/ui/http.js';
+import { formatSseFrame, formatSseHeartbeat, RecordingSink } from '../../src/ui/http.js';
 
 describe('formatSseFrame', () => {
   it('JSON-encodes data onto a single data: line, blank-line terminated', () => {

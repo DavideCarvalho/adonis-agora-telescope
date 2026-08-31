@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { resolveConfig } from '../src/define_config.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import {
+  defineTelescopeExtension,
   type ExtensionContext,
   type Panel,
   type TelescopeExtension,
-  defineTelescopeExtension,
 } from '../src/extension/types.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 

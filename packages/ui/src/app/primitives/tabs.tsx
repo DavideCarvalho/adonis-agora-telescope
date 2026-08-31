@@ -31,7 +31,7 @@ export const TabsTab = forwardRef<
   <TabsPrimitive.Tab
     ref={ref}
     className={cn(
-      'cursor-pointer rounded px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring data-[selected]:bg-brand data-[selected]:text-brand-foreground',
+      'cursor-pointer rounded-sm px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring data-[selected]:bg-brand data-[selected]:text-brand-foreground',
       className,
     )}
     {...props}
@@ -45,7 +45,7 @@ export const TabsPanel = forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Panel
     ref={ref}
-    className={cn('focus-visible:outline-none', className)}
+    className={cn('focus-visible:outline-hidden', className)}
     {...props}
   />
 ));

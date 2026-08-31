@@ -2,9 +2,9 @@ import diagnostics_channel from 'node:diagnostics_channel';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DiagnosticEvent, DiagnosticsRegistry } from '../src/diagnostics_registry.js';
 import {
+  buildDiagnosticEntry,
   DIAGNOSTIC_ENTRY_TYPE,
   DiagnosticsWatcher,
-  buildDiagnosticEntry,
 } from '../src/diagnostics_watcher.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 

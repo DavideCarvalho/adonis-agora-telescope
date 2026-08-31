@@ -12,7 +12,7 @@
  * every literal in lockstep with the release bump. It is idempotent and only
  * touches packages that actually declare a VERSION const somewhere in `src/`.
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

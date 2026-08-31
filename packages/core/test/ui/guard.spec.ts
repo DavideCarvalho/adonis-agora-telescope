@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultAuthorize, resolveConfig } from '../../src/ui/define_config.js';
 import { enforceGuard, runGuard } from '../../src/ui/guard.js';
-import { RecordingResponse, type UiHttpContext, makeRequest } from '../../src/ui/http.js';
+import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
 
 function ctx(
   qs: Record<string, unknown> = {},

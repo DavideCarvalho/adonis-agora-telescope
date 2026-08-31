@@ -1,8 +1,8 @@
 import {
   type AuthorizeHook,
-  type UiCredentials,
   defaultAuthorize,
   normalizePath,
+  type UiCredentials,
 } from '../ui/define_config.js';
 
 /** The tools the MCP server can expose, in catalogue order. */

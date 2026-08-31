@@ -1,5 +1,5 @@
 import type { AlertPayload } from './alert_rule.js';
-import { type SlackChannelOptions, formatSlackMessage } from './slack_format.js';
+import { formatSlackMessage, type SlackChannelOptions } from './slack_format.js';
 
 /**
  * A delivery destination for a fired alert. An alert fans out to EVERY configured

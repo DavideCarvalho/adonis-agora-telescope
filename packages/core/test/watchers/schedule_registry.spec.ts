@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ScheduleWatcher,
   listRegisteredSchedules,
   registerSchedule,
+  ScheduleWatcher,
   toRegisteredSchedule,
   unregisterSchedule,
 } from '../../src/watchers/schedule_watcher.js';

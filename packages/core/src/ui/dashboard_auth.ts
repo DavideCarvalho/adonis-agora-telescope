@@ -1,5 +1,5 @@
 import type { HttpContext } from '@adonisjs/core/http';
-import { type ResolvedDashboardAuth, SESSION_COOKIE_NAME, decideDashboardAuth } from './auth.js';
+import { decideDashboardAuth, type ResolvedDashboardAuth, SESSION_COOKIE_NAME } from './auth.js';
 
 /**
  * The AdonisJS glue for the built-in `dashboardAuth` session — the ONLY place that touches an

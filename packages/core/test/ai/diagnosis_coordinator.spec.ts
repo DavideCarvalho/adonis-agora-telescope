@@ -1,4 +1,4 @@
-import { type Mock, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import type { Diagnosis, ExceptionEntryContent } from '../../src/ai/diagnoser.js';
 import { DiagnosisCache } from '../../src/ai/diagnosis_cache.js';
 import {

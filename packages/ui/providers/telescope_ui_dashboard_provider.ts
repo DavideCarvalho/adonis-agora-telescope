@@ -1,18 +1,18 @@
 import { readFile } from 'node:fs/promises';
 import {
   type AuthorizeHook,
-  type ResolvedDashboardAuth,
-  type TelescopeUiConfig,
-  type UiHttpContext,
   enforceDashboardAuth,
   enforceGuard,
+  type ResolvedDashboardAuth,
   resolveConfig as resolveUiConfig,
+  type TelescopeUiConfig,
+  type UiHttpContext,
 } from '@adonis-agora/telescope/ui';
 import type { HttpContext } from '@adonisjs/core/http';
 import type { ApplicationService } from '@adonisjs/core/types';
 import {
-  type TelescopeDashboardConfig,
   resolveDashboardConfig,
+  type TelescopeDashboardConfig,
 } from '../src/server/define_config.js';
 import {
   apiBaseFor,

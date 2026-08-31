@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   type AlertChannel,
-  type AlertPayload,
   AlerterService,
+  type AlertPayload,
   type ChannelFetch,
   type MetricSource,
   type ResolvedAlerts,

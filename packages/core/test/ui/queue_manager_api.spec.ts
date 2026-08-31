@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { RecordingResponse, type UiHttpContext, makeRequest } from '../../src/ui/http.js';
+import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
 import { QueueManagerApi } from '../../src/ui/queue_manager_api.js';
-import { QueueManagerDriver } from '../../src/watchers/queue_manager.js';
 import type { QueueAdapterLike, QueueLike } from '../../src/watchers/queue_manager.js';
+import { QueueManagerDriver } from '../../src/watchers/queue_manager.js';
 
 function ctx(): { ctx: UiHttpContext; res: RecordingResponse } {
   const res = new RecordingResponse();

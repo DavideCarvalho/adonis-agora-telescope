@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveConfig } from '../../src/profiling/define_config.js';
-import { ProfilerService } from '../../src/profiling/profiler_service.js';
 import type { ProfilerLike } from '../../src/profiling/profiler_service.js';
+import { ProfilerService } from '../../src/profiling/profiler_service.js';
 import type { CpuProfileContent } from '../../src/profiling/types.js';
 
 function fakeProfiler(overrides: Partial<ProfilerLike> = {}): ProfilerLike {

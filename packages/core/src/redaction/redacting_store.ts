@@ -2,8 +2,8 @@ import type { Entry, RecordInput } from '../entry.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
 import {
   type CompiledRedactSpec,
-  type RedactOptions,
   compileRedactSpec,
+  type RedactOptions,
   redactBoundedWith,
 } from './redact.js';
 
