@@ -1,5 +1,5 @@
 /** Keep in sync with this package's `version` in package.json. */
-export const VERSION = '0.10.0';
+export const VERSION = '0.11.0';
 
 export type { AlertChannel, ChannelFetch, ConsoleSink } from './alert_channel.js';
 // — channels —
