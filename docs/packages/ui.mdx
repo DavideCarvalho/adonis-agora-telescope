@@ -258,9 +258,8 @@ fetch-shaped transport (tests pass a fake so they never hit the network).
 The data lives behind the documented JSON API, so the shipped console is optional. Disable it
 and point your own front end (an admin page, a Grafana panel, a CLI) at the same `<path>/api/*`
 endpoints, or read `TelescopeService` directly. The `@adonis-agora/telescope/ui` subpath also
-exports its framework-light building blocks — `TelescopeApi`, the `enforceGuard` guard, the
-`toSummary` / `buildQuery` helpers, and `renderDashboard`, a single self-contained HTML page you
-can serve from a route of your own — if you want to assemble a custom mount.
+exports its framework-light building blocks — `TelescopeApi`, the `enforceGuard` guard and the
+`toSummary` / `buildQuery` helpers — if you want to assemble a custom mount.
 
 ### Mounting on something that isn't AdonisJS
 

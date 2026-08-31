@@ -71,13 +71,27 @@ export function safeAssetSegments(wildcard: string | string[] | undefined): stri
   return segments;
 }
 
+/** `id` of the JSON data block {@link injectApiBase} emits; the SPA's `resolveApiBase()` reads it. */
+export const CONFIG_ELEMENT_ID = 'telescope-dashboard-config';
+
 /**
- * Inject the resolved JSON API base into the served `index.html` as a global the SPA reads before
- * boot, so the client calls the exact base the provider mounted (no build-time coupling). Idempotent
- * per response — inserted right before `</head>`.
+ * Hand the resolved JSON API base to the served `index.html`, so the client calls the exact base
+ * the provider mounted (no build-time coupling). Inserted right before `</head>`.
+ *
+ * It goes in as a JSON DATA BLOCK (`<script type="application/json">{"apiBase":…}</script>`), not
+ * as an inline script assigning `window.__TELESCOPE_DASHBOARD_BASE__`. A data block is never
+ * executed, so no Content-Security-Policy can refuse it; an inline script IS, and a host with
+ * `script-src 'self' 'nonce-…'` (`@adonisjs/shield`'s `@nonce`, the recommended setup) silently
+ * dropped ours — the SPA then derived a base from its own URL, which happens to be right for the
+ * usual `<mount>/api` layout but not for a custom one, and there every request from a console that
+ * had rendered perfectly answered 404. The global is still read by the SPA as a fallback, but this
+ * is no longer how the provider speaks.
  */
 export function injectApiBase(html: string, apiBase: string): string {
-  const tag = `<script>window.__TELESCOPE_DASHBOARD_BASE__=${JSON.stringify(apiBase)}</script>`;
+  // `<` escaped as `\u003c` inside the JSON: a data block ends at the first `</script`, and a
+  // config value must not be able to close it early. Valid JSON either way.
+  const json = JSON.stringify({ apiBase }).replace(/</g, '\\u003c');
+  const tag = `<script type="application/json" id="${CONFIG_ELEMENT_ID}">${json}</script>`;
   if (html.includes('</head>')) return html.replace('</head>', `${tag}</head>`);
   return `${tag}${html}`;
 }

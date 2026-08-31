@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   apiBaseFor,
+  CONFIG_ELEMENT_ID,
   contentTypeFor,
   injectApiBase,
   mountPathFor,
@@ -73,14 +74,31 @@ describe('rewriteRelativeAssets', () => {
 });
 
 describe('injectApiBase', () => {
-  it('inserts the base global before </head>', () => {
+  const block = (out: string) =>
+    new RegExp(`<script type="application/json" id="${CONFIG_ELEMENT_ID}">([^]*?)</script>`).exec(
+      out,
+    );
+
+  it('inserts the base as a JSON data block before </head>', () => {
     const html = '<html><head><title>x</title></head><body></body></html>';
     const out = injectApiBase(html, '/telescope/api');
-    expect(out).toContain('window.__TELESCOPE_DASHBOARD_BASE__="/telescope/api"');
-    expect(out.indexOf('__TELESCOPE_DASHBOARD_BASE__')).toBeLessThan(out.indexOf('</head>'));
+    expect(JSON.parse(block(out)?.[1] ?? '')).toEqual({ apiBase: '/telescope/api' });
+    expect(out.indexOf(CONFIG_ELEMENT_ID)).toBeLessThan(out.indexOf('</head>'));
+  });
+  it('never emits an executable inline script', () => {
+    // A host CSP of `script-src 'self' 'nonce-…'` drops an inline script without a word, and the
+    // console then 404s on every request while rendering fine. A data block cannot be refused.
+    const out = injectApiBase('<head></head>', '/telescope/api');
+    expect(out).not.toContain('window.__TELESCOPE_DASHBOARD_BASE__');
+    expect(out).not.toMatch(/<script>/);
+  });
+  it('escapes a base that would otherwise close the data block early', () => {
+    const out = injectApiBase('<head></head>', '/a</script><b>');
+    expect(out.split('</script>')).toHaveLength(2);
+    expect(JSON.parse(block(out)?.[1] ?? '').apiBase).toBe('/a</script><b>');
   });
   it('prepends when there is no head', () => {
     const out = injectApiBase('<body></body>', '/x/api');
-    expect(out.startsWith('<script>')).toBe(true);
+    expect(out.startsWith('<script type="application/json"')).toBe(true);
   });
 });

@@ -26,8 +26,7 @@ export {
   SESSION_COOKIE_NAME,
   sanitizeReturnTo,
 } from './auth.js';
-// — dashboard —
-export { renderDashboard } from './dashboard.js';
+// — dashboard auth —
 export {
   clearSessionCookie,
   enforceDashboardAuth,
@@ -44,7 +43,7 @@ export type {
 // — config —
 export { defaultAuthorize, defineConfig, normalizePath, resolveConfig } from './define_config.js';
 export type { PagedTableData, TablePagination } from './ext_table.js';
-// — paged extension-dashboard tables (source of truth for dashboard.html's mirror) —
+// — paged extension-dashboard tables —
 export { fillLinkHref, tablePagination } from './ext_table.js';
 export type { GuardResult } from './guard.js';
 // — auth guard —

@@ -32,9 +32,8 @@ import {
  * live stream (`<path>/api/stream`).
  *
  * This provider owns the prefix root: the SPA serves `<path>` and `<path>/*`, while the core
- * provider keeps `<path>/api/*`. The core no longer routes its inline-HTML dashboard at all
- * (`renderDashboard` stays exported for a host that wants to serve it itself), so without this
- * package `<path>` is a 404. Static route segments take precedence over the SPA's `<path>/*`
+ * provider keeps `<path>/api/*`. The core ships no page of its own, so without this package
+ * `<path>` is a 404. Static route segments take precedence over the SPA's `<path>/*`
  * wildcard in the AdonisJS router, so the API routes always win.
  *
  * Routes (mount = `config('telescope_ui').path`, default `/telescope`):

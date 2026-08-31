@@ -106,9 +106,8 @@
     "**/registry.ts"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && pnpm run copy:stubs && pnpm run copy:assets",
+    "build": "tsc -p tsconfig.json && pnpm run copy:stubs",
     "copy:stubs": "mkdir -p dist/stubs && cp -R stubs/config dist/stubs/ && cp -R stubs/database dist/stubs/",
-    "copy:assets": "mkdir -p dist/src/ui && cp src/ui/dashboard.html dist/src/ui/dashboard.html",
     "prepack": "pnpm run build",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
