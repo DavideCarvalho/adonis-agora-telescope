@@ -1,4 +1,4 @@
-import type { Entry } from '../entry.js';
+import { type Entry, EXCEPTION_ENTRY_TYPES, isExceptionType } from '../entry.js';
 import {
   detectNPlusOne,
   detectNPlusOnePatterns,
@@ -75,10 +75,7 @@ export class MetricsService {
     const windowEnd = new Date();
     const windowStart = new Date(windowEnd.getTime() - query.windowMs);
 
-    const { entries, truncated } = await this.collect({
-      type: query.type,
-      after: windowStart,
-    });
+    const { entries, truncated } = await this.collectForStats(query.type, windowStart);
 
     // Histogram-based percentile estimate over the windowed durations — the
     // storage-agnostic stand-in for the NestJS rollup fast path. count/max/slow
@@ -156,5 +153,32 @@ export class MetricsService {
   private async collect(query: EntryQuery): Promise<{ entries: Entry[]; truncated: boolean }> {
     const entries = await this.store.list({ ...query, limit: this.scanCap });
     return { entries, truncated: entries.length >= this.scanCap };
+  }
+
+  /**
+   * Entries for a stats window. Asking for an EXCEPTION type collects both
+   * `exception` and `client_exception`: a browser-reported error is an error, and
+   * scoping to one while silently dropping the other is what left the dashboard's
+   * exception view empty during a front-end-only incident — while the alert poller,
+   * which has always read both, was paging on it.
+   *
+   * One `list` per type (rather than a multi-type query) because `EntryQuery.type`
+   * is a single value in the store contract; this mirrors what the alert poller
+   * already does with {@link EXCEPTION_ENTRY_TYPES}. `truncated` is sticky: if
+   * EITHER scan hit the cap the window is incomplete.
+   */
+  private async collectForStats(
+    type: string,
+    after: Date,
+  ): Promise<{ entries: Entry[]; truncated: boolean }> {
+    if (!isExceptionType(type)) return this.collect({ type, after });
+
+    const results = await Promise.all(
+      EXCEPTION_ENTRY_TYPES.map((exceptionType) => this.collect({ type: exceptionType, after })),
+    );
+    return {
+      entries: results.flatMap((result) => result.entries),
+      truncated: results.some((result) => result.truncated),
+    };
   }
 }

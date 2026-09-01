@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { EntryType } from '../src/entry.js';
 import { DEFAULT_MASK } from '../src/redaction/redact.js';
 import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
@@ -161,5 +161,158 @@ describe('recordRequest — requestCapture body gates', () => {
     const content = (await inner.list())[0]?.content as { body: Record<string, string> };
     expect(content.body.password).toBe(DEFAULT_MASK);
     expect(content.body.email).toBe('a@b.c');
+  });
+});
+
+/**
+ * Status resolution across host shapes. The regression these lock down: AdonisJS's
+ * `Response` exposes ONLY `getStatus()` — its `statusCode` lives on the wrapped Node
+ * `ServerResponse`, one level down — so reading `ctx.response.statusCode` yielded
+ * `undefined` on every real Adonis request. Every entry recorded `status: null`, no
+ * `status:<code>` tag was ever emitted, and the pulse error rate (computed from the
+ * 4xx/5xx breakdown) was pinned at 0% no matter how many requests were failing.
+ * The optional `statusCode?: number` type could not catch it: any object satisfies it.
+ */
+describe('recordRequest — response status', () => {
+  async function statusOf(response: HttpContextLike['response']): Promise<number | null> {
+    const store = new InMemoryTelescopeStore();
+    await recordRequest(
+      store,
+      { request: { method: () => 'GET', url: () => '/x' }, response },
+      Date.now(),
+    );
+    const [entry] = await store.list();
+    if (entry === undefined) throw new Error('no entry recorded');
+    return (entry.content as { status: number | null }).status;
+  }
+
+  it('reads getStatus() — the only accessor an AdonisJS Response exposes', async () => {
+    expect(await statusOf({ getStatus: () => 503 })).toBe(503);
+  });
+
+  it('tags the entry with the status resolved via getStatus()', async () => {
+    const store = new InMemoryTelescopeStore();
+    await recordRequest(
+      store,
+      { request: { method: () => 'GET', url: () => '/x' }, response: { getStatus: () => 404 } },
+      Date.now(),
+    );
+    const [entry] = await store.list();
+    expect(entry?.tags).toContain('status:404');
+  });
+
+  it('still reads a Node/Express-style statusCode property', async () => {
+    expect(await statusOf({ statusCode: 201 })).toBe(201);
+  });
+
+  it('prefers getStatus() over a stale statusCode when a host exposes both', async () => {
+    expect(await statusOf({ getStatus: () => 302, statusCode: 200 })).toBe(302);
+  });
+
+  it('falls back to statusCode when getStatus() throws', async () => {
+    expect(
+      await statusOf({
+        getStatus: () => {
+          throw new Error('response already destroyed');
+        },
+        statusCode: 200,
+      }),
+    ).toBe(200);
+  });
+
+  it('records null — never throws — when neither accessor is usable', async () => {
+    expect(await statusOf({})).toBeNull();
+    expect(await statusOf({ getStatus: () => Number.NaN })).toBeNull();
+  });
+});
+
+/**
+ * User attribution. `ctx.auth.user` is the `@adonisjs/auth` convention: a synchronous
+ * property. An auth lib whose guard is async (`await getUser()`) has nothing there at
+ * record time, so entries recorded `user: null` for fully authenticated sessions —
+ * the whole "User" column and every `user:<id>` tag were dead on such a stack. Those
+ * hosts publish the resolved reference into `@adonis-agora/context` instead, which is
+ * the fallback these lock down.
+ */
+describe('recordRequest — user attribution', () => {
+  const KEY = Symbol.for('@agora/context:accessor');
+  afterEach(() => delete (globalThis as Record<symbol, unknown>)[KEY]);
+
+  function withUserRef(userRef: unknown): void {
+    (globalThis as Record<symbol, unknown>)[KEY] = {
+      traceId: () => undefined,
+      tenantId: () => undefined,
+      userRef: () => userRef,
+      get: () => undefined,
+    };
+  }
+
+  async function userOf(ctx: HttpContextLike) {
+    const store = new InMemoryTelescopeStore();
+    await recordRequest(store, ctx, Date.now());
+    const [entry] = await store.list();
+    if (entry === undefined) throw new Error('no entry recorded');
+    return {
+      user: (entry.content as { user: { id: string; email?: string } | null }).user,
+      tags: entry.tags,
+    };
+  }
+
+  const bare: HttpContextLike = { request: { method: () => 'GET', url: () => '/x' }, response: {} };
+
+  it('reads the synchronous ctx.auth.user (the @adonisjs/auth convention)', async () => {
+    const { user, tags } = await userOf({ ...bare, auth: { user: { id: 7, email: 'a@b.c' } } });
+    expect(user).toEqual({ id: '7', email: 'a@b.c' });
+    expect(tags).toContain('user:7');
+  });
+
+  it('falls back to the context userRef when the guard exposes no sync user', async () => {
+    withUserRef({ type: 'user', id: 'usr-42' });
+    const { user, tags } = await userOf({ ...bare, auth: {} });
+    expect(user).toEqual({ id: 'usr-42' });
+    expect(tags).toContain('user:usr-42');
+  });
+
+  it('falls back to the context userRef when there is no auth guard at all', async () => {
+    withUserRef({ id: 'usr-99', email: 'x@y.z' });
+    const { user } = await userOf(bare);
+    expect(user).toEqual({ id: 'usr-99', email: 'x@y.z' });
+  });
+
+  it('prefers the auth guard over the context when both are present', async () => {
+    withUserRef({ id: 'from-context' });
+    const { user } = await userOf({ ...bare, auth: { user: { id: 'from-guard' } } });
+    expect(user).toEqual({ id: 'from-guard' });
+  });
+
+  it('records null when neither source has a usable identity', async () => {
+    withUserRef(undefined);
+    expect((await userOf(bare)).user).toBeNull();
+    expect((await userOf({ ...bare, auth: { user: { noId: true } } })).user).toBeNull();
+  });
+
+  it('survives a throwing guard by still consulting the context', async () => {
+    withUserRef({ id: 'usr-1' });
+    const hostile = {
+      ...bare,
+      auth: {
+        get user(): unknown {
+          throw new Error('guard exploded');
+        },
+      },
+    };
+    expect((await userOf(hostile)).user).toEqual({ id: 'usr-1' });
+  });
+
+  it('never throws when the context accessor itself explodes', async () => {
+    (globalThis as Record<symbol, unknown>)[KEY] = {
+      traceId: () => undefined,
+      tenantId: () => undefined,
+      userRef: () => {
+        throw new Error('context exploded');
+      },
+      get: () => undefined,
+    };
+    expect((await userOf(bare)).user).toBeNull();
   });
 });

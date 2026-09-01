@@ -1,3 +1,4 @@
+import { currentUserRef } from './context_accessor.js';
 import { type Entry, EntryType, type RecordInput } from './entry.js';
 import type { TelescopeStore } from './store.js';
 
@@ -21,9 +22,10 @@ export interface RequestEntryContent {
    */
   body?: unknown;
   /**
-   * The authenticated user at request time, when the host exposes `ctx.auth.user`
-   * (Adonis @adonisjs/auth / authkit guard). Only `id` and `email` are captured —
-   * never the full model. `null` when unauthenticated or not exposed.
+   * The authenticated user at request time, from `ctx.auth.user` or — when the
+   * host's guard is async and publishes it instead — the `@adonis-agora/context`
+   * `userRef()` (see {@link resolveRequestUser}). Only `id` and `email` are
+   * captured, never the full model. `null` when unauthenticated or not exposed.
    */
   user: { id: string; email?: string } | null;
 }
@@ -105,8 +107,24 @@ export interface RequestLike {
   /** A single request header by (case-insensitive) name, when exposed. */
   header?(name: string): string | string[] | number | undefined;
 }
+/**
+ * The minimal slice of a response the watcher reads.
+ *
+ * BOTH accessors are optional because hosts disagree on which they expose:
+ * AdonisJS's `Response` has ONLY `getStatus()` (its `statusCode` lives on the
+ * wrapped Node `ServerResponse`, one level down), while a Node/Express-style
+ * response — and every stub in this repo's tests — exposes `statusCode`. Reading
+ * just one silently yields `null` on half the hosts, which is how the status went
+ * missing on every real Adonis request for so long: `statusCode?: number` is
+ * satisfied by any object, so the type system had nothing to say about it.
+ */
 export interface ResponseLike {
-  response: { statusCode?: number };
+  response: {
+    /** Node/Express-style status property. */
+    statusCode?: number;
+    /** AdonisJS `Response.getStatus()` — the only status accessor Adonis exposes. */
+    getStatus?(): number;
+  };
 }
 export interface HttpContextLike {
   request: RequestLike;
@@ -129,8 +147,8 @@ export interface RecordRequestOptions {
    */
   capture?: RequestCaptureOptions;
   /**
-   * Override the user resolved from `ctx.auth`; pass `null` to force "no user".
-   * Omit to resolve from the context (default).
+   * Override the resolved user; pass `null` to force "no user". Omit to resolve
+   * from `ctx.auth` then the context accessor (see {@link resolveRequestUser}).
    */
   user?: { id: string; email?: string } | null;
 }
@@ -206,22 +224,66 @@ function gateRequestBody(request: RequestLike, capture: ResolvedRequestCapture):
 }
 
 /**
- * Read the authenticated user off a (possibly absent) `ctx.auth`, extracting only
- * `id` + `email`. Strictly defensive: any throw or malformed shape yields `null`,
- * so a hostile/odd auth model can never break (or crash) request capture.
+ * The response status, or `null` when it genuinely cannot be determined.
+ *
+ * Tries `getStatus()` FIRST — it is what AdonisJS exposes, and an Adonis
+ * `Response` has no `statusCode` of its own — then the Node/Express-style
+ * `statusCode` property. Defensive throughout: a throwing accessor or a
+ * non-finite result yields `null` rather than breaking request capture.
+ */
+export function resolveResponseStatus(response: HttpContextLike['response']): number | null {
+  try {
+    if (typeof response.getStatus === 'function') {
+      const status = response.getStatus();
+      if (typeof status === 'number' && Number.isFinite(status)) return status;
+    }
+  } catch {
+    // A throwing accessor is not a reason to lose the whole entry — fall through.
+  }
+  return typeof response.statusCode === 'number' ? response.statusCode : null;
+}
+
+/** Narrow an arbitrary user-ish value to the `{ id, email? }` slice we record. */
+function userSlice(value: unknown): { id: string; email?: string } | null {
+  if (value === null || value === undefined) return null;
+  const record = value as Record<string, unknown>;
+  const id = record.id;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  const email = record.email;
+  return {
+    id: String(id),
+    ...(typeof email === 'string' && email.length > 0 ? { email } : {}),
+  };
+}
+
+/**
+ * The authenticated user for the entry, extracting only `id` + `email` — never the
+ * full model. Two sources, in order:
+ *
+ *  1. `ctx.auth.user` — the `@adonisjs/auth` convention: a SYNCHRONOUS property,
+ *     populated once the guard has authenticated.
+ *  2. `userRef()` from the `@adonis-agora/context` accessor — the Agora
+ *     convention, where the guard is async (`getUser()`/`getIdentity()`) and the
+ *     host publishes the resolved reference into the request context instead.
+ *
+ * The fallback is what makes attribution work at all on an Agora stack: an auth
+ * lib with no synchronous `user` property leaves (1) permanently `undefined`, so
+ * every request entry recorded `user: null` even for a fully authenticated
+ * session. Reading (2) costs one property read and is skipped entirely when
+ * `@adonis-agora/context` is not installed.
+ *
+ * Strictly defensive: any throw or malformed shape yields `null`, so a hostile or
+ * odd auth model can never break (or crash) request capture.
  */
 export function resolveRequestUser(ctx: HttpContextLike): { id: string; email?: string } | null {
   try {
-    const user = ctx.auth?.user;
-    if (user === null || user === undefined) return null;
-    const record = user as Record<string, unknown>;
-    const id = record.id;
-    if (typeof id !== 'string' && typeof id !== 'number') return null;
-    const email = record.email;
-    return {
-      id: String(id),
-      ...(typeof email === 'string' && email.length > 0 ? { email } : {}),
-    };
+    const fromGuard = userSlice(ctx.auth?.user);
+    if (fromGuard !== null) return fromGuard;
+  } catch {
+    // Fall through to the context — a broken guard must not cost us the fallback.
+  }
+  try {
+    return userSlice(currentUserRef());
   } catch {
     return null;
   }
@@ -241,7 +303,7 @@ export async function recordRequest(
 ): Promise<Entry<RequestEntryContent>> {
   const method = String(ctx.request.method()).toUpperCase();
   const url = stripQuery(ctx.request.url());
-  const status = typeof ctx.response.statusCode === 'number' ? ctx.response.statusCode : null;
+  const status = resolveResponseStatus(ctx.response);
   const durationMs = options.durationMs ?? Math.max(0, Date.now() - startedAt);
   const user = options.user === undefined ? resolveRequestUser(ctx) : options.user;
 

@@ -1,4 +1,4 @@
-import { type Entry, EntryType } from '../entry.js';
+import { type Entry, EntryType, isExceptionType } from '../entry.js';
 import { detectNPlusOne } from '../query/n_plus_one.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
 import {
@@ -310,7 +310,10 @@ export function summarizePulse(
       }
     } else if (entry.type === EntryType.Cache) {
       cacheEntries.push(entry);
-    } else if (entry.type === EntryType.Exception) {
+    } else if (isExceptionType(entry.type)) {
+      // Server `exception` AND browser `client_exception` — see EXCEPTION_ENTRY_TYPES.
+      // Counting only the server one made a front-end outage invisible here while
+      // the alert poller was already paging on it.
       exceptionEntries.push(entry);
     }
 

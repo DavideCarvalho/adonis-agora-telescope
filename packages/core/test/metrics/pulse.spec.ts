@@ -274,3 +274,53 @@ describe('summarizePulse (pure)', () => {
     expect(summary.throughput.total).toBe(1);
   });
 });
+
+/**
+ * Browser-reported errors count as errors.
+ *
+ * The alert poller has always read BOTH `exception` and `client_exception`
+ * (EXCEPTION_ENTRY_TYPES), but the pulse rollup classified only the server type —
+ * so a front-end-only incident paged on Slack/Discord while the overview it linked
+ * to rendered "Recent failures: No exceptions 🎉". Same data, two answers.
+ */
+describe('PulseService — client_exception counts as an exception', () => {
+  it('includes browser-reported exceptions in topExceptions', async () => {
+    const store = new InMemoryTelescopeStore();
+    await store.record({
+      type: EntryType.ClientException,
+      familyHash: 'TypeError:find',
+      content: { name: 'TypeError', message: 'm?.find is not a function' },
+      tags: ['failed', 'client'],
+    });
+
+    const report = await new PulseService(store).getHealth({ windowMs: HOUR });
+
+    expect(report.topExceptions).toHaveLength(1);
+    expect(report.topExceptions[0]).toMatchObject({
+      class: 'TypeError',
+      message: 'm?.find is not a function',
+      count: 1,
+    });
+  });
+
+  it('groups server and browser exceptions side by side', async () => {
+    const store = new InMemoryTelescopeStore();
+    await store.record({
+      type: EntryType.Exception,
+      familyHash: 'Error:server',
+      content: { name: 'Error', message: 'server boom' },
+    });
+    await store.record({
+      type: EntryType.ClientException,
+      familyHash: 'Error:browser',
+      content: { name: 'Error', message: 'browser boom' },
+    });
+
+    const report = await new PulseService(store).getHealth({ windowMs: HOUR });
+
+    expect(report.topExceptions.map((group) => group.message).sort()).toEqual([
+      'browser boom',
+      'server boom',
+    ]);
+  });
+});

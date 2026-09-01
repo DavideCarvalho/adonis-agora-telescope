@@ -54,6 +54,23 @@ export const EntryType = {
 export type BuiltinEntryType = (typeof EntryType)[keyof typeof EntryType];
 
 /**
+ * The entry types that represent a CAPTURED ERROR: a server-side `exception` and
+ * a browser-reported `client_exception`.
+ *
+ * Defined once, on purpose. This list used to live only inside the alert poller
+ * while the metrics/dashboard side hard-coded `EntryType.Exception` alone, and the
+ * two silently disagreed: a front-end-only incident paged on Slack/Discord and
+ * simultaneously rendered "Error rate 0.0% · No exceptions recorded 🎉" on the
+ * overview. Anything answering "is this an error?" should read THIS.
+ */
+export const EXCEPTION_ENTRY_TYPES = [EntryType.Exception, EntryType.ClientException] as const;
+
+/** Whether `type` is one of {@link EXCEPTION_ENTRY_TYPES} (server or browser). */
+export function isExceptionType(type: string): boolean {
+  return type === EntryType.Exception || type === EntryType.ClientException;
+}
+
+/**
  * Where a batch of entries originated. An entry recorded inside an HTTP request
  * is `http`; one recorded by a queue worker is `queue`; a diagnostic recorded
  * with no active request defaults to `manual`.

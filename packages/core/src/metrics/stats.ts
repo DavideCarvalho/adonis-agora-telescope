@@ -1,4 +1,4 @@
-import { type Entry, EntryType } from '../entry.js';
+import { type Entry, EntryType, isExceptionType } from '../entry.js';
 import { buildHistogram, estimatePercentileFromHistogram } from './rollup.js';
 import { bucketTimeseries, type TimeseriesReport } from './timeseries.js';
 
@@ -384,7 +384,11 @@ export function summarizeStats(input: SummarizeStatsInput): StatsResult {
   }
   if (type === EntryType.Cache) result.cache = computeCache(entries, topKeys);
   if (type === EntryType.Request) result.status = computeStatus(entries);
-  if (type === EntryType.Exception) {
+  // Both `exception` and `client_exception` get the exception analytics: the
+  // grouping is by class+message, which reads identically for a server throw and
+  // a browser-reported one. Gating on `EntryType.Exception` alone left the
+  // client_exception view with no groups at all.
+  if (isExceptionType(type)) {
     const exceptions = computeExceptions(entries, windowStart, windowEnd, buckets, topExceptions);
     if (exceptions.length > 0) result.exceptions = exceptions;
   }
