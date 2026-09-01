@@ -34,9 +34,9 @@ export {
   userIdentityTag,
   validateClientErrorBody,
 } from './client_errors/index.js';
-export type { ContextAccessor } from './context_accessor.js';
+export type { ContextAccessor, UserRef } from './context_accessor.js';
 // — structural ecosystem readers —
-export { currentTraceId, getContextAccessor } from './context_accessor.js';
+export { currentTraceId, currentUserRef, getContextAccessor } from './context_accessor.js';
 export type {
   DiagnosticsConfig,
   NPlusOneConfig,
@@ -70,7 +70,7 @@ export {
 } from './diagnostics_watcher.js';
 export type { BatchOrigin, BuiltinEntryType, Entry, RecordInput } from './entry.js';
 // — entry model —
-export { EntryType, isBatchOrigin } from './entry.js';
+export { EntryType, EXCEPTION_ENTRY_TYPES, isBatchOrigin, isExceptionType } from './entry.js';
 export type { ExceptionFamilyParts } from './exception_family_hash.js';
 export { exceptionFamilyHash } from './exception_family_hash.js';
 export type {

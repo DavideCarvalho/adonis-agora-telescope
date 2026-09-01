@@ -229,10 +229,29 @@ never imported):
   diagnostics watcher iterates `channels` for current names and adds to `listeners`
   for future ones, then subscribes via the Node builtin.
 - **`Symbol.for('@agora/context:accessor')`** → the request's `traceId()` (plus
-  `tenantId()`, `userRef()`, `get()`). The store reads `traceId()` at record time.
+  `tenantId()`, `userRef()`, `get()`). The store reads `traceId()` at record time,
+  and the request watcher falls back to `userRef()` for attribution when the host's
+  auth guard exposes no synchronous `ctx.auth.user` (see below).
 
 When those packages aren't installed, the readers return `undefined`: no trace
 correlation, no diagnostic entries — but the request watcher still works standalone.
+
+## User attribution
+
+A `request` entry records the authenticated user as `{ id, email? }` (never the full
+model) and tags it `user:<id>`. Two sources are tried, in order:
+
+1. **`ctx.auth.user`** — the `@adonisjs/auth` convention: a synchronous property the
+   guard fills in once it has authenticated.
+2. **`userRef()`** from `@adonis-agora/context` — for hosts whose guard is
+   **asynchronous**. A guard that only resolves through `await getUser()` has nothing
+   on `ctx.auth.user` at record time, so those hosts publish the resolved reference
+   into the request context instead and telescope reads it from there.
+
+Without (2) an async-guard stack recorded `user: null` on every entry even for a fully
+authenticated session — the dashboard's User column and every `user:<id>` tag were
+silently empty. If you see that, check that `@adonis-agora/context` is installed and
+that something in your middleware chain sets the user reference on it.
 
 ## Trace correlation
 

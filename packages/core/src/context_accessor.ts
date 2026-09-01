@@ -37,3 +37,23 @@ export function getContextAccessor(): ContextAccessor | undefined {
 export function currentTraceId(): string | null {
   return getContextAccessor()?.traceId() ?? null;
 }
+
+/**
+ * The active user reference from `@adonis-agora/context`, or `undefined`.
+ *
+ * This is the attribution path for hosts whose auth guard is ASYNCHRONOUS. The
+ * `@adonisjs/auth` convention gives watchers a synchronous `ctx.auth.user`, but a
+ * guard that only resolves via `await getUser()` has nothing to read at record
+ * time — so those hosts publish the resolved reference into the request context
+ * instead, and this is where watchers pick it up.
+ *
+ * Defensive: a throwing accessor yields `undefined`, never an exception into the
+ * recording path.
+ */
+export function currentUserRef(): UserRef | undefined {
+  try {
+    return getContextAccessor()?.userRef();
+  } catch {
+    return undefined;
+  }
+}

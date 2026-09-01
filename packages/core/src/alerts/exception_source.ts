@@ -1,4 +1,4 @@
-import { type Entry, EntryType } from '../entry.js';
+import { type Entry, EXCEPTION_ENTRY_TYPES } from '../entry.js';
 import type { TelescopeStore } from '../store.js';
 import type { Alerter } from './alerter.js';
 
@@ -15,9 +15,6 @@ export interface ExceptionPollerDeps {
   /** Failure log sink. Defaults to `console.warn`. */
   logger?: (message: string) => void;
 }
-
-/** The entry types the poller feeds to the alerter: server + browser-reported exceptions. */
-const EXCEPTION_TYPES = [EntryType.Exception, EntryType.ClientException] as const;
 
 /**
  * The hook point. Telescope's headless `@adonis-agora/telescope` core does not expose a
@@ -82,7 +79,7 @@ export class ExceptionPoller {
     let batches: Entry[][];
     try {
       batches = await Promise.all(
-        EXCEPTION_TYPES.map((type) =>
+        EXCEPTION_ENTRY_TYPES.map((type) =>
           this.deps.store.list({ type, after: this.since, limit: POLL_SCAN_CAP }),
         ),
       );

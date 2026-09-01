@@ -93,3 +93,74 @@ describe('MetricsService', () => {
     expect(ts.buckets[0]?.total).toBe(2);
   });
 });
+
+/**
+ * `getStats` for an exception type spans BOTH stored types.
+ *
+ * `EntryQuery.type` is a single value, so scoping the window to `exception`
+ * silently excluded every browser-reported `client_exception` — which is what left
+ * the dashboard's exception view showing "No exceptions recorded 🎉" while those
+ * entries sat in the store and the alert poller paged on them.
+ */
+describe('MetricsService.getStats — exception types', () => {
+  async function seedBoth(store: InMemoryTelescopeStore) {
+    await store.record({
+      type: EntryType.Exception,
+      familyHash: 'Error:server',
+      content: { name: 'Error', message: 'server boom' },
+    });
+    await store.record({
+      type: EntryType.ClientException,
+      familyHash: 'TypeError:browser',
+      content: { name: 'TypeError', message: 'browser boom' },
+    });
+  }
+
+  it('returns server AND browser exception groups when asked for `exception`', async () => {
+    const store = new InMemoryTelescopeStore();
+    await seedBoth(store);
+
+    const stats = await new MetricsService(store).getStats({
+      type: EntryType.Exception,
+      windowMs: 60_000,
+      buckets: 1,
+    });
+
+    expect((stats.exceptions ?? []).map((group) => group.message).sort()).toEqual([
+      'browser boom',
+      'server boom',
+    ]);
+  });
+
+  it('is symmetric — asking for `client_exception` yields the same window', async () => {
+    const store = new InMemoryTelescopeStore();
+    await seedBoth(store);
+
+    const stats = await new MetricsService(store).getStats({
+      type: EntryType.ClientException,
+      windowMs: 60_000,
+      buckets: 1,
+    });
+
+    expect((stats.exceptions ?? []).map((group) => group.message).sort()).toEqual([
+      'browser boom',
+      'server boom',
+    ]);
+  });
+
+  it('does not widen a non-exception type', async () => {
+    const store = new InMemoryTelescopeStore();
+    await seedBoth(store);
+    await store.record({ type: EntryType.Query, content: { sql: 'select 1' }, durationMs: 1 });
+
+    const stats = await new MetricsService(store).getStats({
+      type: EntryType.Query,
+      windowMs: 60_000,
+      buckets: 1,
+    });
+
+    // Only the single query entry is in scope — the two exception entries stay out.
+    expect(stats.exceptions).toBeUndefined();
+    expect(stats.total).toBe(1);
+  });
+});
