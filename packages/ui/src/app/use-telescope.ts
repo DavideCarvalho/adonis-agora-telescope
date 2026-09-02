@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { TelescopeClient } from '../client/telescope-client.js';
 import type { EntriesQuery, EntrySummary } from '../client/types.js';
@@ -27,45 +28,47 @@ export interface AsyncState<T> {
 }
 
 /**
- * A tiny dependency-free `useQuery`: runs `run` on mount and whenever `deps` change, tracks
- * loading/error, and ignores a resolved response from a superseded call (last-write-wins) so a fast
- * filter change never flashes stale data. No caching — the console is a live read surface.
+ * One async read, keyed.
+ *
+ * Backed by TanStack Query (the same thing the apps use), which buys the thing this
+ * console needed: two containers asking for the SAME data share one request instead
+ * of racing. That is what makes "each container fetches its own data" affordable —
+ * without dedup, splitting a page into containers multiplies its requests.
+ *
+ * `key` MUST start with a name unique to the hook. Keying on the arguments alone
+ * would collide `useRetention()` and `useMeta()` — both take none — and silently
+ * serve one panel the other's payload.
  */
-export function useAsync<T>(run: () => Promise<T>, deps: readonly unknown[]): AsyncState<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const [nonce, setNonce] = useState(0);
-  const runRef = useRef(run);
-  runRef.current = run;
+export function useTelescopeQuery<T>(
+  key: readonly unknown[],
+  run: () => Promise<T>,
+): AsyncState<T> {
+  const query = useQuery({
+    queryKey: key,
+    queryFn: run,
+    // The console is a live read surface: a revisit should show current data, not a
+    // cached snapshot of what was true when the tab was last open.
+    staleTime: 0,
+    retry: false,
+  });
 
-  const reload = useCallback(() => setNonce((n) => n + 1), []);
+  const reload = useCallback(() => {
+    void query.refetch();
+  }, [query]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: deps are the intentional trigger set.
-  useEffect(() => {
-    let live = true;
-    setLoading(true);
-    setError(null);
-    runRef
-      .current()
-      .then((value) => {
-        if (live) {
-          setData(value);
-          setLoading(false);
-        }
-      })
-      .catch((err: unknown) => {
-        if (live) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-          setLoading(false);
-        }
-      });
-    return () => {
-      live = false;
-    };
-  }, [...deps, nonce]);
-
-  return { data, loading, error, reload };
+  return {
+    // `data` stays defined across a refetch, so a panel keeps its rows on screen
+    // while newer ones load instead of blinking back to a skeleton.
+    data: query.data ?? null,
+    loading: query.isPending,
+    error:
+      query.error instanceof Error
+        ? query.error
+        : query.error
+          ? new Error(String(query.error))
+          : null,
+    reload,
+  };
 }
 
 const queryKey = (q: EntriesQuery) =>
@@ -73,99 +76,114 @@ const queryKey = (q: EntriesQuery) =>
 
 export function useEntries(query: EntriesQuery) {
   const client = useTelescopeClient();
-  return useAsync(() => client.listEntries(query), [client, queryKey(query)]);
+  return useTelescopeQuery(['entries', queryKey(query)], () => client.listEntries(query));
 }
 
 /** One page of entries. */
 export function useEntriesPage(query: EntriesQuery) {
   const client = useTelescopeClient();
-  return useAsync(() => client.listEntriesPage(query), [client, queryKey(query)]);
+  return useTelescopeQuery(['entries-page', queryKey(query)], () => client.listEntriesPage(query));
 }
 
 export function useEntry(id: string) {
   const client = useTelescopeClient();
-  return useAsync(() => client.getEntry(id), [client, id]);
+  return useTelescopeQuery(['entry', id], () => client.getEntry(id));
 }
 
 export function useTraceEntries(traceId: string) {
   const client = useTelescopeClient();
-  return useAsync(() => client.entriesByTrace(traceId), [client, traceId]);
+  return useTelescopeQuery(['trace-entries', traceId], () => client.entriesByTrace(traceId));
 }
 
 export function useTraces(limit = 50) {
   const client = useTelescopeClient();
-  return useAsync(() => client.traces(limit), [client, limit]);
+  return useTelescopeQuery(['traces', limit], () => client.traces(limit));
 }
 
 /** Per-route traffic over a window. */
 export function useScreens(windowMs: number, kind: string, limit = 100) {
   const client = useTelescopeClient();
-  return useAsync(() => client.screens(windowMs, kind, limit), [client, windowMs, kind, limit]);
+  return useTelescopeQuery(['screens', windowMs, kind, limit], () =>
+    client.screens(windowMs, kind, limit),
+  );
 }
 
 /** One page of traces. `page` is 1-based and owned by the caller. */
 export function useTracesPage(limit: number, page: number) {
   const client = useTelescopeClient();
-  return useAsync(() => client.tracesPage(limit, page), [client, limit, page]);
+  return useTelescopeQuery(['traces-page', limit, page], () => client.tracesPage(limit, page));
 }
 
 export function useWaterfall(traceId: string) {
   const client = useTelescopeClient();
-  return useAsync(() => client.waterfall(traceId), [client, traceId]);
+  return useTelescopeQuery(['waterfall', traceId], () => client.waterfall(traceId));
 }
 
 export function useNPlusOne(traceId: string) {
   const client = useTelescopeClient();
-  return useAsync(() => client.nPlusOne(traceId), [client, traceId]);
+  return useTelescopeQuery(['n-plus-one', traceId], () => client.nPlusOne(traceId));
 }
 
 export function usePulse(windowMs: number, topN?: number) {
   const client = useTelescopeClient();
-  return useAsync(() => client.pulse(windowMs, topN), [client, windowMs, topN]);
+  return useTelescopeQuery(['pulse', windowMs, topN ?? null], () => client.pulse(windowMs, topN));
 }
 
 export function useMetricsStats(type: string, windowMs: number, topExceptions?: number) {
   const client = useTelescopeClient();
-  return useAsync(
-    () => client.metricsStats(type, windowMs, undefined, topExceptions),
-    [client, type, windowMs, topExceptions],
+  return useTelescopeQuery(['metrics-stats', type, windowMs, topExceptions ?? null], () =>
+    client.metricsStats(type, windowMs, undefined, topExceptions),
   );
 }
 
 /** Throughput timeseries (total + per-type breakdown) — backs the Overview/Pulse charts. */
 export function useTimeseries(windowMs: number, buckets?: number, type?: string) {
   const client = useTelescopeClient();
-  return useAsync(
-    () => client.metricsTimeseries(windowMs, buckets, type),
-    [client, windowMs, buckets, type],
+  return useTelescopeQuery(['timeseries', windowMs, buckets ?? null, type ?? null], () =>
+    client.metricsTimeseries(windowMs, buckets, type),
   );
 }
 
 export function useRetention() {
   const client = useTelescopeClient();
-  return useAsync(() => client.retention(), [client]);
+  return useTelescopeQuery(['retention'], () => client.retention());
+}
+
+/**
+ * Whether a watcher is running, as far as the server told us.
+ *
+ * Three-valued on purpose. `null` means "the server did not say" (an older core, or
+ * `/meta` still loading), and a panel must NOT claim a watcher is off in that case —
+ * replacing one confident wrong answer with another is not an improvement.
+ */
+export function useWatcherEnabled(name: string): boolean | null {
+  const { data } = useMeta();
+  if (!data || data.watchers === undefined) return null;
+  return data.watchers.includes(name);
 }
 
 export function useMeta() {
   const client = useTelescopeClient();
-  return useAsync(() => client.meta(), [client]);
+  return useTelescopeQuery(['meta'], () => client.meta());
 }
 
 // ── CPU profiling ──────────────────────────────────────────────────────────
 
 export function useProfilerStatus() {
   const client = useTelescopeClient();
-  return useAsync(() => client.profilerStatus(), [client]);
+  return useTelescopeQuery(['profiler-status'], () => client.profilerStatus());
 }
 
 export function useProfiles(limit = 100) {
   const client = useTelescopeClient();
-  return useAsync(() => client.profiles(limit), [client, limit]);
+  return useTelescopeQuery(['profiles', limit], () => client.profiles(limit));
 }
 
 export function useProfile(id: string | null) {
   const client = useTelescopeClient();
-  return useAsync(() => (id === null ? Promise.resolve(null) : client.profile(id)), [client, id]);
+  return useTelescopeQuery(['profile', id], () =>
+    id === null ? Promise.resolve(null) : client.profile(id),
+  );
 }
 
 /** Mutation-style hook: `arm(count, label?)` returns the `ArmOutcome` (never throws). */
@@ -178,14 +196,13 @@ export function useArmProfile() {
 
 export function useLiveQueues() {
   const client = useTelescopeClient();
-  return useAsync(() => client.liveQueues(), [client]);
+  return useTelescopeQuery(['live-queues'], () => client.liveQueues());
 }
 
 export function useQueueJob(queue: string | null, id: string | null) {
   const client = useTelescopeClient();
-  return useAsync(
-    () => (queue === null || id === null ? Promise.resolve(null) : client.queueJob(queue, id)),
-    [client, queue, id],
+  return useTelescopeQuery(['queue-job', queue, id], () =>
+    queue === null || id === null ? Promise.resolve(null) : client.queueJob(queue, id),
   );
 }
 
@@ -193,7 +210,7 @@ export function useQueueJob(queue: string | null, id: string | null) {
 
 export function useLiveSchedules() {
   const client = useTelescopeClient();
-  return useAsync(() => client.liveSchedules(), [client]);
+  return useTelescopeQuery(['live-schedules'], () => client.liveSchedules());
 }
 
 const extQueryKey = (query: Record<string, string> | undefined) =>
@@ -205,9 +222,8 @@ const extQueryKey = (query: Record<string, string> | undefined) =>
 
 export function useExtensionData<T>(ext: string, provider: string, query?: Record<string, string>) {
   const client = useTelescopeClient();
-  return useAsync(
-    () => client.extData<T>(ext, provider, query),
-    [client, ext, provider, extQueryKey(query)],
+  return useTelescopeQuery(['ext-data', ext, provider, extQueryKey(query)], () =>
+    client.extData<T>(ext, provider, query),
   );
 }
 

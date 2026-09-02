@@ -12,6 +12,7 @@ import type {
   Waterfall,
 } from '../client/types.js';
 import { App } from './App.js';
+import { TelescopeQueryProvider } from './query-provider.js';
 import { TelescopeClientContext } from './use-telescope.js';
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
@@ -157,9 +158,11 @@ function fakeClient(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
 function renderApp(client: TelescopeClient): void {
   render(
     <StrictMode>
-      <TelescopeClientContext.Provider value={client}>
-        <App />
-      </TelescopeClientContext.Provider>
+      <TelescopeQueryProvider>
+        <TelescopeClientContext.Provider value={client}>
+          <App />
+        </TelescopeClientContext.Provider>
+      </TelescopeQueryProvider>
     </StrictMode>,
   );
 }
@@ -198,10 +201,10 @@ describe('App shell navigation', () => {
     expect(window.history.length).toBe(1);
 
     renderApp(fakeClient());
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /back to entries/i })).toBeTruthy(),
-    );
-    expect(screen.getByText('Content')).toBeTruthy();
+    // Espera o CONTEÚDO da entry, não só o botão: o botão renderiza antes do
+    // fetch resolver, então esperar por ele testava a montagem, não o carregamento.
+    await waitFor(() => expect(screen.getByText('Content')).toBeTruthy());
+    expect(screen.getByRole('button', { name: /back to entries/i })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /back to entries/i }));
     expect(window.location.hash).toBe('#/entries');

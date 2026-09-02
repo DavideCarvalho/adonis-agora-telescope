@@ -1,5 +1,9 @@
 import type { ApplicationService } from '@adonisjs/core/types';
-import { getTelescopeExtensionRegistry, setTelescopeQueueManager } from '../src/registry.js';
+import {
+  getTelescopeExtensionRegistry,
+  registerEnabledWatchers,
+  setTelescopeQueueManager,
+} from '../src/registry.js';
 import { CacheWatcher } from '../src/watchers/cache_watcher.js';
 import {
   type ResolvedTelescopeWatchersConfig,
@@ -77,6 +81,8 @@ export default class TelescopeWatchersProvider {
       console.error(`TelescopeWatchersProvider: could not resolve the emitter: ${message}`);
       return;
     }
+
+    registerEnabledWatchers(config.watchers);
 
     if (config.watchers.has('query')) {
       await this.warnWhenLucidDebugIsOff();

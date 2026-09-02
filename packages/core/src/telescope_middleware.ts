@@ -24,6 +24,19 @@ function profileLabel(ctx: HttpContextLike): string {
 }
 
 /**
+ * Whether `url` is the dashboard prefix itself or something under it.
+ *
+ * Boundary-aware on purpose: a plain `startsWith('/telescope')` would also swallow an
+ * app route called `/telescopes` or `/telescope-pricing`, silently making real traffic
+ * invisible — the exact failure this function exists to avoid causing.
+ */
+export function isUnder(url: string, prefix: string): boolean {
+  const path = url.split('?')[0] ?? url;
+  if (path === prefix) return true;
+  return path.startsWith(prefix.endsWith('/') ? prefix : `${prefix}/`);
+}
+
+/**
  * Records each inbound HTTP request as a `request` telescope entry (method, url,
  * status, duration, traceId), and auto-captures any exception thrown by the
  * downstream pipeline as an `exception` entry (message, name, stack, a stable
@@ -42,6 +55,13 @@ export default class TelescopeMiddleware {
     // `runtime.paused` is the overload guard's shed flag: while set, skip recording
     // entirely (request + auto-captured exception) so telescope can't amplify load.
     if (!runtime.store || !runtime.requestWatcherEnabled || runtime.paused) {
+      return next();
+    }
+
+    // The console does not measure itself. Its aggregation endpoints are among the
+    // slowest the process serves — that is their job — so opening the Overview or
+    // Pulse recorded two more slow requests into the APP's ranking and p99. Opt back in with `recordOwnRequests: true` in config/telescope_ui.ts.
+    if (runtime.selfPath !== null && isUnder(ctx.request.url(), runtime.selfPath)) {
       return next();
     }
 

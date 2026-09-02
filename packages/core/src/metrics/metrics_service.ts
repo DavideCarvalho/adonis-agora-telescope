@@ -9,7 +9,11 @@ import type { RequestKind } from '../request_watcher.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
 import { type ScreenStats, summarizeScreens } from './screens.js';
 import { estimateLatencyPercentiles, type StatsResult, summarizeStats } from './stats.js';
-import { bucketTimeseries, type TimeseriesReport } from './timeseries.js';
+import {
+  bucketTimeseries,
+  bucketTimeseriesFromCounts,
+  type TimeseriesReport,
+} from './timeseries.js';
 import { summarizeTraces, type TraceSummary } from './traces.js';
 import { buildWaterfall, type Waterfall } from './waterfall.js';
 
@@ -123,6 +127,20 @@ export class MetricsService {
     const buckets = this.clampBuckets(query.buckets);
     const windowEnd = new Date();
     const windowStart = new Date(windowEnd.getTime() - query.windowMs);
+    // Fast path: the chart needs only `createdAt` and `type`, and a store that can
+    // count per bucket gives us exactly that — instead of `select('*')` shipping every
+    // entry's `content` blob out of the database so we can throw it away.
+    if (typeof this.store.countByBucket === 'function') {
+      const spanMs = Math.max(1, windowEnd.getTime() - windowStart.getTime());
+      const rows = await this.store.countByBucket({
+        after: windowStart,
+        before: windowEnd,
+        bucketMs: Math.max(1, Math.floor(spanMs / Math.max(1, buckets))),
+        ...(query.type !== undefined ? { type: query.type } : {}),
+      });
+      return bucketTimeseriesFromCounts(rows, windowStart, windowEnd, buckets);
+    }
+
     const { entries } = await this.collect({
       after: windowStart,
       ...(query.type !== undefined ? { type: query.type } : {}),

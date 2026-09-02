@@ -253,6 +253,9 @@ export function App() {
                 onOpenTrace={openTrace}
                 onOpenEntry={openEntry}
                 onOpenQueues={() => go('queues')}
+                onOpenPulse={() => go('pulse')}
+                onOpenExceptions={() => go('exceptions')}
+                onOpenType={openType}
               />
             ) : route.name === 'pulse' ? (
               <PulseSection onOpenTrace={openTrace} />

@@ -46,6 +46,26 @@ export interface TraceIdRow {
   lastAt: Date;
 }
 
+/** One `(bucket, type)` tally from {@link TelescopeStore.countByBucket}. */
+export interface BucketCountRow {
+  /** Zero-based bucket index, counted from `after` in `bucketMs` steps. */
+  index: number;
+  type: string;
+  count: number;
+}
+
+/** The window and bucket size for {@link TelescopeStore.countByBucket}. */
+export interface BucketCountQuery {
+  /** Window start (exclusive), the origin bucket indices are counted from. */
+  after: Date;
+  /** Window end (inclusive). */
+  before: Date;
+  /** Bucket width in ms. */
+  bucketMs: number;
+  /** Only entries of this type. */
+  type?: string;
+}
+
 /** The window + page for {@link TelescopeStore.listTraceIds}. */
 export interface TraceIdQuery {
   /** How many trace ids to return. */
@@ -108,4 +128,19 @@ export interface TelescopeStore {
    * is correct, just slower.
    */
   listTraceIds?(query: TraceIdQuery): Promise<TraceIdRow[]>;
+
+  /**
+   * OPTIONAL fast path for the throughput chart: per-bucket, per-type COUNTS,
+   * without loading the entries.
+   *
+   * The chart needs exactly two fields — `createdAt` and `type` — but the only way
+   * to get them was `list()`, which selects whole rows including the `content` JSON
+   * blob. Drawing sixty bars meant shipping every entry in the window out of the
+   * database and parsing each one, to then throw all of it away except a timestamp
+   * and a string.
+   *
+   * OPTIONAL, like {@link listTraceIds}: a store without it falls back to
+   * scan-and-bucket, which is what this always used to do.
+   */
+  countByBucket?(query: BucketCountQuery): Promise<BucketCountRow[]>;
 }

@@ -17,6 +17,7 @@ import { TelescopePruner } from '../src/pruner.js';
 import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
 import {
   getTelescopeRuntime,
+  registerEnabledWatchers,
   resetTelescopeRuntime,
   setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
@@ -100,6 +101,8 @@ export default class TelescopeProvider {
     // Tee the app logger into telescope. `LoggerLike` is a structural slice of the
     // AdonisJS logger (level methods), so the container's logger fits without a
     // hard import — keeps this provider decoupled from a specific logger version.
+    registerEnabledWatchers(config.watchers);
+
     if (config.watchers.has('logs')) {
       // AWAITED. `container.make()` returns a Promise, and the cast below used to hide
       // that: the watcher received a Promise, found no level methods on it, teed

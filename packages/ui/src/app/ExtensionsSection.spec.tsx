@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type { DashboardSpec } from '../client/types.js';
 import { ExtensionsSection } from './ExtensionsSection.js';
+import { TelescopeQueryProvider } from './query-provider.js';
 import { TelescopeClientContext } from './use-telescope.js';
 
 const dashboards: DashboardSpec[] = [
@@ -30,7 +31,9 @@ function fakeClient(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
 function renderWith(client: TelescopeClient, ui: ReactNode) {
   return render(
     <StrictMode>
-      <TelescopeClientContext.Provider value={client}>{ui}</TelescopeClientContext.Provider>
+      <TelescopeQueryProvider>
+        <TelescopeClientContext.Provider value={client}>{ui}</TelescopeClientContext.Provider>
+      </TelescopeQueryProvider>
     </StrictMode>,
   );
 }

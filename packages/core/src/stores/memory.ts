@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
 import { type BatchOrigin, type Entry, isBatchOrigin, type RecordInput } from '../entry.js';
-import type { EntryQuery, TelescopeStore, TraceIdQuery, TraceIdRow } from '../store.js';
+import type {
+  BucketCountQuery,
+  BucketCountRow,
+  EntryQuery,
+  TelescopeStore,
+  TraceIdQuery,
+  TraceIdRow,
+} from '../store.js';
 
 /** Options for {@link InMemoryTelescopeStore}. */
 export interface InMemoryStoreOptions {
@@ -103,6 +110,31 @@ export class InMemoryTelescopeStore implements TelescopeStore {
       .sort((a, b) => b[1] - a[1])
       .slice(offset, offset + query.limit)
       .map(([traceId, at]) => ({ traceId, lastAt: new Date(at) }));
+  }
+
+  /** The in-memory counterpart of the projected bucket count. Nothing to project
+   *  here — the entries are already objects — but implementing it keeps callers on a
+   *  single code path instead of branching on which store they were handed. */
+  async countByBucket(query: BucketCountQuery): Promise<BucketCountRow[]> {
+    const startMs = query.after.getTime();
+    const endMs = query.before.getTime();
+    const bucketMs = Math.max(1, Math.floor(query.bucketMs));
+    const tally = new Map<string, BucketCountRow>();
+
+    for (const entry of this.entries) {
+      if (query.type !== undefined && entry.type !== query.type) continue;
+      const at = entry.createdAt.getTime();
+      if (at <= startMs || at > endMs) continue;
+      const index = Math.floor((at - startMs) / bucketMs);
+      const key = `${index}\u0000${entry.type}`;
+      const seen = tally.get(key);
+      if (seen === undefined) {
+        tally.set(key, { index, type: entry.type, count: 1 });
+      } else {
+        seen.count += 1;
+      }
+    }
+    return [...tally.values()];
   }
 
   async count(): Promise<number> {
