@@ -79,13 +79,27 @@ interface PulseSummary {
   slowRoutes: PulseHotspot[]              // consistently-slow request families by p99
   slowOutgoing: PulseHotspot[]            // slow outbound HTTP-client families
   slowJobs: PulseHotspot[]                // slow queue/job families
-  topExceptions: PulseExceptionGroup[]    // grouped exception families
+  topExceptions: PulseExceptionGroup[]    // grouped exception families (server + browser)
   nPlusOne: PulseNPlusOne[]               // N+1 query loops aggregated across traces
   loadByUser: PulseUserLoad[]             // share of load by `user:<id>` tag
   scanned: number                         // entries scanned to build this summary
   truncated: boolean                      // whether the scan hit its cap
 }
 ```
+
+<Callout>
+`topExceptions` spans **both** `exception` (server) and `client_exception`
+(browser-reported) entries — a browser error counts as an error. Until 0.12.0 only the
+server type was classified here, so a front-end-only incident showed up as
+"Recent failures: no exceptions" on the overview while the alert poller, which has always
+read both, was paging on it.
+
+`requests.errorRate` is a different number and stays request-only: it is the share of
+requests answered 4xx/5xx, derived from the status breakdown. (If you are on a version
+before 0.12.0 and that rate reads 0% no matter what, see the response-status note in
+[capture](/docs/telescope/concepts/capture) — Adonis exposes `getStatus()`, not
+`statusCode`, and the watcher used to read the wrong one.)
+</Callout>
 
 <Callout type="info">
 The rollup **reuses** the existing metrics primitives rather than re-deriving anything:

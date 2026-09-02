@@ -236,6 +236,22 @@ never imported):
 When those packages aren't installed, the readers return `undefined`: no trace
 correlation, no diagnostic entries — but the request watcher still works standalone.
 
+## Response status
+
+A `request` entry's `status` is read from the response, and hosts disagree on how to expose
+it: AdonisJS has **only** `getStatus()` (the `statusCode` it wraps belongs to the Node
+`ServerResponse`, one level down), while Node/Express-style hosts have a `statusCode`
+property. The watcher tries `getStatus()` first and falls back to `statusCode`; a throwing
+accessor degrades to `null` rather than costing you the entry.
+
+<Callout type="warn">
+Before 0.12.0 only `statusCode` was read, so on AdonisJS **every** request entry recorded
+`status: null` — no `status:<code>` tag was ever emitted, and Pulse's `requests.errorRate`,
+which is derived from the 4xx/5xx breakdown, sat at 0% no matter how many requests were
+failing. If you are on an older version and your error rate looks suspiciously perfect,
+this is why.
+</Callout>
+
 ## User attribution
 
 A `request` entry records the authenticated user as `{ id, email? }` (never the full
