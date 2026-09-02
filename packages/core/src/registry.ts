@@ -29,6 +29,18 @@ export interface TelescopeRuntime {
    * {@link RequestEnrichment}.
    */
   requestEnrichment: RequestEnrichment | null;
+  /**
+   * The dashboard's own URL prefix (e.g. `/telescope`), published by the UI provider.
+   *
+   * The request middleware skips it. Without that, the console competes with the
+   * application on the application's own list: telescope's aggregation endpoints are
+   * among the slowest the process serves — that is literally their job — so opening
+   * the Overview or Pulse recorded two more slow requests into the app's "slowest
+   * routes" ranking and its p99.
+   *
+   * `null` when the UI is not mounted, or when the host opted back in.
+   */
+  selfPath: string | null;
   /** The booted extension registry (entry types / dashboards / data providers), or `null`. */
   registry: ExtensionRegistry | null;
   /**
@@ -75,6 +87,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   requestWatcherEnabled: false,
   requestCapture: null,
   requestEnrichment: null,
+  selfPath: null,
   registry: null,
   entryEvents: null,
   paused: false,
@@ -100,6 +113,11 @@ export function setTelescopeRuntime(
   runtime.requestWatcherEnabled = requestWatcherEnabled;
   runtime.requestCapture = requestCapture;
   runtime.requestEnrichment = requestEnrichment;
+}
+
+/** Publish (or clear) the dashboard's own path so the request middleware can skip it. */
+export function setTelescopeSelfPath(path: string | null): void {
+  runtime.selfPath = path;
 }
 
 /** Publish the booted extension registry so the UI can serve its dashboards + providers. */
@@ -159,6 +177,7 @@ export function resetTelescopeRuntime(): void {
   runtime.requestCapture = null;
   runtime.requestEnrichment = null;
   runtime.registry = null;
+  runtime.selfPath = null;
   runtime.entryEvents = null;
   runtime.paused = false;
   runtime.diagnosisCoordinator = null;

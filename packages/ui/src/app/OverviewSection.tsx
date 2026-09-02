@@ -50,10 +50,16 @@ export function OverviewSection({
   onOpenTrace,
   onOpenEntry,
   onOpenQueues,
+  onOpenPulse,
+  onOpenExceptions,
+  onOpenType,
 }: {
   onOpenTrace: (traceId: string) => void;
   onOpenEntry: (id: string) => void;
   onOpenQueues: () => void;
+  onOpenPulse: () => void;
+  onOpenExceptions: () => void;
+  onOpenType: (type: string) => void;
 }) {
   const [windowMs, setWindowMs] = useState(3_600_000);
   const pulseState = usePulse(windowMs);
@@ -77,6 +83,9 @@ export function OverviewSection({
             onOpenTrace={onOpenTrace}
             onOpenEntry={onOpenEntry}
             onOpenQueues={onOpenQueues}
+            onOpenPulse={onOpenPulse}
+            onOpenExceptions={onOpenExceptions}
+            onOpenType={onOpenType}
           />
         )}
       </AsyncBlock>
@@ -92,6 +101,9 @@ function OverviewBody({
   onOpenTrace,
   onOpenEntry,
   onOpenQueues,
+  onOpenPulse,
+  onOpenExceptions,
+  onOpenType,
 }: {
   pulse: PulseSummary;
   queues: QueueSummary[];
@@ -100,6 +112,9 @@ function OverviewBody({
   onOpenTrace: (traceId: string) => void;
   onOpenEntry: (id: string) => void;
   onOpenQueues: () => void;
+  onOpenPulse: () => void;
+  onOpenExceptions: () => void;
+  onOpenType: (type: string) => void;
 }) {
   const failedJobs = queues.reduce((acc, q) => acc + (q.counts.failed ?? 0), 0);
   const attentionQueues = queuesNeedingAttention(queues);
@@ -118,16 +133,19 @@ function OverviewBody({
           label="Requests"
           value={formatCount(pulse.requests.total)}
           sub={`${formatCount(Object.values(pulse.counts).reduce((a, b) => a + b, 0))} entries total`}
+          onClick={() => onOpenType('request')}
         />
         <Stat
           label="Error rate"
           value={<span className={errorClass}>{formatPercent(pulse.requests.errorRate)}</span>}
           sub={`${formatCount(pulse.requests.status['5xx'] + pulse.requests.status['4xx'])} errors`}
+          onClick={onOpenExceptions}
         />
         <Stat
           label="Failed jobs"
           value={<span className={failedJobs > 0 ? 'text-bad' : undefined}>{failedJobs}</span>}
           sub="across queues"
+          onClick={onOpenQueues}
         />
         <Stat
           label="Slow routes"
@@ -136,7 +154,11 @@ function OverviewBody({
               {pulse.slowRoutes.length}
             </span>
           }
+          // O Pulse é onde as rotas lentas aparecem NOMEADAS, por p99. Sem este
+          // clique o tile dizia "4" e escondia quais — o próximo passo do leitor é
+          // óbvio e a UI o recusava.
           sub="over the slow p99 threshold"
+          onClick={onOpenPulse}
         />
       </div>
 

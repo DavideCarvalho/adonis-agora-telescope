@@ -64,6 +64,17 @@ export interface TelescopeUiConfig {
    */
   path?: string;
   /**
+   * Record the dashboard's OWN requests as `request` entries. Default `false`.
+   *
+   * Off by default because the console is the loudest client of the app it observes:
+   * its aggregation endpoints are among the slowest the process serves, because that
+   * is their job. Left on, the "slowest routes" list ranks telescope's own endpoints
+   * against the application's.
+   *
+   * Turn on only to debug the console itself.
+   */
+  recordOwnRequests?: boolean;
+  /**
    * The access-decision hook. When omitted, the default policy is used: allow when
    * not in production, otherwise require a configured {@link UiCredentials}. Provide
    * this to delegate to your own app auth (e.g. `ctx.auth.user?.isAdmin === true`).
@@ -150,6 +161,7 @@ export interface ResolvedTelescopeUiConfig {
   enabled: boolean;
   /** Always a leading-slash, no-trailing-slash prefix, e.g. `/telescope`. */
   path: string;
+  recordOwnRequests: boolean;
   authorize: AuthorizeHook;
   credentials: UiCredentials;
   /** Resolved built-in login config, or `null` when `dashboardAuth` is unconfigured. */
@@ -258,6 +270,7 @@ export function resolveConfig(config: TelescopeUiConfig = {}): ResolvedTelescope
   return {
     enabled: config.enabled ?? true,
     path: normalizePath(config.path ?? '/telescope'),
+    recordOwnRequests: config.recordOwnRequests ?? false,
     authorize: config.authorize ?? defaultAuthorize(credentials),
     credentials,
     // Validate + resolve now so a misconfigured secret/login fails closed at boot, not on the first

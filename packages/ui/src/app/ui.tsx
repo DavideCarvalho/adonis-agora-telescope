@@ -71,15 +71,48 @@ export function Panel({ children, className }: { children: ReactNode; className?
   );
 }
 
-export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-line bg-panel/40 p-4">
+/**
+ * A headline number.
+ *
+ * `onClick` makes it a real button that navigates to wherever the number can be
+ * broken down. A tile that says "Slow routes: 4" and cannot be opened states a
+ * problem and hides the evidence — the reader's next move is obvious and the UI
+ * refuses it. Every counting tile should either be clickable or not worth showing.
+ */
+export function Stat({
+  label,
+  value,
+  sub,
+  onClick,
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+  /** Where this number breaks down. Renders the tile as a button when present. */
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
       <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
       <div className="tnum text-xl font-semibold tracking-tight">{value}</div>
       {sub !== undefined && <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>}
-    </div>
+    </>
+  );
+
+  if (onClick === undefined) {
+    return <div className="rounded-lg border border-line bg-panel/40 p-4">{body}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="cursor-pointer rounded-lg border border-line bg-panel/40 p-4 text-left transition-colors hover:border-brand/40 hover:bg-brand/5"
+    >
+      {body}
+    </button>
   );
 }
 

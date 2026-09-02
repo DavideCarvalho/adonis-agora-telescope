@@ -2,7 +2,7 @@ import type { HttpContext } from '@adonisjs/core/http';
 import type { ApplicationService } from '@adonisjs/core/types';
 import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js';
 import type { ExtensionContext } from '../src/extension/types.js';
-import { getTelescopeRuntime } from '../src/registry.js';
+import { getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
@@ -123,6 +123,9 @@ export default class TelescopeUiProvider {
     const schedulesApi = new SchedulesApi(service);
 
     const apiBase = `${config.path}/api`;
+    // Publish (or clear) the prefix the request middleware skips, so the console
+    // stops ranking itself among the app's slowest routes.
+    setTelescopeSelfPath(config.recordOwnRequests ? null : config.path);
 
     const router = await this.app.container.make('router');
     const guard = config.authorize;
