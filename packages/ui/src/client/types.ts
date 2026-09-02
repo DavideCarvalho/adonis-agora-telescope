@@ -137,6 +137,8 @@ export interface StatusBreakdown {
 
 export interface ExceptionGroupStats {
   key: string;
+  /** `exception` (server) or `client_exception` (browser) — what the group's rows link to. */
+  type: string;
   class: string;
   message: string;
   count: number;

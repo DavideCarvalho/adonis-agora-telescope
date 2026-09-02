@@ -13,8 +13,12 @@ import { useMetricsStats } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
 
 /**
- * Exception groups: `exception` entries grouped by class + message over a window, with an occurrence
- * count, a last-seen time, and an over-time sparkline. Rows deep-link into the filtered entries list.
+ * Exception groups: `exception` AND `client_exception` entries grouped by class + message over a
+ * window, with an occurrence count, a last-seen time, and an over-time sparkline.
+ *
+ * A row deep-links into the entries list filtered by THAT GROUP's type. It used to hard-code
+ * `exception`, which meant every click on a browser-reported error landed on a list that could not
+ * contain it — "0 shown" on a row that had just said the error happened 26 times.
  */
 export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) => void }) {
   const [windowMs, setWindowMs] = useState(3_600_000);
@@ -48,7 +52,7 @@ export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) =
                 <TableRow
                   key={group.key}
                   className="cursor-pointer hover:bg-brand/5"
-                  {...clickable(() => onOpenType('exception'))}
+                  {...clickable(() => onOpenType(group.type))}
                 >
                   <TableCell className="mono text-bad">{group.class}</TableCell>
                   <TableCell className="mono">{group.message}</TableCell>
