@@ -1,5 +1,76 @@
 # @adonis-agora/telescope
 
+## 0.13.0
+
+### Minor Changes
+
+- [#50](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/50) [`56d498d`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/56d498d0998c51650172985dcdfe00562290aa5d) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Two things the dashboard couldn't tell you about a browser-reported error: **who** it happened
+  to, and **where to click** to see it.
+  
+  **`client_exception` is now attributed to the session user.** The ingestor took `user` from the
+  request body alone, and no front-end reporter ships the logged-in user by default — so in
+  practice every browser error recorded `user: null` and the dashboard's User column sat empty on
+  a fully authenticated session. It now reads the `@adonis-agora/context` `userRef()`, resolved
+  server-side on that same request (the endpoint sits behind the host's normal middleware stack).
+  
+  The precedence is a trust decision, not a preference: the endpoint is **public**, so anything in
+  the body is a claim a caller could forge for someone else's id. The server-derived context wins
+  whenever both are present. The body claim is still honoured when the context has nothing — an
+  anonymous page, or a host without `@adonis-agora/context` — because a self-reported id beats no
+  attribution when there is nothing to contradict it.
+  
+  **Exception groups carry their entry type.** `ExceptionGroupStats` and `PulseExceptionGroup` gain
+  a `type` (`exception` or `client_exception`), and the dashboard's Exceptions rows deep-link into
+  the entries list filtered by *that row's* type. The link used to hard-code `exception`, so every
+  click on a browser error landed on a list that by construction could not contain it — "0 shown"
+  on a row that had just reported 26 occurrences.
+  
+  A group spans one type in practice, since grouping is by `familyHash` and a server throw's hash
+  never collides with a browser report's; when two entries of different types do share a key, the
+  group takes the type of the first seen in the window.
+
+- [#48](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/48) [`829f91a`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/829f91a25e1e92370a0aa69795ad9d2195433ce7) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - New `requestEnrichment` hook: attach what only your app knows to every `request` entry.
+  
+  ```ts
+  // config/telescope.ts
+  requestEnrichment: (ctx) => {
+    const screen = ctx.request.header('x-screen')
+    return typeof screen === 'string' ? { tags: [`screen:${screen}`] } : undefined
+  }
+  ```
+  
+  The motivating case is one the dashboard could not answer: **which requests came from
+  which front-end screen?** Telescope sees `GET /api/v1/researcher/projects` and has no idea
+  whether the writing page or the dashboard asked for it. The browser knows; it just had no
+  way to say so. Now it sends its current page in a header, the host turns that into a
+  `screen:<name>` tag, and the existing tag filter does the rest — no new UI, no new query
+  API.
+  
+  Three optional fields on the returned object:
+  
+  - **`tags`** — appended to the derived ones. Tags are how the dashboard filters, so this is
+    where anything you want to slice by belongs. Capped at 16 tags of 128 characters
+    (`MAX_ENRICHMENT_TAGS` / `MAX_ENRICHMENT_TAG_LENGTH`, both exported); blanks and
+    non-strings are dropped.
+  - **`context`** — free-form fields under `content.context`, for detail you want to read but
+    not filter by. Declared before `body` in the content so the recorder's byte budget, which
+    drops keys in insertion order, cannot let a captured megabyte-sized body starve out a few
+    short context fields.
+  - **`user`** — for hosts where neither `ctx.auth.user` nor the `@adonis-agora/context`
+    `userRef()` applies. Wins over both; an explicit `options.user` on `recordRequest` still
+    wins over it.
+  
+  The hook is **synchronous** on purpose. It runs on the recording path of every request, so
+  an `await` here — a DB lookup for the user, say — would put host I/O between the response
+  and the next request. Read what is already on the `ctx`.
+  
+  A bad hook cannot cost you the entry: a throw, a `null`, a string, an array, a thousand
+  tags, a non-object `context` — every one of them degrades to recording exactly what would
+  have been recorded without the hook.
+  
+  Additive: no config change required and behavior is unchanged when `requestEnrichment` is
+  unset. Also exports the `RequestEnrichment` / `RequestEnrichmentResult` types.
+
 ## 0.12.0
 
 ### Minor Changes
