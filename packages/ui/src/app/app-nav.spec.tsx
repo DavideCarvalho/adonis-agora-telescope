@@ -283,3 +283,42 @@ describe('App shell navigation', () => {
     );
   });
 });
+
+/**
+ * A barra tinha DOIS itens levando à mesma tela: "Extensions" (a seção sem dashboard
+ * escolhido) e, logo abaixo, o dashboard contribuído pelo próprio nome — "Workflows".
+ * Um nomeado pelo que você quer ver, outro pela mecânica que entrega. "Extensão" é
+ * conceito de quem escreve a lib, não de quem lê o console.
+ */
+describe('sidebar — dashboards contribuídos', () => {
+  function clientWithDashboard(): TelescopeClient {
+    return fakeClient({
+      meta: vi.fn().mockResolvedValue({
+        entryTypes: [],
+        dashboards: [{ id: 'durable.workflows', label: 'Workflows', panels: [] }],
+        ai: { enabled: false },
+      }),
+    });
+  }
+
+  it('não existe mais um item "Extensions"', async () => {
+    renderApp(clientWithDashboard());
+    await waitFor(() => expect(screen.getByText('Workflows')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: 'Extensions' })).toBeNull();
+  });
+
+  it('o dashboard aparece pelo NOME dele e abre ao clicar', async () => {
+    renderApp(clientWithDashboard());
+    // Escopado à barra lateral: depois do clique a própria seção também escreve
+    // "Workflows", e um getByText solto passaria a achar dois.
+    const sidebar = () => within(screen.getByRole('navigation', { name: 'sections' }));
+    const item = await waitFor(() => sidebar().getByText('Workflows'));
+
+    fireEvent.click(item);
+
+    expect(window.location.hash).toContain('extensions');
+    await waitFor(() =>
+      expect(sidebar().getByText('Workflows').getAttribute('aria-current')).toBe('page'),
+    );
+  });
+});
