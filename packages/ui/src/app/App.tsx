@@ -37,11 +37,16 @@ type SectionKey =
   | 'schedules';
 
 /**
- * The sidebar's top-level section list — order matches `@dudousxd/nestjs-telescope-ui`'s
+ * The sidebar's built-in section list — order matches `@dudousxd/nestjs-telescope-ui`'s
  * `DashboardLayout` NAV wherever this console shares the page (Overview, Entries, Traces, Pulse,
  * Queues, Schedules, Exports, Profiles), plus this console's own additions (Exceptions — a
- * dedicated grouped-exception view nestjs folds into Entries/Pulse instead; Extensions — the
- * single contributed-dashboard picker, vs. nestjs's one-nav-item-per-dashboard).
+ * dedicated grouped-exception view nestjs folds into Entries/Pulse instead; Screens).
+ *
+ * Contributed dashboards are NOT here: they are rendered below this list, each under its own
+ * name, which is the same one-nav-item-per-dashboard shape nestjs uses. There used to be a
+ * single "Extensions" picker above them, and it meant the bar had two entries leading to the
+ * same screen — one named after what you want to see, one named after the machinery that
+ * delivers it.
  */
 const NAV: { key: SectionKey; label: string }[] = [
   { key: 'overview', label: 'Overview' },
@@ -54,7 +59,6 @@ const NAV: { key: SectionKey; label: string }[] = [
   { key: 'schedules', label: 'Schedules' },
   { key: 'exports', label: 'Exports' },
   { key: 'profiles', label: 'Profiles' },
-  { key: 'extensions', label: 'Extensions' },
 ];
 
 const THEME_STORAGE_KEY = 'telescope-theme';
@@ -162,10 +166,7 @@ export function App() {
           <span className="px-3 text-base font-semibold text-brand">Telescope</span>
           <nav className="flex flex-col gap-1" aria-label="sections">
             {NAV.map((item) => {
-              const active =
-                item.key === 'extensions'
-                  ? route.name === 'extensions' && route.dashboardId == null
-                  : route.name === item.key;
+              const active = route.name === item.key;
               return (
                 <button
                   key={item.key}
@@ -178,11 +179,21 @@ export function App() {
                 </button>
               );
             })}
+            {/*
+              Cada dashboard contribuído entra pelo NOME dele. Não há um item
+              "Extensions" acima: ele abria a mesma seção sem dashboard escolhido, então
+              a barra tinha dois itens que levavam ao mesmo lugar — um com o nome do que
+              você quer ver ("Workflows") e outro com o nome da mecânica que o entrega.
+              "Extensão" é um conceito de quem escreve a lib, não de quem lê o console.
+            */}
             {(meta.data?.dashboards ?? []).map((d) => (
               <button
                 key={d.id}
                 type="button"
                 className={navItemClass(route.name === 'extensions' && route.dashboardId === d.id)}
+                aria-current={
+                  route.name === 'extensions' && route.dashboardId === d.id ? 'page' : undefined
+                }
                 onClick={() => navigate({ name: 'extensions', dashboardId: d.id })}
               >
                 {d.label}
