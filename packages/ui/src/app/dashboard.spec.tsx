@@ -13,6 +13,7 @@ import { EntriesSection } from './EntriesSection.js';
 import { EntryDetail } from './EntryDetail.js';
 import { ExceptionsSection } from './ExceptionsSection.js';
 import { PulseSection } from './PulseSection.js';
+import { TelescopeQueryProvider } from './query-provider.js';
 import { ScreensSection } from './ScreensSection.js';
 import { TraceDetail } from './TraceDetail.js';
 import { TracesSection } from './TracesSection.js';
@@ -184,7 +185,9 @@ function renderWith(
   esFactory?: (url: string) => EventSourceLike,
 ) {
   const tree = (
-    <TelescopeClientContext.Provider value={client}>{ui}</TelescopeClientContext.Provider>
+    <TelescopeQueryProvider>
+      <TelescopeClientContext.Provider value={client}>{ui}</TelescopeClientContext.Provider>
+    </TelescopeQueryProvider>
   );
   return render(
     <StrictMode>
@@ -381,10 +384,10 @@ describe('PulseSection', () => {
   it('renders the health rollup from /metrics/pulse', async () => {
     const client = fakeClient();
     renderWith(client, <PulseSection onOpenTrace={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText('Pulse · health overview')).toBeTruthy());
+    // Espera o DADO, não o título: o título renderiza sem dado nenhum, então
+    // esperar por ele só provava que o componente montou.
+    await waitFor(() => expect(screen.getByText('10.0%')).toBeTruthy());
     expect(client.pulse).toHaveBeenCalled();
-    // Error rate 0.1 → 10.0%, and a slow-route + top-exception surface.
-    expect(screen.getByText('10.0%')).toBeTruthy();
     // 'GET /slow' surfaces in both the Slowest and Slow-routes cards.
     expect(screen.getAllByText('GET /slow').length).toBeGreaterThan(0);
     expect(screen.getByText(/TypeError: boom/)).toBeTruthy();
