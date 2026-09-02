@@ -448,6 +448,14 @@ export interface TelescopeMeta {
   profiling?: { enabled: boolean };
   /** Whether the live queue manager capability is enabled — gates the Queues section. */
   queueManager?: { enabled: boolean };
+  /**
+   * The watcher names actually running, e.g. `['request', 'redis']`.
+   *
+   * Lets a panel distinguish "nothing happened" from "nothing is being measured".
+   * Absent on a server predating this field — panels then keep their old wording
+   * rather than claiming a watcher is off when they cannot know.
+   */
+  watchers?: string[];
 }
 
 // ── CPU profiling (`GET/POST <base>/profiles*`) ─────────────────────────────

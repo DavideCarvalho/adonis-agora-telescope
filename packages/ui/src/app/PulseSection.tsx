@@ -14,8 +14,9 @@ import {
   Stat,
   typeColor,
   typeLabel,
+  WatcherOff,
 } from './ui.js';
-import { usePulse } from './use-telescope.js';
+import { usePulse, useWatcherEnabled } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
 
 /**
@@ -47,6 +48,10 @@ function PulseBody({
   pulse: PulseSummary;
   onOpenTrace: (traceId: string) => void;
 }) {
+  // Estes dois painéis derivam de watchers OPCIONAIS. Sem eles não há o que
+  // detectar, e "nenhum detectado" afirmaria saúde a partir de cegueira.
+  const queryWatcher = useWatcherEnabled('query');
+  const httpClientWatcher = useWatcherEnabled('http-client');
   const errorClass =
     pulse.requests.errorRate >= 0.05
       ? 'text-bad'
@@ -136,16 +141,20 @@ function PulseBody({
 
         <Panel>
           <SectionTitle title="N+1 hotspots" hint="by wasted time" />
-          <HotspotList
-            rows={pulse.nPlusOne.map((n) => ({
-              key: n.familyHash,
-              label: n.sql,
-              right: `×${n.perRequest} · ${formatDuration(n.totalDurationMs)}`,
-              traceId: n.sampleTraceId,
-            }))}
-            empty="No N+1 loops detected."
-            onOpenTrace={onOpenTrace}
-          />
+          {queryWatcher === false ? (
+            <WatcherOff watcher="query" config="config/telescope_watchers.ts" />
+          ) : (
+            <HotspotList
+              rows={pulse.nPlusOne.map((n) => ({
+                key: n.familyHash,
+                label: n.sql,
+                right: `×${n.perRequest} · ${formatDuration(n.totalDurationMs)}`,
+                traceId: n.sampleTraceId,
+              }))}
+              empty="No N+1 loops detected."
+              onOpenTrace={onOpenTrace}
+            />
+          )}
         </Panel>
 
         <Panel>
@@ -162,14 +171,18 @@ function PulseBody({
 
         <Panel>
           <SectionTitle title="Slow outgoing HTTP" hint="by p99" />
-          <HotspotList
-            rows={pulse.slowOutgoing.map((r) => ({
-              key: r.route,
-              label: r.route,
-              right: `${formatDuration(r.p99)} · ×${r.count}`,
-            }))}
-            empty="No slow outgoing calls."
-          />
+          {httpClientWatcher === false ? (
+            <WatcherOff watcher="http-client" config="config/telescope_watchers.ts" />
+          ) : (
+            <HotspotList
+              rows={pulse.slowOutgoing.map((r) => ({
+                key: r.route,
+                label: r.route,
+                right: `${formatDuration(r.p99)} · ×${r.count}`,
+              }))}
+              empty="No slow outgoing calls."
+            />
+          )}
         </Panel>
       </div>
 

@@ -149,6 +149,19 @@ export function useRetention() {
   return useTelescopeQuery(['retention'], () => client.retention());
 }
 
+/**
+ * Whether a watcher is running, as far as the server told us.
+ *
+ * Three-valued on purpose. `null` means "the server did not say" (an older core, or
+ * `/meta` still loading), and a panel must NOT claim a watcher is off in that case —
+ * replacing one confident wrong answer with another is not an improvement.
+ */
+export function useWatcherEnabled(name: string): boolean | null {
+  const { data } = useMeta();
+  if (!data || data.watchers === undefined) return null;
+  return data.watchers.includes(name);
+}
+
 export function useMeta() {
   const client = useTelescopeClient();
   return useTelescopeQuery(['meta'], () => client.meta());

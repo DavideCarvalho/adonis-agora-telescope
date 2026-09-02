@@ -2,7 +2,7 @@ import type { HttpContext } from '@adonisjs/core/http';
 import type { ApplicationService } from '@adonisjs/core/types';
 import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js';
 import type { ExtensionContext } from '../src/extension/types.js';
-import { getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
+import { getEnabledWatchers, getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
@@ -475,11 +475,17 @@ export default class TelescopeUiProvider {
         const ai = { enabled: diagnosisApi.isConfigured() };
         const profiling = { enabled: profilesApi.isConfigured() };
         const queueManager = { enabled: queueManagerApi.isConfigured() };
-        if (extApi) return extApi.meta(ctx, { ai, profiling, queueManager });
+        // The watcher names actually running, so a panel can say "the `query` watcher
+        // is off" instead of "No N+1 loops detected 🎉" — reporting its own blindness
+        // in the voice of good news is worse than reporting nothing.
+        const watchers = getEnabledWatchers();
+        if (extApi) return extApi.meta(ctx, { ai, profiling, queueManager, watchers });
         return ctx.response
           .status(200)
           .header('content-type', 'application/json')
-          .send({ data: { entryTypes: [], dashboards: [], ai, profiling, queueManager } });
+          .send({
+            data: { entryTypes: [], dashboards: [], ai, profiling, queueManager, watchers },
+          });
       })
       .as('telescope_ui.meta');
   }

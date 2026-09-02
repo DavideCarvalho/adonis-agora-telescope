@@ -116,6 +116,27 @@ export function Stat({
   );
 }
 
+/**
+ * The empty state for a panel whose data source is switched off.
+ *
+ * Distinct from {@link Empty} on purpose. "No N+1 loops detected 🎉" and "the `query`
+ * watcher is off" are opposite claims, and a panel that renders the first when the
+ * second is true reports its own blindness in the voice of good news — the reader
+ * walks away reassured about something nobody measured. Every panel that depends on
+ * an optional watcher should be able to say which one, and where to turn it on.
+ */
+export function WatcherOff({ watcher, config }: { watcher: string; config: string }) {
+  return (
+    <div className="rounded-md border border-dashed border-line px-3 py-4 text-[13px] text-muted-foreground">
+      <span className="text-warn">Not measured.</span> The{' '}
+      <code className="text-foreground">{watcher}</code> watcher is not enabled, so this panel has
+      no data to show — which is not the same as nothing being wrong. Add{' '}
+      <code className="text-foreground">'{watcher}'</code> to{' '}
+      <code className="text-foreground">{config}</code> to start recording it.
+    </div>
+  );
+}
+
 export function SectionTitle({ title, hint }: { title: string; hint?: ReactNode }) {
   return (
     <div className="mb-3 flex items-center justify-between gap-3">

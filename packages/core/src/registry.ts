@@ -41,6 +41,16 @@ export interface TelescopeRuntime {
    * `null` when the UI is not mounted, or when the host opted back in.
    */
   selfPath: string | null;
+  /**
+   * The watcher names actually running, published by both watcher providers.
+   *
+   * The console needs this to tell "nothing happened" apart from "nothing is being
+   * measured". A panel that renders "No N+1 loops detected 🎉" when the `query`
+   * watcher is off is not reporting health — it is reporting its own blindness, in
+   * the voice of good news. That is worse than showing nothing, because the reader
+   * walks away reassured.
+   */
+  enabledWatchers: Set<string>;
   /** The booted extension registry (entry types / dashboards / data providers), or `null`. */
   registry: ExtensionRegistry | null;
   /**
@@ -88,6 +98,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   requestCapture: null,
   requestEnrichment: null,
   selfPath: null,
+  enabledWatchers: new Set<string>(),
   registry: null,
   entryEvents: null,
   paused: false,
@@ -113,6 +124,16 @@ export function setTelescopeRuntime(
   runtime.requestWatcherEnabled = requestWatcherEnabled;
   runtime.requestCapture = requestCapture;
   runtime.requestEnrichment = requestEnrichment;
+}
+
+/** Add watcher names to the set the console reads to distinguish "quiet" from "off". */
+export function registerEnabledWatchers(names: Iterable<string>): void {
+  for (const name of names) runtime.enabledWatchers.add(name);
+}
+
+/** The watcher names currently running. */
+export function getEnabledWatchers(): string[] {
+  return [...runtime.enabledWatchers].sort();
 }
 
 /** Publish (or clear) the dashboard's own path so the request middleware can skip it. */
@@ -178,6 +199,7 @@ export function resetTelescopeRuntime(): void {
   runtime.requestEnrichment = null;
   runtime.registry = null;
   runtime.selfPath = null;
+  runtime.enabledWatchers.clear();
   runtime.entryEvents = null;
   runtime.paused = false;
   runtime.diagnosisCoordinator = null;

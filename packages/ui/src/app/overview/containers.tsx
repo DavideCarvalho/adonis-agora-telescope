@@ -12,8 +12,15 @@ import {
   Stat,
   typeColor,
   typeLabel,
+  WatcherOff,
 } from '../ui.js';
-import { useLiveQueues, usePulse, useRetention, useTimeseries } from '../use-telescope.js';
+import {
+  useLiveQueues,
+  usePulse,
+  useRetention,
+  useTimeseries,
+  useWatcherEnabled,
+} from '../use-telescope.js';
 
 /**
  * The Overview's containers: each one fetches what it needs and owns its own loading
@@ -201,6 +208,17 @@ export function NPlusOnePanel({
   onOpenTrace: (traceId: string) => void;
 }) {
   const state = usePulse(windowMs);
+  // N+1 é derivado de entries `query`. Sem esse watcher o painel não pode detectar
+  // nada — e dizer "nenhum detectado" seria afirmar saúde a partir de cegueira.
+  const queryWatcher = useWatcherEnabled('query');
+  if (queryWatcher === false) {
+    return (
+      <Panel>
+        <SectionTitle title="N+1 query hotspots" hint="by wasted time" />
+        <WatcherOff watcher="query" config="config/telescope_watchers.ts" />
+      </Panel>
+    );
+  }
   return (
     <Panel>
       <SectionTitle title="N+1 query hotspots" hint="by wasted time" />
@@ -313,6 +331,15 @@ export function QueuesAttentionPanel({ onOpenQueues }: { onOpenQueues: () => voi
 
 export function SlowestJobsPanel({ windowMs }: { windowMs: number }) {
   const state = usePulse(windowMs);
+  const queueWatcher = useWatcherEnabled('queue');
+  if (queueWatcher === false) {
+    return (
+      <Panel>
+        <SectionTitle title="Slowest jobs" />
+        <WatcherOff watcher="queue" config="config/telescope_watchers.ts" />
+      </Panel>
+    );
+  }
   return (
     <Panel>
       <SectionTitle title="Slowest jobs" />
