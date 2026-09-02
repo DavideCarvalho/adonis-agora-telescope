@@ -118,9 +118,12 @@ export function usePulse(windowMs: number, topN?: number) {
   return useAsync(() => client.pulse(windowMs, topN), [client, windowMs, topN]);
 }
 
-export function useMetricsStats(type: string, windowMs: number) {
+export function useMetricsStats(type: string, windowMs: number, topExceptions?: number) {
   const client = useTelescopeClient();
-  return useAsync(() => client.metricsStats(type, windowMs), [client, type, windowMs]);
+  return useAsync(
+    () => client.metricsStats(type, windowMs, undefined, topExceptions),
+    [client, type, windowMs, topExceptions],
+  );
 }
 
 /** Throughput timeseries (total + per-type breakdown) — backs the Overview/Pulse charts. */

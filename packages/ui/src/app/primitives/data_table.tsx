@@ -1,10 +1,13 @@
 import {
   type ColumnDef,
+  createPaginatedRowModel,
   flexRender,
   type RowData,
+  rowPaginationFeature,
   tableFeatures,
   useTable,
 } from '@tanstack/react-table';
+import { useState } from 'react';
 import { Button } from './button.js';
 import { cn } from './cn.js';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table.js';
@@ -19,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
  * answer presented confidently. When a column needs sorting, the endpoint behind it
  * gets an `order` parameter and the sort happens where the data is.
  */
-const features = tableFeatures({});
+const features = tableFeatures({ rowPaginationFeature });
 
 /**
  * Server-driven pagination state. The page NUMBER lives with the caller (usually in
@@ -43,12 +46,17 @@ export interface DataTableProps<TRow extends RowData> {
   // biome-ignore lint/suspicious/noExplicitAny: ColumnDef's value type varies per column.
   columns: Array<ColumnDef<typeof features, TRow, any>>;
   /**
-   * Turns on SERVER pagination. The only kind that helps here: TanStack's own
-   * pagination row model slices rows that were already fetched, so it would page a
-   * list the server had already paid to build. Omit for a table that simply shows
-   * everything it is handed.
+   * Turns on SERVER pagination, for tables backed by a feed the server pages.
+   * Mutually exclusive with {@link clientPageSize}.
    */
   pagination?: DataTablePagination;
+  /**
+   * Turns on CLIENT pagination, for tables whose rows are an aggregate the client
+   * already holds in full (exception groups, pulse top-lists). There is no round
+   * trip to save here and no partial view to misrepresent, so paging in the browser
+   * is both correct and free — the opposite of doing it to a server-backed feed.
+   */
+  clientPageSize?: number;
   /** Stable row key. Falls back to the row index when omitted. */
   rowKey?: (row: TRow, index: number) => string;
   onRowClick?: (row: TRow) => void;
@@ -67,19 +75,42 @@ export function DataTable<TRow extends RowData>({
   data,
   columns,
   pagination,
+  clientPageSize,
   rowKey,
   onRowClick,
   rowClassName,
   empty = 'No rows.',
 }: DataTableProps<TRow>) {
+  const [clientPage, setClientPage] = useState(0);
+  const paginateInBrowser = pagination === undefined && clientPageSize !== undefined;
+
   const table = useTable({
     key: id,
     features,
     columns,
     data,
     ...(rowKey ? { getRowId: (row: TRow, index: number) => rowKey(row, index) } : {}),
+    ...(paginateInBrowser
+      ? {
+          getPaginatedRowModel: createPaginatedRowModel(),
+          state: { pagination: { pageIndex: clientPage, pageSize: clientPageSize } },
+          onPaginationChange: (updater: unknown) => {
+            const next =
+              typeof updater === 'function'
+                ? (updater as (old: { pageIndex: number; pageSize: number }) => {
+                    pageIndex: number;
+                  })({ pageIndex: clientPage, pageSize: clientPageSize })
+                : (updater as { pageIndex: number });
+            setClientPage(next.pageIndex);
+          },
+        }
+      : // The server already paged; TanStack must not page again on top of it.
+        { manualPagination: true }),
   });
-  const rows = table.getRowModel().rows;
+
+  const rows = paginateInBrowser
+    ? table.getPaginatedRowModel().rows
+    : table.getRowModel().rows;
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -128,6 +159,14 @@ export function DataTable<TRow extends RowData>({
         </TableBody>
       </Table>
       {pagination && <Pager {...pagination} rowsOnPage={rows.length} />}
+      {paginateInBrowser && (
+        <Pager
+          page={clientPage + 1}
+          onPageChange={(next) => setClientPage(next - 1)}
+          hasMore={clientPage + 1 < table.getPageCount()}
+          rowsOnPage={rows.length}
+        />
+      )}
     </div>
   );
 }

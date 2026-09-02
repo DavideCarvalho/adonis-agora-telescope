@@ -23,6 +23,13 @@ export interface StatsQuery {
   type: string;
   windowMs: number;
   buckets?: number;
+  /**
+   * How many exception groups to return. The default (8) is a dashboard-card
+   * default: it is right for the Overview tile and wrong for the Exceptions screen,
+   * where capping at 8 means the 9th most common exception is not merely
+   * out-of-sight, it is unreachable. That screen asks for more.
+   */
+  topExceptions?: number;
 }
 
 export interface TimeseriesQuery {
@@ -88,6 +95,7 @@ export class MetricsService {
     return summarizeStats({
       entries,
       type: query.type,
+      ...(query.topExceptions !== undefined ? { topExceptions: query.topExceptions } : {}),
       windowStart,
       windowEnd,
       windowMs: query.windowMs,

@@ -147,9 +147,13 @@ export class TelescopeApi {
     }
     const windowMs = readNumber(ctx.request, 'windowMs') ?? 3_600_000;
     const buckets = readNumber(ctx.request, 'buckets');
+    const topExceptions = readNumber(ctx.request, 'topExceptions');
     try {
       const data = await this.metrics.getStats({
         type,
+        ...(topExceptions !== undefined
+          ? { topExceptions: clampLimit(topExceptions, 200) }
+          : {}),
         windowMs,
         ...(buckets !== undefined ? { buckets } : {}),
       });

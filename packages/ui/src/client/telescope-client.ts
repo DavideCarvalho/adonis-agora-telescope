@@ -189,8 +189,16 @@ export class TelescopeClient {
 
   // ── metrics ──────────────────────────────────────────────────────────────
 
-  metricsStats(type: string, windowMs?: number, buckets?: number): Promise<StatsResult> {
-    return this.data<StatsResult>('/metrics/stats', toQuery({ type, windowMs, buckets }));
+  metricsStats(
+    type: string,
+    windowMs?: number,
+    buckets?: number,
+    topExceptions?: number,
+  ): Promise<StatsResult> {
+    return this.data<StatsResult>(
+      '/metrics/stats',
+      toQuery({ type, windowMs, buckets, topExceptions }),
+    );
   }
 
   metricsTimeseries(windowMs?: number, buckets?: number, type?: string): Promise<TimeseriesReport> {

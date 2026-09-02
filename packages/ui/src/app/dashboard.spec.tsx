@@ -389,7 +389,15 @@ describe('ExceptionsSection', () => {
     const client = fakeClient();
     renderWith(client, <ExceptionsSection onOpenType={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('ValidationError')).toBeTruthy());
-    expect(client.metricsStats).toHaveBeenCalledWith('exception', 3_600_000);
+    // A tela pede MAIS grupos que o default (8) do endpoint: num painel dedicado a
+    // exceções, um teto de 8 não esconde a 9ª exceção mais comum — torna ela
+    // inalcançável.
+    const [type, windowMs, , topExceptions] = (
+      client.metricsStats as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls[0] as [string, number, unknown, number];
+    expect(type).toBe('exception');
+    expect(windowMs).toBe(3_600_000);
+    expect(topExceptions).toBeGreaterThan(8);
     expect(screen.getByText('email is required')).toBeTruthy();
   });
 });
