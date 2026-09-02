@@ -229,10 +229,17 @@ export type {
   HttpContextLike,
   RecordRequestOptions,
   RequestCaptureOptions,
+  RequestEnrichment,
+  RequestEnrichmentResult,
   RequestEntryContent,
   ResolvedRequestCapture,
 } from './request_watcher.js';
-export { recordRequest, resolveRequestCapture } from './request_watcher.js';
+export {
+  MAX_ENRICHMENT_TAG_LENGTH,
+  MAX_ENRICHMENT_TAGS,
+  recordRequest,
+  resolveRequestCapture,
+} from './request_watcher.js';
 export type { SamplingConfig, SamplingRule } from './sampling/sampling.js';
 // — sampling (tail-sampling on the write path) —
 export {

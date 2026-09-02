@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { EntryType } from '../src/entry.js';
 import { DEFAULT_MASK } from '../src/redaction/redact.js';
 import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
-import { type HttpContextLike, recordRequest } from '../src/request_watcher.js';
+import {
+  type HttpContextLike,
+  MAX_ENRICHMENT_TAG_LENGTH,
+  MAX_ENRICHMENT_TAGS,
+  type RequestEnrichment,
+  type RequestEnrichmentResult,
+  recordRequest,
+} from '../src/request_watcher.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 
 function stubCtx(method: string, url: string, statusCode?: number): HttpContextLike {
@@ -314,5 +321,122 @@ describe('recordRequest — user attribution', () => {
       get: () => undefined,
     };
     expect((await userOf(bare)).user).toBeNull();
+  });
+});
+
+/**
+ * Host enrichment. The motivating case: correlating a front-end screen with the
+ * calls it makes — the browser sends the current page in a header and the host
+ * turns it into a `screen:<name>` tag, after which the dashboard's existing tag
+ * filter answers "which requests came from the writing screen?".
+ *
+ * The hook runs on the recording path of every request, so most of what is locked
+ * down here is that a bad hook cannot cost us the entry.
+ */
+describe('recordRequest — host enrichment', () => {
+  function ctxWithHeader(header?: string): HttpContextLike {
+    return {
+      request: {
+        method: () => 'GET',
+        url: () => '/api/v1/researcher/projects',
+        header: (name: string) => (name.toLowerCase() === 'x-screen' ? header : undefined),
+      },
+      response: { getStatus: () => 200 },
+    };
+  }
+
+  async function record(ctx: HttpContextLike, enrich?: RequestEnrichment) {
+    const store = new InMemoryTelescopeStore();
+    await recordRequest(store, ctx, Date.now(), enrich === undefined ? {} : { enrich });
+    const [entry] = await store.list();
+    if (entry === undefined) throw new Error('no entry recorded');
+    return {
+      tags: entry.tags,
+      content: entry.content as { context?: Record<string, unknown>; user: unknown },
+    };
+  }
+
+  const screenTag: RequestEnrichment = (ctx) => {
+    const screen = ctx.request.header?.('x-screen');
+    return typeof screen === 'string' ? { tags: [`screen:${screen}`] } : undefined;
+  };
+
+  it('tags the entry with the screen the call came from', async () => {
+    const { tags } = await record(ctxWithHeader('researcher/writing_page'), screenTag);
+    expect(tags).toContain('screen:researcher/writing_page');
+    // The derived tags are still there — enrichment appends, never replaces.
+    expect(tags).toContain('method:GET');
+    expect(tags).toContain('status:200');
+  });
+
+  it('records nothing extra when the hook returns undefined', async () => {
+    const { tags, content } = await record(ctxWithHeader(undefined), screenTag);
+    expect(tags).toEqual(['method:GET', 'status:200']);
+    expect(content.context).toBeUndefined();
+  });
+
+  it('records free-form context on the entry', async () => {
+    const { content } = await record(ctxWithHeader(), () => ({
+      context: { screen: 'admin/dashboard', release: 'abc123' },
+    }));
+    expect(content.context).toEqual({ screen: 'admin/dashboard', release: 'abc123' });
+  });
+
+  it('lets the hook supply the user when the ctx cannot', async () => {
+    const { tags, content } = await record(ctxWithHeader(), () => ({
+      user: { id: 'usr-7', email: 'ada@example.com' },
+    }));
+    expect(content.user).toEqual({ id: 'usr-7', email: 'ada@example.com' });
+    expect(tags).toContain('user:usr-7');
+  });
+
+  it('an explicit options.user still beats the hook', async () => {
+    const store = new InMemoryTelescopeStore();
+    await recordRequest(store, ctxWithHeader(), Date.now(), {
+      user: { id: 'explicit' },
+      enrich: () => ({ user: { id: 'from-hook' } }),
+    });
+    const [entry] = await store.list();
+    if (entry === undefined) throw new Error('no entry recorded');
+    expect((entry.content as { user: { id: string } }).user).toEqual({ id: 'explicit' });
+  });
+
+  it('a throwing hook costs nothing — the entry is recorded as usual', async () => {
+    const { tags, content } = await record(ctxWithHeader(), () => {
+      throw new Error('hook exploded');
+    });
+    expect(tags).toEqual(['method:GET', 'status:200']);
+    expect(content.context).toBeUndefined();
+  });
+
+  it('ignores a hook that returns garbage', async () => {
+    const nonsense = [null, 'nope', 42, []] as unknown as RequestEnrichmentResult[];
+    for (const value of nonsense) {
+      const { tags } = await record(ctxWithHeader(), () => value);
+      expect(tags).toEqual(['method:GET', 'status:200']);
+    }
+  });
+
+  it('caps the number of tags a hook can add', async () => {
+    const many = Array.from({ length: MAX_ENRICHMENT_TAGS + 20 }, (_, i) => `t:${i}`);
+    const { tags } = await record(ctxWithHeader(), () => ({ tags: many }));
+    // Derived tags (method + status) plus exactly the cap.
+    expect(tags).toHaveLength(2 + MAX_ENRICHMENT_TAGS);
+  });
+
+  it('truncates an overlong tag and drops non-strings and blanks', async () => {
+    const { tags } = await record(ctxWithHeader(), () => ({
+      tags: ['x'.repeat(MAX_ENRICHMENT_TAG_LENGTH + 50), '', 7, null, 'ok'] as string[],
+    }));
+    expect(tags).toContain('ok');
+    expect(tags).toContain('x'.repeat(MAX_ENRICHMENT_TAG_LENGTH));
+    expect(tags).toHaveLength(4); // method, status, o truncado, 'ok'
+  });
+
+  it('ignores a non-object context (arrays included)', async () => {
+    const { content } = await record(ctxWithHeader(), () => ({
+      context: ['nao', 'sou', 'objeto'] as unknown as Record<string, unknown>,
+    }));
+    expect(content.context).toBeUndefined();
   });
 });

@@ -1,7 +1,7 @@
 import type { DiagnosisCoordinator } from './ai/diagnosis_coordinator.js';
 import type { ExtensionRegistry } from './extension/registry.js';
 import type { ProfilerService } from './profiling/profiler_service.js';
-import type { RequestCaptureOptions } from './request_watcher.js';
+import type { RequestCaptureOptions, RequestEnrichment } from './request_watcher.js';
 import type { TelescopeStore } from './store.js';
 import type { EntryEvents } from './stream/entry_events.js';
 import type { QueueManager } from './watchers/queue_manager.js';
@@ -24,6 +24,11 @@ export interface TelescopeRuntime {
    * {@link RequestCaptureOptions}.
    */
   requestCapture: RequestCaptureOptions | null;
+  /**
+   * The host's request-entry enrichment hook, or `null` when unset. See
+   * {@link RequestEnrichment}.
+   */
+  requestEnrichment: RequestEnrichment | null;
   /** The booted extension registry (entry types / dashboards / data providers), or `null`. */
   registry: ExtensionRegistry | null;
   /**
@@ -69,6 +74,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   store: null,
   requestWatcherEnabled: false,
   requestCapture: null,
+  requestEnrichment: null,
   registry: null,
   entryEvents: null,
   paused: false,
@@ -88,10 +94,12 @@ export function setTelescopeRuntime(
   store: TelescopeStore,
   requestWatcherEnabled: boolean,
   requestCapture: RequestCaptureOptions | null = null,
+  requestEnrichment: RequestEnrichment | null = null,
 ): void {
   runtime.store = store;
   runtime.requestWatcherEnabled = requestWatcherEnabled;
   runtime.requestCapture = requestCapture;
+  runtime.requestEnrichment = requestEnrichment;
 }
 
 /** Publish the booted extension registry so the UI can serve its dashboards + providers. */
@@ -144,6 +152,7 @@ export function resetTelescopeRuntime(): void {
   runtime.store = null;
   runtime.requestWatcherEnabled = false;
   runtime.requestCapture = null;
+  runtime.requestEnrichment = null;
   runtime.registry = null;
   runtime.entryEvents = null;
   runtime.paused = false;
