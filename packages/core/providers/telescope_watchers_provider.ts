@@ -95,7 +95,7 @@ export default class TelescopeWatchersProvider {
     if (config.watchers.has('logs')) await this.startLogsWatcher();
     if (config.watchers.has('queue')) this.startQueueWatcher();
     if (config.watchers.has('events')) this.startEventsWatcher(emitter);
-    if (config.watchers.has('redis')) await this.startRedisWatcher();
+    if (config.watchers.has('redis')) await this.startRedisWatcher(config);
     if (config.watchers.has('profiling')) this.startProfilingWatcher(config);
     if (config.watchers.has('schedule')) this.startScheduleWatcher(config);
     if (config.watchers.has('queue-manager')) await this.startQueueManager(config);
@@ -189,7 +189,7 @@ export default class TelescopeWatchersProvider {
   /** Start the redis watcher: it instruments the OPTIONAL `@adonisjs/redis`
    *  manager resolved from the container. A missing peer / binding degrades to a
    *  no-op (the watcher itself no-ops on a null manager). */
-  private async startRedisWatcher(): Promise<void> {
+  private async startRedisWatcher(config: ResolvedTelescopeWatchersConfig): Promise<void> {
     let manager: unknown = null;
     try {
       manager = await this.app.container.make('redis');
@@ -197,7 +197,13 @@ export default class TelescopeWatchersProvider {
       // @adonisjs/redis not installed / not bound — the watcher no-ops on null.
       manager = null;
     }
-    const watcher = new RedisWatcher(manager);
+    const watcher = new RedisWatcher(manager, {
+      ignoreCommands: config.redis.ignoreCommands,
+      ignoreKeys: config.redis.ignoreKeys,
+      ignoreConnections: config.redis.ignoreConnections,
+      sampleRate: config.redis.sampleRate,
+      floodWarnPerMinute: config.redis.floodWarnPerMinute,
+    });
     try {
       watcher.start();
       this.started.push(watcher);

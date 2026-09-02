@@ -94,6 +94,66 @@ function isThenable(value: unknown): value is Promise<unknown> {
 }
 
 /**
+ * Tuning for the redis watcher.
+ *
+ * Redis is the highest-frequency thing most apps touch, and a watcher that records
+ * EVERY command turns telescope's own table into the busiest table in the database.
+ * The observed case that motivated these options: `@adonisjs/limiter` issues
+ * ~5 commands (`MULTI`/`GET`/`PTTL`/`EVALSHA`/`EXEC`) per rate-limited request, and
+ * recording them produced 211 entries/minute — 93% of a 532k-row table, none of it
+ * about the application.
+ *
+ * Nothing is filtered by DEFAULT: what counts as noise is the app's call, and a lib
+ * that silently drops a command someone is debugging is worse than a loud table. The
+ * default is instead {@link floodWarnPerMinute}, which makes the cost announce itself.
+ */
+export interface RedisWatcherOptions {
+  /**
+   * Command names (case-insensitive) that are never recorded — e.g.
+   * `['MULTI', 'EXEC', 'PTTL']` to drop transaction bookkeeping while keeping the
+   * reads and writes it wraps.
+   */
+  ignoreCommands?: string[];
+  /**
+   * Key patterns whose commands are never recorded. A string matches as a PREFIX
+   * (`'myapp:rlflx:'` drops every rate-limiter key); a RegExp is tested as-is. Only
+   * the first argument is examined, which is the key for every keyed redis command.
+   */
+  ignoreKeys?: Array<string | RegExp>;
+  /** Connection names (exact, case-insensitive) whose commands are NOT recorded —
+   *  e.g. drop the connection telescope's own redis store uses. */
+  ignoreConnections?: string[];
+  /**
+   * Record only this fraction of commands, 0..1. Default `1` (record all).
+   *
+   * Sampling is per-COMMAND, so a sampled trace shows some of its redis calls and
+   * not others — good for volume, bad for reading one request end-to-end. Prefer
+   * {@link ignoreKeys} when you know what the noise is; reach for sampling when you
+   * do not.
+   */
+  sampleRate?: number;
+  /**
+   * Warn (once) on stderr when recording exceeds this many entries per minute,
+   * naming the loudest command and key prefix so the fix is a paste. Default 600.
+   * Set `0` to disable.
+   */
+  floodWarnPerMinute?: number;
+}
+
+/** Default flood threshold (entries/minute) — see {@link RedisWatcherOptions.floodWarnPerMinute}. */
+const DEFAULT_FLOOD_WARN_PER_MINUTE = 600;
+
+/** The first argument of a redis command, as a string, or `null` when unkeyed. */
+function firstKey(command: RedisCommandLike): string | null {
+  const args = command.args;
+  if (!Array.isArray(args) || args.length === 0) return null;
+  const key = args[0];
+  if (typeof key === 'string') return key;
+  // ioredis passes Buffers for binary-safe keys; only decode when it is cheap.
+  return typeof Buffer !== 'undefined' && Buffer.isBuffer(key) ? key.toString('utf8') : null;
+}
+
+/**
  * Records every Redis command issued through `@adonisjs/redis` as a `redis`
  * telescope entry — the command name, args, connection and round-trip duration,
  * correlated to the active trace.
@@ -125,10 +185,58 @@ export class RedisWatcher {
   private readonly wrapped: Array<{ client: BrandedRedisClient; connection: string | null }> = [];
   private unsubscribeManager: (() => void) | null = null;
 
+  private readonly ignoreCommands: Set<string>;
+  private readonly ignoreKeys: Array<string | RegExp>;
+  private readonly ignoreConnections: Set<string>;
+  private readonly sampleRate: number;
+  private readonly floodWarnPerMinute: number;
+
+  /** Flood accounting: entries recorded in the current minute, plus the loudest
+   *  command/key seen, so the warning can name the actual culprit. */
+  private windowStartedAt = now();
+  private windowCount = 0;
+  private readonly windowCommands = new Map<string, number>();
+  private readonly windowKeyPrefixes = new Map<string, number>();
+  private floodWarned = false;
+
   /** Construct with the resolved `@adonisjs/redis` manager (or `null` when the
    *  optional peer is absent — the watcher then no-ops). */
-  constructor(manager: unknown) {
+  constructor(manager: unknown, options: RedisWatcherOptions = {}) {
     this.manager = isManager(manager) ? manager : null;
+    this.ignoreCommands = new Set((options.ignoreCommands ?? []).map((c) => c.toUpperCase()));
+    this.ignoreKeys = options.ignoreKeys ?? [];
+    this.ignoreConnections = new Set(
+      (options.ignoreConnections ?? []).map((c) => c.toLowerCase()),
+    );
+    // Clamp rather than throw: a bad sampleRate should not take the app down at boot.
+    this.sampleRate = Math.min(1, Math.max(0, options.sampleRate ?? 1));
+    this.floodWarnPerMinute = Math.max(0, options.floodWarnPerMinute ?? DEFAULT_FLOOD_WARN_PER_MINUTE);
+  }
+
+  /**
+   * Whether this command is recorded. Ordered cheapest-first: the connection and
+   * command checks are set lookups, the key check walks the (usually empty) pattern
+   * list, and sampling comes last so a filtered-out command never burns entropy.
+   */
+  shouldRecord(command: RedisCommandLike, connection: string | null): boolean {
+    if (connection !== null && this.ignoreConnections.has(connection.toLowerCase())) return false;
+
+    const name = typeof command.name === 'string' ? command.name.toUpperCase() : '';
+    if (this.ignoreCommands.has(name)) return false;
+
+    if (this.ignoreKeys.length > 0) {
+      const key = firstKey(command);
+      if (key !== null) {
+        for (const pattern of this.ignoreKeys) {
+          const hit =
+            typeof pattern === 'string' ? key.startsWith(pattern) : pattern.test(key);
+          if (hit) return false;
+        }
+      }
+    }
+
+    if (this.sampleRate < 1 && Math.random() >= this.sampleRate) return false;
+    return true;
   }
 
   /** Instrument current + future connections. Idempotent. A no-op when the peer
@@ -192,6 +300,11 @@ export class RedisWatcher {
       command: RedisCommandLike,
       ...rest: unknown[]
     ): unknown {
+      // Decided BEFORE the call so a filtered command costs one set lookup and
+      // never allocates a finalize closure or attaches to the command's promise.
+      if (!watcher.shouldRecord(command, connection)) {
+        return original.call(client, command, ...rest);
+      }
       const startedAt = now();
       const result = original.call(client, command, ...rest);
       if (isThenable(result)) {
@@ -211,8 +324,78 @@ export class RedisWatcher {
     connection: string | null,
     durationMs: number | null,
   ): void {
+    this.accountForFlood(command);
     safeRecord(buildRedisEntry(command, connection, durationMs), 'RedisWatcher');
   }
+
+  /**
+   * Count what we record in a rolling one-minute window and, the first time it
+   * crosses the threshold, warn ONCE naming the loudest command and key prefix.
+   *
+   * This exists because the failure mode is silent: nothing breaks, the app is fine,
+   * and you only discover the watcher is writing 300k rows/day when a console screen
+   * gets slow enough to complain about. Naming the culprit turns the fix into a paste
+   * instead of an investigation.
+   */
+  private accountForFlood(command: RedisCommandLike): void {
+    if (this.floodWarnPerMinute === 0 || this.floodWarned) return;
+
+    const elapsed = now() - this.windowStartedAt;
+    if (elapsed >= 60_000) {
+      this.windowStartedAt = now();
+      this.windowCount = 0;
+      this.windowCommands.clear();
+      this.windowKeyPrefixes.clear();
+    }
+
+    this.windowCount++;
+    const name = typeof command.name === 'string' ? command.name.toUpperCase() : '(unknown)';
+    this.windowCommands.set(name, (this.windowCommands.get(name) ?? 0) + 1);
+    const key = firstKey(command);
+    if (key !== null) {
+      // Group by the first two colon-segments — `app:rlflx:foo` → `app:rlflx`, which
+      // is the granularity someone would actually paste into `ignoreKeys`.
+      const prefix = key.split(':').slice(0, 2).join(':');
+      this.windowKeyPrefixes.set(prefix, (this.windowKeyPrefixes.get(prefix) ?? 0) + 1);
+    }
+
+    if (this.windowCount < this.floodWarnPerMinute) return;
+    this.floodWarned = true;
+    console.warn(formatFloodWarning(this.windowCount, this.windowCommands, this.windowKeyPrefixes));
+  }
+}
+
+/** Largest-count entry of a tally, or `null` when empty. */
+function topOf(tally: Map<string, number>): { name: string; count: number } | null {
+  let top: { name: string; count: number } | null = null;
+  for (const [name, count] of tally) {
+    if (top === null || count > top.count) top = { name, count };
+  }
+  return top;
+}
+
+/** The flood warning text. Exported for tests — the VALUE here is that the message
+ *  names the culprit and the exact option, so it is worth pinning. */
+export function formatFloodWarning(
+  count: number,
+  commands: Map<string, number>,
+  keyPrefixes: Map<string, number>,
+): string {
+  const command = topOf(commands);
+  const prefix = topOf(keyPrefixes);
+  const lines = [
+    `Telescope: the redis watcher recorded ${count} entries in the last minute. ` +
+      'At that rate it will dominate your telescope table and slow the console down.',
+  ];
+  if (command) lines.push(`  loudest command: ${command.name} (${command.count})`);
+  if (prefix) {
+    lines.push(`  loudest key prefix: ${prefix.name} (${prefix.count})`);
+    lines.push(
+      `  to drop it: redis: { ignoreKeys: ['${prefix.name}:'] } in config/telescope_watchers.ts`,
+    );
+  }
+  lines.push('  (or set redis.floodWarnPerMinute: 0 to silence this warning)');
+  return lines.join('\n');
 }
 
 /** Narrow an arbitrary value to a {@link RedisManagerLike}. */
