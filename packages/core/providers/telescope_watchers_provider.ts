@@ -79,6 +79,7 @@ export default class TelescopeWatchersProvider {
     }
 
     if (config.watchers.has('query')) {
+      await this.warnWhenLucidDebugIsOff();
       this.startWatcher(
         new LucidQueryWatcher({
           slowMs: config.query.slowMs,
@@ -295,6 +296,43 @@ export default class TelescopeWatchersProvider {
     if (registry === null) return;
     for (const schedule of await registry.collectSchedules()) {
       registerSchedule(schedule);
+    }
+  }
+
+
+  /**
+   * Warn when the `query` watcher is enabled but Lucid will never emit to it.
+   *
+   * Lucid only emits `db:query` on a connection whose `debug` flag is on. The common
+   * shape is `debug: app.inDev`, so the watcher works perfectly in development and
+   * records NOTHING in production — and it fails silently, because a watcher with no
+   * events looks exactly like an app with no queries. Someone eventually notices the
+   * Queries screen has been empty for weeks.
+   *
+   * Structural access, in a try/catch: `@adonisjs/lucid` is an optional peer, and a
+   * diagnostic warning must never be the thing that breaks boot.
+   */
+  private async warnWhenLucidDebugIsOff(): Promise<void> {
+    try {
+      const db = await this.app.container.make('lucid.db' as never);
+      const connections = (db as { config?: { connections?: Record<string, { debug?: unknown }> } })
+        ?.config?.connections;
+      if (connections === undefined) return;
+
+      const names = Object.keys(connections);
+      if (names.length === 0) return;
+      const withDebug = names.filter((name) => connections[name]?.debug === true);
+      if (withDebug.length > 0) return;
+
+      console.warn(
+        "Telescope: the 'query' watcher is enabled but no database connection has `debug` on, " +
+          'so Lucid never emits `db:query` and NO queries will be recorded. ' +
+          `Set \`debug: true\` on the connection(s) you want traced in config/database.ts ` +
+          `(checked: ${names.join(', ')}). A common cause is \`debug: app.inDev\`, which is ` +
+          'false in production — exactly where the screen is worth having.',
+      );
+    } catch {
+      // Lucid absent or not bound: the watcher no-ops anyway.
     }
   }
 
