@@ -85,9 +85,18 @@ export function buildWaterfall(entries: Entry[]): Waterfall | null {
   if (entries.length === 0) return null;
 
   const intervals: Interval[] = entries.map((entry) => {
-    const startMs = entry.createdAt.getTime();
     const durationMs = typeof entry.durationMs === 'number' ? Math.max(0, entry.durationMs) : 0;
-    return { entry, startMs, durationMs, endMs: startMs + durationMs };
+    // `createdAt` is when the entry was RECORDED, and everything here is recorded on
+    // COMPLETION: the request watcher writes in a `finally`, the redis watcher in the
+    // command's `.then`, the query watcher from `db:query` after execution. So
+    // `createdAt` is the span's END, and its start is that minus the duration.
+    //
+    // Treating it as the start shifted every span right by its own length. Short spans
+    // barely moved, long ones moved a lot — which is why a 31ms request appeared AFTER
+    // the 1ms redis calls it had made itself, and never enclosed them. The waterfall
+    // drew a plausible picture of an impossible ordering.
+    const endMs = entry.createdAt.getTime();
+    return { entry, startMs: endMs - durationMs, durationMs, endMs };
   });
 
   const traceStartMs = Math.min(...intervals.map((i) => i.startMs));
