@@ -58,7 +58,7 @@ export type {
   LogsWatcherOptions,
 } from './logs_watcher.js';
 // — logs watcher —
-export { buildLogEntry, extractLog, LOG_LEVELS, LogsWatcher } from './logs_watcher.js';
+export { buildLogEntry, extractLog, interpolate, LOG_LEVELS, LogsWatcher } from './logs_watcher.js';
 export type {
   DbQueryEventLike,
   LucidQueryWatcherOptions,

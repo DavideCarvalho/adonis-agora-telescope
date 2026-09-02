@@ -19,6 +19,12 @@ type LogMethod = (...args: unknown[]) => void;
  */
 export type LoggerLike = {
   [Level in LogLevel]?: LogMethod;
+} & {
+  /**
+   * Pino's / AdonisJS's own level gate. Optional: a stub logger without it simply
+   * gets no filtering, which is the old behaviour.
+   */
+  isLevelEnabled?(level: string): boolean;
 };
 
 /** The recorded body of a `log` entry. */
@@ -37,6 +43,18 @@ export interface LogEntryContent {
 export interface LogsWatcherOptions {
   /** Only record at/above this level. Default `'trace'` (record everything). */
   minLevel?: LogLevel;
+  /**
+   * Record levels the LOGGER itself would discard. Default `false`.
+   *
+   * The watcher tees the level methods, so it sees a call even when the logger's own
+   * level filter drops it — the app writes nothing and telescope stores everything.
+   * In production that showed up as `logger.trace()` from inside Lucid arriving at
+   * 243 entries/minute, none of which the app had chosen to log.
+   *
+   * Turn on to capture below the app's level on purpose (the console as a deeper
+   * recorder than stdout); leave off to record what the app actually logs.
+   */
+  captureBelowLoggerLevel?: boolean;
   /** Extra tags appended to every recorded log entry. */
   tags?: readonly string[];
 }
@@ -89,6 +107,7 @@ function describeForWarning(value: unknown): string {
 export class LogsWatcher {
   readonly type = EntryType.Log;
   private readonly minLevelIndex: number;
+  private readonly captureBelowLoggerLevel: boolean;
   private readonly extraTags: readonly string[];
   private logger: LoggerLike | null = null;
   /** The levels THIS instance teed, so `stop()` never unwinds another watcher's tap. */
@@ -96,6 +115,7 @@ export class LogsWatcher {
 
   constructor(options: LogsWatcherOptions = {}) {
     this.minLevelIndex = LOG_LEVELS.indexOf(options.minLevel ?? 'trace');
+    this.captureBelowLoggerLevel = options.captureBelowLoggerLevel ?? false;
     this.extraTags = options.tags ?? [];
   }
 
@@ -133,6 +153,11 @@ export class LogsWatcher {
         }
         original.apply(this, args);
         if (index < watcher.minLevelIndex) return;
+        // Don't store what the app configured itself not to log. The tee sees the call
+        // even when the logger's own level gate drops it, so without this telescope
+        // records lines that were never written anywhere — in production that was
+        // Lucid's `logger.trace()` at 243 entries/minute under LOG_LEVEL=info.
+        if (!watcher.shouldRecordLevel(this, level)) return;
         recording = true;
         try {
           watcher.record(level, args);
@@ -189,6 +214,23 @@ export class LogsWatcher {
     }
   }
 
+  /**
+   * Whether a level survives the LOGGER's own gate. Opt out with
+   * {@link LogsWatcherOptions.captureBelowLoggerLevel} to record below the app's level
+   * on purpose. A logger without `isLevelEnabled` is not filtered.
+   */
+  shouldRecordLevel(logger: unknown, level: LogLevel): boolean {
+    if (this.captureBelowLoggerLevel) return true;
+    const probe = (logger as LoggerLike | undefined)?.isLevelEnabled;
+    if (typeof probe !== 'function') return true;
+    try {
+      return probe.call(logger, level) !== false;
+    } catch {
+      // A logger that throws on the probe is not a reason to lose the entry.
+      return true;
+    }
+  }
+
   /** Build + record a log entry from the level method's arguments. */
   private record(level: LogLevel, args: unknown[]): void {
     safeRecord(buildLogEntry(level, args, this.extraTags), 'LogsWatcher');
@@ -216,10 +258,45 @@ export function extractLog(args: unknown[]): {
   const [first, second] = args;
   if (isPlainObject(first)) {
     const context = boundContext(first);
-    const message = typeof second === 'string' ? second : null;
+    const message = typeof second === 'string' ? interpolate(second, args.slice(2)) : null;
     return { message, context };
   }
-  return { message: typeof first === 'string' ? first : null, context: null };
+  return {
+    message: typeof first === 'string' ? interpolate(first, args.slice(1)) : null,
+    context: null,
+  };
+}
+
+/**
+ * Fill printf-style placeholders the way pino does, so the recorded message is the
+ * one a person would read.
+ *
+ * Without this the watcher stored the format string verbatim: a real production log
+ * came out as `creating query client in %s mode` — the placeholder never filled and
+ * the value (`dual`) discarded. Every formatted log in the app was being recorded as
+ * a template, which is the one form in which a log message is useless.
+ *
+ * Handles pino's set (`%s`, `%d`/`%i`, `%o`/`%O`/`%j`, and `%%` for a literal
+ * percent). A placeholder with no argument left is kept AS-IS rather than filled with
+ * "undefined" — the template is a worse message, but inventing a value is a lie.
+ */
+export function interpolate(template: string, values: readonly unknown[]): string {
+  // Só o `includes` como atalho: sair cedo por falta de valores deixaria `%%` sem
+  // desescapar, e o mesmo template renderizaria diferente conforme os argumentos.
+  if (!template.includes('%')) return template;
+  let index = 0;
+  return template.replace(/%([sdijoO%])/g, (match, kind: string) => {
+    if (kind === '%') return '%';
+    if (index >= values.length) return match;
+    const value = values[index++];
+    if (kind === 's') return String(value);
+    if (kind === 'd' || kind === 'i') return String(Number(value));
+    try {
+      return JSON.stringify(value) ?? String(value);
+    } catch {
+      return String(value);
+    }
+  });
 }
 
 /** Shallow-copy at most the first 50 own keys of a merging object — a bound so a
