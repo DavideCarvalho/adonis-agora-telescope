@@ -151,9 +151,7 @@ export class TelescopeApi {
     try {
       const data = await this.metrics.getStats({
         type,
-        ...(topExceptions !== undefined
-          ? { topExceptions: clampLimit(topExceptions, 200) }
-          : {}),
+        ...(topExceptions !== undefined ? { topExceptions: clampLimit(topExceptions, 200) } : {}),
         windowMs,
         ...(buckets !== undefined ? { buckets } : {}),
       });

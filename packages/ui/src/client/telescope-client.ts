@@ -9,11 +9,10 @@ import type {
   Entry,
   EntrySummary,
   Envelope,
-  Page,
-  ScreenStats,
   LiveQueues,
   LiveSchedules,
   NPlusOnePattern,
+  Page,
   ProfilerStatus,
   PulseSummary,
   QueueJobDetail,
@@ -21,6 +20,7 @@ import type {
   ReplayResult,
   RetentionInfo,
   RetryJobOutcome,
+  ScreenStats,
   StatsOverview,
   StatsResult,
   TelescopeMeta,
@@ -106,10 +106,7 @@ export class TelescopeClient {
 
   /** Unwrap a `{ data, meta }` envelope into a {@link Page}, keeping the paging meta
    *  that {@link data} throws away. */
-  private async page<T>(
-    path: string,
-    query: Record<string, string> = {},
-  ): Promise<Page<T>> {
+  private async page<T>(path: string, query: Record<string, string> = {}): Promise<Page<T>> {
     const body = await this.get<Envelope<T[]>>(path, query);
     const meta = body.meta ?? {};
     return {

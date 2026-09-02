@@ -205,12 +205,13 @@ export class RedisWatcher {
     this.manager = isManager(manager) ? manager : null;
     this.ignoreCommands = new Set((options.ignoreCommands ?? []).map((c) => c.toUpperCase()));
     this.ignoreKeys = options.ignoreKeys ?? [];
-    this.ignoreConnections = new Set(
-      (options.ignoreConnections ?? []).map((c) => c.toLowerCase()),
-    );
+    this.ignoreConnections = new Set((options.ignoreConnections ?? []).map((c) => c.toLowerCase()));
     // Clamp rather than throw: a bad sampleRate should not take the app down at boot.
     this.sampleRate = Math.min(1, Math.max(0, options.sampleRate ?? 1));
-    this.floodWarnPerMinute = Math.max(0, options.floodWarnPerMinute ?? DEFAULT_FLOOD_WARN_PER_MINUTE);
+    this.floodWarnPerMinute = Math.max(
+      0,
+      options.floodWarnPerMinute ?? DEFAULT_FLOOD_WARN_PER_MINUTE,
+    );
   }
 
   /**
@@ -228,8 +229,7 @@ export class RedisWatcher {
       const key = firstKey(command);
       if (key !== null) {
         for (const pattern of this.ignoreKeys) {
-          const hit =
-            typeof pattern === 'string' ? key.startsWith(pattern) : pattern.test(key);
+          const hit = typeof pattern === 'string' ? key.startsWith(pattern) : pattern.test(key);
           if (hit) return false;
         }
       }

@@ -9,13 +9,13 @@ export type {
   HttpClientWatcherConfig,
   ProfilingWatcherConfig,
   QueryWatcherConfig,
-  RedisWatcherConfig,
   QueueManagerWatcherConfig,
+  RedisWatcherConfig,
   ResolvedHttpClientWatcherConfig,
   ResolvedProfilingWatcherConfig,
   ResolvedQueryWatcherConfig,
-  ResolvedRedisWatcherConfig,
   ResolvedQueueManagerWatcherConfig,
+  ResolvedRedisWatcherConfig,
   ResolvedScheduleWatcherConfig,
   ResolvedTelescopeWatchersConfig,
   ScheduleWatcherConfig,
@@ -121,17 +121,16 @@ export type {
 export { buildJobEntry, QUEUE_EXECUTE_CHANNEL, QueueWatcher } from './queue_watcher.js';
 // — runtime recording (advanced) —
 export { resolveStore, safeRecord } from './record.js';
+// — redis watcher (optional peer: @adonisjs/redis) —
 export type {
   RedisClientLike,
   RedisCommandLike,
   RedisConnectionLike,
   RedisEntryContent,
   RedisManagerLike,
+  RedisWatcherOptions,
 } from './redis_watcher.js';
-// — redis watcher (optional peer: @adonisjs/redis) —
-export type { RedisWatcherOptions } from './redis_watcher.js';
-export { formatFloodWarning } from './redis_watcher.js';
-export { buildRedisEntry, RedisWatcher } from './redis_watcher.js';
+export { buildRedisEntry, formatFloodWarning, RedisWatcher } from './redis_watcher.js';
 export type {
   RegisteredSchedule,
   ScheduledRun,

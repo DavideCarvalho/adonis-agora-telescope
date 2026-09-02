@@ -152,6 +152,8 @@ export {
   normalizeHistogram,
   ROLLUP_BUCKET_MS,
 } from './metrics/rollup.js';
+export type { ScreenStats, SummarizeScreensOptions } from './metrics/screens.js';
+export { summarizeScreens } from './metrics/screens.js';
 export type {
   CacheStats,
   ExceptionGroupStats,
@@ -171,10 +173,6 @@ export type { TimeseriesBucket, TimeseriesReport } from './metrics/timeseries.js
 export { bucketTimeseries } from './metrics/timeseries.js';
 export type { SummarizeTracesOptions, TraceSummary } from './metrics/traces.js';
 export { summarizeTraces } from './metrics/traces.js';
-export type { ScreenStats, SummarizeScreensOptions } from './metrics/screens.js';
-export { summarizeScreens } from './metrics/screens.js';
-export type { RequestKind } from './request_watcher.js';
-export { classifyRequest } from './request_watcher.js';
 export type { Waterfall, WaterfallSpan } from './metrics/waterfall.js';
 export { buildWaterfall } from './metrics/waterfall.js';
 export type {
@@ -237,9 +235,11 @@ export type {
   RequestEnrichment,
   RequestEnrichmentResult,
   RequestEntryContent,
+  RequestKind,
   ResolvedRequestCapture,
 } from './request_watcher.js';
 export {
+  classifyRequest,
   MAX_ENRICHMENT_TAG_LENGTH,
   MAX_ENRICHMENT_TAGS,
   recordRequest,

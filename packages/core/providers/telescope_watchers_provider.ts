@@ -299,7 +299,6 @@ export default class TelescopeWatchersProvider {
     }
   }
 
-
   /**
    * Warn when the `query` watcher is enabled but Lucid will never emit to it.
    *
@@ -335,5 +334,4 @@ export default class TelescopeWatchersProvider {
       // Lucid absent or not bound: the watcher no-ops anyway.
     }
   }
-
 }

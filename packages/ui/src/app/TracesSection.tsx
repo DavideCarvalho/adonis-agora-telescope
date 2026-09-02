@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import type { TraceSummary } from '../client/types.js';
 import { formatDuration, formatRelative } from '../client/format.js';
+import type { TraceSummary } from '../client/types.js';
 import { DataTable } from './primitives/data_table.js';
 import { AsyncBlock, Panel, SectionTitle, typeColor } from './ui.js';
 import { useTracesPage } from './use-telescope.js';

@@ -40,9 +40,9 @@ describe('classifyRequest', () => {
   });
 
   it('fetch de dados é api', () => {
-    expect(
-      classifyRequest(request('/api/notifications', { accept: 'application/json' })),
-    ).toBe('api');
+    expect(classifyRequest(request('/api/notifications', { accept: 'application/json' }))).toBe(
+      'api',
+    );
   });
 
   it('asset é decidido pela URL, antes de qualquer header', () => {
@@ -144,7 +144,14 @@ describe('summarizeScreens', () => {
     const store = new InMemoryTelescopeStore();
     await store.record({
       type: EntryType.Request,
-      content: { method: 'GET', url: '/velha', status: 200, durationMs: 5, traceId: null, user: null },
+      content: {
+        method: 'GET',
+        url: '/velha',
+        status: 200,
+        durationMs: 5,
+        traceId: null,
+        user: null,
+      },
       durationMs: 5,
     });
     expect(summarizeScreens(await store.list({}))[0]).toMatchObject({

@@ -97,9 +97,11 @@ export function DataTable<TRow extends RowData>({
           onPaginationChange: (updater: unknown) => {
             const next =
               typeof updater === 'function'
-                ? (updater as (old: { pageIndex: number; pageSize: number }) => {
-                    pageIndex: number;
-                  })({ pageIndex: clientPage, pageSize: clientPageSize })
+                ? (
+                    updater as (old: { pageIndex: number; pageSize: number }) => {
+                      pageIndex: number;
+                    }
+                  )({ pageIndex: clientPage, pageSize: clientPageSize })
                 : (updater as { pageIndex: number });
             setClientPage(next.pageIndex);
           },
@@ -108,9 +110,7 @@ export function DataTable<TRow extends RowData>({
         { manualPagination: true }),
   });
 
-  const rows = paginateInBrowser
-    ? table.getPaginatedRowModel().rows
-    : table.getRowModel().rows;
+  const rows = paginateInBrowser ? table.getPaginatedRowModel().rows : table.getRowModel().rows;
 
   return (
     <div className="flex flex-col gap-2.5">

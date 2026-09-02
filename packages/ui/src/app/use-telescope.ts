@@ -100,10 +100,7 @@ export function useTraces(limit = 50) {
 /** Per-route traffic over a window. */
 export function useScreens(windowMs: number, kind: string, limit = 100) {
   const client = useTelescopeClient();
-  return useAsync(
-    () => client.screens(windowMs, kind, limit),
-    [client, windowMs, kind, limit],
-  );
+  return useAsync(() => client.screens(windowMs, kind, limit), [client, windowMs, kind, limit]);
 }
 
 /** One page of traces. `page` is 1-based and owned by the caller. */

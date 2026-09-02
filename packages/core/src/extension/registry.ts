@@ -110,5 +110,4 @@ export class ExtensionRegistry {
     }
     return out;
   }
-
 }

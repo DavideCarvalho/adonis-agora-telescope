@@ -13,8 +13,8 @@ import { EntriesSection } from './EntriesSection.js';
 import { EntryDetail } from './EntryDetail.js';
 import { ExceptionsSection } from './ExceptionsSection.js';
 import { PulseSection } from './PulseSection.js';
-import { TraceDetail } from './TraceDetail.js';
 import { ScreensSection } from './ScreensSection.js';
+import { TraceDetail } from './TraceDetail.js';
 import { TracesSection } from './TracesSection.js';
 import {
   EventSourceFactoryContext,
@@ -131,9 +131,7 @@ const exceptionStats: StatsResult = {
 function fakeClient(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
   return {
     listEntries: vi.fn().mockResolvedValue([entrySummary]),
-    listEntriesPage: vi
-      .fn()
-      .mockResolvedValue({ rows: [entrySummary], page: 1, hasMore: false }),
+    listEntriesPage: vi.fn().mockResolvedValue({ rows: [entrySummary], page: 1, hasMore: false }),
     getEntry: vi.fn().mockResolvedValue(fullEntry),
     entriesByTrace: vi.fn().mockResolvedValue([entrySummary]),
     traces: vi.fn().mockResolvedValue([traceSummary]),
@@ -247,9 +245,7 @@ describe('EntriesSection', () => {
   });
 
   it('pede a próxima página AO SERVIDOR em vez de fatiar o que já tem', async () => {
-    const tracesPage = vi
-      .fn()
-      .mockResolvedValue({ rows: [traceSummary], page: 1, hasMore: true });
+    const tracesPage = vi.fn().mockResolvedValue({ rows: [traceSummary], page: 1, hasMore: true });
     const client = fakeClient({ tracesPage });
     renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('GET /users')).toBeTruthy());
@@ -259,9 +255,7 @@ describe('EntriesSection', () => {
     // O servidor tem que ser consultado com page=2. Asserido pelo ARGUMENTO e não
     // por contagem de chamadas: o teste roda sob StrictMode, que invoca os efeitos
     // duas vezes, então contar chamadas mediria o React em vez da paginação.
-    await waitFor(() =>
-      expect(tracesPage.mock.calls.some((call) => call[1] === 2)).toBe(true),
-    );
+    await waitFor(() => expect(tracesPage.mock.calls.some((call) => call[1] === 2)).toBe(true));
   });
 
   it('não deixa voltar antes da primeira página', async () => {

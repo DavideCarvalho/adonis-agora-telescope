@@ -4,6 +4,7 @@ import { ENTRY_TYPES, type EntriesQuery, type EntrySummary } from '../client/typ
 import { Badge } from './primitives/badge.js';
 import { Button } from './primitives/button.js';
 import { cn } from './primitives/cn.js';
+import { DataTable } from './primitives/data_table.js';
 import { InputField } from './primitives/input.js';
 import {
   Select,
@@ -12,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from './primitives/select.js';
-import { DataTable } from './primitives/data_table.js';
 import { AsyncBlock, Panel, SectionTitle, TypeBadge } from './ui.js';
 import { useEntriesPage, useLiveTail } from './use-telescope.js';
 
