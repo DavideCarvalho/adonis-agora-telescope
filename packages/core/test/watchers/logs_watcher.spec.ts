@@ -314,7 +314,9 @@ describe('LogsWatcher — respeita o nível do logger', () => {
 
     const entries = await store.list({ type: EntryType.Log });
     expect(entries).toHaveLength(1);
-    expect((entries[0]?.content as { level: string }).level).toBe('warn');
+    const only = entries[0];
+    if (only === undefined) throw new Error('nenhuma entry gravada');
+    expect((only.content as { level: string }).level).toBe('warn');
     watcher.stop();
   });
 
