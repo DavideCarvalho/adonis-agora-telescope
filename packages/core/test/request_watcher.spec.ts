@@ -371,7 +371,7 @@ describe('recordRequest — host enrichment', () => {
 
   it('records nothing extra when the hook returns undefined', async () => {
     const { tags, content } = await record(ctxWithHeader(undefined), screenTag);
-    expect(tags).toEqual(['method:GET', 'status:200']);
+    expect(tags).toEqual(['method:GET', 'kind:api', 'status:200']);
     expect(content.context).toBeUndefined();
   });
 
@@ -405,7 +405,7 @@ describe('recordRequest — host enrichment', () => {
     const { tags, content } = await record(ctxWithHeader(), () => {
       throw new Error('hook exploded');
     });
-    expect(tags).toEqual(['method:GET', 'status:200']);
+    expect(tags).toEqual(['method:GET', 'kind:api', 'status:200']);
     expect(content.context).toBeUndefined();
   });
 
@@ -413,15 +413,15 @@ describe('recordRequest — host enrichment', () => {
     const nonsense = [null, 'nope', 42, []] as unknown as RequestEnrichmentResult[];
     for (const value of nonsense) {
       const { tags } = await record(ctxWithHeader(), () => value);
-      expect(tags).toEqual(['method:GET', 'status:200']);
+      expect(tags).toEqual(['method:GET', 'kind:api', 'status:200']);
     }
   });
 
   it('caps the number of tags a hook can add', async () => {
     const many = Array.from({ length: MAX_ENRICHMENT_TAGS + 20 }, (_, i) => `t:${i}`);
     const { tags } = await record(ctxWithHeader(), () => ({ tags: many }));
-    // Derived tags (method + status) plus exactly the cap.
-    expect(tags).toHaveLength(2 + MAX_ENRICHMENT_TAGS);
+    // Derived tags (method + kind + status) plus exactly the cap.
+    expect(tags).toHaveLength(3 + MAX_ENRICHMENT_TAGS);
   });
 
   it('truncates an overlong tag and drops non-strings and blanks', async () => {
@@ -430,7 +430,7 @@ describe('recordRequest — host enrichment', () => {
     }));
     expect(tags).toContain('ok');
     expect(tags).toContain('x'.repeat(MAX_ENRICHMENT_TAG_LENGTH));
-    expect(tags).toHaveLength(4); // method, status, o truncado, 'ok'
+    expect(tags).toHaveLength(5); // method, kind, status, o truncado, 'ok'
   });
 
   it('ignores a non-object context (arrays included)', async () => {

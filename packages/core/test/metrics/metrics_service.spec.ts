@@ -162,6 +162,8 @@ describe('MetricsService.getStats — exception types', () => {
     // Only the single query entry is in scope — the two exception entries stay out.
     expect(stats.exceptions).toBeUndefined();
     expect(stats.total).toBe(1);
+  });
+});
 
 /**
  * Traces used to be summarized by loading up to `scanCap` entries and grouping them
