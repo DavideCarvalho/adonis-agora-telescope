@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
 import { type BatchOrigin, type Entry, isBatchOrigin, type RecordInput } from '../entry.js';
-import type { EntryQuery, TelescopeStore } from '../store.js';
+import type { EntryQuery, TelescopeStore, TraceIdQuery, TraceIdRow } from '../store.js';
 
 /** Options for {@link InMemoryTelescopeStore}. */
 export interface InMemoryStoreOptions {
@@ -58,20 +58,51 @@ export class InMemoryTelescopeStore implements TelescopeStore {
 
   async list(query: EntryQuery = {}): Promise<Entry[]> {
     const search = query.search?.toLowerCase();
+    const traceIds = query.traceIds === undefined ? null : new Set(query.traceIds);
     const results: Entry[] = [];
+    // Offset is counted over MATCHES, so it must be consumed after the filters and
+    // before the limit — the same order the SQL store gets from OFFSET/LIMIT.
+    let toSkip = query.offset ?? 0;
     // `entries` is already newest-first.
     for (const entry of this.entries) {
       if (query.type !== undefined && entry.type !== query.type) continue;
       if (query.tag !== undefined && !entry.tags.includes(query.tag)) continue;
       if (query.familyHash !== undefined && entry.familyHash !== query.familyHash) continue;
       if (query.traceId !== undefined && entry.traceId !== query.traceId) continue;
+      if (traceIds !== null && (entry.traceId === null || !traceIds.has(entry.traceId))) continue;
       if (query.before !== undefined && !(entry.createdAt < query.before)) continue;
       if (query.after !== undefined && !(entry.createdAt > query.after)) continue;
       if (search !== undefined && !matchesSearch(entry, search)) continue;
+      if (toSkip > 0) {
+        toSkip--;
+        continue;
+      }
       results.push(entry);
       if (query.limit !== undefined && results.length >= query.limit) break;
     }
     return results;
+  }
+
+  /**
+   * The in-memory counterpart of the SQL fast path. It still walks every entry —
+   * there is no index to exploit — but it groups ONCE and hands back only the page,
+   * so callers share a single code path with the SQL store instead of branching.
+   */
+  async listTraceIds(query: TraceIdQuery): Promise<TraceIdRow[]> {
+    const lastAt = new Map<string, number>();
+    for (const entry of this.entries) {
+      if (entry.traceId === null) continue;
+      if (query.before !== undefined && !(entry.createdAt < query.before)) continue;
+      if (query.after !== undefined && !(entry.createdAt > query.after)) continue;
+      const at = entry.createdAt.getTime();
+      const seen = lastAt.get(entry.traceId);
+      if (seen === undefined || at > seen) lastAt.set(entry.traceId, at);
+    }
+    const offset = query.offset ?? 0;
+    return [...lastAt.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(offset, offset + query.limit)
+      .map(([traceId, at]) => ({ traceId, lastAt: new Date(at) }));
   }
 
   async count(): Promise<number> {

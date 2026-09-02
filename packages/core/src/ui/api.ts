@@ -171,14 +171,27 @@ export class TelescopeApi {
     }
   }
 
-  /** `GET <path>/api/metrics/traces?limit=` — recent traces, newest-last-seen first. */
+  /**
+   * `GET <path>/api/metrics/traces?limit=&page=` — recent traces, newest-last-seen
+   * first, paginated.
+   *
+   * `hasMore` instead of a total: counting distinct traces means a `COUNT(DISTINCT
+   * trace_id)` over the same table this endpoint exists to stop scanning. One extra
+   * row tells the UI whether to enable "next", which is all a Prev/Next pager needs.
+   */
   async metricsTraces(ctx: UiHttpContext): Promise<unknown> {
     const limit = clampLimit(readNumber(ctx.request, 'limit') ?? 50);
-    const data = await this.metrics.getTraces(limit);
+    const page = Math.max(1, Math.floor(readNumber(ctx.request, 'page') ?? 1));
+    const offset = (page - 1) * limit;
+
+    const rows = await this.metrics.getTraces(limit + 1, offset);
+    const hasMore = rows.length > limit;
+    const data = hasMore ? rows.slice(0, limit) : rows;
+
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
-      .send({ data, meta: { count: data.length } });
+      .send({ data, meta: { count: data.length, page, limit, hasMore } });
   }
 
   /** `GET <path>/api/metrics/waterfall/:traceId` — span waterfall for one trace, or 404. */

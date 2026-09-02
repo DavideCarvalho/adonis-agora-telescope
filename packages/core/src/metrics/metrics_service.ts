@@ -113,10 +113,38 @@ export class MetricsService {
     return bucketTimeseries(entries, windowStart, windowEnd, buckets);
   }
 
-  /** Recent traces, newest-last-seen first. */
-  async getTraces(limit = 50): Promise<TraceSummary[]> {
-    const { entries } = await this.collect({});
-    return summarizeTraces(entries, { limit });
+  /**
+   * Recent traces, newest-last-seen first, one page at a time.
+   *
+   * The store picks the page of trace ids (an indexed `GROUP BY` when it can — see
+   * {@link TelescopeStore.listTraceIds}) and only THEN do we fetch the entries of
+   * those traces. That ordering is the whole point: grouping first meant reading up
+   * to `scanCap` entries to answer a request for 50 traces, and on a busy table the
+   * chattiest watcher filled that budget before the interesting traces were reached
+   * — the screen was both slow AND incomplete.
+   *
+   * A store without the capability falls back to scan-and-group, which is what this
+   * method always used to do.
+   */
+  async getTraces(limit = 50, offset = 0): Promise<TraceSummary[]> {
+    const page = Math.max(0, Math.floor(limit));
+    const skip = Math.max(0, Math.floor(offset));
+
+    if (typeof this.store.listTraceIds !== 'function') {
+      const { entries } = await this.collect({});
+      return summarizeTraces(entries, { limit: page + skip }).slice(skip);
+    }
+
+    const rows = await this.store.listTraceIds({ limit: page, offset: skip });
+    if (rows.length === 0) return [];
+
+    const entries = await this.store.list({
+      traceIds: rows.map((row) => row.traceId),
+      limit: this.scanCap,
+    });
+    // summarizeTraces re-derives the ordering from the entries it is given, so the
+    // page order survives without the store and the summarizer having to agree on it.
+    return summarizeTraces(entries, { limit: page });
   }
 
   /** The span waterfall for a single trace, or `null` when the trace is empty. */
