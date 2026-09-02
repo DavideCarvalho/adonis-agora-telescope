@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EntryType } from '../../src/entry.js';
 import { MetricsService } from '../../src/metrics/metrics_service.js';
+import type { TelescopeStore } from '../../src/store.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 
 async function seedNPlusOne(store: InMemoryTelescopeStore) {
@@ -243,9 +244,16 @@ describe('MetricsService.getTraces — paginação', () => {
     const store = new InMemoryTelescopeStore();
     await seedTraces(store, 10);
 
-    // Um store legado: mesma implementação, sem a capacidade nova.
-    const legacy = Object.create(store) as InMemoryTelescopeStore & { listTraceIds?: unknown };
-    legacy.listTraceIds = undefined;
+    // Um store legado: delega tudo, e simplesmente NÃO tem a capacidade nova — que
+    // é a situação real de qualquer store de terceiro escrito antes dela existir.
+    const legacy: TelescopeStore = {
+      record: (input) => store.record(input),
+      get: (id) => store.get(id),
+      list: (query) => store.list(query),
+      count: () => store.count(),
+      prune: (olderThan, keepLast) => store.prune(olderThan, keepLast),
+      clear: () => store.clear(),
+    };
 
     const viaFallback = await new MetricsService(legacy).getTraces(3, 3);
     const viaFastPath = await new MetricsService(store).getTraces(3, 3);
