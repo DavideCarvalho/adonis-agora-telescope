@@ -91,6 +91,12 @@ export function useTraces(limit = 50) {
   return useAsync(() => client.traces(limit), [client, limit]);
 }
 
+/** One page of traces. `page` is 1-based and owned by the caller. */
+export function useTracesPage(limit: number, page: number) {
+  const client = useTelescopeClient();
+  return useAsync(() => client.tracesPage(limit, page), [client, limit, page]);
+}
+
 export function useWaterfall(traceId: string) {
   const client = useTelescopeClient();
   return useAsync(() => client.waterfall(traceId), [client, traceId]);

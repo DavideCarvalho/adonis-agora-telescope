@@ -9,6 +9,7 @@ import type {
   Entry,
   EntrySummary,
   Envelope,
+  Page,
   LiveQueues,
   LiveSchedules,
   NPlusOnePattern,
@@ -102,6 +103,21 @@ export class TelescopeClient {
     return body.data;
   }
 
+  /** Unwrap a `{ data, meta }` envelope into a {@link Page}, keeping the paging meta
+   *  that {@link data} throws away. */
+  private async page<T>(
+    path: string,
+    query: Record<string, string> = {},
+  ): Promise<Page<T>> {
+    const body = await this.get<Envelope<T[]>>(path, query);
+    const meta = body.meta ?? {};
+    return {
+      rows: body.data,
+      page: typeof meta.page === 'number' ? meta.page : 1,
+      hasMore: meta.hasMore === true,
+    };
+  }
+
   /**
    * POST with no request body (every mutation route this client calls — diagnose, replay — takes
    * its parameters from the URL/query string, mirroring the routes themselves). Reads the JSON body
@@ -167,6 +183,11 @@ export class TelescopeClient {
 
   traces(limit = this.limit): Promise<TraceSummary[]> {
     return this.data<TraceSummary[]>('/metrics/traces', toQuery({ limit }));
+  }
+
+  /** One page of traces, with whether a next page exists. */
+  tracesPage(limit = this.limit, page = 1): Promise<Page<TraceSummary>> {
+    return this.page<TraceSummary>('/metrics/traces', toQuery({ limit, page }));
   }
 
   waterfall(traceId: string): Promise<Waterfall> {

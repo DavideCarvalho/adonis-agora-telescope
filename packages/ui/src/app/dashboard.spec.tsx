@@ -133,6 +133,7 @@ function fakeClient(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
     getEntry: vi.fn().mockResolvedValue(fullEntry),
     entriesByTrace: vi.fn().mockResolvedValue([entrySummary]),
     traces: vi.fn().mockResolvedValue([traceSummary]),
+    tracesPage: vi.fn().mockResolvedValue({ rows: [traceSummary], page: 1, hasMore: false }),
     waterfall: vi.fn().mockResolvedValue({ traceStartMs: 0, totalDurationMs: 120, spans: [] }),
     nPlusOne: vi.fn().mockResolvedValue([]),
     pulse: vi.fn().mockResolvedValue(pulseSummary),
@@ -223,6 +224,31 @@ describe('EntriesSection', () => {
     const client = fakeClient({ listEntries: vi.fn().mockResolvedValue([]) });
     renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('No entries match these filters.')).toBeTruthy());
+  });
+
+  it('pede a próxima página AO SERVIDOR em vez de fatiar o que já tem', async () => {
+    const tracesPage = vi
+      .fn()
+      .mockResolvedValue({ rows: [traceSummary], page: 1, hasMore: true });
+    const client = fakeClient({ tracesPage });
+    renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('GET /users')).toBeTruthy());
+
+    fireEvent.click(screen.getByText(/Next/));
+
+    // O servidor tem que ser consultado com page=2. Asserido pelo ARGUMENTO e não
+    // por contagem de chamadas: o teste roda sob StrictMode, que invoca os efeitos
+    // duas vezes, então contar chamadas mediria o React em vez da paginação.
+    await waitFor(() =>
+      expect(tracesPage.mock.calls.some((call) => call[1] === 2)).toBe(true),
+    );
+  });
+
+  it('não deixa voltar antes da primeira página', async () => {
+    const client = fakeClient();
+    renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('GET /users')).toBeTruthy());
+    expect(screen.getByText(/Prev/).closest('button')?.disabled).toBe(true);
   });
 
   it('shows the user column', async () => {
@@ -383,14 +409,18 @@ describe('TracesSection', () => {
     const onOpenTrace = vi.fn();
     renderWith(client, <TracesSection onOpenTrace={onOpenTrace} />);
     await waitFor(() => expect(screen.getByText('GET /users')).toBeTruthy());
-    expect(client.traces).toHaveBeenCalled();
+    expect(client.tracesPage).toHaveBeenCalled();
     fireEvent.click(screen.getByText('GET /users'));
     expect(onOpenTrace).toHaveBeenCalledWith('trace-abc123');
   });
 
   it('shows the user column', async () => {
     const client = fakeClient({
-      traces: vi.fn().mockResolvedValue([{ ...traceSummary, userLabel: 'ada@example.com' }]),
+      tracesPage: vi.fn().mockResolvedValue({
+        rows: [{ ...traceSummary, userLabel: 'ada@example.com' }],
+        page: 1,
+        hasMore: false,
+      }),
     });
     renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('ada@example.com')).toBeTruthy());

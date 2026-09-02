@@ -294,6 +294,19 @@ export interface Envelope<T> {
   meta?: Record<string, unknown>;
 }
 
+/**
+ * A page of rows plus whether another one exists.
+ *
+ * `hasMore` and not `total`: the paginated endpoints answer it by fetching one row
+ * past the page, because counting would mean an aggregate over the very table the
+ * pagination exists to stop scanning. Prev/Next needs no total.
+ */
+export interface Page<T> {
+  rows: T[];
+  page: number;
+  hasMore: boolean;
+}
+
 // ── retention (`GET <base>/retention`) ──────────────────────────────────────
 
 /** One entry type recording below 100%, from the resolved sampling config. */
