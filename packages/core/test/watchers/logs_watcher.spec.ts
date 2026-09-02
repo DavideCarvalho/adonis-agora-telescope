@@ -6,6 +6,7 @@ import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import {
   buildLogEntry,
   extractLog,
+  interpolate,
   type LogEntryContent,
   type LoggerLike,
   LogsWatcher,
@@ -234,5 +235,115 @@ describe('LogsWatcher — recebendo algo que não é um logger', () => {
     }
     expect(warnings[0]).toContain('a Promise');
     expect(warnings[0]).toContain('awaited');
+  });
+});
+
+/**
+ * O watcher gravava a string de FORMATO, jogando fora os valores. Um log real de
+ * produção chegava assim:
+ *
+ *   creating query client in %s mode        243x por minuto
+ *
+ * O `%s` nunca preenchido e o valor (`dual`) descartado. Uma mensagem de log virada
+ * em template é a única forma em que ela não serve para nada.
+ */
+describe('LogsWatcher — interpolação da mensagem', () => {
+  it('preenche %s com o valor, como o pino faria', () => {
+    expect(interpolate('creating query client in %s mode', ['dual'])).toBe(
+      'creating query client in dual mode',
+    );
+  });
+
+  it('cobre o conjunto do pino', () => {
+    expect(interpolate('%d itens', [3])).toBe('3 itens');
+    expect(interpolate('%i tentativa', ['2'])).toBe('2 tentativa');
+    expect(interpolate('payload %j', [{ a: 1 }])).toBe('payload {"a":1}');
+    expect(interpolate('100%% pronto', [])).toBe('100% pronto');
+    expect(interpolate('100%% de %s', ['x'])).toBe('100% de x');
+  });
+
+  it('placeholder SEM argumento fica como está — não inventa "undefined"', () => {
+    // O template é uma mensagem pior; um valor inventado é uma mensagem falsa.
+    expect(interpolate('de %s para %s', ['a'])).toBe('de a para %s');
+  });
+
+  it('mensagem sem placeholder passa intacta', () => {
+    expect(interpolate('nada para preencher', ['ignorado'])).toBe('nada para preencher');
+  });
+
+  it('o entry gravado carrega a mensagem já preenchida', () => {
+    const built = buildLogEntry('info', [{ userId: 'u1' }, 'salvou %s em %d ms', 'doc', 12]);
+    expect((built.content as { message: string }).message).toBe('salvou doc em 12 ms');
+  });
+});
+
+/**
+ * O tee vê a chamada mesmo quando o gate de nível do próprio logger a descarta —
+ * então o app não escrevia nada e o telescope guardava tudo. Em produção isso era o
+ * `logger.trace()` de dentro do Lucid a 243 entries/min sob LOG_LEVEL=info.
+ */
+describe('LogsWatcher — respeita o nível do logger', () => {
+  /** Um logger cujo gate aceita só `warn` pra cima. */
+  function gatedLogger() {
+    const calls: string[] = [];
+    const make =
+      (level: string) =>
+      (..._args: unknown[]) =>
+        void calls.push(level);
+    return {
+      trace: make('trace'),
+      debug: make('debug'),
+      info: make('info'),
+      warn: make('warn'),
+      error: make('error'),
+      fatal: make('fatal'),
+      isLevelEnabled: (level: string) => ['warn', 'error', 'fatal'].includes(level),
+    };
+  }
+
+  it('não grava o que o logger descartaria', async () => {
+    const store = installStore();
+    const logger = gatedLogger();
+    const watcher = new LogsWatcher();
+    watcher.start(logger);
+
+    logger.trace('ruído de infraestrutura');
+    logger.info('também abaixo do nível');
+    logger.warn('isto o app escreve');
+    await flush();
+
+    const entries = await store.list({ type: EntryType.Log });
+    expect(entries).toHaveLength(1);
+    expect((entries[0]?.content as { level: string }).level).toBe('warn');
+    watcher.stop();
+  });
+
+  it('captureBelowLoggerLevel: true grava abaixo do nível de propósito', async () => {
+    const store = installStore();
+    const logger = gatedLogger();
+    const watcher = new LogsWatcher({ captureBelowLoggerLevel: true });
+    watcher.start(logger);
+
+    logger.trace('agora sim');
+    await flush();
+
+    expect(await store.count()).toBe(1);
+    watcher.stop();
+  });
+
+  it('logger SEM isLevelEnabled não é filtrado (comportamento antigo)', async () => {
+    const store = installStore();
+    const calls: string[] = [];
+    const logger = {
+      info: (..._a: unknown[]) => void calls.push('info'),
+    };
+    const watcher = new LogsWatcher();
+    watcher.start(logger);
+
+    logger.info('sem gate, grava');
+    await flush();
+
+    expect(await store.count()).toBe(1);
+    watcher.stop();
   });
 });
