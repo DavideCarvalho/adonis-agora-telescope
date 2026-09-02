@@ -1,7 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
 import { type BatchOrigin, type Entry, isBatchOrigin, type RecordInput } from '../entry.js';
-import type { EntryQuery, TelescopeStore, TraceIdQuery, TraceIdRow } from '../store.js';
+import type {
+  BucketCountQuery,
+  BucketCountRow,
+  EntryQuery,
+  TelescopeStore,
+  TraceIdQuery,
+  TraceIdRow,
+} from '../store.js';
 
 /**
  * The table {@link LucidTelescopeStore} reads and writes. Override via
@@ -344,6 +351,54 @@ export class LucidTelescopeStore implements TelescopeStore {
       traceId: row.trace_id,
       lastAt: new Date(toInt(row.last_at)),
     }));
+  }
+
+  /**
+   * Per-bucket, per-type counts for the throughput chart.
+   *
+   * The win here is the PROJECTION, not the grouping: the chart needs `created_at`
+   * and `type` and nothing else, but the only way to get them was `list()`, which
+   * does `select('*')` — shipping every row's `content` JSON blob out of the database
+   * and running it through `hydrate()`, to then discard all of it except a timestamp
+   * and a string. Two scalar columns instead of a blob is orders of magnitude less
+   * bytes on the wire and no per-row JSON parse.
+   *
+   * The bucketing itself stays in JS, deliberately. Doing it in SQL needs a raw
+   * select expression (`(created_at - ?) / ?`), and Lucid exposes `groupByRaw` but no
+   * `selectRaw` — the alternative is `rawQuery`, whose result shape differs per driver
+   * (`{ rows }` on Postgres, an array on SQLite). Trading a portability bug for the
+   * second-order win is a bad deal; the row count is what would justify it, and after
+   * the redis-watcher filter that count drops by roughly an order of magnitude. If
+   * this is still hot with a clean table, THAT is when it earns the raw query.
+   */
+  async countByBucket(query: BucketCountQuery): Promise<BucketCountRow[]> {
+    await this.init();
+    const startMs = query.after.getTime();
+    const bucketMs = Math.max(1, Math.floor(query.bucketMs));
+
+    let builder = this.db
+      .from(this.tableName)
+      .where('created_at', '>', startMs)
+      .where('created_at', '<=', query.before.getTime());
+    if (query.type !== undefined) builder = builder.where('type', query.type);
+
+    const rows = (await builder.select('created_at', 'type')) as unknown as Array<{
+      created_at: unknown;
+      type: string;
+    }>;
+
+    const tally = new Map<string, BucketCountRow>();
+    for (const row of rows) {
+      const index = Math.floor((toInt(row.created_at) - startMs) / bucketMs);
+      const key = `${index}\u0000${row.type}`;
+      const seen = tally.get(key);
+      if (seen === undefined) {
+        tally.set(key, { index, type: row.type, count: 1 });
+      } else {
+        seen.count += 1;
+      }
+    }
+    return [...tally.values()];
   }
 
   async count(): Promise<number> {
