@@ -80,7 +80,12 @@ export default class TelescopeProvider {
       return;
     }
 
-    setTelescopeRuntime(store, config.watchers.has('request'), config.requestCapture);
+    setTelescopeRuntime(
+      store,
+      config.watchers.has('request'),
+      config.requestCapture,
+      config.requestEnrichment,
+    );
     setTelescopeEntryEvents(this.entryEvents);
 
     if (config.watchers.has('diagnostics')) {

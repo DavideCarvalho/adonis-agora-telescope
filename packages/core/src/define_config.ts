@@ -7,7 +7,7 @@ import {
 import type { TelescopeExtension } from './extension/types.js';
 import { PULSE_CARDS, type PulseCardName } from './metrics/pulse.js';
 import type { RedactBounds } from './redaction/redact.js';
-import type { RequestCaptureOptions } from './request_watcher.js';
+import type { RequestCaptureOptions, RequestEnrichment } from './request_watcher.js';
 import { resolveSampling, type SamplingConfig } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
@@ -119,6 +119,14 @@ export interface TelescopeConfig {
    * field on request entries). See {@link RequestCaptureOptions}.
    */
   requestCapture?: RequestCaptureOptions;
+
+  /**
+   * Host hook that enriches every `request` entry with information only the app
+   * has — most usefully, a tag for the front-end screen that issued the call, so
+   * the dashboard can slice requests by screen. Synchronous, and a throw is
+   * swallowed. See {@link RequestEnrichment}. Off by default.
+   */
+  requestEnrichment?: RequestEnrichment;
 
   /**
    * Extensions contributed by sibling libs (e.g. `@adonis-agora/durable-telescope`) — each adds navigable
@@ -307,6 +315,8 @@ export interface ResolvedTelescopeConfig {
   logs: { minLevel: LogLevel; tags: string[] };
   /** Opt-in request body-capture gates, or `null` when body capture is off (default). */
   requestCapture: RequestCaptureOptions | null;
+  /** Host enrichment hook for request entries, or `null` when unset (default). */
+  requestEnrichment: RequestEnrichment | null;
   extensions: TelescopeExtension[];
   redact: { enabled: boolean; keys: string[]; perType: Record<string, RedactBounds> };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
@@ -383,6 +393,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
       tags: [...(config.logs?.tags ?? [])],
     },
     requestCapture: config.requestCapture ?? null,
+    requestEnrichment: config.requestEnrichment ?? null,
     extensions: config.extensions ?? [],
     redact: {
       enabled: config.redact?.enabled ?? true,

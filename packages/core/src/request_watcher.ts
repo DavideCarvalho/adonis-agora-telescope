@@ -15,6 +15,16 @@ export interface RequestEntryContent {
   /** The active trace id at request time, or `null`. */
   traceId: string | null;
   /**
+   * Host-supplied context for this request, from the {@link RequestEnrichment}
+   * hook — e.g. which front-end screen issued the call. Absent when no hook is
+   * configured or it returned nothing.
+   *
+   * Declared BEFORE `body` on purpose: the recorder's content-byte budget drops
+   * keys in insertion order, and a captured body is the field that can be
+   * megabytes. A few short context fields must not be the ones starved out.
+   */
+  context?: Record<string, unknown>;
+  /**
    * Captured request body — present ONLY when the request exposes a body and it
    * passed the {@link RequestCaptureOptions} gates. A gated-out body is a marker
    * string (e.g. `'[Skipped: 200000 bytes > 131072 bytes]'`); an omitted `body`
@@ -98,6 +108,56 @@ export function resolveRequestCapture(
   };
 }
 
+/** Cap on host-supplied tags per entry — a buggy hook can't bloat the entry. */
+export const MAX_ENRICHMENT_TAGS = 16;
+
+/** Cap on the length of a single host-supplied tag. */
+export const MAX_ENRICHMENT_TAG_LENGTH = 128;
+
+/**
+ * What a {@link RequestEnrichment} hook may contribute to a `request` entry.
+ * Every field is optional; returning `undefined` (or nothing) enriches nothing.
+ */
+export interface RequestEnrichmentResult {
+  /**
+   * Extra tags, appended to the ones the watcher derives. Tags are how the
+   * dashboard filters, so this is the field to use for anything you want to slice
+   * by — `screen:researcher/dashboard_page`, `tenant:acme`, `feature-flag:new-nav`.
+   * Capped at {@link MAX_ENRICHMENT_TAGS} tags of {@link MAX_ENRICHMENT_TAG_LENGTH}
+   * characters; non-strings and blanks are dropped.
+   */
+  tags?: string[];
+  /**
+   * The authenticated user, for hosts where neither `ctx.auth.user` nor the
+   * `@adonis-agora/context` `userRef()` applies. Wins over both when returned.
+   */
+  user?: { id: string; email?: string } | null;
+  /**
+   * Free-form fields recorded under `content.context`. Use for detail you want to
+   * READ on the entry but not filter by; anything you want to filter by belongs
+   * in `tags`.
+   */
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Host hook that enriches a `request` entry with information only the app has.
+ *
+ * The motivating case: correlating a front-end screen with the calls it makes.
+ * The browser sends the current page in a header, and this hook turns it into a
+ * `screen:<name>` tag — after which the dashboard can answer "which requests came
+ * from the writing screen?" with its existing tag filter.
+ *
+ * SYNCHRONOUS on purpose. It runs on the recording path of every request, so an
+ * `await` here (a DB lookup for the user, say) would put host I/O between the
+ * response and the next request. Read what is already on the `ctx` — headers,
+ * route, a guard's resolved state — and return.
+ *
+ * A throw is swallowed: enrichment is never a reason to lose an entry, let alone
+ * to break the request being observed.
+ */
+export type RequestEnrichment = (ctx: HttpContextLike) => RequestEnrichmentResult | undefined;
+
 /** The minimal slice of an Adonis HttpContext the watcher reads. */
 export interface RequestLike {
   method(): string;
@@ -148,9 +208,15 @@ export interface RecordRequestOptions {
   capture?: RequestCaptureOptions;
   /**
    * Override the resolved user; pass `null` to force "no user". Omit to resolve
-   * from `ctx.auth` then the context accessor (see {@link resolveRequestUser}).
+   * from the enrichment hook, then `ctx.auth`, then the context accessor
+   * (see {@link resolveRequestUser}).
    */
   user?: { id: string; email?: string } | null;
+  /**
+   * Host hook contributing tags / user / context to the entry. See
+   * {@link RequestEnrichment}. Omit for the pre-existing behavior.
+   */
+  enrich?: RequestEnrichment;
 }
 
 /** First string value of a header read via the platform accessor. */
@@ -289,6 +355,57 @@ export function resolveRequestUser(ctx: HttpContextLike): { id: string; email?: 
   }
 }
 
+/** What {@link runEnrichment} hands back: always usable, never throws. */
+interface AppliedEnrichment {
+  tags: string[];
+  user?: { id: string; email?: string } | null;
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Run the host's enrichment hook defensively and normalize what it returned.
+ *
+ * Everything here is "never let the host break the entry": a throwing hook, a
+ * hook returning garbage, a hook returning a thousand tags — all degrade to
+ * recording what we would have recorded anyway. Tags are filtered to non-empty
+ * strings, trimmed to {@link MAX_ENRICHMENT_TAG_LENGTH}, and capped at
+ * {@link MAX_ENRICHMENT_TAGS}.
+ */
+function runEnrichment(
+  enrich: RequestEnrichment | undefined,
+  ctx: HttpContextLike,
+): AppliedEnrichment {
+  if (enrich === undefined) return { tags: [] };
+
+  let result: RequestEnrichmentResult | undefined;
+  try {
+    result = enrich(ctx);
+  } catch {
+    return { tags: [] };
+  }
+  if (result === null || typeof result !== 'object') return { tags: [] };
+
+  const tags = Array.isArray(result.tags)
+    ? result.tags
+        .filter((tag): tag is string => typeof tag === 'string' && tag.length > 0)
+        .slice(0, MAX_ENRICHMENT_TAGS)
+        .map((tag) =>
+          tag.length > MAX_ENRICHMENT_TAG_LENGTH ? tag.slice(0, MAX_ENRICHMENT_TAG_LENGTH) : tag,
+        )
+    : [];
+
+  const context =
+    result.context !== null && typeof result.context === 'object' && !Array.isArray(result.context)
+      ? result.context
+      : undefined;
+
+  return {
+    tags,
+    ...(result.user !== undefined ? { user: userSlice(result.user) } : {}),
+    ...(context !== undefined ? { context } : {}),
+  };
+}
+
 /**
  * The pure, framework-agnostic core of the HTTP request watcher: build a
  * `request` {@link RecordInput} from a (stubbable) HttpContext-like value and a
@@ -305,7 +422,15 @@ export async function recordRequest(
   const url = stripQuery(ctx.request.url());
   const status = resolveResponseStatus(ctx.response);
   const durationMs = options.durationMs ?? Math.max(0, Date.now() - startedAt);
-  const user = options.user === undefined ? resolveRequestUser(ctx) : options.user;
+  const enrichment = runEnrichment(options.enrich, ctx);
+  // Precedence: an explicit `options.user` (a caller that already knows) beats the
+  // host hook, which beats what we can read off the ctx.
+  const user =
+    options.user !== undefined
+      ? options.user
+      : enrichment.user !== undefined
+        ? enrichment.user
+        : resolveRequestUser(ctx);
 
   // Body capture (gated). Only when the caller opted in AND the request exposes a
   // body accessor. The gate runs HERE — before the store's synchronous redaction
@@ -325,6 +450,7 @@ export async function recordRequest(
       durationMs,
       traceId: options.traceId ?? null,
       user,
+      ...(enrichment.context !== undefined ? { context: enrichment.context } : {}),
       ...(captureBody !== undefined ? { body: captureBody } : {}),
     },
     durationMs,
@@ -333,6 +459,7 @@ export async function recordRequest(
       `method:${method}`,
       ...(status !== null ? [`status:${status}`] : []),
       ...(user?.id ? [`user:${user.id}`] : []),
+      ...enrichment.tags,
     ],
     ...(options.traceId !== undefined ? { traceId: options.traceId } : {}),
   };

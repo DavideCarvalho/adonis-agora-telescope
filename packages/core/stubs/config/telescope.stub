@@ -89,6 +89,26 @@ export default defineConfig({
   // },
 
   /**
+   * Enrich every request entry with what only your app knows. Return 'tags' for
+   * anything you want to FILTER by in the dashboard, 'context' for detail you only
+   * want to read, and 'user' when neither ctx.auth.user nor the
+   * @adonis-agora/context userRef() applies.
+   *
+   * The classic use: have the front end send its current screen in a header, and
+   * tag the entry with it — then the dashboard answers "which requests came from
+   * the writing screen?" with its normal tag filter.
+   *
+   * SYNCHRONOUS: it runs on the recording path of every request, so read what is
+   * already on the ctx (headers, route, resolved guard state) rather than doing
+   * I/O. A throw is swallowed — enrichment never costs you the entry.
+   */
+  // requestEnrichment: (ctx) => {
+  //   // header() is optional on the framework-agnostic ctx type — hence the ?. call
+  //   const screen = ctx.request.header?.('x-screen')
+  //   return typeof screen === 'string' ? { tags: ['screen:' + screen] } : undefined
+  // },
+
+  /**
    * Sensitive-data redaction. Every entry's content is scrubbed before it is
    * persisted — a built-in set of sensitive keys ('authorization', 'cookie',
    * 'password', 'token', 'api_key', 'secret', 'set-cookie', …) is masked with

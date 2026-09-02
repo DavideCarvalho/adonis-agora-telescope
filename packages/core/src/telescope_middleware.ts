@@ -84,6 +84,8 @@ export default class TelescopeMiddleware {
           // Body capture is opt-in: only pass `capture` when configured, so the
           // default stays "no body field" and zero body-read overhead.
           ...(runtime.requestCapture !== null ? { capture: runtime.requestCapture } : {}),
+          // Host enrichment (screen tag, tenant, …). Absent unless configured.
+          ...(runtime.requestEnrichment !== null ? { enrich: runtime.requestEnrichment } : {}),
         });
       } catch {
         // Observability must never break the request it observes.

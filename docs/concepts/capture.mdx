@@ -269,6 +269,38 @@ authenticated session — the dashboard's User column and every `user:<id>` tag 
 silently empty. If you see that, check that `@adonis-agora/context` is installed and
 that something in your middleware chain sets the user reference on it.
 
+## Enriching a request entry
+
+`requestEnrichment` on `config/telescope.ts` lets the app attach what only it knows to
+every `request` entry:
+
+```ts
+requestEnrichment: (ctx) => {
+  // `header` is optional on the framework-agnostic ctx type — hence the `?.`
+  const screen = ctx.request.header?.('x-screen')
+  return typeof screen === 'string' ? { tags: [`screen:${screen}`] } : undefined
+}
+```
+
+Three fields, all optional:
+
+- **`tags`** — how the dashboard filters, so this is where anything you want to slice by
+  belongs: `screen:…`, `tenant:…`, `feature-flag:…`. Capped at 16 tags of 128 characters;
+  blanks and non-strings are dropped.
+- **`context`** — free-form fields recorded under `content.context`, for detail you want
+  to read on the entry but not filter by.
+- **`user`** — for hosts where neither `ctx.auth.user` nor `userRef()` applies. Wins over
+  both.
+
+The canonical use is correlating a front-end screen with the calls it makes: the browser
+sends its current page in a header (a `beforeRequest` hook on your HTTP client), the app
+turns it into a `screen:<name>` tag, and the entries list filters by it like any other tag.
+
+The hook is **synchronous** by design. It runs on the recording path of every request, so
+an `await` here — a DB lookup for the user, say — would put host I/O between the response
+and the next request. Read what is already on the `ctx`. A throw is swallowed: enrichment
+is never a reason to lose an entry, let alone to break the request being observed.
+
 ## Trace correlation
 
 When [`@adonis-agora/context`](/docs/context) is present, every entry recorded inside a
