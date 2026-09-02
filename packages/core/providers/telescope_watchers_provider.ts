@@ -1,5 +1,5 @@
 import type { ApplicationService } from '@adonisjs/core/types';
-import { setTelescopeQueueManager } from '../src/registry.js';
+import { getTelescopeExtensionRegistry, setTelescopeQueueManager } from '../src/registry.js';
 import { CacheWatcher } from '../src/watchers/cache_watcher.js';
 import {
   type ResolvedTelescopeWatchersConfig,
@@ -16,7 +16,7 @@ import { ProfilingWatcher } from '../src/watchers/profiling_watcher.js';
 import { type QueueLike, QueueManagerDriver } from '../src/watchers/queue_manager.js';
 import { QueueWatcher } from '../src/watchers/queue_watcher.js';
 import { RedisWatcher } from '../src/watchers/redis_watcher.js';
-import { ScheduleWatcher } from '../src/watchers/schedule_watcher.js';
+import { registerSchedule, ScheduleWatcher } from '../src/watchers/schedule_watcher.js';
 
 /** A watcher with its own (emitter-less) lifecycle — `start()`/`stop()` with no
  *  emitter argument. The http-client watcher publishes an opt-in `instrumentFetch`
@@ -278,4 +278,24 @@ export default class TelescopeWatchersProvider {
     // Clear the queue-manager slot so a re-registering app (tests / HMR) doesn't read a stale driver.
     setTelescopeQueueManager(null);
   }
+
+  /**
+   * Pull the schedules the extensions know about into the Live Schedules registry.
+   *
+   * In `ready()` and not `boot()` because both halves have to already exist: the
+   * schedule watcher (started above) and the extension registry (published by the
+   * telescope provider). It also means an extension can resolve a live scheduler
+   * from the container instead of guessing at boot order.
+   *
+   * A no-op when the `schedule` watcher is off — `registerSchedule` no-ops then, and
+   * the screen says as much.
+   */
+  async ready(): Promise<void> {
+    const registry = getTelescopeExtensionRegistry();
+    if (registry === null) return;
+    for (const schedule of await registry.collectSchedules()) {
+      registerSchedule(schedule);
+    }
+  }
+
 }

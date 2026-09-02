@@ -104,3 +104,67 @@ describe('ExtensionRegistry', () => {
     expect(reg.entryTypes()).toHaveLength(1);
   });
 });
+
+/**
+ * The Live Schedules screen lists what `registerSchedule()` was TOLD exists. A host
+ * that already knows its own schedules — a workflow engine with `@Scheduled`, say —
+ * had to repeat the list by hand, and the copy drifts from the decorators on the
+ * first change. This hook lets the owner answer instead.
+ */
+describe('ExtensionRegistry.collectSchedules', () => {
+  it('coleta os schedules das extensões', async () => {
+    const registry = new ExtensionRegistry(
+      [
+        {
+          name: 'durable',
+          schedules: () => [{ name: 'sync-writing', schedule: '*/2 * * * *', kind: 'cron' }],
+        },
+      ],
+      ctx(),
+    );
+    expect(await registry.collectSchedules()).toEqual([
+      { name: 'sync-writing', schedule: '*/2 * * * *', kind: 'cron' },
+    ]);
+  });
+
+  it('aceita hook assíncrono (o dono do scheduler resolve serviço do container)', async () => {
+    const registry = new ExtensionRegistry(
+      [{ name: 'durable', schedules: async () => [{ name: 'a' }] }],
+      ctx(),
+    );
+    expect(await registry.collectSchedules()).toHaveLength(1);
+  });
+
+  it('nome duplicado entre extensões entra uma vez só', async () => {
+    const registry = new ExtensionRegistry(
+      [
+        { name: 'um', schedules: () => [{ name: 'prune' }] },
+        { name: 'dois', schedules: () => [{ name: 'prune' }, { name: 'outro' }] },
+      ],
+      ctx(),
+    );
+    expect((await registry.collectSchedules()).map((s) => s.name)).toEqual(['prune', 'outro']);
+  });
+
+  it('extensão que estoura é pulada, e as outras continuam', async () => {
+    // Uma lista de dashboard não vale um boot quebrado.
+    const registry = new ExtensionRegistry(
+      [
+        {
+          name: 'quebrada',
+          schedules: () => {
+            throw new Error('scheduler indisponível');
+          },
+        },
+        { name: 'boa', schedules: () => [{ name: 'ok' }] },
+      ],
+      ctx(),
+    );
+    expect((await registry.collectSchedules()).map((s) => s.name)).toEqual(['ok']);
+  });
+
+  it('extensão sem o hook não atrapalha', async () => {
+    const registry = new ExtensionRegistry([durable], ctx());
+    expect(await registry.collectSchedules()).toEqual([]);
+  });
+});

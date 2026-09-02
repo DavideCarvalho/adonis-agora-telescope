@@ -95,6 +95,7 @@ export type {
   LinkSpec,
   Panel,
   PanelThresholds,
+  ScheduleContribution,
   TelescopeExtension,
 } from './extension/types.js';
 // — extension SDK —

@@ -12,6 +12,8 @@ import type { TelescopeStore } from '../store.js';
  *
  * @remarks Semver 0.x — the shape may change until 1.0.
  */
+import type { ScheduleRegistration } from '../watchers/schedule_watcher.js';
+
 export interface TelescopeExtension {
   /** Unique id — used in collision errors and for deterministic ordering. */
   name: string;
@@ -21,7 +23,29 @@ export interface TelescopeExtension {
   dashboards?(ctx: ExtensionContext): DashboardSpec[];
   /** Named server-side queries that panels bind to via `{ provider, query }`. */
   dataProviders?(ctx: ExtensionContext): DataProvider[];
+  /**
+   * Contribute known scheduled tasks to the Live Schedules screen.
+   *
+   * That screen lists what `registerSchedule()` was TOLD exists, which means a host
+   * that already knows its own schedules — a workflow engine with a `@Scheduled`
+   * decorator, say — still had to repeat the list by hand, and the copy drifts from
+   * the decorators on the first change. An extension that owns a scheduler can
+   * answer here instead, and the list stays derived from the real source.
+   *
+   * Called once at boot, alongside the other hooks. Contributions are merged with
+   * anything registered imperatively; a name registered both ways is registered once.
+   */
+  schedules?(ctx: ExtensionContext): ScheduleContribution[] | Promise<ScheduleContribution[]>;
 }
+
+/**
+ * A scheduled task an extension knows about.
+ *
+ * An ALIAS of {@link ScheduleRegistration}, not a copy of it: a second declaration of
+ * the same shape is a second place for `ScheduleKind` to drift, and the drift shows
+ * up as a type error in the provider rather than anywhere near the mistake.
+ */
+export type ScheduleContribution = ScheduleRegistration;
 
 /** The slice of the AdonisJS container an extension needs to resolve host services. */
 export interface ContainerLike {
