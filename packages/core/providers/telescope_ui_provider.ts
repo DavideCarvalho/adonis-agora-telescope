@@ -385,6 +385,13 @@ export default class TelescopeUiProvider {
       .as('telescope_ui.metrics_traces');
 
     router
+      .get(`${apiBase}/metrics/screens`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        return api.metricsScreens(ctx);
+      })
+      .as('telescope_ui.metrics_screens');
+
+    router
       .get(`${apiBase}/metrics/waterfall/:traceId`, async (ctx: GuardedContext) => {
         if (!(await gate(ctx))) return;
         return api.metricsWaterfall(ctx, String(ctx.params.traceId));

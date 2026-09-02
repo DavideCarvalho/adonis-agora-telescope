@@ -38,6 +38,63 @@ export interface RequestEntryContent {
    * captured, never the full model. `null` when unauthenticated or not exposed.
    */
   user: { id: string; email?: string } | null;
+  /**
+   * What KIND of request this was — see {@link classifyRequest}. `page` is a screen
+   * a person navigated to (Inertia visit or server-rendered HTML), `api` is data
+   * fetched by code, `asset` is a static file.
+   *
+   * Optional because entries recorded before this field existed do not have it, and
+   * the console has to keep rendering them.
+   */
+  kind?: RequestKind;
+}
+
+/**
+ * How a request reached the app.
+ *
+ * The distinction the console could not make before: `GET /pesquisador/escrita` as a
+ * page visit and the dozen XHRs that page then fires are all `request` entries with
+ * a url, so "most visited screens" and "busiest endpoints" were the same list — and
+ * neither answered either question.
+ */
+export type RequestKind = 'page' | 'api' | 'asset';
+
+/** File extensions treated as static assets. */
+const ASSET_EXTENSIONS =
+  /\.(?:js|mjs|cjs|css|map|png|jpe?g|gif|svg|webp|avif|ico|woff2?|ttf|eot|mp4|webm|txt|xml|wasm)$/i;
+
+/**
+ * Classify a request as a screen visit, an API call, or a static asset.
+ *
+ * Order matters and encodes what is most reliable:
+ *
+ * 1. Assets go by URL, before anything else — a `.css` fetched with `Accept: * / *`
+ *    would otherwise land in `api` and drown the endpoint list.
+ * 2. `x-inertia` is decisive for `page`. An Inertia visit asks for JSON and IS a
+ *    screen navigation; going by `Accept` alone would file every one of them as
+ *    `api`, which is exactly backwards for an Inertia app.
+ * 3. Then the response content-type, which describes what was actually served
+ *    rather than what the client hoped for.
+ * 4. Then `Accept: text/html` — a plain browser navigation to a server-rendered
+ *    page (an Edge template, a redirect landing).
+ *
+ * Anything left is `api`.
+ */
+export function classifyRequest(request: RequestLike, responseContentType?: string): RequestKind {
+  const url = stripQuery(String(request.url()));
+  if (ASSET_EXTENSIONS.test(url)) return 'asset';
+
+  // An Inertia visit sets this and asks for JSON, but it is a screen navigation.
+  if (headerString(request, 'x-inertia') !== undefined) return 'page';
+
+  if (responseContentType !== undefined && responseContentType.includes('text/html')) return 'page';
+
+  const accept = headerString(request, 'accept') ?? '';
+  // `text/html` before any `application/json` in the list: browsers send both, and
+  // the FIRST one is what they actually prefer.
+  if (accept.includes('text/html')) return 'page';
+
+  return 'api';
 }
 
 /**
@@ -184,6 +241,9 @@ export interface ResponseLike {
     statusCode?: number;
     /** AdonisJS `Response.getStatus()` — the only status accessor Adonis exposes. */
     getStatus?(): number;
+    /** Adonis's `response.getHeader(name)`. Optional so a plain stub still satisfies
+     *  this shape — classification just falls back to the request headers. */
+    getHeader?(name: string): unknown;
   };
 }
 export interface HttpContextLike {
@@ -431,6 +491,7 @@ export async function recordRequest(
       : enrichment.user !== undefined
         ? enrichment.user
         : resolveRequestUser(ctx);
+  const kind = classifyRequest(ctx.request, responseContentType(ctx));
 
   // Body capture (gated). Only when the caller opted in AND the request exposes a
   // body accessor. The gate runs HERE — before the store's synchronous redaction
@@ -449,6 +510,7 @@ export async function recordRequest(
       status,
       durationMs,
       traceId: options.traceId ?? null,
+      kind,
       user,
       ...(enrichment.context !== undefined ? { context: enrichment.context } : {}),
       ...(captureBody !== undefined ? { body: captureBody } : {}),
@@ -457,6 +519,7 @@ export async function recordRequest(
     origin: 'http',
     tags: [
       `method:${method}`,
+      `kind:${kind}`,
       ...(status !== null ? [`status:${status}`] : []),
       ...(user?.id ? [`user:${user.id}`] : []),
       ...enrichment.tags,
@@ -468,6 +531,13 @@ export async function recordRequest(
   // Backfill the content trace id from whatever the store resolved (context).
   recorded.content.traceId = recorded.traceId;
   return recorded;
+}
+
+/** The response's content-type, when the host exposes a header accessor. */
+function responseContentType(ctx: HttpContextLike): string | undefined {
+  const value = ctx.response.getHeader?.('content-type');
+  if (typeof value === 'string') return value;
+  return Array.isArray(value) && typeof value[0] === 'string' ? value[0] : undefined;
 }
 
 /** Drop a `?query=string` suffix from a url. */

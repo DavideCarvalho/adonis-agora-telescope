@@ -10,6 +10,7 @@ import type {
   EntrySummary,
   Envelope,
   Page,
+  ScreenStats,
   LiveQueues,
   LiveSchedules,
   NPlusOnePattern,
@@ -203,6 +204,11 @@ export class TelescopeClient {
 
   metricsTimeseries(windowMs?: number, buckets?: number, type?: string): Promise<TimeseriesReport> {
     return this.data<TimeseriesReport>('/metrics/timeseries', toQuery({ windowMs, buckets, type }));
+  }
+
+  /** Per-route traffic over a window, optionally narrowed to page visits or API calls. */
+  screens(windowMs?: number, kind?: string, limit?: number): Promise<ScreenStats[]> {
+    return this.data<ScreenStats[]>('/metrics/screens', toQuery({ windowMs, kind, limit }));
   }
 
   traces(limit = this.limit): Promise<TraceSummary[]> {

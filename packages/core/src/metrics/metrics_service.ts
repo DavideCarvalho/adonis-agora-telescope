@@ -1,11 +1,13 @@
-import { type Entry, EXCEPTION_ENTRY_TYPES, isExceptionType } from '../entry.js';
+import { type Entry, EntryType, EXCEPTION_ENTRY_TYPES, isExceptionType } from '../entry.js';
 import {
   detectNPlusOne,
   detectNPlusOnePatterns,
   type NPlusOneInsight,
   type NPlusOnePattern,
 } from '../query/n_plus_one.js';
+import type { RequestKind } from '../request_watcher.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
+import { type ScreenStats, summarizeScreens } from './screens.js';
 import { estimateLatencyPercentiles, type StatsResult, summarizeStats } from './stats.js';
 import { bucketTimeseries, type TimeseriesReport } from './timeseries.js';
 import { summarizeTraces, type TraceSummary } from './traces.js';
@@ -30,6 +32,13 @@ export interface StatsQuery {
    * out-of-sight, it is unreachable. That screen asks for more.
    */
   topExceptions?: number;
+}
+
+export interface ScreensQuery {
+  windowMs: number;
+  /** Only page visits, only API calls, or only assets. Omit for all. */
+  kind?: RequestKind;
+  limit?: number;
 }
 
 export interface TimeseriesQuery {
@@ -153,6 +162,21 @@ export class MetricsService {
     // summarizeTraces re-derives the ordering from the entries it is given, so the
     // page order survives without the store and the summarizer having to agree on it.
     return summarizeTraces(entries, { limit: page });
+  }
+
+  /**
+   * Per-route traffic over a window — what the "screens" view is built on.
+   *
+   * Windowed and type-filtered at the store, so this reads `request` entries only
+   * rather than the whole table.
+   */
+  async getScreens(query: ScreensQuery): Promise<ScreenStats[]> {
+    const windowStart = new Date(Date.now() - query.windowMs);
+    const { entries } = await this.collect({ type: EntryType.Request, after: windowStart });
+    return summarizeScreens(entries, {
+      ...(query.kind !== undefined ? { kind: query.kind } : {}),
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+    });
   }
 
   /** The span waterfall for a single trace, or `null` when the trace is empty. */

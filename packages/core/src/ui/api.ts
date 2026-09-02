@@ -206,6 +206,31 @@ export class TelescopeApi {
       .send({ data, meta: { count: data.length, page, limit, hasMore } });
   }
 
+  /**
+   * `GET <path>/api/metrics/screens?windowMs=&kind=&limit=` — per-route traffic.
+   *
+   * `kind` splits page visits from API calls, which the request list could not do:
+   * a screen navigation and the dozen XHRs it fires were all `request` entries with
+   * a url, so one list had to answer two different questions and answered neither.
+   */
+  async metricsScreens(ctx: UiHttpContext): Promise<unknown> {
+    const windowMs = readNumber(ctx.request, 'windowMs') ?? 3_600_000;
+    const limit = clampLimit(readNumber(ctx.request, 'limit') ?? 50, 200);
+    const kind = readString(ctx.request, 'kind');
+    if (kind !== undefined && kind !== 'page' && kind !== 'api' && kind !== 'asset') {
+      return ctx.response.status(400).send({ error: '`kind` must be page, api or asset' });
+    }
+    const data = await this.metrics.getScreens({
+      windowMs,
+      limit,
+      ...(kind !== undefined ? { kind } : {}),
+    });
+    return ctx.response
+      .status(200)
+      .header('content-type', 'application/json')
+      .send({ data, meta: { count: data.length, windowMs, kind: kind ?? null } });
+  }
+
   /** `GET <path>/api/metrics/waterfall/:traceId` — span waterfall for one trace, or 404. */
   async metricsWaterfall(ctx: UiHttpContext, traceId: string): Promise<unknown> {
     const data = await this.metrics.getWaterfall(traceId);

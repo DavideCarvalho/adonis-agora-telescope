@@ -17,6 +17,7 @@ import { QueueManagerSection } from './QueueManagerSection.js';
 import { RetentionIndicator } from './RetentionIndicator.js';
 import { SchedulesLiveSection } from './SchedulesLiveSection.js';
 import { TraceDetail } from './TraceDetail.js';
+import { ScreensSection } from './ScreensSection.js';
 import { TracesSection } from './TracesSection.js';
 import { typeColor, typeLabel } from './ui.js';
 import { useHashRoute } from './use-hash-route.js';
@@ -27,6 +28,7 @@ type SectionKey =
   | 'pulse'
   | 'entries'
   | 'traces'
+  | 'screens'
   | 'exceptions'
   | 'exports'
   | 'extensions'
@@ -45,6 +47,7 @@ const NAV: { key: SectionKey; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'entries', label: 'Entries' },
   { key: 'traces', label: 'Traces' },
+  { key: 'screens', label: 'Screens' },
   { key: 'pulse', label: 'Pulse' },
   { key: 'exceptions', label: 'Exceptions' },
   { key: 'queues', label: 'Queues' },
@@ -260,6 +263,8 @@ export function App() {
                 onOpenTrace={openTrace}
                 {...(route.type !== undefined ? { presetType: route.type } : {})}
               />
+            ) : route.name === 'screens' ? (
+              <ScreensSection onOpenType={openType} />
             ) : route.name === 'traces' ? (
               <TracesSection onOpenTrace={openTrace} />
             ) : route.name === 'exceptions' ? (

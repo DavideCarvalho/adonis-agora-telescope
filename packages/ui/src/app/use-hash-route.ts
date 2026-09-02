@@ -12,6 +12,7 @@ export type TelescopeRoute =
   | { name: 'entries'; type?: string }
   | { name: 'entry'; id: string }
   | { name: 'traces' }
+  | { name: 'screens' }
   | { name: 'trace'; traceId: string }
   | { name: 'exceptions' }
   | { name: 'queues' }
@@ -51,6 +52,8 @@ export function parseHash(hash: string): TelescopeRoute {
         ? { name: 'traces' }
         : { name: 'trace', traceId: decodeSegment(traceId) };
     }
+    case 'screens':
+      return { name: 'screens' };
     case 'exceptions':
       return { name: 'exceptions' };
     case 'queues':

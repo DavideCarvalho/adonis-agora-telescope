@@ -14,6 +14,7 @@ import { EntryDetail } from './EntryDetail.js';
 import { ExceptionsSection } from './ExceptionsSection.js';
 import { PulseSection } from './PulseSection.js';
 import { TraceDetail } from './TraceDetail.js';
+import { ScreensSection } from './ScreensSection.js';
 import { TracesSection } from './TracesSection.js';
 import {
   EventSourceFactoryContext,
@@ -137,6 +138,18 @@ function fakeClient(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
     entriesByTrace: vi.fn().mockResolvedValue([entrySummary]),
     traces: vi.fn().mockResolvedValue([traceSummary]),
     tracesPage: vi.fn().mockResolvedValue({ rows: [traceSummary], page: 1, hasMore: false }),
+    screens: vi.fn().mockResolvedValue([
+      {
+        url: '/pesquisador/escrita',
+        kind: 'page',
+        count: 42,
+        users: 7,
+        avgMs: 120,
+        maxMs: 900,
+        errors: 1,
+        lastAt: new Date().toISOString(),
+      },
+    ]),
     waterfall: vi.fn().mockResolvedValue({ traceStartMs: 0, totalDurationMs: 120, spans: [] }),
     nPlusOne: vi.fn().mockResolvedValue([]),
     pulse: vi.fn().mockResolvedValue(pulseSummary),
@@ -439,5 +452,32 @@ describe('TracesSection', () => {
     });
     renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('ada@example.com')).toBeTruthy());
+  });
+});
+
+/**
+ * A visita de tela e os XHRs que ela dispara eram todos `request` com uma url, entao
+ * uma lista so tinha que responder duas perguntas e nao respondia nenhuma.
+ */
+describe('ScreensSection', () => {
+  it('lista rotas por volume e comeca pelas TELAS', async () => {
+    const client = fakeClient();
+    renderWith(client, <ScreensSection onOpenType={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('/pesquisador/escrita')).toBeTruthy());
+    // O default e `page`: a pergunta que motivou a tela e "quais telas sao mais usadas".
+    expect((client.screens as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[1]).toBe(
+      'page',
+    );
+  });
+
+  it('trocar para API refaz a consulta com o outro kind', async () => {
+    const client = fakeClient();
+    renderWith(client, <ScreensSection onOpenType={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('/pesquisador/escrita')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'API' }));
+
+    const calls = (client.screens as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    await waitFor(() => expect(calls.some((call) => call[1] === 'api')).toBe(true));
   });
 });

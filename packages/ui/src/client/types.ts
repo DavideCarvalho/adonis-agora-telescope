@@ -89,6 +89,21 @@ export interface EntriesQuery {
   page?: number;
 }
 
+/** How a request reached the app — a screen visit, a data fetch, or a static file. */
+export type RequestKind = 'page' | 'api' | 'asset';
+
+/** One route's traffic over a window (`GET <base>/metrics/screens`). */
+export interface ScreenStats {
+  url: string;
+  kind: RequestKind;
+  count: number;
+  users: number;
+  avgMs: number;
+  maxMs: number;
+  errors: number;
+  lastAt: string;
+}
+
 /** A `{ key, count }` bucket (top families / top tags). */
 export interface CountBucket {
   key: string;
