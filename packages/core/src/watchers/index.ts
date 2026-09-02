@@ -9,10 +9,12 @@ export type {
   HttpClientWatcherConfig,
   ProfilingWatcherConfig,
   QueryWatcherConfig,
+  RedisWatcherConfig,
   QueueManagerWatcherConfig,
   ResolvedHttpClientWatcherConfig,
   ResolvedProfilingWatcherConfig,
   ResolvedQueryWatcherConfig,
+  ResolvedRedisWatcherConfig,
   ResolvedQueueManagerWatcherConfig,
   ResolvedScheduleWatcherConfig,
   ResolvedTelescopeWatchersConfig,
@@ -127,6 +129,8 @@ export type {
   RedisManagerLike,
 } from './redis_watcher.js';
 // — redis watcher (optional peer: @adonisjs/redis) —
+export type { RedisWatcherOptions } from './redis_watcher.js';
+export { formatFloodWarning } from './redis_watcher.js';
 export { buildRedisEntry, RedisWatcher } from './redis_watcher.js';
 export type {
   RegisteredSchedule,

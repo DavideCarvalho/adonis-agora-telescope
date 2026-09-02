@@ -1,16 +1,20 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { formatCount, formatRelative } from '../client/format.js';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from './primitives/table.js';
-import { AsyncBlock, clickable, Panel, SectionTitle, Sparkline } from './ui.js';
+import type { ExceptionGroupStats } from '../client/types.js';
+import { DataTable } from './primitives/data_table.js';
+import { AsyncBlock, Panel, SectionTitle, Sparkline } from './ui.js';
 import { useMetricsStats } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
+
+/**
+ * How many exception groups this screen asks for. The endpoint's default is 8, which
+ * is right for the Overview tile and wrong here: on a dedicated Exceptions screen a
+ * cap of 8 does not hide the 9th most common exception, it makes it unreachable.
+ */
+const GROUPS = 200;
+
+/** Groups per page, once they are all loaded. */
+const PAGE_SIZE = 15;
 
 /**
  * Exception groups: `exception` AND `client_exception` entries grouped by class + message over a
@@ -22,7 +26,44 @@ import { WindowSelect } from './WindowSelect.js';
  */
 export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) => void }) {
   const [windowMs, setWindowMs] = useState(3_600_000);
-  const state = useMetricsStats('exception', windowMs);
+  const state = useMetricsStats('exception', windowMs, GROUPS);
+
+  const columns = useMemo(
+    () => [
+      {
+        id: 'class',
+        header: 'Class',
+        cell: ({ row }: { row: { original: ExceptionGroupStats } }) => (
+          <span className="text-bad">{row.original.class}</span>
+        ),
+      },
+      { id: 'message', header: 'Message', accessorFn: (g: ExceptionGroupStats) => g.message },
+      {
+        id: 'count',
+        header: () => <span className="block text-right">Count</span>,
+        cell: ({ row }: { row: { original: ExceptionGroupStats } }) => (
+          <span className="tnum block text-right">{formatCount(row.original.count)}</span>
+        ),
+      },
+      {
+        id: 'lastAt',
+        header: 'Last seen',
+        cell: ({ row }: { row: { original: ExceptionGroupStats } }) => (
+          <span className="text-muted-foreground" title={row.original.lastAt}>
+            {formatRelative(row.original.lastAt)}
+          </span>
+        ),
+      },
+      {
+        id: 'trend',
+        header: 'Trend',
+        cell: ({ row }: { row: { original: ExceptionGroupStats } }) => (
+          <Sparkline values={row.original.overTime} width={140} height={26} color="#f87171" />
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
     <Panel>
@@ -37,36 +78,20 @@ export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) =
         skeletonRows={5}
       >
         {(stats) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Class</TableHead>
-                <TableHead>Message</TableHead>
-                <TableHead className="text-right">Count</TableHead>
-                <TableHead>Last seen</TableHead>
-                <TableHead>Trend</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(stats.exceptions ?? []).map((group) => (
-                <TableRow
-                  key={group.key}
-                  className="cursor-pointer hover:bg-brand/5"
-                  {...clickable(() => onOpenType(group.type))}
-                >
-                  <TableCell className="mono text-bad">{group.class}</TableCell>
-                  <TableCell className="mono">{group.message}</TableCell>
-                  <TableCell className="tnum text-right">{formatCount(group.count)}</TableCell>
-                  <TableCell className="text-muted-foreground" title={group.lastAt}>
-                    {formatRelative(group.lastAt)}
-                  </TableCell>
-                  <TableCell style={{ width: 140 }}>
-                    <Sparkline values={group.overTime} width={140} height={26} color="#f87171" />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <DataTable
+            id="exception-groups"
+            data={stats.exceptions ?? []}
+            columns={columns}
+            rowKey={(g) => g.key}
+            // Pelo tipo DAQUELE grupo, não `exception` fixo: um erro de browser é
+            // `client_exception`, e mandar o clique para a lista de `exception` dava
+            // "0 shown" numa linha que acabara de dizer que o erro ocorreu 26 vezes.
+            onRowClick={(g) => onOpenType(g.type)}
+            rowClassName={() => 'hover:bg-brand/5'}
+            // Client-side: these rows are an aggregate the browser already holds in
+            // full, so paging here saves no round trip and hides nothing.
+            clientPageSize={PAGE_SIZE}
+          />
         )}
       </AsyncBlock>
     </Panel>

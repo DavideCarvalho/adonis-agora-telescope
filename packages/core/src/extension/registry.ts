@@ -3,6 +3,7 @@ import type {
   DataProvider,
   ExtensionContext,
   ExtensionEntryType,
+  ScheduleContribution,
   TelescopeExtension,
 } from './types.js';
 
@@ -18,8 +19,13 @@ export class ExtensionRegistry {
   readonly #dashboards: DashboardSpec[] = [];
   readonly #providers = new Map<string, DataProvider>();
   readonly #providerOwners = new Map<string, string>();
+  /** Kept so the schedules hook can be awaited AFTER boot — see {@link collectSchedules}. */
+  readonly #extensions: readonly TelescopeExtension[];
+  readonly #ctx: ExtensionContext;
 
   constructor(extensions: readonly TelescopeExtension[], ctx: ExtensionContext) {
+    this.#extensions = extensions;
+    this.#ctx = ctx;
     const entryOwners = new Map<string, string>();
     const dashOwners = new Map<string, string>();
 
@@ -71,4 +77,38 @@ export class ExtensionRegistry {
   providerOwner(name: string): string | undefined {
     return this.#providerOwners.get(name);
   }
+
+  /**
+   * Every schedule the extensions know about.
+   *
+   * Async and separate from the constructor on purpose: the other hooks describe
+   * static shape (nav, panels, providers) and can run while the container is still
+   * booting, but a scheduler is a live service an extension has to resolve, and the
+   * schedule watcher it feeds may not exist yet. This is called from the provider's
+   * `ready()`, once everything is up.
+   *
+   * A throwing extension is skipped with a warning rather than taking the app down:
+   * a dashboard list is not worth a failed boot.
+   */
+  async collectSchedules(): Promise<ScheduleContribution[]> {
+    const out: ScheduleContribution[] = [];
+    const seen = new Set<string>();
+    for (const ext of this.#extensions) {
+      if (typeof ext.schedules !== 'function') continue;
+      try {
+        for (const schedule of await ext.schedules(this.#ctx)) {
+          if (seen.has(schedule.name)) continue;
+          seen.add(schedule.name);
+          out.push(schedule);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `Telescope: extension "${ext.name}" failed to contribute schedules: ${message}`,
+        );
+      }
+    }
+    return out;
+  }
+
 }

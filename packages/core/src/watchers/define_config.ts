@@ -85,6 +85,36 @@ export interface QueryWatcherConfig {
   normalize?: boolean;
 }
 
+/**
+ * Tuning for the `redis` watcher. See `RedisWatcherOptions` for the full rationale —
+ * the short version is that recording every redis command is how telescope's own
+ * table becomes the busiest one in the database.
+ */
+export interface RedisWatcherConfig {
+  /** Command names (case-insensitive) that are never recorded. */
+  ignoreCommands?: string[];
+  /** Key patterns never recorded — a string matches as a PREFIX, a RegExp as-is. */
+  ignoreKeys?: Array<string | RegExp>;
+  /** Connection names (exact, case-insensitive) whose commands are NOT recorded. */
+  ignoreConnections?: string[];
+  /** Record only this fraction of commands, 0..1. Default 1. */
+  sampleRate?: number;
+  /** Warn once when recording exceeds this many entries/minute. Default 600; 0 disables. */
+  floodWarnPerMinute?: number;
+}
+
+/** Default flood threshold for the redis watcher (entries/minute). */
+const DEFAULT_REDIS_FLOOD_WARN_PER_MINUTE = 600;
+
+/** The fully-resolved `redis` watcher config (no optionals). */
+export interface ResolvedRedisWatcherConfig {
+  ignoreCommands: string[];
+  ignoreKeys: Array<string | RegExp>;
+  ignoreConnections: string[];
+  sampleRate: number;
+  floodWarnPerMinute: number;
+}
+
 /** The fully-resolved `query` watcher config (no optionals). */
 export interface ResolvedQueryWatcherConfig {
   slowMs: number;
@@ -192,6 +222,9 @@ export interface TelescopeWatchersConfig {
   /** Tuning for the Lucid `query` watcher (slow threshold, bindings, ignore-connections, normalize). */
   query?: QueryWatcherConfig;
 
+  /** Tuning for the `redis` watcher (ignore commands/keys/connections, sampling). */
+  redis?: RedisWatcherConfig;
+
   /** Tuning for the `http-client` watcher (slow threshold, ignore-hosts, body sizes). */
   httpClient?: HttpClientWatcherConfig;
 
@@ -210,6 +243,7 @@ export interface ResolvedTelescopeWatchersConfig {
   enabled: boolean;
   watchers: Set<WatcherName>;
   query: ResolvedQueryWatcherConfig;
+  redis: ResolvedRedisWatcherConfig;
   httpClient: ResolvedHttpClientWatcherConfig;
   profiling: ResolvedProfilingWatcherConfig;
   schedule: ResolvedScheduleWatcherConfig;
@@ -234,6 +268,7 @@ export function resolveConfig(
   const query = config.query ?? {};
   const httpClient = config.httpClient ?? {};
   const profiling = config.profiling ?? {};
+  const redis = config.redis ?? {};
   const schedule = config.schedule ?? {};
   const queueManager = config.queueManager ?? {};
   return {
@@ -244,6 +279,13 @@ export function resolveConfig(
       captureBindings: query.captureBindings ?? false,
       ignoreConnections: query.ignoreConnections ?? [],
       normalize: query.normalize ?? true,
+    },
+    redis: {
+      ignoreCommands: redis.ignoreCommands ?? [],
+      ignoreKeys: redis.ignoreKeys ?? [],
+      ignoreConnections: redis.ignoreConnections ?? [],
+      sampleRate: redis.sampleRate ?? 1,
+      floodWarnPerMinute: redis.floodWarnPerMinute ?? DEFAULT_REDIS_FLOOD_WARN_PER_MINUTE,
     },
     httpClient: {
       slowMs: httpClient.slowMs ?? DEFAULT_HTTP_CLIENT_SLOW_MS,

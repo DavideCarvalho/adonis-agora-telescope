@@ -1,71 +1,105 @@
+import { useMemo, useState } from 'react';
+import type { TraceSummary } from '../client/types.js';
 import { formatDuration, formatRelative } from '../client/format.js';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from './primitives/table.js';
-import { AsyncBlock, clickable, Panel, SectionTitle, typeColor } from './ui.js';
-import { useTraces } from './use-telescope.js';
+import { DataTable } from './primitives/data_table.js';
+import { AsyncBlock, Panel, SectionTitle, typeColor } from './ui.js';
+import { useTracesPage } from './use-telescope.js';
+
+/** Traces per page. Small on purpose: this list is scanned, not read in bulk, and a
+ *  page is one round trip to a grouped query. */
+const PAGE_SIZE = 25;
 
 /** The recent-traces list: root label, the type mix (colored dots), entry count, total time. */
 export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) => void }) {
-  const state = useTraces(80);
+  const [page, setPage] = useState(1);
+  const state = useTracesPage(PAGE_SIZE, page);
+
+  const columns = useMemo(
+    () => [
+      {
+        id: 'trace',
+        header: 'Trace',
+        accessorFn: (t: TraceSummary) => t.rootLabel ?? t.traceId.slice(0, 16),
+      },
+      {
+        id: 'user',
+        header: 'User',
+        accessorFn: (t: TraceSummary) => t.userLabel ?? '—',
+        cell: ({ getValue }: { getValue: () => unknown }) => (
+          <span className="text-muted-foreground">{String(getValue())}</span>
+        ),
+      },
+      {
+        id: 'types',
+        header: 'Types',
+        cell: ({ row }: { row: { original: TraceSummary } }) => (
+          <span className="flex items-center gap-1.5">
+            {row.original.types.map((type) => (
+              <span
+                key={type}
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                title={type}
+                style={{ background: typeColor(type) }}
+              />
+            ))}
+          </span>
+        ),
+      },
+      {
+        id: 'entries',
+        header: () => <span className="block text-right">Entries</span>,
+        cell: ({ row }: { row: { original: TraceSummary } }) => (
+          <span className="tnum block text-right">{row.original.entryCount}</span>
+        ),
+      },
+      {
+        id: 'total',
+        header: () => <span className="block text-right">Total</span>,
+        cell: ({ row }: { row: { original: TraceSummary } }) => (
+          <span className="tnum block text-right">
+            {formatDuration(row.original.totalDurationMs)}
+          </span>
+        ),
+      },
+      {
+        id: 'lastAt',
+        header: 'Last active',
+        cell: ({ row }: { row: { original: TraceSummary } }) => (
+          <span className="text-muted-foreground" title={row.original.lastAt}>
+            {formatRelative(row.original.lastAt)}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <Panel>
       <SectionTitle title="Traces" hint="recent, newest-active first" />
       <AsyncBlock
         state={state}
-        isEmpty={(traces) => traces.length === 0}
+        // Page 2+ coming back empty is a real (if odd) state, not "nothing recorded":
+        // only page 1 empty means the console has no traces at all.
+        isEmpty={(p) => p.rows.length === 0 && p.page === 1}
         empty="No traces recorded yet."
         skeletonRows={6}
       >
-        {(traces) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Trace</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Types</TableHead>
-                <TableHead className="text-right">Entries</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead>Last active</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {traces.map((t) => (
-                <TableRow
-                  key={t.traceId}
-                  className="cursor-pointer hover:bg-brand/5"
-                  {...clickable(() => onOpenTrace(t.traceId))}
-                >
-                  <TableCell className="mono">{t.rootLabel ?? t.traceId.slice(0, 16)}</TableCell>
-                  <TableCell className="text-muted-foreground">{t.userLabel ?? '—'}</TableCell>
-                  <TableCell>
-                    <span className="flex items-center gap-1.5">
-                      {t.types.map((type) => (
-                        <span
-                          key={type}
-                          className="h-2.5 w-2.5 shrink-0 rounded-full"
-                          title={type}
-                          style={{ background: typeColor(type) }}
-                        />
-                      ))}
-                    </span>
-                  </TableCell>
-                  <TableCell className="tnum text-right">{t.entryCount}</TableCell>
-                  <TableCell className="tnum text-right">
-                    {formatDuration(t.totalDurationMs)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground" title={t.lastAt}>
-                    {formatRelative(t.lastAt)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        {(result) => (
+          <DataTable
+            id="traces"
+            data={result.rows}
+            columns={columns}
+            rowKey={(t) => t.traceId}
+            onRowClick={(t) => onOpenTrace(t.traceId)}
+            rowClassName={() => 'hover:bg-brand/5'}
+            pagination={{
+              page,
+              onPageChange: setPage,
+              hasMore: result.hasMore,
+              isFetching: state.loading,
+            }}
+          />
         )}
       </AsyncBlock>
     </Panel>

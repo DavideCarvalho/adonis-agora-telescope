@@ -79,13 +79,21 @@ export class TelescopeApi {
    */
   async list(ctx: UiHttpContext): Promise<unknown> {
     const query = buildQuery(ctx.request);
-    const entries = await this.service.list(query);
+    const limit = query.limit ?? DEFAULT_LIMIT;
+    // One row past the page tells us whether a next page exists. A COUNT would have
+    // to re-run the same filters -- including the `search` LIKE -- over the whole
+    // table, which costs more than the page itself.
+    const rows = await this.service.list({ ...query, limit: limit + 1 });
+    const hasMore = rows.length > limit;
+    const entries = hasMore ? rows.slice(0, limit) : rows;
+    const page = Math.floor((query.offset ?? 0) / limit) + 1;
+
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
       .send({
         data: entries.map(toSummary),
-        meta: { count: entries.length, query: describe(query) },
+        meta: { count: entries.length, page, limit, hasMore, query: describe(query) },
       });
   }
 
@@ -139,9 +147,13 @@ export class TelescopeApi {
     }
     const windowMs = readNumber(ctx.request, 'windowMs') ?? 3_600_000;
     const buckets = readNumber(ctx.request, 'buckets');
+    const topExceptions = readNumber(ctx.request, 'topExceptions');
     try {
       const data = await this.metrics.getStats({
         type,
+        ...(topExceptions !== undefined
+          ? { topExceptions: clampLimit(topExceptions, 200) }
+          : {}),
         windowMs,
         ...(buckets !== undefined ? { buckets } : {}),
       });
@@ -171,14 +183,52 @@ export class TelescopeApi {
     }
   }
 
-  /** `GET <path>/api/metrics/traces?limit=` — recent traces, newest-last-seen first. */
+  /**
+   * `GET <path>/api/metrics/traces?limit=&page=` — recent traces, newest-last-seen
+   * first, paginated.
+   *
+   * `hasMore` instead of a total: counting distinct traces means a `COUNT(DISTINCT
+   * trace_id)` over the same table this endpoint exists to stop scanning. One extra
+   * row tells the UI whether to enable "next", which is all a Prev/Next pager needs.
+   */
   async metricsTraces(ctx: UiHttpContext): Promise<unknown> {
     const limit = clampLimit(readNumber(ctx.request, 'limit') ?? 50);
-    const data = await this.metrics.getTraces(limit);
+    const page = Math.max(1, Math.floor(readNumber(ctx.request, 'page') ?? 1));
+    const offset = (page - 1) * limit;
+
+    const rows = await this.metrics.getTraces(limit + 1, offset);
+    const hasMore = rows.length > limit;
+    const data = hasMore ? rows.slice(0, limit) : rows;
+
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
-      .send({ data, meta: { count: data.length } });
+      .send({ data, meta: { count: data.length, page, limit, hasMore } });
+  }
+
+  /**
+   * `GET <path>/api/metrics/screens?windowMs=&kind=&limit=` — per-route traffic.
+   *
+   * `kind` splits page visits from API calls, which the request list could not do:
+   * a screen navigation and the dozen XHRs it fires were all `request` entries with
+   * a url, so one list had to answer two different questions and answered neither.
+   */
+  async metricsScreens(ctx: UiHttpContext): Promise<unknown> {
+    const windowMs = readNumber(ctx.request, 'windowMs') ?? 3_600_000;
+    const limit = clampLimit(readNumber(ctx.request, 'limit') ?? 50, 200);
+    const kind = readString(ctx.request, 'kind');
+    if (kind !== undefined && kind !== 'page' && kind !== 'api' && kind !== 'asset') {
+      return ctx.response.status(400).send({ error: '`kind` must be page, api or asset' });
+    }
+    const data = await this.metrics.getScreens({
+      windowMs,
+      limit,
+      ...(kind !== undefined ? { kind } : {}),
+    });
+    return ctx.response
+      .status(200)
+      .header('content-type', 'application/json')
+      .send({ data, meta: { count: data.length, windowMs, kind: kind ?? null } });
   }
 
   /** `GET <path>/api/metrics/waterfall/:traceId` — span waterfall for one trace, or 404. */
@@ -375,6 +425,10 @@ export function buildQuery(request: UiRequest): EntryQuery {
   if (before !== undefined) {
     const date = new Date(before);
     if (!Number.isNaN(date.getTime())) query.before = date;
+  }
+  const page = readNumber(request, 'page');
+  if (page !== undefined && page > 1) {
+    query.offset = (Math.floor(page) - 1) * (query.limit ?? DEFAULT_LIMIT);
   }
   return query;
 }

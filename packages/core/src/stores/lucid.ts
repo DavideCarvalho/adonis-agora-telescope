@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
 import { type BatchOrigin, type Entry, isBatchOrigin, type RecordInput } from '../entry.js';
-import type { EntryQuery, TelescopeStore } from '../store.js';
+import type { EntryQuery, TelescopeStore, TraceIdQuery, TraceIdRow } from '../store.js';
 
 /**
  * The table {@link LucidTelescopeStore} reads and writes. Override via
@@ -140,8 +140,15 @@ export interface LucidQueryBuilderLike {
   where(column: string, value: unknown): this;
   where(column: string, operator: string, value: unknown): this;
   whereRaw(sql: string, bindings?: unknown[]): this;
+  whereIn(column: string, values: readonly unknown[]): this;
+  whereNotNull(column: string): this;
   orderBy(column: string, direction: 'asc' | 'desc'): this;
+  groupBy(...columns: string[]): this;
   limit(value: number): this;
+  offset(value: number): this;
+  /** Aggregate MAX with an alias, e.g. `max('created_at as last_at')`. Chainable so it
+   *  composes with `select()` in a grouped query. */
+  max(expression: string): this;
   select(...columns: string[]): Promise<Record<string, unknown>[]>;
   count(column: string, alias: string): Promise<Record<string, unknown>[]>;
   delete(): Promise<number>;
@@ -272,6 +279,12 @@ export class LucidTelescopeStore implements TelescopeStore {
     if (query.type !== undefined) builder = builder.where('type', query.type);
     if (query.familyHash !== undefined) builder = builder.where('family_hash', query.familyHash);
     if (query.traceId !== undefined) builder = builder.where('trace_id', query.traceId);
+    if (query.traceIds !== undefined) {
+      // An empty list means "no traces", not "no filter" — whereIn([]) already yields
+      // zero rows, but being explicit keeps a caller's empty page from becoming a scan.
+      if (query.traceIds.length === 0) return [];
+      builder = builder.whereIn('trace_id', query.traceIds);
+    }
     if (query.before !== undefined)
       builder = builder.where('created_at', '<', query.before.getTime());
     if (query.after !== undefined)
@@ -293,9 +306,44 @@ export class LucidTelescopeStore implements TelescopeStore {
     // Newest-first: created_at desc, sequence desc as a deterministic tiebreaker.
     builder = builder.orderBy('created_at', 'desc').orderBy('sequence', 'desc');
     if (query.limit !== undefined) builder = builder.limit(query.limit);
+    if (query.offset !== undefined && query.offset > 0) builder = builder.offset(query.offset);
 
     const rows = await builder.select('*');
     return rows.map((r) => hydrate(r as unknown as TelescopeColumns));
+  }
+
+  /**
+   * The page of distinct trace ids, most-recently-seen first — the SQL fast path
+   * described on {@link TelescopeStore.listTraceIds}.
+   *
+   * `GROUP BY trace_id` with `MAX(created_at)` lets the database do the grouping and
+   * the paging, so the traces screen reads ~`limit` rows instead of every entry in
+   * the window. Entries with a NULL `trace_id` are excluded: they belong to no trace
+   * and would collapse into one meaningless bucket.
+   */
+  async listTraceIds(query: TraceIdQuery): Promise<TraceIdRow[]> {
+    await this.init();
+    let builder = this.db.from(this.tableName);
+    if (query.before !== undefined)
+      builder = builder.where('created_at', '<', query.before.getTime());
+    if (query.after !== undefined)
+      builder = builder.where('created_at', '>', query.after.getTime());
+
+    // `select()` resolves the query, so it goes LAST — every chainable clause
+    // (including the MAX aggregate) has to be applied before it.
+    const rows = await builder
+      .whereNotNull('trace_id')
+      .groupBy('trace_id')
+      .max('created_at as last_at')
+      .orderBy('last_at', 'desc')
+      .limit(query.limit)
+      .offset(query.offset ?? 0)
+      .select('trace_id');
+
+    return (rows as unknown as Array<{ trace_id: string; last_at: unknown }>).map((row) => ({
+      traceId: row.trace_id,
+      lastAt: new Date(toInt(row.last_at)),
+    }));
   }
 
   async count(): Promise<number> {

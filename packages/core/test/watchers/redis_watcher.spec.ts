@@ -152,3 +152,99 @@ describe('RedisWatcher', () => {
     watcher.stop();
   });
 });
+
+/**
+ * Filtering exists because of a real incident: `@adonisjs/limiter` issues ~5 redis
+ * commands per rate-limited request, and recording all of them produced 211
+ * entries/minute — 93% of a 532k-row telescope table, none of it about the app.
+ *
+ * These tests pin the two things that matter: the command is still EXECUTED when we
+ * decline to record it (a watcher that filters must never change behaviour), and the
+ * filters are the ones a person would reach for.
+ */
+describe('RedisWatcher — filtros de ingestão', () => {
+  afterEach(() => clearStore());
+
+  /** Runs one command through a started watcher and returns how many entries landed. */
+  async function recordedCount(
+    options: ConstructorParameters<typeof RedisWatcher>[1],
+    command: RedisCommandLike,
+    connectionName = 'main',
+  ): Promise<{ count: number; reply: unknown }> {
+    const store = installStore();
+    const conn = fakeConnection(connectionName);
+    const manager = fakeManager({ [connectionName]: conn });
+    const watcher = new RedisWatcher(manager, options);
+    watcher.start();
+
+    const client = conn.ioConnection as ReturnType<typeof fakeIoClient>;
+    const reply = await client.sendCommand(command);
+    await flush();
+
+    const count = (await store.list({ type: EntryType.Redis })).length;
+    watcher.stop();
+    return { count, reply };
+  }
+
+  it('sem opções grava tudo (o default não filtra nada)', async () => {
+    const { count } = await recordedCount({}, { name: 'get', args: ['k'] });
+    expect(count).toBe(1);
+  });
+
+  it('ignoreCommands descarta o comando, case-insensitive', async () => {
+    const { count } = await recordedCount(
+      { ignoreCommands: ['pttl'] },
+      { name: 'PTTL', args: ['k'] },
+    );
+    expect(count).toBe(0);
+  });
+
+  it('ignoreKeys casa como PREFIXO da chave — o caso do rate limiter', async () => {
+    const options = { ignoreKeys: ['entretextos:rlflx:'] };
+    const dropped = await recordedCount(options, {
+      name: 'get',
+      args: ['entretextos:rlflx:webhook_google_drive_writing_10.2.5.91'],
+    });
+    expect(dropped.count).toBe(0);
+
+    // Uma chave que só COMEÇA parecido não pode ser descartada junto.
+    const kept = await recordedCount(options, { name: 'get', args: ['entretextos:cache:user'] });
+    expect(kept.count).toBe(1);
+  });
+
+  it('ignoreKeys aceita RegExp', async () => {
+    const { count } = await recordedCount(
+      { ignoreKeys: [/:rlflx:/] },
+      { name: 'get', args: ['qualquer:rlflx:coisa'] },
+    );
+    expect(count).toBe(0);
+  });
+
+  it('ignoreConnections descarta pela conexão', async () => {
+    const { count } = await recordedCount(
+      { ignoreConnections: ['Telescope'] },
+      { name: 'get', args: ['k'] },
+      'telescope',
+    );
+    expect(count).toBe(0);
+  });
+
+  it('sampleRate 0 não grava nada e sampleRate 1 grava tudo', async () => {
+    expect((await recordedCount({ sampleRate: 0 }, { name: 'get', args: ['k'] })).count).toBe(0);
+    expect((await recordedCount({ sampleRate: 1 }, { name: 'get', args: ['k'] })).count).toBe(1);
+  });
+
+  it('sampleRate fora de 0..1 é clampado em vez de derrubar o boot', async () => {
+    expect((await recordedCount({ sampleRate: 99 }, { name: 'get', args: ['k'] })).count).toBe(1);
+    expect((await recordedCount({ sampleRate: -5 }, { name: 'get', args: ['k'] })).count).toBe(0);
+  });
+
+  it('comando filtrado AINDA É EXECUTADO — filtrar é sobre gravar, não sobre rodar', async () => {
+    const { count, reply } = await recordedCount(
+      { ignoreCommands: ['GET'] },
+      { name: 'get', args: ['k'] },
+    );
+    expect(count).toBe(0);
+    expect(reply).toBe('OK');
+  });
+});

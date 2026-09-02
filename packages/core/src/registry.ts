@@ -107,6 +107,11 @@ export function setTelescopeExtensionRegistry(registry: ExtensionRegistry | null
   runtime.registry = registry;
 }
 
+/** The booted extension registry, or `null` when no extensions are configured. */
+export function getTelescopeExtensionRegistry(): ExtensionRegistry | null {
+  return runtime.registry;
+}
+
 /** Publish the SSE entry-events bus so the UI stream route can subscribe to it. */
 export function setTelescopeEntryEvents(entryEvents: EntryEvents | null): void {
   runtime.entryEvents = entryEvents;

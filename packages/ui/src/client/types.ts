@@ -85,6 +85,23 @@ export interface EntriesQuery {
   /** Keyset cursor: strictly older than this ISO timestamp (pass the oldest row's `createdAt`). */
   before?: string;
   limit?: number;
+  /** 1-based page for offset pagination. */
+  page?: number;
+}
+
+/** How a request reached the app — a screen visit, a data fetch, or a static file. */
+export type RequestKind = 'page' | 'api' | 'asset';
+
+/** One route's traffic over a window (`GET <base>/metrics/screens`). */
+export interface ScreenStats {
+  url: string;
+  kind: RequestKind;
+  count: number;
+  users: number;
+  avgMs: number;
+  maxMs: number;
+  errors: number;
+  lastAt: string;
 }
 
 /** A `{ key, count }` bucket (top families / top tags). */
@@ -292,6 +309,19 @@ export interface PulseSummary {
 export interface Envelope<T> {
   data: T;
   meta?: Record<string, unknown>;
+}
+
+/**
+ * A page of rows plus whether another one exists.
+ *
+ * `hasMore` and not `total`: the paginated endpoints answer it by fetching one row
+ * past the page, because counting would mean an aggregate over the very table the
+ * pagination exists to stop scanning. Prev/Next needs no total.
+ */
+export interface Page<T> {
+  rows: T[];
+  page: number;
+  hasMore: boolean;
 }
 
 // ── retention (`GET <base>/retention`) ──────────────────────────────────────

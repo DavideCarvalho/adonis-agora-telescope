@@ -76,6 +76,12 @@ export function useEntries(query: EntriesQuery) {
   return useAsync(() => client.listEntries(query), [client, queryKey(query)]);
 }
 
+/** One page of entries. */
+export function useEntriesPage(query: EntriesQuery) {
+  const client = useTelescopeClient();
+  return useAsync(() => client.listEntriesPage(query), [client, queryKey(query)]);
+}
+
 export function useEntry(id: string) {
   const client = useTelescopeClient();
   return useAsync(() => client.getEntry(id), [client, id]);
@@ -89,6 +95,21 @@ export function useTraceEntries(traceId: string) {
 export function useTraces(limit = 50) {
   const client = useTelescopeClient();
   return useAsync(() => client.traces(limit), [client, limit]);
+}
+
+/** Per-route traffic over a window. */
+export function useScreens(windowMs: number, kind: string, limit = 100) {
+  const client = useTelescopeClient();
+  return useAsync(
+    () => client.screens(windowMs, kind, limit),
+    [client, windowMs, kind, limit],
+  );
+}
+
+/** One page of traces. `page` is 1-based and owned by the caller. */
+export function useTracesPage(limit: number, page: number) {
+  const client = useTelescopeClient();
+  return useAsync(() => client.tracesPage(limit, page), [client, limit, page]);
 }
 
 export function useWaterfall(traceId: string) {
@@ -106,9 +127,12 @@ export function usePulse(windowMs: number, topN?: number) {
   return useAsync(() => client.pulse(windowMs, topN), [client, windowMs, topN]);
 }
 
-export function useMetricsStats(type: string, windowMs: number) {
+export function useMetricsStats(type: string, windowMs: number, topExceptions?: number) {
   const client = useTelescopeClient();
-  return useAsync(() => client.metricsStats(type, windowMs), [client, type, windowMs]);
+  return useAsync(
+    () => client.metricsStats(type, windowMs, undefined, topExceptions),
+    [client, type, windowMs, topExceptions],
+  );
 }
 
 /** Throughput timeseries (total + per-type breakdown) — backs the Overview/Pulse charts. */

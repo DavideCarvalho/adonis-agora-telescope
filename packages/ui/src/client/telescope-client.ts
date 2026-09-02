@@ -9,6 +9,8 @@ import type {
   Entry,
   EntrySummary,
   Envelope,
+  Page,
+  ScreenStats,
   LiveQueues,
   LiveSchedules,
   NPlusOnePattern,
@@ -102,6 +104,21 @@ export class TelescopeClient {
     return body.data;
   }
 
+  /** Unwrap a `{ data, meta }` envelope into a {@link Page}, keeping the paging meta
+   *  that {@link data} throws away. */
+  private async page<T>(
+    path: string,
+    query: Record<string, string> = {},
+  ): Promise<Page<T>> {
+    const body = await this.get<Envelope<T[]>>(path, query);
+    const meta = body.meta ?? {};
+    return {
+      rows: body.data,
+      page: typeof meta.page === 'number' ? meta.page : 1,
+      hasMore: meta.hasMore === true,
+    };
+  }
+
   /**
    * POST with no request body (every mutation route this client calls — diagnose, replay — takes
    * its parameters from the URL/query string, mirroring the routes themselves). Reads the JSON body
@@ -143,6 +160,22 @@ export class TelescopeClient {
     );
   }
 
+  /** One page of entries, with whether a next page exists. */
+  listEntriesPage(query: EntriesQuery = {}): Promise<Page<EntrySummary>> {
+    return this.page<EntrySummary>(
+      '/entries',
+      toQuery({
+        type: query.type,
+        tag: query.tag,
+        traceId: query.traceId,
+        search: query.search,
+        before: query.before,
+        limit: query.limit ?? this.limit,
+        page: query.page ?? 1,
+      }),
+    );
+  }
+
   getEntry(id: string): Promise<Entry> {
     return this.data<Entry>(`/entries/${encodeURIComponent(id)}`);
   }
@@ -157,16 +190,34 @@ export class TelescopeClient {
 
   // ── metrics ──────────────────────────────────────────────────────────────
 
-  metricsStats(type: string, windowMs?: number, buckets?: number): Promise<StatsResult> {
-    return this.data<StatsResult>('/metrics/stats', toQuery({ type, windowMs, buckets }));
+  metricsStats(
+    type: string,
+    windowMs?: number,
+    buckets?: number,
+    topExceptions?: number,
+  ): Promise<StatsResult> {
+    return this.data<StatsResult>(
+      '/metrics/stats',
+      toQuery({ type, windowMs, buckets, topExceptions }),
+    );
   }
 
   metricsTimeseries(windowMs?: number, buckets?: number, type?: string): Promise<TimeseriesReport> {
     return this.data<TimeseriesReport>('/metrics/timeseries', toQuery({ windowMs, buckets, type }));
   }
 
+  /** Per-route traffic over a window, optionally narrowed to page visits or API calls. */
+  screens(windowMs?: number, kind?: string, limit?: number): Promise<ScreenStats[]> {
+    return this.data<ScreenStats[]>('/metrics/screens', toQuery({ windowMs, kind, limit }));
+  }
+
   traces(limit = this.limit): Promise<TraceSummary[]> {
     return this.data<TraceSummary[]>('/metrics/traces', toQuery({ limit }));
+  }
+
+  /** One page of traces, with whether a next page exists. */
+  tracesPage(limit = this.limit, page = 1): Promise<Page<TraceSummary>> {
+    return this.page<TraceSummary>('/metrics/traces', toQuery({ limit, page }));
   }
 
   waterfall(traceId: string): Promise<Waterfall> {

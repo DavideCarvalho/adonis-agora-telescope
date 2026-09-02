@@ -95,6 +95,7 @@ export type {
   LinkSpec,
   Panel,
   PanelThresholds,
+  ScheduleContribution,
   TelescopeExtension,
 } from './extension/types.js';
 // — extension SDK —
@@ -170,6 +171,10 @@ export type { TimeseriesBucket, TimeseriesReport } from './metrics/timeseries.js
 export { bucketTimeseries } from './metrics/timeseries.js';
 export type { SummarizeTracesOptions, TraceSummary } from './metrics/traces.js';
 export { summarizeTraces } from './metrics/traces.js';
+export type { ScreenStats, SummarizeScreensOptions } from './metrics/screens.js';
+export { summarizeScreens } from './metrics/screens.js';
+export type { RequestKind } from './request_watcher.js';
+export { classifyRequest } from './request_watcher.js';
 export type { Waterfall, WaterfallSpan } from './metrics/waterfall.js';
 export { buildWaterfall } from './metrics/waterfall.js';
 export type {

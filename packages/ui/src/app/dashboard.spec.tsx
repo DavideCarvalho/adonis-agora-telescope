@@ -14,6 +14,7 @@ import { EntryDetail } from './EntryDetail.js';
 import { ExceptionsSection } from './ExceptionsSection.js';
 import { PulseSection } from './PulseSection.js';
 import { TraceDetail } from './TraceDetail.js';
+import { ScreensSection } from './ScreensSection.js';
 import { TracesSection } from './TracesSection.js';
 import {
   EventSourceFactoryContext,
@@ -130,9 +131,25 @@ const exceptionStats: StatsResult = {
 function fakeClient(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
   return {
     listEntries: vi.fn().mockResolvedValue([entrySummary]),
+    listEntriesPage: vi
+      .fn()
+      .mockResolvedValue({ rows: [entrySummary], page: 1, hasMore: false }),
     getEntry: vi.fn().mockResolvedValue(fullEntry),
     entriesByTrace: vi.fn().mockResolvedValue([entrySummary]),
     traces: vi.fn().mockResolvedValue([traceSummary]),
+    tracesPage: vi.fn().mockResolvedValue({ rows: [traceSummary], page: 1, hasMore: false }),
+    screens: vi.fn().mockResolvedValue([
+      {
+        url: '/pesquisador/escrita',
+        kind: 'page',
+        count: 42,
+        users: 7,
+        avgMs: 120,
+        maxMs: 900,
+        errors: 1,
+        lastAt: new Date().toISOString(),
+      },
+    ]),
     waterfall: vi.fn().mockResolvedValue({ traceStartMs: 0, totalDurationMs: 120, spans: [] }),
     nPlusOne: vi.fn().mockResolvedValue([]),
     pulse: vi.fn().mockResolvedValue(pulseSummary),
@@ -193,14 +210,16 @@ describe('EntriesSection', () => {
     renderWith(client, <EntriesSection onOpenEntry={onOpenEntry} onOpenTrace={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByText('GET /users → 200')).toBeTruthy());
-    expect(client.listEntries).toHaveBeenCalled();
+    expect(client.listEntriesPage).toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('GET /users → 200'));
     expect(onOpenEntry).toHaveBeenCalledWith('e-1');
   });
 
   it('prepends a live entry from the SSE stream when live tail is on', async () => {
-    const client = fakeClient({ listEntries: vi.fn().mockResolvedValue([]) });
+    const client = fakeClient({
+      listEntriesPage: vi.fn().mockResolvedValue({ rows: [], page: 1, hasMore: false }),
+    });
     let source: FakeEventSource | null = null;
     const factory = () => {
       source = new FakeEventSource();
@@ -220,9 +239,36 @@ describe('EntriesSection', () => {
   });
 
   it('shows an empty state when nothing matches', async () => {
-    const client = fakeClient({ listEntries: vi.fn().mockResolvedValue([]) });
+    const client = fakeClient({
+      listEntriesPage: vi.fn().mockResolvedValue({ rows: [], page: 1, hasMore: false }),
+    });
     renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('No entries match these filters.')).toBeTruthy());
+  });
+
+  it('pede a próxima página AO SERVIDOR em vez de fatiar o que já tem', async () => {
+    const tracesPage = vi
+      .fn()
+      .mockResolvedValue({ rows: [traceSummary], page: 1, hasMore: true });
+    const client = fakeClient({ tracesPage });
+    renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('GET /users')).toBeTruthy());
+
+    fireEvent.click(screen.getByText(/Next/));
+
+    // O servidor tem que ser consultado com page=2. Asserido pelo ARGUMENTO e não
+    // por contagem de chamadas: o teste roda sob StrictMode, que invoca os efeitos
+    // duas vezes, então contar chamadas mediria o React em vez da paginação.
+    await waitFor(() =>
+      expect(tracesPage.mock.calls.some((call) => call[1] === 2)).toBe(true),
+    );
+  });
+
+  it('não deixa voltar antes da primeira página', async () => {
+    const client = fakeClient();
+    renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('GET /users')).toBeTruthy());
+    expect(screen.getByText(/Prev/).closest('button')?.disabled).toBe(true);
   });
 
   it('shows the user column', async () => {
@@ -356,7 +402,15 @@ describe('ExceptionsSection', () => {
     const client = fakeClient();
     renderWith(client, <ExceptionsSection onOpenType={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('ValidationError')).toBeTruthy());
-    expect(client.metricsStats).toHaveBeenCalledWith('exception', 3_600_000);
+    // A tela pede MAIS grupos que o default (8) do endpoint: num painel dedicado a
+    // exceções, um teto de 8 não esconde a 9ª exceção mais comum — torna ela
+    // inalcançável.
+    const [type, windowMs, , topExceptions] = (
+      client.metricsStats as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls[0] as [string, number, unknown, number];
+    expect(type).toBe('exception');
+    expect(windowMs).toBe(3_600_000);
+    expect(topExceptions).toBeGreaterThan(8);
     expect(screen.getByText('email is required')).toBeTruthy();
   });
 });
@@ -383,16 +437,47 @@ describe('TracesSection', () => {
     const onOpenTrace = vi.fn();
     renderWith(client, <TracesSection onOpenTrace={onOpenTrace} />);
     await waitFor(() => expect(screen.getByText('GET /users')).toBeTruthy());
-    expect(client.traces).toHaveBeenCalled();
+    expect(client.tracesPage).toHaveBeenCalled();
     fireEvent.click(screen.getByText('GET /users'));
     expect(onOpenTrace).toHaveBeenCalledWith('trace-abc123');
   });
 
   it('shows the user column', async () => {
     const client = fakeClient({
-      traces: vi.fn().mockResolvedValue([{ ...traceSummary, userLabel: 'ada@example.com' }]),
+      tracesPage: vi.fn().mockResolvedValue({
+        rows: [{ ...traceSummary, userLabel: 'ada@example.com' }],
+        page: 1,
+        hasMore: false,
+      }),
     });
     renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('ada@example.com')).toBeTruthy());
+  });
+});
+
+/**
+ * A visita de tela e os XHRs que ela dispara eram todos `request` com uma url, entao
+ * uma lista so tinha que responder duas perguntas e nao respondia nenhuma.
+ */
+describe('ScreensSection', () => {
+  it('lista rotas por volume e comeca pelas TELAS', async () => {
+    const client = fakeClient();
+    renderWith(client, <ScreensSection onOpenType={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('/pesquisador/escrita')).toBeTruthy());
+    // O default e `page`: a pergunta que motivou a tela e "quais telas sao mais usadas".
+    expect((client.screens as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[1]).toBe(
+      'page',
+    );
+  });
+
+  it('trocar para API refaz a consulta com o outro kind', async () => {
+    const client = fakeClient();
+    renderWith(client, <ScreensSection onOpenType={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('/pesquisador/escrita')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'API' }));
+
+    const calls = (client.screens as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    await waitFor(() => expect(calls.some((call) => call[1] === 'api')).toBe(true));
   });
 });

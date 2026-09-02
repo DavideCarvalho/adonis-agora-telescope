@@ -130,6 +130,9 @@ function fakeClient(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
     }),
     traces: vi.fn().mockResolvedValue([traceSummary]),
     listEntries: vi.fn().mockResolvedValue([entrySummary]),
+    listEntriesPage: vi
+      .fn()
+      .mockResolvedValue({ rows: [entrySummary], page: 1, hasMore: false }),
     getEntry: vi.fn().mockResolvedValue(fullEntry),
     entriesByTrace: vi.fn().mockResolvedValue([entrySummary]),
     waterfall: vi.fn().mockResolvedValue({ traceStartMs: 0, totalDurationMs: 0, spans: [] }),

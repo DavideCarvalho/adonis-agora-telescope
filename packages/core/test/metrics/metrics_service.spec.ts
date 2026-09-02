@@ -164,3 +164,92 @@ describe('MetricsService.getStats — exception types', () => {
     expect(stats.total).toBe(1);
   });
 });
+
+/**
+ * Traces used to be summarized by loading up to `scanCap` entries and grouping them
+ * in JS, so asking for 50 traces could read 50.000 rows. Worse than slow: on a table
+ * dominated by a chatty watcher, the budget was spent before the interesting traces
+ * were reached, so the screen was slow AND incomplete.
+ *
+ * These tests pin both halves of the fix — that pagination is real, and that a store
+ * WITHOUT the new capability still returns the same answers.
+ */
+describe('MetricsService.getTraces — paginação', () => {
+  /** Seeds `count` traces, oldest first, so trace-N is newer than trace-(N-1). */
+  async function seedTraces(store: InMemoryTelescopeStore, count: number) {
+    for (let i = 0; i < count; i += 1) {
+      await store.record({
+        type: EntryType.Request,
+        familyHash: `req-${i}`,
+        content: { method: 'GET', url: `/rota/${i}` },
+        durationMs: 10,
+        traceId: `trace-${i}`,
+      });
+    }
+  }
+
+  it('devolve a página pedida, mais recente primeiro', async () => {
+    const store = new InMemoryTelescopeStore();
+    await seedTraces(store, 10);
+    const metrics = new MetricsService(store);
+
+    const first = await metrics.getTraces(3, 0);
+    const second = await metrics.getTraces(3, 3);
+
+    expect(first.map((t) => t.traceId)).toEqual(['trace-9', 'trace-8', 'trace-7']);
+    expect(second.map((t) => t.traceId)).toEqual(['trace-6', 'trace-5', 'trace-4']);
+  });
+
+  it('páginas não se sobrepõem nem pulam traces', async () => {
+    const store = new InMemoryTelescopeStore();
+    await seedTraces(store, 10);
+    const metrics = new MetricsService(store);
+
+    const seen = [
+      ...(await metrics.getTraces(4, 0)),
+      ...(await metrics.getTraces(4, 4)),
+      ...(await metrics.getTraces(4, 8)),
+    ].map((t) => t.traceId);
+
+    expect(new Set(seen).size).toBe(10);
+    expect(seen).toHaveLength(10);
+  });
+
+  it('offset além do fim devolve lista vazia, não a última página', async () => {
+    const store = new InMemoryTelescopeStore();
+    await seedTraces(store, 3);
+    const metrics = new MetricsService(store);
+    expect(await metrics.getTraces(5, 99)).toEqual([]);
+  });
+
+  it('só carrega as entries da página — não a tabela inteira', async () => {
+    const store = new InMemoryTelescopeStore();
+    await seedTraces(store, 50);
+
+    let listedWith: unknown = null;
+    const spied = Object.create(store) as InMemoryTelescopeStore;
+    spied.list = async (query = {}) => {
+      listedWith = query;
+      return store.list(query);
+    };
+
+    await new MetricsService(spied).getTraces(5, 0);
+
+    // O ponto do fix: a busca de entries é restrita aos trace ids da página.
+    expect((listedWith as { traceIds?: string[] }).traceIds).toHaveLength(5);
+  });
+
+  it('store SEM listTraceIds continua funcionando (capacidade, não requisito)', async () => {
+    const store = new InMemoryTelescopeStore();
+    await seedTraces(store, 10);
+
+    // Um store legado: mesma implementação, sem a capacidade nova.
+    const legacy = Object.create(store) as InMemoryTelescopeStore & { listTraceIds?: unknown };
+    legacy.listTraceIds = undefined;
+
+    const viaFallback = await new MetricsService(legacy).getTraces(3, 3);
+    const viaFastPath = await new MetricsService(store).getTraces(3, 3);
+
+    expect(viaFallback.map((t) => t.traceId)).toEqual(viaFastPath.map((t) => t.traceId));
+  });
+});
