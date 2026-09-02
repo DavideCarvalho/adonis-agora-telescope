@@ -109,6 +109,25 @@ quota (a shared limiter would need a cross-process store). A misconfigured zero/
 is clamped to "allow 1/min" so the endpoint never locks out every caller forever.
 </Callout>
 
+## Where the entries show up
+
+A recorded `client_exception` is a first-class error entry, not a side channel:
+
+- **Alerts** — the poller reads it alongside server exceptions, so an
+  [`every-exception` or `new-exception` rule](/docs/telescope/packages/alerts) pages on a
+  front-end error exactly like a back-end one.
+- **Metrics and Pulse** — it counts in the exception groups and in the overview's recent
+  failures. Asking `getStats` for either exception type returns both.
+- **Dashboard** — it appears in the entries list under its own `client_exception` type, and
+  in the exception groups alongside server errors.
+
+<Callout type="warn">
+The dashboard's **Exceptions** section and the type filter are separate things: filtering the
+entries list by `type: exception` shows server exceptions only, because that is literally the
+type you asked for. Browser errors live under `client_exception`. The grouped Exceptions view
+and the overview span both.
+</Callout>
+
 ## Notable exports
 
 Exported from the core (`@adonis-agora/telescope`):

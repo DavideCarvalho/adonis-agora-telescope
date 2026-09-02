@@ -70,6 +70,18 @@ The `type` selects the extra block: `'query'` adds `families` (top families by p
 adds `status`, and `'exception'` adds `exceptions` (top groups by class+message with
 per-bucket `overTime`). A non-positive or non-finite `windowMs` throws a `RangeError`.
 
+<Callout>
+Asking for **either** exception type returns **both**. `'exception'` (server) and
+`'client_exception'` (browser-reported) are collected together and grouped side by side,
+because a browser error is an error: the grouping is by class + message, which reads the
+same either way.
+
+This used to be split, and the split was invisible until it mattered: the alert poller read
+both types while the metrics side counted only the server one, so a front-end-only incident
+could page you on Slack and still render "No exceptions recorded 🎉" on the dashboard it
+linked to. Fixed in 0.12.0.
+</Callout>
+
 ### Throughput, traces, waterfalls
 
 ```ts
