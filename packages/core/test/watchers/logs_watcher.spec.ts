@@ -196,3 +196,43 @@ describe('LogsWatcher', () => {
     clearStore();
   });
 });
+
+/**
+ * Regressão do bug que deixou a tela de Logs vazia por semanas em produção.
+ *
+ * O provider fazia `container.make('logger') as LoggerLike` — sem `await`. O cast
+ * calava o TypeScript, o watcher recebia uma Promise, não achava método de nível
+ * nenhum, não tapava nada e retornava EM SILÊNCIO. Zero entries, zero erro, zero
+ * aviso: indistinguível de um app que simplesmente não loga.
+ *
+ * O teste prende o comportamento que torna isso impossível de repetir em silêncio.
+ */
+describe('LogsWatcher — recebendo algo que não é um logger', () => {
+  it('avisa quando não há método de nível pra tapar', () => {
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (msg: unknown) => warnings.push(String(msg));
+    try {
+      new LogsWatcher().start(Promise.resolve({}) as never);
+    } finally {
+      console.warn = original;
+    }
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('NO logs will be recorded');
+  });
+
+  it('o aviso NOMEIA a Promise, que é a causa real', () => {
+    // Dizer "sem métodos de nível" manda a pessoa investigar o logger. Dizer
+    // "recebi uma Promise" aponta para o `await` que falta.
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (msg: unknown) => warnings.push(String(msg));
+    try {
+      new LogsWatcher().start(Promise.resolve({}) as never);
+    } finally {
+      console.warn = original;
+    }
+    expect(warnings[0]).toContain('a Promise');
+    expect(warnings[0]).toContain('awaited');
+  });
+});

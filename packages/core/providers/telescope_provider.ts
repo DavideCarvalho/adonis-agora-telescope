@@ -101,7 +101,11 @@ export default class TelescopeProvider {
     // AdonisJS logger (level methods), so the container's logger fits without a
     // hard import — keeps this provider decoupled from a specific logger version.
     if (config.watchers.has('logs')) {
-      const logger = this.app.container.make('logger') as LoggerLike;
+      // AWAITED. `container.make()` returns a Promise, and the cast below used to hide
+      // that: the watcher received a Promise, found no level methods on it, teed
+      // nothing and returned — silently, because "nothing to tee" was not an error.
+      // The `logs` watcher recorded zero entries in production for weeks.
+      const logger = (await this.app.container.make('logger')) as unknown as LoggerLike;
       const watcher = new LogsWatcher({
         minLevel: config.logs.minLevel,
         tags: config.logs.tags,

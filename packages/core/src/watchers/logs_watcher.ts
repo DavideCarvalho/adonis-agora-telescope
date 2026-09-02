@@ -76,6 +76,16 @@ let recording = false;
  * Recording is fire-and-forget and fully guarded — a telescope failure can never
  * break the host's logging.
  */
+/** A short, safe description of a non-logger value, for the warning above. */
+function describeForWarning(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'object' && typeof (value as { then?: unknown }).then === 'function') {
+    return 'a Promise';
+  }
+  return `a ${typeof value}`;
+}
+
 export class LogsWatcher {
   readonly type = EntryType.Log;
   private readonly minLevelIndex: number;
@@ -143,6 +153,18 @@ export class LogsWatcher {
             'one records nothing (its minLevel/tags are ignored). Enable it in ONE place: ' +
             "either `watchers: ['logs']` in config/telescope.ts (which also accepts a `logs` " +
             "options block) or `watchers: ['logs']` in config/telescope_watchers.ts.",
+        );
+      } else {
+        // Nothing to tee and nobody else holding the tap means we were handed
+        // something that is not a logger at all. This used to return in silence, and
+        // the silence is what made a caller passing an unawaited
+        // `container.make('logger')` promise cost weeks of an empty Logs screen: no
+        // error, no warning, just a watcher that never fired.
+        console.warn(
+          "Telescope: the 'logs' watcher was given a value with no log-level methods " +
+            `(got ${describeForWarning(logger)}), so NO logs will be recorded. ` +
+            'If you are wiring this by hand, note that `container.make("logger")` ' +
+            'returns a Promise and has to be awaited.',
         );
       }
       return;
