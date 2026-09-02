@@ -79,13 +79,21 @@ export class TelescopeApi {
    */
   async list(ctx: UiHttpContext): Promise<unknown> {
     const query = buildQuery(ctx.request);
-    const entries = await this.service.list(query);
+    const limit = query.limit ?? DEFAULT_LIMIT;
+    // One row past the page tells us whether a next page exists. A COUNT would have
+    // to re-run the same filters -- including the `search` LIKE -- over the whole
+    // table, which costs more than the page itself.
+    const rows = await this.service.list({ ...query, limit: limit + 1 });
+    const hasMore = rows.length > limit;
+    const entries = hasMore ? rows.slice(0, limit) : rows;
+    const page = Math.floor((query.offset ?? 0) / limit) + 1;
+
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
       .send({
         data: entries.map(toSummary),
-        meta: { count: entries.length, query: describe(query) },
+        meta: { count: entries.length, page, limit, hasMore, query: describe(query) },
       });
   }
 
@@ -388,6 +396,10 @@ export function buildQuery(request: UiRequest): EntryQuery {
   if (before !== undefined) {
     const date = new Date(before);
     if (!Number.isNaN(date.getTime())) query.before = date;
+  }
+  const page = readNumber(request, 'page');
+  if (page !== undefined && page > 1) {
+    query.offset = (Math.floor(page) - 1) * (query.limit ?? DEFAULT_LIMIT);
   }
   return query;
 }

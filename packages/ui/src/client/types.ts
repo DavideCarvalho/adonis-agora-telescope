@@ -85,6 +85,8 @@ export interface EntriesQuery {
   /** Keyset cursor: strictly older than this ISO timestamp (pass the oldest row's `createdAt`). */
   before?: string;
   limit?: number;
+  /** 1-based page for offset pagination. */
+  page?: number;
 }
 
 /** A `{ key, count }` bucket (top families / top tags). */

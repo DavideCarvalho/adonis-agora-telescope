@@ -159,6 +159,22 @@ export class TelescopeClient {
     );
   }
 
+  /** One page of entries, with whether a next page exists. */
+  listEntriesPage(query: EntriesQuery = {}): Promise<Page<EntrySummary>> {
+    return this.page<EntrySummary>(
+      '/entries',
+      toQuery({
+        type: query.type,
+        tag: query.tag,
+        traceId: query.traceId,
+        search: query.search,
+        before: query.before,
+        limit: query.limit ?? this.limit,
+        page: query.page ?? 1,
+      }),
+    );
+  }
+
   getEntry(id: string): Promise<Entry> {
     return this.data<Entry>(`/entries/${encodeURIComponent(id)}`);
   }

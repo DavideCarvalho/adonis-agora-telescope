@@ -76,6 +76,12 @@ export function useEntries(query: EntriesQuery) {
   return useAsync(() => client.listEntries(query), [client, queryKey(query)]);
 }
 
+/** One page of entries. */
+export function useEntriesPage(query: EntriesQuery) {
+  const client = useTelescopeClient();
+  return useAsync(() => client.listEntriesPage(query), [client, queryKey(query)]);
+}
+
 export function useEntry(id: string) {
   const client = useTelescopeClient();
   return useAsync(() => client.getEntry(id), [client, id]);

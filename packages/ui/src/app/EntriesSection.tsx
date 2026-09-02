@@ -12,16 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from './primitives/select.js';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from './primitives/table.js';
-import { AsyncBlock, clickable, Panel, SectionTitle, TypeBadge } from './ui.js';
-import { useEntries, useLiveTail } from './use-telescope.js';
+import { DataTable } from './primitives/data_table.js';
+import { AsyncBlock, Panel, SectionTitle, TypeBadge } from './ui.js';
+import { useEntriesPage, useLiveTail } from './use-telescope.js';
+
+/** Rows per page. The list is scanned, not read in bulk. */
+const PAGE_SIZE = 50;
 
 /**
  * The entries list: filter by type + free-text search, with an SSE live-tail toggle that prepends
@@ -44,18 +40,35 @@ export function EntriesSection({
   const [draft, setDraft] = useState<string>('');
   const [live, setLive] = useState(false);
 
+  const [page, setPage] = useState(1);
+
   const query: EntriesQuery = useMemo(
-    () => ({ ...(type ? { type } : {}), ...(search ? { search } : {}), limit: 100 }),
-    [type, search],
+    () => ({ ...(type ? { type } : {}), ...(search ? { search } : {}), limit: PAGE_SIZE, page }),
+    [type, search, page],
   );
-  const state = useEntries(query);
-  const tail = useLiveTail(live);
+  const state = useEntriesPage(query);
+  // Live tail only runs on page 1. Prepending arriving rows onto page 3 would shift
+  // every row down and silently push one off the bottom -- the list would be lying
+  // about what page 3 contains.
+  const tail = useLiveTail(live && page === 1);
+
+  /** Any filter change restarts at page 1: page 4 of the previous filter has nothing
+   *  to do with page 4 of the new one, and landing on an empty page reads as "no
+   *  results" when there are plenty. */
+  const changeType = (next: string) => {
+    setType(next);
+    setPage(1);
+  };
+  const changeSearch = (next: string) => {
+    setSearch(next);
+    setPage(1);
+  };
 
   // Merge live-tail entries (newest-first) ahead of the fetched page, de-duped by id, and respect the
   // active type/search filter so the tail never shows rows the filter would exclude.
   const rows: EntrySummary[] = useMemo(() => {
-    const base = state.data ?? [];
-    if (!live || tail.entries.length === 0) return base;
+    const base = state.data?.rows ?? [];
+    if (!live || page !== 1 || tail.entries.length === 0) return base;
     const matches = (e: EntrySummary) =>
       (!type || e.type === type) &&
       (!search || e.summary.toLowerCase().includes(search.toLowerCase()));
@@ -67,9 +80,71 @@ export function EntriesSection({
       merged.push(e);
     }
     return merged;
-  }, [state.data, tail.entries, live, type, search]);
+  }, [state.data, tail.entries, live, page, type, search]);
 
-  const commitSearch = () => setSearch(draft.trim());
+  const columns = useMemo(
+    () => [
+      {
+        id: 'time',
+        header: 'Time',
+        cell: ({ row }: { row: { original: EntrySummary } }) => (
+          <span className="text-muted-foreground" title={row.original.createdAt}>
+            {formatRelative(row.original.createdAt) || formatTime(row.original.createdAt)}
+          </span>
+        ),
+      },
+      {
+        id: 'type',
+        header: 'Type',
+        cell: ({ row }: { row: { original: EntrySummary } }) => (
+          <TypeBadge type={row.original.type} />
+        ),
+      },
+      { id: 'summary', header: 'Summary', accessorFn: (e: EntrySummary) => e.summary },
+      {
+        id: 'user',
+        header: 'User',
+        cell: ({ row }: { row: { original: EntrySummary } }) => (
+          <span className="text-muted-foreground">{row.original.userLabel ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'duration',
+        header: () => <span className="block text-right">Duration</span>,
+        cell: ({ row }: { row: { original: EntrySummary } }) => (
+          <span className="tnum block text-right">{formatDuration(row.original.durationMs)}</span>
+        ),
+      },
+      {
+        id: 'tags',
+        header: 'Tags',
+        cell: ({ row }: { row: { original: EntrySummary } }) => (
+          <div className="flex flex-wrap items-center gap-1">
+            {row.original.traceId && (
+              <button
+                type="button"
+                className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-brand"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  onOpenTrace(row.original.traceId as string);
+                }}
+              >
+                trace:{row.original.traceId.slice(0, 8)}
+              </button>
+            )}
+            {row.original.tags.slice(0, 4).map((t) => (
+              <Badge key={t} variant="outline">
+                {t}
+              </Badge>
+            ))}
+          </div>
+        ),
+      },
+    ],
+    [onOpenTrace],
+  );
+
+  const commitSearch = () => changeSearch(draft.trim());
 
   return (
     <div className="flex flex-col gap-4">
@@ -78,7 +153,7 @@ export function EntriesSection({
           <div className="flex flex-wrap items-center gap-2.5">
             <Select
               value={type}
-              onValueChange={(next) => setType(typeof next === 'string' ? next : '')}
+              onValueChange={(next) => changeType(typeof next === 'string' ? next : '')}
             >
               <SelectTrigger aria-label="filter by type" className="min-w-36">
                 <SelectValue>{(v: string | null) => (v ? v : 'All types')}</SelectValue>
@@ -124,7 +199,7 @@ export function EntriesSection({
             {type && (
               <Badge variant="outline" className="gap-1.5 rounded-full px-2.5 py-1">
                 type: {type}
-                <button type="button" aria-label="clear type" onClick={() => setType('')}>
+                <button type="button" aria-label="clear type" onClick={() => changeType('')}>
                   ×
                 </button>
               </Badge>
@@ -136,7 +211,7 @@ export function EntriesSection({
                   type="button"
                   aria-label="clear search"
                   onClick={() => {
-                    setSearch('');
+                    changeSearch('');
                     setDraft('');
                   }}
                 >
@@ -164,63 +239,25 @@ export function EntriesSection({
           skeletonRows={6}
         >
           {() => (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Summary</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead className="text-right">Duration</TableHead>
-                  <TableHead>Tags</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((e, i) => (
-                  <TableRow
-                    key={e.id}
-                    className={cn(
-                      'cursor-pointer hover:bg-brand/5',
-                      live && i < tail.entries.length && 'row-new',
-                    )}
-                    {...clickable(() => onOpenEntry(e.id))}
-                  >
-                    <TableCell className="text-muted-foreground" title={e.createdAt}>
-                      {formatRelative(e.createdAt) || formatTime(e.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      <TypeBadge type={e.type} />
-                    </TableCell>
-                    <TableCell className="mono">{e.summary}</TableCell>
-                    <TableCell className="text-muted-foreground">{e.userLabel ?? '—'}</TableCell>
-                    <TableCell className="tnum text-right">
-                      {formatDuration(e.durationMs)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-1">
-                        {e.traceId && (
-                          <button
-                            type="button"
-                            className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-brand"
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              onOpenTrace(e.traceId as string);
-                            }}
-                          >
-                            trace:{e.traceId.slice(0, 8)}
-                          </button>
-                        )}
-                        {e.tags.slice(0, 4).map((t) => (
-                          <Badge key={t} variant="outline">
-                            {t}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              id="entries"
+              data={rows}
+              columns={columns}
+              rowKey={(e) => e.id}
+              onRowClick={(e) => onOpenEntry(e.id)}
+              rowClassName={(e) =>
+                cn(
+                  'hover:bg-brand/5',
+                  live && page === 1 && tail.entries.some((t) => t.id === e.id) && 'row-new',
+                )
+              }
+              pagination={{
+                page,
+                onPageChange: setPage,
+                hasMore: state.data?.hasMore ?? false,
+                isFetching: state.loading,
+              }}
+            />
           )}
         </AsyncBlock>
       </Panel>

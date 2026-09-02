@@ -130,6 +130,9 @@ const exceptionStats: StatsResult = {
 function fakeClient(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
   return {
     listEntries: vi.fn().mockResolvedValue([entrySummary]),
+    listEntriesPage: vi
+      .fn()
+      .mockResolvedValue({ rows: [entrySummary], page: 1, hasMore: false }),
     getEntry: vi.fn().mockResolvedValue(fullEntry),
     entriesByTrace: vi.fn().mockResolvedValue([entrySummary]),
     traces: vi.fn().mockResolvedValue([traceSummary]),
@@ -194,14 +197,16 @@ describe('EntriesSection', () => {
     renderWith(client, <EntriesSection onOpenEntry={onOpenEntry} onOpenTrace={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByText('GET /users → 200')).toBeTruthy());
-    expect(client.listEntries).toHaveBeenCalled();
+    expect(client.listEntriesPage).toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('GET /users → 200'));
     expect(onOpenEntry).toHaveBeenCalledWith('e-1');
   });
 
   it('prepends a live entry from the SSE stream when live tail is on', async () => {
-    const client = fakeClient({ listEntries: vi.fn().mockResolvedValue([]) });
+    const client = fakeClient({
+      listEntriesPage: vi.fn().mockResolvedValue({ rows: [], page: 1, hasMore: false }),
+    });
     let source: FakeEventSource | null = null;
     const factory = () => {
       source = new FakeEventSource();
@@ -221,7 +226,9 @@ describe('EntriesSection', () => {
   });
 
   it('shows an empty state when nothing matches', async () => {
-    const client = fakeClient({ listEntries: vi.fn().mockResolvedValue([]) });
+    const client = fakeClient({
+      listEntriesPage: vi.fn().mockResolvedValue({ rows: [], page: 1, hasMore: false }),
+    });
     renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('No entries match these filters.')).toBeTruthy());
   });
