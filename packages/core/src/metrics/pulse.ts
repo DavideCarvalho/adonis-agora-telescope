@@ -70,6 +70,8 @@ export interface PulseSlowEntry {
 /** A grouped exception family (mirrors {@link summarizeStats}'s exception groups). */
 export interface PulseExceptionGroup {
   key: string;
+  /** The entry type of the group — `exception` (server) or `client_exception` (browser). */
+  type: string;
   class: string;
   message: string;
   count: number;
@@ -390,6 +392,7 @@ export function summarizePulse(
     });
     topExceptions = (stats.exceptions ?? []).map((group) => ({
       key: group.key,
+      type: group.type,
       class: group.class,
       message: group.message,
       count: group.count,

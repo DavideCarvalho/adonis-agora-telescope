@@ -263,9 +263,7 @@ export function App() {
             ) : route.name === 'traces' ? (
               <TracesSection onOpenTrace={openTrace} />
             ) : route.name === 'exceptions' ? (
-              <ExceptionsSection
-                onOpenType={() => navigate({ name: 'entries', type: 'exception' })}
-              />
+              <ExceptionsSection onOpenType={(type) => navigate({ name: 'entries', type })} />
             ) : route.name === 'schedules' ? (
               <SchedulesLiveSection />
             ) : route.name === 'queues' ? (

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveClientErrors } from '../../src/client_errors/config.js';
 import {
   type ClientErrorHttpContext,
@@ -244,5 +244,81 @@ describe('resolveClientErrors', () => {
       rateLimitPerMinute: 5,
       authorize,
     });
+  });
+});
+
+/**
+ * Who a browser-reported error belongs to.
+ *
+ * The ingestion endpoint is PUBLIC, so anything in the body is a claim: a caller
+ * can post someone else's id. But the endpoint sits behind the host's normal
+ * middleware stack, so `@adonis-agora/context` has already resolved the session's
+ * user by the time we record — server-side, and therefore authoritative.
+ *
+ * Before this, `user` came from the body alone. No front-end reporter ships the
+ * logged-in user by default, so in practice every `client_exception` recorded
+ * `user: null` and the dashboard's User column was empty on a fully authenticated
+ * session.
+ */
+describe('ClientErrorIngestor — user attribution', () => {
+  const KEY = Symbol.for('@agora/context:accessor');
+  afterEach(() => delete (globalThis as Record<symbol, unknown>)[KEY]);
+
+  function withUserRef(userRef: unknown): void {
+    (globalThis as Record<symbol, unknown>)[KEY] = {
+      traceId: () => undefined,
+      tenantId: () => undefined,
+      userRef: () => userRef,
+      get: () => undefined,
+    };
+  }
+
+  async function ingest(body: Record<string, unknown>) {
+    const { ing, recorded } = ingestor();
+    await ing.handle(fakeCtx({ body }));
+    const [entry] = recorded;
+    if (entry === undefined) throw new Error('nothing recorded');
+    return { user: entry.content.user, tags: entry.tags ?? [] };
+  }
+
+  it('attributes to the session user resolved server-side', async () => {
+    withUserRef({ type: 'user', id: 'usr-7' });
+    const { user, tags } = await ingest({ message: 'boom' });
+    expect(user).toEqual({ type: 'user', id: 'usr-7' });
+    expect(tags).toContain('user:usr-7');
+  });
+
+  it('the server-side context WINS over whatever the browser claims', async () => {
+    // The endpoint is public: a claimed id must never override the real session.
+    withUserRef({ id: 'real-session-user' });
+    const { user, tags } = await ingest({ message: 'boom', user: { id: 'impostor' } });
+    expect(user).toEqual({ id: 'real-session-user' });
+    expect(tags).toContain('user:real-session-user');
+    expect(tags).not.toContain('user:impostor');
+  });
+
+  it('falls back to the body claim when there is no session to contradict it', async () => {
+    const { user, tags } = await ingest({ message: 'boom', user: { id: 'self-reported' } });
+    expect(user).toEqual({ id: 'self-reported' });
+    expect(tags).toContain('user:self-reported');
+  });
+
+  it('records null — and no user tag — when neither source has anything', async () => {
+    const { user, tags } = await ingest({ message: 'boom' });
+    expect(user).toBeNull();
+    expect(tags.some((tag) => tag.startsWith('user:'))).toBe(false);
+  });
+
+  it('never lets a throwing context accessor break ingestion', async () => {
+    (globalThis as Record<symbol, unknown>)[KEY] = {
+      traceId: () => undefined,
+      tenantId: () => undefined,
+      userRef: () => {
+        throw new Error('context exploded');
+      },
+      get: () => undefined,
+    };
+    const { user } = await ingest({ message: 'boom' });
+    expect(user).toBeNull();
   });
 });

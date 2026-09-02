@@ -116,6 +116,7 @@ const exceptionStats: StatsResult = {
   exceptions: [
     {
       key: 'k1',
+      type: 'exception',
       class: 'ValidationError',
       message: 'email is required',
       count: 4,

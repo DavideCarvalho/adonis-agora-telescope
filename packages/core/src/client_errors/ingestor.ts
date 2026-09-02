@@ -1,3 +1,4 @@
+import { currentUserRef } from '../context_accessor.js';
 import { EntryType, type RecordInput } from '../entry.js';
 import { exceptionFamilyHash } from '../exception_family_hash.js';
 import { getTelescopeRuntime } from '../registry.js';
@@ -79,6 +80,30 @@ function reportError(err: unknown): void {
 }
 
 /**
+ * The user to attribute a browser-reported error to.
+ *
+ * Two sources, and the ORDER is a trust decision. The ingestion endpoint is
+ * public, so anything the browser puts in the body is a claim — a caller can post
+ * someone else's id and misattribute an error. The `@adonis-agora/context`
+ * `userRef()` is resolved SERVER-SIDE from the session on this very request (the
+ * endpoint sits behind the host's normal middleware stack), so it is the one to
+ * trust when both are present.
+ *
+ * This is also what makes attribution work at all for the common setup: no
+ * front-end error reporter ships the logged-in user by default, so `content.user`
+ * is almost always absent and every `client_exception` recorded `user: null` —
+ * the dashboard's User column empty on a fully authenticated session.
+ *
+ * The body claim is still honoured when the context has nothing (an anonymous
+ * page, or a host without `@adonis-agora/context`), because a self-reported id is
+ * better than no attribution when there is nothing to contradict it.
+ */
+export function resolveClientErrorUser(fromBody: unknown): unknown {
+  const fromContext = currentUserRef();
+  return fromContext ?? fromBody ?? null;
+}
+
+/**
  * The framework-agnostic client-error ingestion handler. Mirrors the NestJS
  * `ClientErrorController.ingest` pipeline in idiomatic AdonisJS form — the
  * provider registers `POST <path>` and delegates to {@link handle}.
@@ -144,7 +169,10 @@ export class ClientErrorIngestor {
     //    frame (mirrors server exceptions), and the composing tags.
     const content = validation.value;
     const tags = ['failed', 'client'];
-    const userTag = userIdentityTag(content.user);
+    // The browser MAY claim a user in the body; the server-side context is
+    // authoritative and wins. See resolveClientErrorUser.
+    const user = resolveClientErrorUser(content.user);
+    const userTag = userIdentityTag(user);
     if (userTag !== null) tags.push(userTag);
 
     // Content field ORDER is load-bearing. The Recorder's content-byte budget
@@ -169,7 +197,7 @@ export class ClientErrorIngestor {
         name: content.name,
         url: content.url,
         userAgent: content.userAgent,
-        user: content.user,
+        user,
         release: content.release,
         extra: content.extra,
         stack: content.stack,

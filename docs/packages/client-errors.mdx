@@ -121,11 +121,35 @@ A recorded `client_exception` is a first-class error entry, not a side channel:
 - **Dashboard** — it appears in the entries list under its own `client_exception` type, and
   in the exception groups alongside server errors.
 
-<Callout type="warn">
-The dashboard's **Exceptions** section and the type filter are separate things: filtering the
-entries list by `type: exception` shows server exceptions only, because that is literally the
-type you asked for. Browser errors live under `client_exception`. The grouped Exceptions view
-and the overview span both.
+<Callout>
+The grouped **Exceptions** view and the overview span both types, and a row deep-links into
+the entries list filtered by **that row's** type — so clicking a browser error lands on
+`client_exception`, not on an empty `exception` list.
+
+Filtering the entries list by hand still means what it says: `type: exception` is server
+exceptions only. Browser errors live under `client_exception`.
+</Callout>
+
+## Who the error is attributed to
+
+The recorded `user` comes from two places, in this order:
+
+1. **The session**, via the `@adonis-agora/context` `userRef()` — resolved server-side on
+   this very request, because the endpoint sits behind your normal middleware stack.
+2. **The request body**, when the browser sent a `user` and the context has nothing.
+
+The order is a trust decision, not a preference. The endpoint is public: anything in the
+body is a *claim*, and a caller could post someone else's id. The context is derived from
+the session on the server, so it wins whenever both are present. The body claim is still
+honoured for anonymous pages and for hosts without `@adonis-agora/context`, where a
+self-reported id beats no attribution at all.
+
+<Callout type="info">
+Until 0.13.0 the body was the only source. No front-end reporter ships the logged-in user by
+default, so in practice **every** `client_exception` recorded `user: null` — the dashboard's
+User column blank even on a fully authenticated session. If yours are still blank, check
+that `@adonis-agora/context` is installed and that something in your middleware chain sets
+the user reference on it.
 </Callout>
 
 ## Notable exports

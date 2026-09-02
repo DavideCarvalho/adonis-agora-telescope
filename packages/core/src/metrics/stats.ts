@@ -45,6 +45,20 @@ export interface StatusBreakdown {
 export interface ExceptionGroupStats {
   /** The family key — the entry's `familyHash` when present, else `${class}: ${message}`. */
   key: string;
+  /**
+   * The entry type this group came from — `exception` or `client_exception`.
+   *
+   * Present so a UI can link a group to the entries it actually contains. Without
+   * it a dashboard has to guess, and the only guess available was `exception` —
+   * which sent every click on a browser error to a filtered list that, by
+   * construction, could not contain it.
+   *
+   * A group spans one type in practice: entries are grouped by `familyHash`, and
+   * the hash of a server throw never collides with a browser report. When two
+   * entries of different types do share a key, this is the type of the first one
+   * seen in the window.
+   */
+  type: string;
   class: string;
   message: string;
   count: number;
@@ -260,6 +274,7 @@ function computeStatus(entries: Entry[]): StatusBreakdown {
 }
 
 interface ExceptionAccumulator {
+  type: string;
   class: string;
   message: string;
   count: number;
@@ -318,6 +333,7 @@ function computeExceptions(
       const overTime = new Array<number>(bucketCount).fill(0);
       overTime[index] = 1;
       groups.set(key, {
+        type: entry.type,
         class: fields.class,
         message: fields.message,
         count: 1,

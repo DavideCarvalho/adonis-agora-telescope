@@ -226,3 +226,79 @@ describe('summarizeStats per-type breakdowns', () => {
     expect(result.cache?.hitRatio).toBe(0.5);
   });
 });
+
+/**
+ * Each group carries the entry type it came from.
+ *
+ * Without it a dashboard linking a group to its entries had to guess, and the only
+ * guess available was `exception` — so every click on a browser-reported error
+ * landed on a filtered list that could not contain it: "0 shown" on a row that had
+ * just reported 26 occurrences.
+ */
+describe('summarizeStats — exception group type', () => {
+  function exception(type: string, name: string, message: string): Entry {
+    return {
+      id: `${type}-${name}`,
+      sequence: 1,
+      type,
+      familyHash: `${name}:${message}`,
+      content: { name, message },
+      tags: [],
+      durationMs: null,
+      origin: 'http',
+      traceId: null,
+      createdAt: new Date(),
+    } as Entry;
+  }
+
+  it('tags a server group with `exception`', () => {
+    const stats = summarizeStats({
+      entries: [exception('exception', 'Error', 'server boom')],
+      type: 'exception',
+      windowStart: new Date(Date.now() - 60_000),
+      windowEnd: new Date(),
+      windowMs: 60_000,
+      buckets: 1,
+      slowMs: 100,
+      truncated: false,
+    });
+    expect(stats.exceptions?.[0]?.type).toBe('exception');
+  });
+
+  it('tags a browser group with `client_exception`', () => {
+    const stats = summarizeStats({
+      entries: [exception('client_exception', 'TypeError', 'browser boom')],
+      type: 'exception',
+      windowStart: new Date(Date.now() - 60_000),
+      windowEnd: new Date(),
+      windowMs: 60_000,
+      buckets: 1,
+      slowMs: 100,
+      truncated: false,
+    });
+    expect(stats.exceptions?.[0]?.type).toBe('client_exception');
+  });
+
+  it('keeps each type on its own group when both are in the window', () => {
+    const stats = summarizeStats({
+      entries: [
+        exception('exception', 'Error', 'server boom'),
+        exception('client_exception', 'TypeError', 'browser boom'),
+      ],
+      type: 'exception',
+      windowStart: new Date(Date.now() - 60_000),
+      windowEnd: new Date(),
+      windowMs: 60_000,
+      buckets: 1,
+      slowMs: 100,
+      truncated: false,
+    });
+    const byMessage = Object.fromEntries(
+      (stats.exceptions ?? []).map((group) => [group.message, group.type]),
+    );
+    expect(byMessage).toEqual({
+      'server boom': 'exception',
+      'browser boom': 'client_exception',
+    });
+  });
+});
