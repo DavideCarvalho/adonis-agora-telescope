@@ -67,6 +67,13 @@ export interface TelescopeRuntime {
    */
   paused: boolean;
   /**
+   * Whether liveness PROBES are persisted. Producers mark a probe by running it
+   * inside `runAsHeartbeat` (see `origin_scope.ts`); `safeRecord` drops those
+   * unless this is `true`. Default `false` — a scheduler's "is there work?" read
+   * is not an event, and left recording it drowned every other entry.
+   */
+  recordHeartbeat: boolean;
+  /**
    * The AI diagnosis coordinator published by the AI provider, or `null` when the
    * AI feature is not installed. The MCP `diagnose_exception` tool and the alerter
    * read it from here (no DI) to attach probable-cause analysis; when `null` — or
@@ -102,6 +109,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   registry: null,
   entryEvents: null,
   paused: false,
+  recordHeartbeat: false,
   diagnosisCoordinator: null,
   cpuProfiler: null,
   queueManager: null,
@@ -191,6 +199,11 @@ export function setTelescopePaused(paused: boolean): void {
   runtime.paused = paused;
 }
 
+/** Opt back into persisting liveness probes (called by the provider from config). */
+export function setTelescopeRecordHeartbeat(record: boolean): void {
+  runtime.recordHeartbeat = record;
+}
+
 /** Tear down the runtime (called by the provider at shutdown). */
 export function resetTelescopeRuntime(): void {
   runtime.store = null;
@@ -202,6 +215,7 @@ export function resetTelescopeRuntime(): void {
   runtime.enabledWatchers.clear();
   runtime.entryEvents = null;
   runtime.paused = false;
+  runtime.recordHeartbeat = false;
   runtime.diagnosisCoordinator = null;
   runtime.cpuProfiler = null;
   runtime.queueManager = null;

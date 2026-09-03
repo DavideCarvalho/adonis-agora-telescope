@@ -175,6 +175,17 @@ export type { SummarizeTracesOptions, TraceSummary } from './metrics/traces.js';
 export { summarizeTraces } from './metrics/traces.js';
 export type { Waterfall, WaterfallSpan } from './metrics/waterfall.js';
 export { buildWaterfall } from './metrics/waterfall.js';
+// — origin scope (labels WHERE work came from; marks liveness probes) —
+export type { OriginScope, OriginScopeDriver } from './origin_scope.js';
+export {
+  currentOrigin,
+  getOriginScopeDriver,
+  isHeartbeat,
+  ORIGIN_SCOPE_KEY,
+  resolveOrigin,
+  runAsHeartbeat,
+  runWithOrigin,
+} from './origin_scope.js';
 export type {
   EventLoopDelayMonitor,
   OverloadGuardDeps,
@@ -225,6 +236,7 @@ export {
   setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
   setTelescopePaused,
+  setTelescopeRecordHeartbeat,
   setTelescopeRuntime,
 } from './registry.js';
 export type {

@@ -22,6 +22,7 @@ import {
   setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
   setTelescopePaused,
+  setTelescopeRecordHeartbeat,
   setTelescopeRuntime,
 } from '../src/registry.js';
 import { SamplingTelescopeStore } from '../src/sampling/sampling_store.js';
@@ -88,6 +89,7 @@ export default class TelescopeProvider {
       config.requestEnrichment,
     );
     setTelescopeEntryEvents(this.entryEvents);
+    setTelescopeRecordHeartbeat(config.recordHeartbeat);
 
     if (config.watchers.has('diagnostics')) {
       const watcher = new DiagnosticsWatcher(store, {

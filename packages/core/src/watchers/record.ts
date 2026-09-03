@@ -1,5 +1,6 @@
 import { currentTraceId } from '../context_accessor.js';
 import type { RecordInput } from '../entry.js';
+import { isHeartbeat } from '../origin_scope.js';
 import { getTelescopeRuntime } from '../registry.js';
 import type { TelescopeStore } from '../store.js';
 
@@ -36,6 +37,11 @@ export function safeRecord(input: RecordInput, source: string): void {
   // Honour the overload guard's shed flag: while paused, drop new entries so a
   // lagging event loop is never made worse by telescope's own write path.
   if (getTelescopeRuntime().paused) return;
+  // Drop liveness probes. A producer only enters `runAsHeartbeat` to say "this read
+  // asks whether there is work" — the answer is not an event either way, and the work
+  // it finds is recorded on its own. Set `recordHeartbeat: true` in config/telescope.ts
+  // to keep them (debugging the poll loop itself is the case that wants them).
+  if (isHeartbeat() && !getTelescopeRuntime().recordHeartbeat) return;
 
   try {
     const resolved: RecordInput =
