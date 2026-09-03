@@ -1,5 +1,49 @@
 # @adonis-agora/telescope
 
+## 0.17.0
+
+### Minor Changes
+
+- [#64](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/64) [`3a9f494`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/3a9f4942b29bf8a242144800bc277d5e23a7ddcc) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Um escopo de origem, e o direito de não gravar um batimento
+  
+  O `BatchOrigin` declarava `queue`, `schedule` e `cli` desde sempre, e ninguém nunca os
+  escrevia: só o request watcher passava um `origin`, então tudo que um processo de fundo
+  gravava caía no default `manual`. A consequência é que o painel não sabia distinguir
+  "isto veio de uma request" de "isto veio de um tick do scheduler".
+  
+  Agora existe um escopo ambiente (`runWithOrigin`), publicado no slot global
+  `Symbol.for('@agora/telescope:origin-scope')` — o mesmo padrão que o
+  `@adonis-agora/context` usa com o accessor dele, e pelo mesmo motivo: uma lib irmã
+  (`@adonis-agora/durable`) precisa poder rotular o próprio trabalho sem passar a depender
+  de uma ferramenta de observabilidade só para ser legível dentro dela.
+  
+  Junto vem a distinção que importa de verdade: `runAsHeartbeat` marca uma leitura como
+  SONDA de vivacidade — o laço perguntando ao store "tem trabalho?". O `safeRecord`
+  descarta essas, a menos que o host ligue `recordHeartbeat: true`.
+  
+  A medida que motivou isso: numa janela de 12h em produção, as quatro sondas do worker do
+  durable (um tick por segundo) eram 182.868 das 320.754 entries — **57% de tudo**, contra
+  6.363 queries do app inteiro. Uma ferramenta de depuração em que 57% das linhas são o
+  sistema respirando deixou de ser uma ferramenta de depuração.
+  
+  O limite é estreito de propósito: a sonda é descartada, o trabalho que ela encontra não.
+  Lease, checkpoint e resultado da run continuam gravados — é exatamente isso que alguém
+  abre o console para ver quando um workflow trava.
+
+### Patch Changes
+
+- [#63](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/63) [`99621d3`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/99621d3589e24b72faf84b2f64ace3f69e4bb079) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - O watcher de queue assinava um canal que ninguém publica — `type=job` ficava em ZERO
+  
+  O `@boringnode/queue` (engine por trás do `@adonisjs/queue`) publica a execução de cada job num `diagnostics_channel.tracingChannel('boringqueue.job.execute')`. O watcher assinava `boringqueue.job.execute:asyncEnd`.
+  
+  Falta o prefixo. O Node nomeia os sub-canais de um tracing channel como `tracing:<name>:<evento>` — o nome real é `tracing:boringqueue.job.execute:asyncEnd`. Assinar o outro cria um canal NOVO, que ninguém publica, e o watcher fica surdo em silêncio.
+  
+  Em produção isso aparecia como `type=job` em zero com o worker executando jobs normalmente — indistinguível de um sistema sem jobs, que é o pior formato de falha possível para uma ferramenta de observabilidade.
+  
+  O nome agora é DERIVADO do `tracingChannel` do Node, em vez de montado à mão. A diferença não é estética: o nome passa a vir do Node, e não de uma suposição sobre o Node.
+  
+  **O teste cometia o mesmo erro.** Ele publicava no mesmo nome montado à mão que o watcher assinava, então passava com o watcher surdo — um teste que reproduz a suposição do código não testa a suposição. Agora ele publica pelo `tracingChannel`, como o engine faz, e há um caso que passa por `tracePromise` (o caminho literal do worker) sem saber o nome de sub-canal nenhum. Contra o código antigo, esses testes falham.
+
 ## 0.16.0
 
 ### Minor Changes

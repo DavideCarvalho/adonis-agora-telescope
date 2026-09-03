@@ -1,5 +1,5 @@
 /** Keep in sync with this package's `version` in package.json. */
-export const VERSION = '0.16.0';
+export const VERSION = '0.17.0';
 
 // Re-export the configure hook from the package root so `node ace configure` finds it
 export { configure } from '../configure.js';
