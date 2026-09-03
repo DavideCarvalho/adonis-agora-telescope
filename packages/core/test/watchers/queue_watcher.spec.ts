@@ -13,11 +13,20 @@ import {
 } from '../../src/watchers/index.js';
 import { clearStore, flush, installStore } from './helpers.js';
 
-const ASYNC_END = `${QUEUE_EXECUTE_CHANNEL}:asyncEnd`;
+/**
+ * O MESMO tracing channel que o `@boringnode/queue` usa. Publicar por ele, e não por um nome
+ * montado à mão, é o ponto — foi exatamente essa montagem à mão que deixou o bug passar.
+ *
+ * A versão anterior deste arquivo fazia `channel(`${QUEUE_EXECUTE_CHANNEL}:asyncEnd`)`, o mesmo
+ * nome errado que o watcher assinava. Teste e código cometiam o mesmo engano, então o teste
+ * passava com o watcher surdo em produção (`type=job` em ZERO com o worker executando jobs). Um
+ * teste que reproduz a suposição do código não testa a suposição.
+ */
+const executeChannel = diagnostics_channel.tracingChannel(QUEUE_EXECUTE_CHANNEL);
 
-/** Publish a job-execute message onto the tracing channel's `:asyncEnd` sub-channel. */
+/** Publish a job-execute message onto the tracing channel's `asyncEnd` sub-channel. */
 function publish(message: JobExecuteMessageLike): void {
-  diagnostics_channel.channel(ASYNC_END).publish(message);
+  diagnostics_channel.channel(executeChannel.asyncEnd.name).publish(message);
 }
 
 describe('QueueWatcher', () => {
@@ -123,5 +132,47 @@ describe('QueueWatcher', () => {
     expect(payload.user).toBe('x');
 
     watcher.stop();
+  });
+});
+
+describe('QueueWatcher — o canal que o engine realmente publica', () => {
+  afterEach(() => clearStore());
+
+  it('grava quando o engine usa tracePromise, que é como o @boringnode/queue executa', async () => {
+    // Este é o teste que teria pego o bug. Ele não sabe o nome de sub-canal nenhum: usa o
+    // `tracingChannel` como o engine usa, e deixa o Node decidir os nomes.
+    const store = installStore();
+    const watcher = new QueueWatcher();
+    watcher.start();
+
+    const message: JobExecuteMessageLike = {
+      job: { id: 'j1', name: 'SendWelcomeEmail', attempts: 1 },
+      queue: 'default',
+    };
+    await executeChannel.tracePromise(async () => {
+      message.status = 'completed';
+      message.duration = 7;
+      return 'ok';
+    }, message);
+    await flush();
+
+    const entries = await store.list({ type: EntryType.Job });
+    expect(entries).toHaveLength(1);
+    expect((entries[0]?.content as JobEntryContent | undefined)?.name).toBe('SendWelcomeEmail');
+
+    watcher.stop();
+  });
+
+  it('para de gravar depois do stop()', async () => {
+    const store = installStore();
+    const watcher = new QueueWatcher();
+    watcher.start();
+    watcher.stop();
+
+    const message: JobExecuteMessageLike = { job: { id: 'j2', name: 'B' }, queue: 'default' };
+    await executeChannel.tracePromise(async () => 'ok', message);
+    await flush();
+
+    expect(await store.list({ type: EntryType.Job })).toHaveLength(0);
   });
 });
