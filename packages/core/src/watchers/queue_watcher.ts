@@ -11,16 +11,32 @@ import { safeRecord } from './record.js';
  * off `:asyncEnd` (status/duration/error are mutated onto the same message during
  * the trace's async lifecycle).
  *
- * `@adonisjs/queue` is not installed in this repo, so this channel name + payload
- * shape are sourced from the engine's `src/tracing_channels.ts` rather than
- * verified against installed types (the engine is pre-1.0, so this surface can
- * drift). The watcher degrades to a pure no-op when nobody publishes on the
- * channel — i.e. when the peer is absent.
+ * `@adonisjs/queue` is not installed in this repo, so the payload shape is sourced
+ * from the engine's `src/tracing_channels.ts` rather than verified against
+ * installed types (the engine is pre-1.0, so this surface can drift). The channel
+ * NAME, however, is derived from Node's own `tracingChannel` rather than assumed —
+ * ver {@link ASYNC_END_CHANNEL}. The watcher degrades to a pure no-op when nobody
+ * publishes on the channel — i.e. when the peer is absent.
  */
 export const QUEUE_EXECUTE_CHANNEL = 'boringqueue.job.execute';
 
-/** Sub-channel the tracing channel fires once a traced execution settles. */
-const ASYNC_END_CHANNEL = `${QUEUE_EXECUTE_CHANNEL}:asyncEnd`;
+/**
+ * Sub-channel the tracing channel fires once a traced execution settles.
+ *
+ * O prefixo `tracing:` NÃO é decoração: é como o Node nomeia os sub-canais de um
+ * `diagnostics_channel.tracingChannel(name)` — `tracing:<name>:start`, `:asyncEnd`, etc. Assinar
+ * `<name>:asyncEnd` cria um canal novo, que ninguém publica, e o watcher fica surdo em silêncio.
+ *
+ * Era o caso até aqui, e em produção isso aparecia como `type=job` em ZERO com o worker
+ * executando jobs normalmente. Um watcher que não recebe nada é indistinguível de um sistema sem
+ * jobs — que é o pior formato possível de falha para uma ferramenta de observabilidade.
+ *
+ * Derivado do `tracingChannel` em vez de escrito à mão, para que o nome venha do Node e não de
+ * uma suposição sobre o Node. `subscribe`/`unsubscribe` do próprio objeto seriam mais diretos,
+ * mas o watcher precisa só do `asyncEnd`, e o `subscribe` do tracing channel exige o conjunto
+ * inteiro de handlers.
+ */
+const ASYNC_END_CHANNEL = diagnostics_channel.tracingChannel(QUEUE_EXECUTE_CHANNEL).asyncEnd.name;
 
 /** The terminal outcome of a single job execution attempt. */
 export type JobStatus = 'completed' | 'failed' | 'retrying';
