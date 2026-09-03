@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
-import { type BatchOrigin, type Entry, isBatchOrigin, type RecordInput } from '../entry.js';
+import { type BatchOrigin, type Entry, type RecordInput } from '../entry.js';
+import { resolveOrigin } from '../origin_scope.js';
 import type {
   BucketCountQuery,
   BucketCountRow,
@@ -38,7 +39,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
     const traceId = input.traceId !== undefined ? input.traceId : currentTraceId();
-    const origin: BatchOrigin = isBatchOrigin(input.origin) ? input.origin : 'manual';
+    const origin: BatchOrigin = resolveOrigin(input.origin);
     const entry: Entry<TContent> = {
       id: randomUUID(),
       type: input.type,

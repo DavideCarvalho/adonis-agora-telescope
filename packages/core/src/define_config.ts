@@ -156,6 +156,18 @@ export interface TelescopeConfig {
   sampling?: number | SamplingConfig;
 
   /**
+   * Persist liveness PROBES — the store reads a poll loop makes to ask "is there
+   * work?", which a producer marks by running them inside `runAsHeartbeat`.
+   *
+   * Default `false`, and that default is the point. Left recording, the durable
+   * worker's four probe queries at one tick per second were 57% of every entry in
+   * a measured 12h production window: the app's own 6.363 queries sat under
+   * 182.868 rows of the scheduler asking a question whose answer was almost always
+   * "no". Turn it on to debug the poll loop itself.
+   */
+  recordHeartbeat?: boolean;
+
+  /**
    * N+1 query-loop detection thresholds (read-only analysis over stored entries).
    * `threshold` is the minimum repetitions of one query template within a trace
    * to flag a loop (default 3). Set `enabled: false` to disable detection.
@@ -321,6 +333,8 @@ export interface ResolvedTelescopeConfig {
   redact: { enabled: boolean; keys: string[]; perType: Record<string, RedactBounds> };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
   sampling: SamplingConfig;
+  /** Whether liveness probes are persisted. Default `false`. */
+  recordHeartbeat: boolean;
   /** Resolved N+1 detection settings. */
   nPlusOne: { enabled: boolean; threshold: number };
   /** Resolved pulse-rollup settings. */
@@ -401,6 +415,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
       perType: config.redact?.perType ?? {},
     },
     sampling: resolveSampling(config.sampling),
+    recordHeartbeat: config.recordHeartbeat ?? false,
     nPlusOne: {
       enabled: config.nPlusOne?.enabled ?? true,
       threshold: config.nPlusOne?.threshold ?? 3,
