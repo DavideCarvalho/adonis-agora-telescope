@@ -40,7 +40,24 @@ describe('ScheduleWatcher registration registry', () => {
 describe('toRegisteredSchedule', () => {
   it('defaults kind to cron and normalizes a missing schedule/timezone to null', () => {
     const result = toRegisteredSchedule({ name: 'bare' }, Date.now());
-    expect(result).toMatchObject({ name: 'bare', kind: 'cron', schedule: null, timezone: null });
+    expect(result).toMatchObject({
+      name: 'bare',
+      kind: 'cron',
+      schedule: null,
+      timezone: null,
+      pool: null,
+    });
+  });
+
+  it('carries the pinned worker pool through to the listed schedule', () => {
+    // The durable extension fills `pool` from the schedule's pinned run-namespace, so the console
+    // can show which pool actually services a recurring run (the partition that keeps capability-
+    // bound steps off pools that cannot run them).
+    const result = toRegisteredSchedule(
+      { name: 'bula-harvest', kind: 'cron', schedule: '0 3 * * *', pool: 'bulas' },
+      Date.now(),
+    );
+    expect(result.pool).toBe('bulas');
   });
 });
 

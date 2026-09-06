@@ -567,6 +567,9 @@ export interface LiveScheduledTask {
   name: string;
   kind: ScheduleKind;
   schedule: string | null;
+  /** Worker pool the schedule's runs are pinned to (durable `namespace`); null/absent = not pinned
+   *  (older cores simply omit it). */
+  pool?: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastDurationMs: number | null;

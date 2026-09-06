@@ -83,6 +83,14 @@ export interface ScheduleRegistration {
    * for `kind: 'cron'`; passed straight through to `cron-parser`. Defaults to the server's local TZ.
    */
   timezone?: string | null;
+  /**
+   * Which WORKER POOL services this schedule's runs. The durable extension fills it from the
+   * schedule's pinned `namespace` (a run stamped for a pool is only polled/resumed by that pool —
+   * the partition that keeps capability-bound work, e.g. browser steps needing Chrome, off pools
+   * that cannot run it). `null`/absent = not pinned: whichever pool's tick wins the window fires
+   * the run and owns it.
+   */
+  pool?: string | null;
 }
 
 /**
@@ -97,6 +105,9 @@ export interface RegisteredSchedule {
   kind: ScheduleKind;
   schedule: string | null;
   timezone: string | null;
+  /** Worker pool the schedule's runs are pinned to (see {@link ScheduleRegistration.pool});
+   *  `null` when the registration set none. */
+  pool: string | null;
   /**
    * ISO timestamp of the next fire, computed from `schedule` via `cron-parser` (see
    * `cron_next_run.ts`). `null` when: the kind isn't `'cron'`, no `schedule` was given, the OPTIONAL
@@ -345,6 +356,7 @@ export function toRegisteredSchedule(reg: ScheduleRegistration, nowMs: number): 
   const kind: ScheduleKind = reg.kind ?? 'cron';
   const schedule = typeof reg.schedule === 'string' ? reg.schedule : null;
   const timezone = typeof reg.timezone === 'string' ? reg.timezone : null;
+  const pool = typeof reg.pool === 'string' ? reg.pool : null;
   const nextRunMs =
     kind === 'cron' && schedule !== null ? nextCronRunMs(schedule, nowMs, timezone) : null;
   return {
@@ -352,6 +364,7 @@ export function toRegisteredSchedule(reg: ScheduleRegistration, nowMs: number): 
     kind,
     schedule,
     timezone,
+    pool,
     nextRunAt: nextRunMs !== null ? new Date(nextRunMs).toISOString() : null,
   };
 }
