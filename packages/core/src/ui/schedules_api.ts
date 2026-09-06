@@ -17,6 +17,8 @@ export interface LiveScheduledTask {
   name: string;
   kind: RegisteredSchedule['kind'];
   schedule: string | null;
+  /** Worker pool the schedule is pinned to (see `ScheduleRegistration.pool`); `null` = not pinned. */
+  pool: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
   lastDurationMs: number | null;
@@ -56,6 +58,7 @@ export class SchedulesApi {
       name: reg.name,
       kind: reg.kind,
       schedule: reg.schedule,
+      pool: reg.pool,
       nextRunAt: reg.nextRunAt,
       lastRunAt: last ? toIso(last.createdAt) : null,
       lastDurationMs: content?.durationMs ?? last?.durationMs ?? null,

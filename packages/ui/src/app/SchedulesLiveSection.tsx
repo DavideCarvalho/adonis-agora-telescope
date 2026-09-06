@@ -42,6 +42,7 @@ function ScheduleRow({ task }: { task: LiveScheduledTask }) {
       <TableCell>
         <KindBadge kind={task.kind} />
       </TableCell>
+      <TableCell className="mono text-xs text-muted-foreground">{task.pool ?? '—'}</TableCell>
       <TableCell className="mono text-xs text-muted-foreground">{task.schedule ?? '—'}</TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {formatNextRun(task.nextRunAt)}
