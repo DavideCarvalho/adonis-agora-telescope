@@ -3,7 +3,7 @@ import {
   type AccessDeniedOption,
   resolveAccessDeniedPage,
 } from './access_denied_page.js';
-import type { AuthorizeHook } from './define_config.js';
+import type { AuthorizeHook, AuthorizeResult } from './define_config.js';
 import type { UiHttpContext } from './http.js';
 
 /** The outcome of an authorization check. */
@@ -21,22 +21,37 @@ export interface GuardResult {
  * decision into a {@link GuardResult}. Framework-light: takes the same minimal
  * HTTP context the handlers do, so it is unit-testable without a server.
  *
- * Denials are distinguished:
- * - **401** when the request presented NO credential at all (an `Authorization`
- *   header is absent and no `?token`) — prompts the host/browser to authenticate;
- * - **403** when a credential WAS presented but rejected (wrong token/password).
+ * The hook may return a bare `boolean` OR an {@link AuthorizeDecision}
+ * (`{ allowed, reason? }`) — see that type for the full rationale. A denial's status is decided,
+ * in order:
+ * 1. An explicit `reason` on an {@link AuthorizeDecision} wins outright: `'unauthenticated'` → `401`,
+ *    `'forbidden'` → `403`. This is the escape hatch for a hook that authenticates some way the guard
+ *    cannot see by inspecting the request (a session cookie, most commonly — e.g.
+ *    `@adonis-agora/authz`'s `authorizeByRoles`).
+ * 2. Otherwise (a bare `false`, or `{ allowed: false }` with no `reason`) the REQUEST-SHAPE heuristic
+ *    this guard has always used runs: **401** when the request presented NO credential at all (an
+ *    `Authorization` header is absent and no `?token`) — prompts the host/browser to authenticate;
+ *    **403** when a credential WAS presented but rejected (wrong token/password). Built for this
+ *    library's own `credentials: { token, basic }` gate, where "no credential in the request" and
+ *    "not authenticated" are the same fact — a hook authenticating another way should prefer (1).
  *
  * Any error thrown by a custom `authorize` hook fails closed (403) rather than
  * leaking the dashboard.
  */
 export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Promise<GuardResult> {
-  let allowed: boolean;
+  let result: AuthorizeResult;
   try {
-    allowed = await authorize(ctx);
+    result = await authorize(ctx);
   } catch {
     return { allowed: false, status: 403, message: 'Forbidden' };
   }
+
+  const allowed = typeof result === 'boolean' ? result : result.allowed;
   if (allowed) return { allowed: true };
+
+  const reason = typeof result === 'boolean' ? undefined : result.reason;
+  if (reason === 'unauthenticated') return { allowed: false, status: 401, message: 'Unauthorized' };
+  if (reason === 'forbidden') return { allowed: false, status: 403, message: 'Forbidden' };
 
   const presentedCredential =
     ctx.request.header('authorization') !== undefined || typeof ctx.request.qs().token === 'string';

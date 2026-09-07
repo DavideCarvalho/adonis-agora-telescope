@@ -147,7 +147,9 @@ export default defineConfig({
 ```
 
 - The user comes from `ctx.auth.getUser()` (authkit) or `ctx.auth.user` (any guard), so it
-  works with or without authkit.
+  works with or without authkit — including a plain AdonisJS **session cookie**, a
+  completely ordinary auth pattern that has nothing to do with this library's own
+  `credentials.token`/`credentials.basic` gate.
 - `effectiveRoles` includes global token claims **and** app-level DB roles; `roles` is
   any-of (passes when the user holds at least one).
 - No authenticated user → `false` (the guard answers `401`/`403`, or honors a redirect you
@@ -157,6 +159,36 @@ export default defineConfig({
 
 The same helper works across every `@adonis-agora` dashboard — telescope, durable, media
 and agent — so one RBAC gate config reads the same everywhere.
+
+<Callout type="warn">
+Composed as-is, `authorizeByRoles` returns a bare `boolean` — so BOTH a genuinely-anonymous
+request and an authenticated-but-wrong-role request deny with `false`, and the guard's
+request-shape heuristic (below) answers `401` for both: it only recognizes the built-in
+`credentials.token`/`credentials.basic` gate, and has no way to see a session cookie.
+The wrong-role case should really be `403`. Wrap the call and return the enriched
+{@link AuthorizeDecision} (`{ allowed, reason }`) form to tell the guard which denial this
+is:
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@adonis-agora/telescope/ui'
+import { authorizeByRoles } from '@adonis-agora/authz'
+
+const requireAdmin = authorizeByRoles({ roles: ['ADMIN'] })
+
+export default defineConfig({
+  authorize: async (ctx) => {
+    if (await requireAdmin(ctx)) return true
+    // authorizeByRoles said no — was anybody signed in at all?
+    const { auth } = ctx as unknown as { auth: { user?: unknown } }
+    return { allowed: false, reason: auth.user !== undefined ? 'forbidden' : 'unauthenticated' }
+  },
+})
+```
+
+Now a signed-in user missing the `ADMIN` role gets a precise `403`, and an anonymous
+visitor still gets `401` — see [Guard behaviour](#guard-behaviour) below for exactly how
+the guard uses `reason`.
+</Callout>
 
 ## Built-in login screen
 
@@ -234,14 +266,34 @@ denial cases so clients and browsers behave correctly:
 
 | Outcome                                                     | Status | Meaning                                            |
 | ---------------------------------------------------------- | ------ | -------------------------------------------------- |
-| `authorize` returned `true`                                | —      | Request proceeds to the handler.                   |
-| Denied, **no** credential presented                        | `401`  | "Authenticate" — sends `WWW-Authenticate` so a browser prompts. |
-| Denied, a credential **was** presented but rejected        | `403`  | "Forbidden" — wrong token/password.                |
+| `authorize` returned `true` (or `{ allowed: true }`)       | —      | Request proceeds to the handler.                   |
+| Denied with `reason: 'unauthenticated'`                    | `401`  | "Authenticate" — sends `WWW-Authenticate` so a browser prompts. |
+| Denied with `reason: 'forbidden'`                          | `403`  | "Forbidden" — signed in, but not allowed.           |
+| Denied (`false`, or `{ allowed: false }` with no `reason`), **no** credential presented | `401` | Same "Authenticate" outcome, decided by the fallback heuristic below. |
+| Denied (`false`, or `{ allowed: false }` with no `reason`), a credential **was** presented but rejected | `403` | Same "Forbidden" outcome, decided by the fallback heuristic below. |
 | `authorize` **threw**                                      | `403`  | Fail-closed — a buggy hook never accidentally opens the door. |
 | Denied, but the hook already set a `location` header       | —      | The hook's redirect stands; the guard writes no status and no body. |
 
-"Presented a credential" means an `Authorization` header was present or a `?token=` was in
-the query string.
+### Bare `boolean` vs the enriched `{ allowed, reason }` return
+
+An `authorize` hook may return a plain `boolean` (as every example above does) **or** an
+object, `{ allowed: boolean, reason?: 'unauthenticated' | 'forbidden' }`. Both are
+backward compatible — a hook returning a bare `boolean` today keeps behaving byte-for-byte
+the same.
+
+The `reason` is the escape hatch. It only matters on a denial (`allowed: false`), and it
+exists because the guard cannot see how a custom hook authenticates. Its fallback
+heuristic — "presented a credential" means an `Authorization` header was present or a
+`?token=` was in the query string — was built for this library's OWN
+`credentials.token`/`credentials.basic` gate, where "no credential in the request" and
+"not authenticated" are the same fact. A hook that authenticates some **other** way
+(a session cookie, most commonly — see the `authorizeByRoles` example above) can bypass
+that heuristic entirely by setting `reason` explicitly:
+
+- `reason: 'unauthenticated'` → always `401`, regardless of what the request looked like.
+- `reason: 'forbidden'` → always `403`, regardless of what the request looked like.
+- `reason` omitted → falls back to the request-shape heuristic, exactly like a bare
+  `false` always has.
 
 <Callout type="warn">
 The guard runs on every route that serves recorded data — every `/api/*` endpoint (including

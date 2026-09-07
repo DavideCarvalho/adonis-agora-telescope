@@ -1,4 +1,5 @@
 import type {
+  AccessDeniedInfo,
   AccessDeniedOption as GenericAccessDeniedOption,
   AccessDeniedRenderer as GenericAccessDeniedRenderer,
 } from './access_denied_page.js';
@@ -23,12 +24,50 @@ export type AccessDeniedRenderer = GenericAccessDeniedRenderer<UiHttpContext>;
 export type AccessDeniedOption = GenericAccessDeniedOption<UiHttpContext>;
 
 /**
- * The decision hook gating the dashboard + JSON API. Return `true` to allow the
- * request through, `false` to reject it (the guard answers 401/403). It receives
- * the (framework-light) HTTP context, so a host can inspect headers, a session,
- * an injected user — whatever its own auth exposes. Sync or async.
+ * The enriched form of an {@link AuthorizeHook}'s return value: a plain `allowed` plus an OPTIONAL
+ * `reason` telling the guard exactly which denial this is, instead of it having to guess.
+ *
+ * Return this instead of a bare `boolean` when your hook authenticates some way the guard cannot see
+ * by inspecting the request itself — most commonly a session cookie (e.g.
+ * `@adonis-agora/authz`'s `authorizeByRoles`, which reads `ctx.auth`). Without a `reason` the guard
+ * falls back to its request-shape heuristic (see {@link AuthorizeHook}), which only recognizes the
+ * built-in `credentials.token`/`credentials.basic` gate — a session-authenticated-but-wrong-role
+ * request would otherwise come back `401` ("please authenticate") when it should be `403`
+ * ("you're signed in, but not allowed").
+ *
+ * `reason` reuses the same vocabulary as {@link AccessDeniedInfo.reason}, so a hook and a custom
+ * `accessDenied` renderer speak the same two words:
+ * - `'unauthenticated'` → the guard answers `401` (nobody is signed in).
+ * - `'forbidden'` → the guard answers `403` (signed in, but not authorized).
  */
-export type AuthorizeHook = (ctx: UiHttpContext) => boolean | Promise<boolean>;
+export interface AuthorizeDecision {
+  /** Whether the request may proceed. */
+  allowed: boolean;
+  /**
+   * Why `allowed` is `false`. Omit it to fall back to the guard's request-shape heuristic (the same
+   * one a bare `false` return gets) — useful when the hook itself doesn't know which case applies.
+   */
+  reason?: 'unauthenticated' | 'forbidden';
+}
+
+/** What an {@link AuthorizeHook} may return: either form, sync or async. */
+export type AuthorizeResult = boolean | AuthorizeDecision;
+
+/**
+ * The decision hook gating the dashboard + JSON API. Return `true` to allow the
+ * request through, `false` to reject it. It receives the (framework-light) HTTP
+ * context, so a host can inspect headers, a session, an injected user — whatever
+ * its own auth exposes. Sync or async.
+ *
+ * A bare `false` denial is translated to `401`/`403` by a heuristic: `401` when the request presents
+ * no `Authorization` header and no `?token`, `403` otherwise. That heuristic was built for this
+ * library's OWN `credentials: { token, basic }` gate, where "no credential in the request" and "not
+ * authenticated" are the same fact. A host authenticating some other way — a session cookie, most
+ * commonly — can return an {@link AuthorizeDecision} (`{ allowed, reason }`) instead of a bare
+ * boolean to tell the guard precisely which denial this is, bypassing the heuristic entirely. See
+ * {@link AuthorizeDecision} and the "Delegate to your app's auth" doc section.
+ */
+export type AuthorizeHook = (ctx: UiHttpContext) => AuthorizeResult | Promise<AuthorizeResult>;
 
 /**
  * Built-in credential gate used by the default {@link AuthorizeHook} when no
