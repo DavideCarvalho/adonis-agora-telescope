@@ -53,6 +53,11 @@ export interface DiagnosticEntryContent {
   traceId: string | null;
   /** The library-defined payload, recorded as-is. */
   payload: unknown;
+  /**
+   * Wall-clock duration of the operation this event describes, in milliseconds, or
+   * `null` when absent. See {@link DiagnosticEvent.durationMs}.
+   */
+  durationMs: number | null;
 }
 
 /**
@@ -165,6 +170,7 @@ export class DiagnosticsWatcher {
 /** Map a {@link DiagnosticEvent} envelope to a Telescope {@link RecordInput}. */
 export function buildDiagnosticEntry(msg: DiagnosticEvent): RecordInput<DiagnosticEntryContent> {
   const traceId = msg.traceId ?? null;
+  const durationMs = msg.durationMs ?? null;
   const content: DiagnosticEntryContent = {
     // Tolerate envelopes from emitters that predate schema versioning.
     v: msg.v ?? null,
@@ -173,6 +179,7 @@ export function buildDiagnosticEntry(msg: DiagnosticEvent): RecordInput<Diagnost
     ts: msg.ts,
     traceId,
     payload: msg.payload,
+    durationMs,
   };
   return {
     type: DIAGNOSTIC_ENTRY_TYPE,
@@ -182,5 +189,9 @@ export function buildDiagnosticEntry(msg: DiagnosticEvent): RecordInput<Diagnost
     content,
     // Carry the producer-resolved trace id (it knows the emitting context best).
     traceId,
+    // Surface on the standard cross-type field too, so the dashboard's duration
+    // sort/filter and the OTel bridge (packages/core/src/otel/mapper.ts) both read
+    // ONE place regardless of entry type, instead of digging into `content`.
+    durationMs,
   };
 }

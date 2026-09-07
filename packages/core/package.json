@@ -92,6 +92,11 @@
       "types": "./dist/providers/telescope_cpu_profiling_provider.d.ts",
       "import": "./dist/providers/telescope_cpu_profiling_provider.js",
       "default": "./dist/providers/telescope_cpu_profiling_provider.js"
+    },
+    "./otel": {
+      "types": "./dist/src/otel/index.d.ts",
+      "import": "./dist/src/otel/index.js",
+      "default": "./dist/src/otel/index.js"
     }
   },
   "files": [
@@ -119,6 +124,12 @@
     "@adonisjs/lucid": "^22.4.0",
     "@adonisjs/mail": "^10.2.0",
     "@anthropic-ai/sdk": ">=0.32.0 <1.0.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-logs-otlp-http": ">=0.200.0 <1.0.0",
+    "@opentelemetry/exporter-trace-otlp-http": ">=0.200.0 <1.0.0",
+    "@opentelemetry/resources": "^2.0.0",
+    "@opentelemetry/sdk-logs": ">=0.200.0 <1.0.0",
+    "@opentelemetry/sdk-trace-base": "^2.0.0",
     "cron-parser": "^4.0.0 || ^5.0.0"
   },
   "peerDependenciesMeta": {
@@ -134,6 +145,24 @@
     "@anthropic-ai/sdk": {
       "optional": true
     },
+    "@opentelemetry/api": {
+      "optional": true
+    },
+    "@opentelemetry/exporter-logs-otlp-http": {
+      "optional": true
+    },
+    "@opentelemetry/exporter-trace-otlp-http": {
+      "optional": true
+    },
+    "@opentelemetry/resources": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-logs": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-trace-base": {
+      "optional": true
+    },
     "cron-parser": {
       "optional": true
     }
@@ -143,6 +172,12 @@
     "@adonisjs/core": "7.5.0",
     "@adonisjs/lucid": "22.4.2",
     "@anthropic-ai/sdk": "0.122.0",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/exporter-logs-otlp-http": "0.220.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.220.0",
+    "@opentelemetry/resources": "2.10.0",
+    "@opentelemetry/sdk-logs": "0.220.0",
+    "@opentelemetry/sdk-trace-base": "2.10.0",
     "@tanstack/intent": "^0.3.7",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "26.4.0",
@@ -163,6 +198,9 @@
     "diagnostics",
     "tracing",
     "agora",
-    "tanstack-intent"
+    "tanstack-intent",
+    "opentelemetry",
+    "otlp",
+    "grafana"
   ]
 }

@@ -12,6 +12,7 @@ import {
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import type { ExtensionContext } from '../src/extension/types.js';
+import type { OtelExporter } from '../src/otel/otel_exporter.js';
 import { OverloadGuard, type PauseController } from '../src/overload_guard.js';
 import { TelescopePruner } from '../src/pruner.js';
 import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
@@ -56,6 +57,7 @@ export default class TelescopeProvider {
   private entryEvents: EntryEvents | null = null;
   private pruner: TelescopePruner | null = null;
   private overloadGuard: OverloadGuard | null = null;
+  private otelExporter: OtelExporter | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -71,10 +73,11 @@ export default class TelescopeProvider {
 
   async boot() {
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
-    const store = this.applyStreaming(
-      this.applySampling(this.applyRedaction(await this.buildStore(config), config), config),
+    const sampled = this.applySampling(
+      this.applyRedaction(await this.buildStore(config), config),
       config,
     );
+    const store = this.applyStreaming(await this.applyOtel(sampled, config), config);
     this.store = store;
 
     if (!config.enabled) {
@@ -223,6 +226,43 @@ export default class TelescopeProvider {
     return new StreamingTelescopeStore(store, this.entryEvents);
   }
 
+  /**
+   * Wrap the store with the OTel-export decorator, PLACED AFTER redaction +
+   * sampling (mirroring {@link applyStreaming}'s positioning) so it only ever
+   * exports the final, already-scrubbed, post-sampling entry — see
+   * {@link OtelExportingTelescopeStore}'s doc for exactly why that ordering
+   * matters. Skipped entirely when `config.otel.enabled` is `false` (the
+   * default): the dynamic `import()` below is the ONLY place any
+   * `@opentelemetry/*` package is ever loaded, so a host who never opts in never
+   * needs those peers installed.
+   *
+   * A missing/incompatible OTel package degrades to a LOGGED NO-OP rather than a
+   * boot crash — turning on `otel.enabled` without `npm i`-ing its peers should
+   * not take down the whole app, just leave the feature dark.
+   */
+  private async applyOtel(
+    store: TelescopeStore,
+    config: ResolvedTelescopeConfig,
+  ): Promise<TelescopeStore> {
+    if (!config.otel.enabled) return store;
+    try {
+      const [{ createOtelExporter }, { OtelExportingTelescopeStore }] = await Promise.all([
+        import('../src/otel/otel_exporter.js'),
+        import('../src/otel/otel_exporting_store.js'),
+      ]);
+      const exporter = createOtelExporter(config.otel);
+      this.otelExporter = exporter;
+      return new OtelExportingTelescopeStore(store, exporter, config.otel.entryTypes);
+    } catch (err) {
+      console.error(
+        '@adonis-agora/telescope: config.otel.enabled is true, but its @opentelemetry/* peers ' +
+          'could not be loaded (are they installed?). OTel export is disabled for this boot:',
+        err,
+      );
+      return store;
+    }
+  }
+
   /** Construct the extension registry, giving each extension a context over the store + container. */
   private buildExtensionRegistry(
     config: ResolvedTelescopeConfig,
@@ -248,6 +288,10 @@ export default class TelescopeProvider {
     this.logsWatcher = null;
     this.entryEvents?.clear();
     this.entryEvents = null;
+    // Flush any batched-but-unsent spans/logs before the process (or test) tears
+    // down, so a graceful shutdown never silently drops the tail of a trace.
+    await this.otelExporter?.shutdown();
+    this.otelExporter = null;
     resetTelescopeRuntime();
   }
 }

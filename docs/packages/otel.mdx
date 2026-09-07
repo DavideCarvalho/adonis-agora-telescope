@@ -1,0 +1,250 @@
+---
+title: "OTel export"
+icon: Radio
+description: Ship recorded Telescope entries — starting with every agora:<lib>:<event> diagnostics event — as OTLP spans and logs to a self-hosted OTel Collector, so the whole Agora ecosystem shows up in Grafana (Tempo/Loki) with zero per-lib code.
+---
+
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Telescope's generic [diagnostics watcher](/docs/telescope/concepts/capture) already captures
+every `agora:<lib>:<event>` any Agora library emits — no per-lib code, just one watcher reading
+`node:diagnostics_channel`. OTel export takes that SAME already-captured stream and, when
+turned on, converts it into OTLP spans (for timed operations) and logs (for point-in-time
+events), batched and shipped to an OTel Collector — which then routes them into Tempo (traces),
+Loki (logs), and Grafana visualizes both. No library in the ecosystem needs new code: Telescope
+already sees everything through the diagnostics registry, so this is one new capability, not
+N per-lib bridges.
+
+<Callout type="info">
+This is a v1: **traces and logs**. Metrics are intentionally deferred — see [Future
+work](#future-work) for why.
+</Callout>
+
+## Install
+
+OTel export lives inside `@adonis-agora/telescope` — no separate subpath/provider, since it
+plugs into the SAME store chain redaction/sampling/streaming already use. Turning it on needs
+two things: the config, and the OTel packages it lazily imports.
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm i @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/sdk-logs \
+  @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-logs-otlp-http \
+  @opentelemetry/resources
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm add @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/sdk-logs \
+  @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-logs-otlp-http \
+  @opentelemetry/resources
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn add @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/sdk-logs \
+  @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-logs-otlp-http \
+  @opentelemetry/resources
+```
+
+</Tab>
+</Tabs>
+
+<Callout type="warn">
+All six are OPTIONAL peers. They are never imported unless `otel.enabled` is `true` in
+`config/telescope.ts` — a host that never turns this on never needs them installed, and
+`@adonis-agora/telescope` never pulls them in as a hard dependency. If you enable it without
+installing them, boot logs an error and telescope disables OTel export for that run instead of
+crashing.
+</Callout>
+
+## Configuration
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  otel: {
+    enabled: true,
+    endpoint: 'http://localhost:4318',   // your OTel Collector's OTLP/HTTP port
+    headers: {},                          // e.g. { Authorization: 'Bearer <token>' } for a hosted ingress
+    serviceName: 'my-app',
+    entryTypes: ['diagnostic'],          // which recorded entry types get exported
+    timeoutMs: 5000,
+  },
+})
+```
+
+| Key           | Default                    | Description                                                                 |
+| ------------- | --------------------------- | ----------------------------------------------------------------------------|
+| `enabled`     | `false`                     | Master switch. Genuinely opt-in — no `@opentelemetry/*` import happens while off. |
+| `endpoint`    | `'http://localhost:4318'`   | Base URL of the OTLP/HTTP receiver (the Collector's own default port).      |
+| `tracesPath`  | `'/v1/traces'`              | Appended to `endpoint` for the traces signal.                              |
+| `logsPath`    | `'/v1/logs'`                | Appended to `endpoint` for the logs signal.                                |
+| `headers`     | `{}`                        | Extra HTTP headers on every export request (auth for a hosted Collector ingress). |
+| `serviceName` | `OTEL_SERVICE_NAME` env, else `'adonis-app'` | The `service.name` resource attribute stamped on every span/log.  |
+| `entryTypes`  | `['diagnostic']`            | Which recorded entry TYPES get exported. Widen later (e.g. `'request'`) as the mapper grows. |
+| `timeoutMs`   | `5000`                      | Per-export HTTP timeout.                                                    |
+
+## The mapping: diagnostics entry → span or log
+
+This is the crux of the feature, and it is a PURE, independently unit-tested function
+(`packages/core/src/otel/mapper.ts`, also importable standalone from
+`@adonis-agora/telescope/otel` with zero OTel packages required) — the rest of this page is
+really just documenting what that function does.
+
+Every recorded entry already has a uniform shape (`type`, `content`, `tags`, `durationMs`,
+`traceId`, `createdAt`). For a `diagnostic` entry specifically, `content` is `{ lib, event, ts,
+traceId, payload, durationMs }` — exactly what `@adonis-agora/diagnostics`'s wire envelope
+carries.
+
+**1. Has a duration → SPAN.** The mapper looks for a duration in two places:
+
+- the entry's own top-level `durationMs` — set whenever the emitting library called
+  `emit(lib, event, payload, { durationMs })`;
+- otherwise, a numeric `payload.durationMs` — the convention a library uses when it stuffs a
+  richer lifecycle-event object as the payload. `@adonis-agora/durable`'s diagnostics bridge is
+  exactly this shape: `emit('durable', event.type, event)`, where `event` (a `step.completed` /
+  `run.failed` / …) already carries its own `durationMs`.
+
+The span's start time is reconstructed as `end - durationMs` — the event is ALREADY FINISHED
+by the time Telescope observes it (there is no live span to attach to, only a historical
+record). This is the same reconstruction technique `@adonis-agora/durable`'s own bespoke OTel
+bridge (`attachDurableOtel`) uses for its step spans.
+
+**2. No duration → LOG.** A point-in-time occurrence (`agora:cache:hit`, a one-shot
+notification, …) becomes an OTel log record instead of a zero-duration span — more idiomatic
+(Loki, not Tempo, is where "something happened" belongs) and cheaper.
+
+**Both forms share:**
+
+- a name/body of `agora.<lib>.<event>` — the SAME naming
+  `@adonis-agora/diagnostics`'s own OTel bridge uses for the identical channels, so a host
+  running both sees consistent naming;
+- flattened scalar/array `payload` fields as `agora.payload.<key>` attributes;
+- `agora.lib`, `agora.event`, and `agora.entry_id` (the Telescope entry id — click through from
+  a Grafana span/log straight back to the exact entry in the Telescope dashboard);
+- error detection: the SAME `isErrorEntry` heuristic the sampling store's `keepErrors` already
+  uses (tags include `failed`, `content.failed === true`, `content.statusCode >= 500`, or a
+  warn/error/fatal `content.level`), PLUS two diagnostics-specific additions it can't see on its
+  own — a truthy `payload.error` field, or an `event` name containing `error`/`fail`
+  (`'run.failed'`, `'step.failed'`, …). A span becomes `ERROR` status; a log gets promoted to
+  `ERROR` severity (unless an explicit `payload.level` says otherwise).
+
+### Trace correlation
+
+`entry.traceId` is whatever `@adonis-agora/context` resolved at record time — either a fresh
+random 16-byte value, or (when the inbound HTTP request carried one) the exact W3C
+`traceparent` trace-id, parsed byte-for-byte. When it is present and well-formed (32 lowercase
+hex chars, not all-zero), the exporter parents the reconstructed span/log under a SYNTHESIZED
+remote-parent `SpanContext` carrying that trace id — so Tempo/Loki group it into the SAME
+trace an upstream, actually-instrumented service produced, even though Telescope's span was
+built after the fact from a diagnostics event rather than from a live OTel context. The
+synthetic parent span id never resolves to a real span in the backend — Tempo groups by trace
+id, so this is enough for correlation without needing one.
+
+`agora.trace_id` is ALSO kept as a plain attribute regardless of W3C validity, purely for
+search/filter inside Grafana — it's whatever `@adonis-agora/context` produced, which may not
+always be a strict W3C id (e.g. a host-supplied custom trace id hook).
+
+## Redaction, sampling, and the overload guard
+
+The OTel exporter is wired in as a `TelescopeStore` decorator, positioned in the SAME chain
+redaction/sampling/streaming already use:
+
+- **Redaction happens first.** The decorator calls the inner store's `record()` and exports
+  from the RETURNED entry — never the raw input — so whatever the redaction pipeline masked
+  (`authorization`, `password`, `token`, `secret`, …) is what leaves the process as OTel
+  attributes/log bodies. Exporting to an external Collector is a strictly bigger exfiltration
+  surface than the local Telescope store, so it must never see anything the local store itself
+  wasn't already allowed to keep.
+- **Sampling is SHARED, not independent.** There is no separate OTel sampling rate. A sampled-away
+  entry never reaches the exporter — the SAME tail-sampling decision `config.sampling` makes for
+  local storage applies to OTel export. This was a deliberate choice over giving OTel export its
+  own rate: an entry dropped from Telescope storage almost always SHOULD also be dropped from
+  export (it's noise either way), and a second independent knob would double the ways to
+  misconfigure "why am I not seeing this event anywhere."
+- **The overload guard is honoured.** While the guard has paused ingestion (event-loop p99 lag
+  over threshold), no NEW export work starts either — entries still record normally, but the
+  OTLP HTTP call is skipped until load recovers. Telescope's own health can never be made worse
+  by its own OTel export.
+
+## Receiving end: a minimal OTel Collector config
+
+You're not setting up Grafana itself here — just the Collector that receives Telescope's OTLP
+export and routes it to Tempo (traces) and Loki (logs). A minimal `otelcol` config:
+
+```yaml title="otelcol-config.yaml"
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [loki]
+```
+
+Point `config/telescope.ts`'s `otel.endpoint` at this Collector's `http://<host>:4318`, add
+Tempo + Loki as Grafana data sources, and traces/logs from every `@adonis-agora/*` library show
+up correlated by trace id — no per-lib Grafana wiring.
+
+## Future work
+
+- **Metrics are deferred.** Turning arbitrary, heterogeneous diagnostics payloads into
+  meaningful COUNTERS/HISTOGRAMS needs per-event semantic knowledge (is `payload.amount` a
+  gauge, a counter increment, or just an attribute?) that spans/logs don't need — a span or log
+  is a reasonable default for ANY event, but a metric is not. A future iteration could add an
+  opt-in convention (e.g. a `metric: { name, kind, value }` field libraries can stamp onto their
+  payload) rather than guessing.
+- **Real span reconstruction from `trace()`'s span sub-channels.** `@adonis-agora/diagnostics`
+  also publishes proper start/end/error phase events on five sub-channels per `(lib, event)`
+  pair (mirroring Node's own `tracingChannel`) for libraries that use its `trace()` helper
+  instead of `emit()`. No library in the ecosystem uses it yet, and those sub-channel names
+  aren't in the discovery registry the generic diagnostics watcher reads — bridging them would
+  need its own subscription + redaction + sampling pass, independent of the entry-based
+  mechanism this page documents. Deferred until a library actually adopts `trace()`.
+- **`@adonis-agora/durable`'s bespoke `otel/durable-otel.ts` bridge can likely be simplified (or
+  removed) once this ships.** Durable already bridges its own engine lifecycle events onto the
+  diagnostics bus as `agora:durable:<type>` (see `diagnostics-bridge.ts`), with `durationMs`
+  nested in the payload — exactly the shape this mapper resolves as a fallback. The one thing
+  durable's bespoke bridge gives that this generic one does not (yet) is proper span
+  PARENTING (a real root-span-per-run with child-spans-per-step, reconstructed via an in-process
+  `Map<runId, Span>`) — this generic bridge parents everything under the resolved trace id only,
+  not under a sibling span. If that parenting fidelity matters less than "one fewer bespoke OTel
+  integration to maintain," durable's bridge is a candidate for retirement. Out of scope here —
+  flagged for a follow-up, not touched.
+
+## Notable exports
+
+- `defineConfig`, `resolveConfig` (main `@adonis-agora/telescope` entry); types `OtelConfig`,
+  `ResolvedOtelConfig`.
+- `@adonis-agora/telescope/otel` — the PURE mapping surface, importable without any OTel
+  package installed: `mapEntryToOtel`, `resolveDurationMs`, `isValidW3cTraceId`; types
+  `SpanExportInput`, `LogExportInput`, `MappedEntry`, `AttributeMap`, `AttributeValue`.
