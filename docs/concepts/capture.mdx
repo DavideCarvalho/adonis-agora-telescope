@@ -236,6 +236,12 @@ never imported):
 When those packages aren't installed, the readers return `undefined`: no trace
 correlation, no diagnostic entries — but the request watcher still works standalone.
 
+<Callout type="info">
+Everything the diagnostics watcher captures here can ALSO be shipped as OTLP spans/logs to a
+self-hosted OTel Collector (→ Tempo/Loki/Grafana), turned on with one `otel: { enabled: true }`
+block — no per-library code. See [OTel export](/docs/telescope/packages/otel).
+</Callout>
+
 ## Response status
 
 A `request` entry's `status` is read from the response, and hosts disagree on how to expose

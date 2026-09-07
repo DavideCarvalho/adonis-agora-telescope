@@ -69,6 +69,15 @@ export interface DiagnosticEvent<TPayload = unknown> {
   traceId?: string;
   /** The library-defined payload. */
   payload: TPayload;
+  /**
+   * Wall-clock duration of the operation this event describes, in milliseconds,
+   * when known — stamped by `@adonis-agora/diagnostics`'s `emit(..., { durationMs })`.
+   * Absent on a point-in-time event with no associated duration, and on envelopes
+   * from an `@adonis-agora/diagnostics` version that predates this field. Read by the
+   * OTel bridge ({@link ../otel/mapper.js}) to decide span-vs-log; see its docs for
+   * the full mapping (including the `payload.durationMs` fallback some libs use).
+   */
+  durationMs?: number;
 }
 
 /** Strict structural validation of a diagnostics envelope. */
@@ -82,6 +91,7 @@ export function isDiagnosticEvent(msg: unknown): msg is DiagnosticEvent {
     'payload' in m &&
     (m.traceId === undefined || typeof m.traceId === 'string') &&
     // Tolerate legacy envelopes without `v`; reject a malformed (non-number) one.
-    (m.v === undefined || typeof m.v === 'number')
+    (m.v === undefined || typeof m.v === 'number') &&
+    (m.durationMs === undefined || typeof m.durationMs === 'number')
   );
 }

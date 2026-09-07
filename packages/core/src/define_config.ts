@@ -21,6 +21,10 @@ const DEFAULT_PRUNE_INTERVAL_MS = 60_000;
 const DEFAULT_MAX_EVENT_LOOP_LAG_MS = 200;
 /** Default startup grace (ms) the overload guard discards before it can pause. */
 const DEFAULT_STARTUP_GRACE_MS = 5_000;
+/** Default OTel Collector OTLP/HTTP endpoint (the Collector's own default port). */
+const DEFAULT_OTEL_ENDPOINT = 'http://localhost:4318';
+/** Default per-export OTLP HTTP timeout (ms). */
+const DEFAULT_OTEL_TIMEOUT_MS = 5_000;
 
 /**
  * Sensitive-data redaction applied to EVERY entry's content before it is
@@ -222,6 +226,59 @@ export interface TelescopeConfig {
    * overload guard's shed flag. See {@link ClientErrorsConfig}.
    */
   clientErrors?: ClientErrorsConfig;
+
+  /**
+   * OTel export: converts recorded entries into OTLP spans/logs shipped to a
+   * self-hosted OTel Collector (→ Tempo/Loki/Grafana or any OTLP-compatible
+   * backend). OFF by default — set `enabled: true` (plus an `endpoint`, unless the
+   * Collector default `http://localhost:4318` is right) to turn it on. When
+   * disabled, none of the `@opentelemetry/*` packages are ever imported: they stay
+   * genuinely optional peers. See {@link OtelConfig} and the `otel` docs page for
+   * the exact diagnostics-entry → span/log mapping.
+   */
+  otel?: OtelConfig;
+}
+
+/**
+ * OTel export configuration (see {@link TelescopeConfig.otel}). Exports already
+ * REDACTED, post-SAMPLING `diagnostic` entries (by default) as OTLP spans (for
+ * entries carrying a duration) or logs (point-in-time entries), correlated by the
+ * entry's resolved trace id. See `packages/core/src/otel/mapper.ts` for the
+ * mapping rules and `docs/packages/otel.mdx` for a receiving-end Collector config.
+ */
+export interface OtelConfig {
+  /** Master switch. Default `false` — genuinely opt-in, and zero-cost while off. */
+  enabled?: boolean;
+  /**
+   * Base URL of the OTLP HTTP receiver (an OTel Collector, or any OTLP-compatible
+   * backend). Default `'http://localhost:4318'` — the Collector's own default OTLP/HTTP
+   * port. `tracesPath`/`logsPath` are appended to it.
+   */
+  endpoint?: string;
+  /** Path appended to `endpoint` for the traces signal. Default `'/v1/traces'`. */
+  tracesPath?: string;
+  /** Path appended to `endpoint` for the logs signal. Default `'/v1/logs'`. */
+  logsPath?: string;
+  /**
+   * Extra HTTP headers sent with every export request — e.g. an `Authorization`
+   * bearer token for a hosted Collector ingress. Default `{}`.
+   */
+  headers?: Record<string, string>;
+  /**
+   * The `service.name` resource attribute stamped on every exported span/log, so
+   * Grafana can filter/group by which app produced them. Defaults to
+   * `process.env.OTEL_SERVICE_NAME`, else `'adonis-app'`.
+   */
+  serviceName?: string;
+  /**
+   * Which recorded entry TYPES are exported. Default `['diagnostic']` — the
+   * generic diagnostics watcher's entries, per the mapping this feature exists
+   * for. Widen it (e.g. add `'request'`) once you also want those exported; the
+   * mapper degrades any entry without an interpretable shape to a plain log.
+   */
+  entryTypes?: string[];
+  /** Per-export HTTP timeout, in ms. Default `5000`. */
+  timeoutMs?: number;
 }
 
 /** Diagnostics-watcher configuration (see {@link TelescopeConfig.diagnostics}). */
@@ -367,6 +424,20 @@ export interface ResolvedTelescopeConfig {
   };
   /** Resolved client-error ingestion settings (always present; `enabled` defaults `false`). */
   clientErrors: ResolvedClientErrorsConfig;
+  /** Resolved OTel-export settings (always present; `enabled` defaults `false`). */
+  otel: ResolvedOtelConfig;
+}
+
+/** The fully-resolved OTel-export config (see {@link OtelConfig}). */
+export interface ResolvedOtelConfig {
+  enabled: boolean;
+  endpoint: string;
+  tracesPath: string;
+  logsPath: string;
+  headers: Record<string, string>;
+  serviceName: string;
+  entryTypes: string[];
+  timeoutMs: number;
 }
 
 /**
@@ -438,6 +509,21 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
       startupGraceMs: Math.max(0, config.overload?.startupGraceMs ?? DEFAULT_STARTUP_GRACE_MS),
     },
     clientErrors: resolveClientErrors(config.clientErrors),
+    otel: resolveOtel(config.otel),
+  };
+}
+
+/** Resolve the (optional) OTel-export block. Absent/`enabled: false` ⇒ disabled. */
+function resolveOtel(otel: TelescopeConfig['otel']): ResolvedOtelConfig {
+  return {
+    enabled: otel?.enabled ?? false,
+    endpoint: otel?.endpoint ?? DEFAULT_OTEL_ENDPOINT,
+    tracesPath: otel?.tracesPath ?? '/v1/traces',
+    logsPath: otel?.logsPath ?? '/v1/logs',
+    headers: otel?.headers ?? {},
+    serviceName: otel?.serviceName ?? process.env.OTEL_SERVICE_NAME ?? 'adonis-app',
+    entryTypes: otel?.entryTypes ?? ['diagnostic'],
+    timeoutMs: otel?.timeoutMs ?? DEFAULT_OTEL_TIMEOUT_MS,
   };
 }
 

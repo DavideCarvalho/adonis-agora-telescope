@@ -51,6 +51,7 @@ export default defineConfig({
 | `prune`      | `{ after?, keepLast?, intervalMs?, enabled? }` | _off unless present_ | Background retention pruner — see [Retention & overload protection](/docs/telescope/concepts/protection). |
 | `overload`   | `{ enabled?, maxEventLoopLagMs?, startupGraceMs? }` | `enabled`, 200ms | Event-loop overload guard — see [Retention & overload protection](/docs/telescope/concepts/protection). |
 | `clientErrors` | `ClientErrorsConfig`           | _disabled_                    | Public [client-error ingestion](/docs/telescope/packages/client-errors) endpoint (opt-in). |
+| `otel`       | `OtelConfig`                     | _disabled_                    | [OTel export](/docs/telescope/packages/otel) — ships recorded entries as OTLP spans/logs to a Collector. Off by default; its `@opentelemetry/*` peers are only imported when enabled. |
 
 <Callout type="warn">
 Redaction is **on by default**. Every entry's `content` is scrubbed at the store boundary —

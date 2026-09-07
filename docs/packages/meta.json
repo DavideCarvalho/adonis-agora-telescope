@@ -13,6 +13,7 @@
     "alerts",
     "ai",
     "cpu-profiling",
+    "otel",
     "mcp",
     "client-errors",
     "advanced"
