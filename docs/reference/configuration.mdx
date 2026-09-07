@@ -130,7 +130,7 @@ export default defineConfig({
 | ------------- | ------------------------------------- | -------------- | ----------------------------------------------------------- |
 | `enabled`     | `boolean`                             | `true`         | Master switch. `false` registers no routes.                 |
 | `path`        | `string`                              | `/telescope`   | URL prefix (normalized: leading slash, no trailing slash).  |
-| `authorize`   | `(ctx) => boolean \| Promise<boolean>`| default policy | Access-decision hook. Allow outside prod, deny in prod unless a credential matches. |
+| `authorize`   | `(ctx) => AuthorizeResult \| Promise<AuthorizeResult>` (`AuthorizeResult = boolean \| { allowed, reason? }`) | default policy | Access-decision hook. Allow outside prod, deny in prod unless a credential matches. A denial's `401` vs `403` normally comes from a request-shape heuristic; return `{ allowed: false, reason: 'unauthenticated' \| 'forbidden' }` to bypass it — see [Dashboard auth](/docs/telescope/dashboard/auth#bare-boolean-vs-the-enriched--allowed-reason--return). |
 | `credentials` | `{ token?, basic? }`                  | `{}`           | Built-in token / HTTP Basic gate (ignored when `authorize` is set). |
 | `dashboardAuth` | `{ secret, ttl?, login }`           | _unset_        | Built-in [session login screen](/docs/telescope/dashboard/auth#built-in-login-screen) (fails closed at boot without `secret`/`login`). |
 | `replay`      | `{ enabled?, port?, timeoutMs? }`     | _disabled_     | Request replay from the dashboard — off by default (a captured `POST`/`DELETE` re-runs). |

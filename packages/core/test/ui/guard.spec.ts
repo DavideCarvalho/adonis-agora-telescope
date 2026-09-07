@@ -43,6 +43,47 @@ describe('runGuard', () => {
   });
 });
 
+describe('runGuard with an enriched AuthorizeDecision return', () => {
+  it('allows when the decision object says allowed: true (no credential in the request)', async () => {
+    const { ctx: c } = ctx();
+    const result = await runGuard(c, () => ({ allowed: true }));
+    expect(result).toEqual({ allowed: true });
+  });
+
+  it("403s on reason: 'forbidden' even though NO credential was presented — the whole point", async () => {
+    // This is the authorizeByRoles case: a session-cookie-authenticated-but-wrong-role request
+    // carries no Authorization header/?token, so the request-shape heuristic alone would say 401.
+    // An explicit reason overrides that heuristic.
+    const { ctx: c } = ctx();
+    const result = await runGuard(c, () => ({ allowed: false, reason: 'forbidden' }));
+    expect(result).toEqual({ allowed: false, status: 403, message: 'Forbidden' });
+  });
+
+  it("401s on reason: 'unauthenticated' even when a credential WAS presented", async () => {
+    // An explicit reason overrides the heuristic in both directions.
+    const { ctx: c } = ctx({}, { authorization: 'Bearer whatever' });
+    const result = await runGuard(c, () => ({ allowed: false, reason: 'unauthenticated' }));
+    expect(result).toEqual({ allowed: false, status: 401, message: 'Unauthorized' });
+  });
+
+  it('falls back to the request-shape heuristic when allowed: false has no reason', async () => {
+    const { ctx: noCredential } = ctx();
+    const { ctx: withCredential } = ctx({ token: 'nope' });
+    expect(await runGuard(noCredential, () => ({ allowed: false }))).toEqual({
+      allowed: false,
+      status: 401,
+      message: 'Unauthorized',
+    });
+    expect((await runGuard(withCredential, () => ({ allowed: false }))).status).toBe(403);
+  });
+
+  it('awaits an async hook returning an AuthorizeDecision', async () => {
+    const { ctx: c } = ctx();
+    const result = await runGuard(c, async () => ({ allowed: false, reason: 'forbidden' }));
+    expect(result.status).toBe(403);
+  });
+});
+
 describe('enforceGuard', () => {
   it('returns true and leaves the response untouched when allowed', async () => {
     const { ctx: c, res } = ctx();
@@ -86,6 +127,16 @@ describe('enforceGuard', () => {
     expect(res.statusCode).toBe(302);
     expect(res.headers.location).toBe('/acesso-negado');
     expect(res.sent).toBe(false);
+  });
+
+  it("writes 403 (not the heuristic's 401) when a session-based hook signals reason: 'forbidden'", async () => {
+    // The authorizeByRoles bug this fix addresses: an authenticated-but-wrong-role request that
+    // carries no Authorization header/?token used to be mis-reported as 401.
+    const { ctx: c, res } = ctx();
+    expect(await enforceGuard(c, () => ({ allowed: false, reason: 'forbidden' }))).toBe(false);
+    expect(res.statusCode).toBe(403);
+    expect(res.headers['www-authenticate']).toBeUndefined();
+    expect((res.body as { error: string }).error).toBe('Forbidden');
   });
 });
 
