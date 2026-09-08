@@ -313,8 +313,13 @@ export class LucidTelescopeStore implements TelescopeStore {
     }
     // Newest-first: created_at desc, sequence desc as a deterministic tiebreaker.
     builder = builder.orderBy('created_at', 'desc').orderBy('sequence', 'desc');
-    if (query.limit !== undefined) builder = builder.limit(query.limit);
-    if (query.offset !== undefined && query.offset > 0) builder = builder.offset(query.offset);
+    // `{ page, size }` in, `LIMIT/OFFSET` out: the 1-based page becomes `(page - 1) * size`.
+    if (query.size !== undefined && query.size > 0) {
+      const size = Math.floor(query.size);
+      const page = Math.max(1, Math.floor(query.page ?? 1));
+      builder = builder.limit(size);
+      if (page > 1) builder = builder.offset((page - 1) * size);
+    }
 
     const rows = await builder.select('*');
     return rows.map((r) => hydrate(r as unknown as TelescopeColumns));
@@ -325,7 +330,7 @@ export class LucidTelescopeStore implements TelescopeStore {
    * described on {@link TelescopeStore.listTraceIds}.
    *
    * `GROUP BY trace_id` with `MAX(created_at)` lets the database do the grouping and
-   * the paging, so the traces screen reads ~`limit` rows instead of every entry in
+   * the paging, so the traces screen reads ~`size` rows instead of every entry in
    * the window. Entries with a NULL `trace_id` are excluded: they belong to no trace
    * and would collapse into one meaningless bucket.
    */
@@ -344,8 +349,8 @@ export class LucidTelescopeStore implements TelescopeStore {
       .groupBy('trace_id')
       .max('created_at as last_at')
       .orderBy('last_at', 'desc')
-      .limit(query.limit)
-      .offset(query.offset ?? 0)
+      .limit(query.size)
+      .offset((Math.max(1, Math.floor(query.page ?? 1)) - 1) * Math.max(0, Math.floor(query.size)))
       .select('trace_id');
 
     return (rows as unknown as Array<{ trace_id: string; last_at: unknown }>).map((row) => ({

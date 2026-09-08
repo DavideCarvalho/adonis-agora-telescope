@@ -68,9 +68,11 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     const search = query.search?.toLowerCase();
     const traceIds = query.traceIds === undefined ? null : new Set(query.traceIds);
     const results: Entry[] = [];
-    // Offset is counted over MATCHES, so it must be consumed after the filters and
-    // before the limit — the same order the SQL store gets from OFFSET/LIMIT.
-    let toSkip = query.offset ?? 0;
+    const size = query.size !== undefined && query.size > 0 ? Math.floor(query.size) : undefined;
+    // `page` is 1-based: the rows to skip are `(page - 1) * size`. The skip is counted
+    // over MATCHES, so it must be consumed after the filters and before the page is
+    // filled — the same order the SQL store gets from OFFSET/LIMIT.
+    let toSkip = size === undefined ? 0 : (Math.max(1, Math.floor(query.page ?? 1)) - 1) * size;
     // `entries` is already newest-first.
     for (const entry of this.entries) {
       if (query.type !== undefined && entry.type !== query.type) continue;
@@ -86,7 +88,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
         continue;
       }
       results.push(entry);
-      if (query.limit !== undefined && results.length >= query.limit) break;
+      if (size !== undefined && results.length >= size) break;
     }
     return results;
   }
@@ -106,10 +108,11 @@ export class InMemoryTelescopeStore implements TelescopeStore {
       const seen = lastAt.get(entry.traceId);
       if (seen === undefined || at > seen) lastAt.set(entry.traceId, at);
     }
-    const offset = query.offset ?? 0;
+    const size = Math.max(0, Math.floor(query.size));
+    const offset = (Math.max(1, Math.floor(query.page ?? 1)) - 1) * size;
     return [...lastAt.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(offset, offset + query.limit)
+      .slice(offset, offset + size)
       .map(([traceId, at]) => ({ traceId, lastAt: new Date(at) }));
   }
 

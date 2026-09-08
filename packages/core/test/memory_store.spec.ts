@@ -72,10 +72,23 @@ describe('InMemoryTelescopeStore', () => {
     expect(await store.list({ search: 'absent' })).toHaveLength(0);
   });
 
-  it('honours limit', async () => {
+  it('honours size', async () => {
     const store = makeStore();
     for (let i = 0; i < 5; i++) await store.record({ type: 'x', content: i });
-    expect(await store.list({ limit: 2 })).toHaveLength(2);
+    expect(await store.list({ size: 2 })).toHaveLength(2);
+  });
+
+  it('pages with 1-based `page` over `size`, newest-first', async () => {
+    const store = makeStore();
+    for (let i = 0; i < 5; i++) await store.record({ type: 'x', content: i });
+    const first = await store.list({ page: 1, size: 2 });
+    const second = await store.list({ page: 2, size: 2 });
+    const third = await store.list({ page: 3, size: 2 });
+    expect(first.map((e) => e.content)).toEqual([4, 3]);
+    expect(second.map((e) => e.content)).toEqual([2, 1]);
+    expect(third.map((e) => e.content)).toEqual([0]);
+    // `page` without `size` is a no-op, not a silent empty page.
+    expect(await store.list({ page: 3 })).toHaveLength(5);
   });
 
   it('filters by before/after instants', async () => {

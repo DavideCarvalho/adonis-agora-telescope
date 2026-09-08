@@ -242,7 +242,7 @@ export class TelescopeMcpServer {
           ...(typeof args.sinceMinutes === 'number'
             ? { after: new Date(Date.now() - args.sinceMinutes * 60_000) }
             : {}),
-          limit: clampLimit(args.limit),
+          size: clampLimit(args.limit),
         };
         const entries = await this.service.list(query);
         return json({ entries: entries.map(slim) });

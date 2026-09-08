@@ -47,8 +47,8 @@ export interface TelescopeClientOptions {
   baseUrl?: string;
   /** Injectable `fetch` (tests pass a stub). Defaults to the global. */
   fetch?: FetchLike;
-  /** Default cap for list feeds; the server clamps to 500. Defaults to 50. */
-  limit?: number;
+  /** Default page size for list feeds; the server clamps to 500. Defaults to 50. */
+  size?: number;
 }
 
 /** Drop `undefined`/empty values and stringify the rest into a query record. */
@@ -71,12 +71,12 @@ function toQuery(params: Record<string, string | number | undefined>): Record<st
 export class TelescopeClient {
   private readonly base: string;
   private readonly doFetch: FetchLike;
-  private readonly limit: number;
+  private readonly size: number;
 
   constructor(options: TelescopeClientOptions = {}) {
     this.base = (options.baseUrl ?? resolveApiBase()).replace(/\/+$/, '');
     this.doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
-    this.limit = options.limit ?? 50;
+    this.size = options.size ?? 50;
   }
 
   /** The absolute URL of the SSE live-stream route, for `new EventSource(url)`. */
@@ -152,7 +152,7 @@ export class TelescopeClient {
         traceId: query.traceId,
         search: query.search,
         before: query.before,
-        limit: query.limit ?? this.limit,
+        size: query.size ?? this.size,
       }),
     );
   }
@@ -167,7 +167,7 @@ export class TelescopeClient {
         traceId: query.traceId,
         search: query.search,
         before: query.before,
-        limit: query.limit ?? this.limit,
+        size: query.size ?? this.size,
         page: query.page ?? 1,
       }),
     );
@@ -208,13 +208,13 @@ export class TelescopeClient {
     return this.data<ScreenStats[]>('/metrics/screens', toQuery({ windowMs, kind, limit }));
   }
 
-  traces(limit = this.limit): Promise<TraceSummary[]> {
-    return this.data<TraceSummary[]>('/metrics/traces', toQuery({ limit }));
+  traces(size = this.size): Promise<TraceSummary[]> {
+    return this.data<TraceSummary[]>('/metrics/traces', toQuery({ size }));
   }
 
   /** One page of traces, with whether a next page exists. */
-  tracesPage(limit = this.limit, page = 1): Promise<Page<TraceSummary>> {
-    return this.page<TraceSummary>('/metrics/traces', toQuery({ limit, page }));
+  tracesPage(size = this.size, page = 1): Promise<Page<TraceSummary>> {
+    return this.page<TraceSummary>('/metrics/traces', toQuery({ size, page }));
   }
 
   waterfall(traceId: string): Promise<Waterfall> {

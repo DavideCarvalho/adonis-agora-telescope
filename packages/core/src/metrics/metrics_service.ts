@@ -149,7 +149,9 @@ export class MetricsService {
   }
 
   /**
-   * Recent traces, newest-last-seen first, one page at a time.
+   * Recent traces, newest-last-seen first, one page at a time. `size` is the page
+   * size and `page` is 1-based — the `{ page, size }` shape every `@adonis-agora/*`
+   * library paginates with (mirrors `@adonis-agora/filter`).
    *
    * The store picks the page of trace ids (an indexed `GROUP BY` when it can — see
    * {@link TelescopeStore.listTraceIds}) and only THEN do we fetch the entries of
@@ -161,25 +163,51 @@ export class MetricsService {
    * A store without the capability falls back to scan-and-group, which is what this
    * method always used to do.
    */
-  async getTraces(limit = 50, offset = 0): Promise<TraceSummary[]> {
-    const page = Math.max(0, Math.floor(limit));
-    const skip = Math.max(0, Math.floor(offset));
+  async getTraces(size = 50, page = 1): Promise<TraceSummary[]> {
+    const pageSize = Math.max(0, Math.floor(size));
+    const pageNumber = Math.max(1, Math.floor(page));
+    const skip = (pageNumber - 1) * pageSize;
 
     if (typeof this.store.listTraceIds !== 'function') {
       const { entries } = await this.collect({});
-      return summarizeTraces(entries, { limit: page + skip }).slice(skip);
+      return summarizeTraces(entries, { limit: pageSize + skip }).slice(skip);
     }
 
-    const rows = await this.store.listTraceIds({ limit: page, offset: skip });
+    const rows = await this.store.listTraceIds({ size: pageSize, page: pageNumber });
     if (rows.length === 0) return [];
 
     const entries = await this.store.list({
       traceIds: rows.map((row) => row.traceId),
-      limit: this.scanCap,
+      size: this.scanCap,
     });
     // summarizeTraces re-derives the ordering from the entries it is given, so the
     // page order survives without the store and the summarizer having to agree on it.
-    return summarizeTraces(entries, { limit: page });
+    return summarizeTraces(entries, { limit: pageSize });
+  }
+
+  /**
+   * One page of traces plus whether another page exists — what a Prev/Next pager needs.
+   *
+   * `hasMore` is a one-ROW-ID probe at the next page's offset, not a `COUNT(DISTINCT
+   * trace_id)` over the very table the paging exists to stop scanning, and not an
+   * over-fetch of every preceding page (which is what asking for `size * page + 1`
+   * rows would cost on a deep page). The probe reads trace ids only — no entries.
+   */
+  async getTracesPage(size = 50, page = 1): Promise<{ rows: TraceSummary[]; hasMore: boolean }> {
+    const pageSize = Math.max(0, Math.floor(size));
+    const pageNumber = Math.max(1, Math.floor(page));
+    const rows = await this.getTraces(pageSize, pageNumber);
+    if (pageSize === 0 || rows.length < pageSize) return { rows, hasMore: false };
+
+    // `{ size: 1, page: pageSize * pageNumber + 1 }` is exactly the first row AFTER
+    // this page: offset `(page - 1) * size` with `size = 1` collapses to `pageSize *
+    // pageNumber`.
+    const nextPage = pageSize * pageNumber + 1;
+    const hasMore =
+      typeof this.store.listTraceIds === 'function'
+        ? (await this.store.listTraceIds({ size: 1, page: nextPage })).length > 0
+        : (await this.getTraces(1, nextPage)).length > 0;
+    return { rows, hasMore };
   }
 
   /**
@@ -229,7 +257,7 @@ export class MetricsService {
 
   /** Fetch entries matching `query` (newest-first), capped at `scanCap`. */
   private async collect(query: EntryQuery): Promise<{ entries: Entry[]; truncated: boolean }> {
-    const entries = await this.store.list({ ...query, limit: this.scanCap });
+    const entries = await this.store.list({ ...query, size: this.scanCap });
     return { entries, truncated: entries.length >= this.scanCap };
   }
 

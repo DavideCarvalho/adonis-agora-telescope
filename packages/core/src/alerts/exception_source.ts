@@ -80,7 +80,7 @@ export class ExceptionPoller {
     try {
       batches = await Promise.all(
         EXCEPTION_ENTRY_TYPES.map((type) =>
-          this.deps.store.list({ type, after: this.since, limit: POLL_SCAN_CAP }),
+          this.deps.store.list({ type, after: this.since, size: POLL_SCAN_CAP }),
         ),
       );
     } catch (error: unknown) {

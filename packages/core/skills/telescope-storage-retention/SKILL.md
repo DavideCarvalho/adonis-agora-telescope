@@ -70,7 +70,7 @@ newest-first.
 import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
-await telescope.list({ type: 'query', search: 'users', limit: 50 })
+await telescope.list({ type: 'query', search: 'users', size: 50 })
 await telescope.list({ tag: 'status:500', after: oneHourAgo })
 await telescope.list({ familyHash: 'billing:invoice-paid' })
 ```

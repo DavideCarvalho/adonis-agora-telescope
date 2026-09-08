@@ -65,7 +65,7 @@ import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
 
-await telescope.list({ type: 'request', limit: 50 })   // newest-first
+await telescope.list({ type: 'request', size: 50 })    // newest-first
 await telescope.byTrace('abc123')                       // one request's whole story
 await telescope.list({ tag: 'lib:billing', search: 'invoice' })
 await telescope.topFamilies(10, 'diagnostic')           // busiest lib:event pairs
@@ -89,7 +89,7 @@ export default class InspectorController {
   constructor(private telescope: TelescopeService) {}
 
   async index({ response }: HttpContext) {
-    return response.json(await this.telescope.list({ limit: 50 }))
+    return response.json(await this.telescope.list({ size: 50 }))
   }
 }
 ```

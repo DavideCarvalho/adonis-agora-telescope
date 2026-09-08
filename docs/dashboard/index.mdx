@@ -90,7 +90,7 @@ guard first.
 
 | Endpoint                              | Returns                                                                    |
 | ------------------------------------- | -------------------------------------------------------------------------- |
-| `GET <path>/api/entries`              | List entries — `?type=`, `?tag=`, `?traceId=`, `?search=`, `?before=` (ISO), `?limit=` (capped at 500, default 50). Drops `content` for a compact `summary`. |
+| `GET <path>/api/entries`              | List entries — `?type=`, `?tag=`, `?traceId=`, `?search=`, `?before=` (ISO), plus `?page=` (1-based, default 1) and `?size=` (capped at 500, default 50). Drops `content` for a compact `summary`. |
 | `GET <path>/api/entries/:id`          | One entry with its full `content`, or 404.                                 |
 | `GET <path>/api/trace/:traceId`       | Every entry under a trace, newest-first.                                   |
 | `GET <path>/api/stats`                | `{ count, topFamilies, topTags }`. `?limit=` caps each top-N; `?type=` scopes `topFamilies`. |
@@ -104,7 +104,7 @@ Analytics, all windowed and all reading the same stored entries the tables show:
 | ----------------------------------------------- | -------------------------------------------------------- |
 | `GET <path>/api/metrics/stats`                  | Latency, throughput and error aggregates over a window.  |
 | `GET <path>/api/metrics/timeseries`             | The same aggregates bucketed for charting.               |
-| `GET <path>/api/metrics/traces`                 | Recent traces, newest first.                             |
+| `GET <path>/api/metrics/traces`                 | Recent traces, newest first — paginated with `?page=`/`?size=`. |
 | `GET <path>/api/metrics/waterfall/:traceId`     | One trace laid out as a waterfall.                       |
 | `GET <path>/api/metrics/n-plus-one/:traceId`    | Repeated-query loops detected on one trace.              |
 | `GET <path>/api/metrics/pulse`                  | The [Pulse](/docs/telescope/packages/pulse) health rollup. Present unless `pulse` is disabled. |
@@ -133,7 +133,7 @@ Each list entry comes back as an `EntrySummary` — `id`, `type`, `familyHash`, 
 (e.g. `GET /users/42 → 200`, `billing:invoice-paid`, or an exception message).
 
 ```sh
-curl 'http://localhost:3333/telescope/api/entries?type=exception&limit=20'
+curl 'http://localhost:3333/telescope/api/entries?type=exception&size=20&page=1'
 curl 'http://localhost:3333/telescope/api/trace/abc123'
 curl 'http://localhost:3333/telescope/api/stats?type=diagnostic'
 ```

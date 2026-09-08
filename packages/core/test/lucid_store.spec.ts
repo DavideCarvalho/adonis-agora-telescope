@@ -122,9 +122,17 @@ describe('LucidTelescopeStore', () => {
     expect(await store.list({ search: 'zzz%' })).toHaveLength(0);
   });
 
-  it('honours limit', async () => {
+  it('honours size', async () => {
     for (let i = 0; i < 5; i++) await store.record({ type: 'x', content: i });
-    expect(await store.list({ limit: 2 })).toHaveLength(2);
+    expect(await store.list({ size: 2 })).toHaveLength(2);
+  });
+
+  it('pages with 1-based `page` over `size`, newest-first', async () => {
+    for (let i = 0; i < 5; i++) await store.record({ type: 'x', content: i });
+    const first = await store.list({ page: 1, size: 2 });
+    const second = await store.list({ page: 2, size: 2 });
+    expect(first.map((e) => e.content)).toEqual([4, 3]);
+    expect(second.map((e) => e.content)).toEqual([2, 1]);
   });
 
   it('filters by before/after instants', async () => {

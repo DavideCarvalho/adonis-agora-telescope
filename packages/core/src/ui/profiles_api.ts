@@ -53,7 +53,7 @@ export class ProfilesApi {
     const limitRaw = ctx.request.qs().limit;
     const limit =
       typeof limitRaw === 'string' && Number.isFinite(Number(limitRaw)) ? Number(limitRaw) : 100;
-    const entries = await this.service.list({ type: EntryType.CpuProfile, limit });
+    const entries = await this.service.list({ type: EntryType.CpuProfile, size: limit });
     const data: EntrySummary[] = entries.map(toSummary);
     return ctx.response
       .status(200)

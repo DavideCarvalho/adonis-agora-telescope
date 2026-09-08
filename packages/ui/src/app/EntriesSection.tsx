@@ -43,7 +43,7 @@ export function EntriesSection({
   const [page, setPage] = useState(1);
 
   const query: EntriesQuery = useMemo(
-    () => ({ ...(type ? { type } : {}), ...(search ? { search } : {}), limit: PAGE_SIZE, page }),
+    () => ({ ...(type ? { type } : {}), ...(search ? { search } : {}), size: PAGE_SIZE, page }),
     [type, search, page],
   );
   const state = useEntriesPage(query);

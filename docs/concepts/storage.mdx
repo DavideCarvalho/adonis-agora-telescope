@@ -34,7 +34,7 @@ returns the persisted `Entry`. Everything else is a read or a maintenance operat
 <Callout type="info">
 This is the trimmed Adonis port of aviary's NestJS `StorageProvider` — no opaque
 keyset cursors and no built-in rollup tables. The `EntryQuery` uses a simple
-`before` / `after` / `limit` instead. Aggregates (`topFamilies`, `topTags`) are computed
+`before` / `after` / `page` / `size` instead. Aggregates (`topFamilies`, `topTags`) are computed
 in `TelescopeService` over `list`, which is plenty for the in-memory and single-node
 SQL stores this ships with.
 </Callout>
@@ -74,15 +74,21 @@ interface EntryQuery {
   before?: Date        // strictly older than (keyset-ish pagination)
   after?: Date         // newer than
   search?: string      // case-insensitive substring over JSON content + tags
-  limit?: number       // cap returned entries
+  page?: number        // 1-based page number (default 1)
+  size?: number        // page size — how many entries to return
 }
 ```
+
+`page` / `size` are the pagination pair **every `@adonis-agora/*` library** uses — the
+same shape as [`@adonis-agora/filter`](https://github.com/DavideCarvalho/adonis-agora-filter)'s
+`FilterInput`, matched structurally (filter is not a dependency). The store computes the
+row offset as `(page - 1) * size`, so `{ page: 2, size: 25 }` is the second page of 25.
 
 `search` matches against the entry's JSON-serialized `content` **and** its `tags`, so a
 request matches by url, a diagnostic by event, a query by SQL — all from one box.
 
 ```ts
-await telescope.list({ type: 'query', search: 'users', limit: 50 })
+await telescope.list({ type: 'query', search: 'users', size: 50 })
 await telescope.list({ tag: 'status:500', after: oneHourAgo })
 await telescope.list({ familyHash: 'billing:invoice-paid' })
 ```
