@@ -94,7 +94,7 @@ import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
 
-telescope.list({ type: 'request', limit: 50 })   // recent requests, newest-first
+telescope.list({ type: 'request', size: 50 })    // recent requests, newest-first
 telescope.byTrace('abc123')                       // every entry on one trace
 telescope.list({ tag: 'lib:billing', search: 'invoice' })
 telescope.topFamilies(10, 'diagnostic')           // busiest lib:event pairs

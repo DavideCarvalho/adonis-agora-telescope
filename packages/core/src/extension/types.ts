@@ -173,10 +173,12 @@ export type Panel =
       /**
        * Opt into paged-table mode: the UI renders prev/next controls (+ "page X
        * of Y") and re-resolves this panel's provider with `query.page` (1-based)
-       * and `query.limit` merged in on top of the panel's own static `data.query`.
-       * The provider MUST then return `{ rows, total, page, limit }` instead of
-       * a bare `{ rows }` — see {@link DataProvider.resolve}. Omit (or `false`)
-       * for the existing bare-rows table, unchanged.
+       * and `query.size` merged in on top of the panel's own static `data.query`
+       * — the `{ page, size }` pagination pair every `@adonis-agora/*` library
+       * uses (mirrors `@adonis-agora/filter`). The provider MUST then return
+       * `{ rows, total, page, size }` instead of a bare `{ rows }` — see
+       * {@link DataProvider.resolve}. Omit (or `false`) for the existing
+       * bare-rows table, unchanged.
        */
       paged?: boolean;
     }
@@ -209,9 +211,9 @@ export interface DataProvider {
    *  - timeseries   → `{ rows: Array<{ label: string } & Record<string, number>> }`
    *  - topN         → `{ items: Array<{ label: string; value: number; id?: string }> }`
    *  - table        → `{ rows: Array<Record<string, unknown>> }`, or — when the
-   *                   panel declares `paged: true` — `{ rows, total, page, limit }`
-   *                   (`page`/`limit` normally echo the requested `query.page` /
-   *                   `query.limit`; `total` is the full, unpaginated row count so
+   *                   panel declares `paged: true` — `{ rows, total, page, size }`
+   *                   (`page`/`size` normally echo the requested `query.page` /
+   *                   `query.size`; `total` is the full, unpaginated row count so
    *                   the UI can compute "page X of Y")
    *  - distribution → `{ buckets: Array<{ label: string; count: number }>; p50?: number; p95?: number; p99?: number }`
    *  - gauge        → `{ value: number; min?: number; max?: number }`

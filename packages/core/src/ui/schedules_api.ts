@@ -52,7 +52,7 @@ export class SchedulesApi {
 
   private async withLastRun(reg: RegisteredSchedule): Promise<LiveScheduledTask> {
     // Newest-first + familyHash exact match + limit 1 ⇒ the single most recent run of this task.
-    const [last] = await this.service.list({ familyHash: `schedule:${reg.name}`, limit: 1 });
+    const [last] = await this.service.list({ familyHash: `schedule:${reg.name}`, size: 1 });
     const content = last?.content as ScheduleEntryContent | undefined;
     return {
       name: reg.name,

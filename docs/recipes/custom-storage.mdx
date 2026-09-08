@@ -82,7 +82,10 @@ export class MongoTelescopeStore implements TelescopeStore {
       filter.$or = [{ tags: rx }, { contentText: rx }]                   // see note below
     }
     let cursor = this.col.find(filter).sort({ createdAtMs: -1, sequence: -1 })
-    if (query.limit !== undefined) cursor = cursor.limit(query.limit)
+    // `{ page, size }` in, skip/limit out — `page` is 1-based, so the offset is `(page - 1) * size`.
+    if (query.size !== undefined) {
+      cursor = cursor.skip((Math.max(1, query.page ?? 1) - 1) * query.size).limit(query.size)
+    }
     return (await cursor.toArray()).map(hydrate)
   }
 

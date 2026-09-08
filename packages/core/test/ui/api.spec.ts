@@ -96,11 +96,32 @@ describe('TelescopeApi', () => {
     expect(body.data[0]?.type).toBe('diagnostic');
   });
 
-  it('caps limit to the configured max', async () => {
-    const { ctx: c, res } = ctx({ limit: '99999' });
+  it('caps size to the configured max', async () => {
+    const { ctx: c, res } = ctx({ size: '99999' });
     await api.list(c);
-    const body = res.body as { meta: { query: { limit: number } } };
-    expect(body.meta.query.limit).toBe(500);
+    const body = res.body as { meta: { query: { size: number } } };
+    expect(body.meta.query.size).toBe(500);
+  });
+
+  it('pages with 1-based `page` + `size` and echoes both in meta', async () => {
+    const { ctx: c, res } = ctx({ size: '2', page: '2' });
+    await api.list(c);
+    const body = res.body as {
+      data: unknown[];
+      meta: { page: number; size: number; hasMore: boolean; query: { page?: number } };
+    };
+    expect(body.meta.page).toBe(2);
+    expect(body.meta.size).toBe(2);
+    expect(body.meta.query.page).toBe(2);
+    expect(body.data).toHaveLength(1);
+    expect(body.meta.hasMore).toBe(false);
+
+    // A full page probes for its successor instead of counting.
+    const { ctx: first, res: firstRes } = ctx({ size: '2', page: '1' });
+    await api.list(first);
+    const firstBody = firstRes.body as { data: unknown[]; meta: { hasMore: boolean } };
+    expect(firstBody.data).toHaveLength(2);
+    expect(firstBody.meta.hasMore).toBe(true);
   });
 
   it('returns one entry with full content for show()', async () => {

@@ -175,7 +175,7 @@ describe('MetricsService.getStats — exception types', () => {
  * These tests pin both halves of the fix — that pagination is real, and that a store
  * WITHOUT the new capability still returns the same answers.
  */
-describe('MetricsService.getTraces — paginação', () => {
+describe('MetricsService.getTraces — paginação { page, size }', () => {
   /** Seeds `count` traces, oldest first, so trace-N is newer than trace-(N-1). */
   async function seedTraces(store: InMemoryTelescopeStore, count: number) {
     for (let i = 0; i < count; i += 1) {
@@ -194,8 +194,8 @@ describe('MetricsService.getTraces — paginação', () => {
     await seedTraces(store, 10);
     const metrics = new MetricsService(store);
 
-    const first = await metrics.getTraces(3, 0);
-    const second = await metrics.getTraces(3, 3);
+    const first = await metrics.getTraces(3, 1);
+    const second = await metrics.getTraces(3, 2);
 
     expect(first.map((t) => t.traceId)).toEqual(['trace-9', 'trace-8', 'trace-7']);
     expect(second.map((t) => t.traceId)).toEqual(['trace-6', 'trace-5', 'trace-4']);
@@ -207,20 +207,34 @@ describe('MetricsService.getTraces — paginação', () => {
     const metrics = new MetricsService(store);
 
     const seen = [
-      ...(await metrics.getTraces(4, 0)),
-      ...(await metrics.getTraces(4, 4)),
-      ...(await metrics.getTraces(4, 8)),
+      ...(await metrics.getTraces(4, 1)),
+      ...(await metrics.getTraces(4, 2)),
+      ...(await metrics.getTraces(4, 3)),
     ].map((t) => t.traceId);
 
     expect(new Set(seen).size).toBe(10);
     expect(seen).toHaveLength(10);
   });
 
-  it('offset além do fim devolve lista vazia, não a última página', async () => {
+  it('página além do fim devolve lista vazia, não a última página', async () => {
     const store = new InMemoryTelescopeStore();
     await seedTraces(store, 3);
     const metrics = new MetricsService(store);
     expect(await metrics.getTraces(5, 99)).toEqual([]);
+  });
+
+  it('getTracesPage reporta hasMore sem varrer as páginas anteriores', async () => {
+    const store = new InMemoryTelescopeStore();
+    await seedTraces(store, 7);
+    const metrics = new MetricsService(store);
+
+    const first = await metrics.getTracesPage(3, 1);
+    const last = await metrics.getTracesPage(3, 3);
+
+    expect(first.rows.map((t) => t.traceId)).toEqual(['trace-6', 'trace-5', 'trace-4']);
+    expect(first.hasMore).toBe(true);
+    expect(last.rows.map((t) => t.traceId)).toEqual(['trace-0']);
+    expect(last.hasMore).toBe(false);
   });
 
   it('só carrega as entries da página — não a tabela inteira', async () => {
@@ -234,7 +248,7 @@ describe('MetricsService.getTraces — paginação', () => {
       return store.list(query);
     };
 
-    await new MetricsService(spied).getTraces(5, 0);
+    await new MetricsService(spied).getTraces(5, 1);
 
     // O ponto do fix: a busca de entries é restrita aos trace ids da página.
     expect((listedWith as { traceIds?: string[] }).traceIds).toHaveLength(5);
@@ -255,9 +269,14 @@ describe('MetricsService.getTraces — paginação', () => {
       clear: () => store.clear(),
     };
 
-    const viaFallback = await new MetricsService(legacy).getTraces(3, 3);
-    const viaFastPath = await new MetricsService(store).getTraces(3, 3);
+    const viaFallback = await new MetricsService(legacy).getTraces(3, 2);
+    const viaFastPath = await new MetricsService(store).getTraces(3, 2);
 
     expect(viaFallback.map((t) => t.traceId)).toEqual(viaFastPath.map((t) => t.traceId));
+
+    // hasMore também precisa sobreviver ao fallback (probe sem listTraceIds).
+    expect(await new MetricsService(legacy).getTracesPage(3, 2)).toEqual(
+      await new MetricsService(store).getTracesPage(3, 2),
+    );
   });
 });

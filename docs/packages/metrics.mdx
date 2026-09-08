@@ -89,7 +89,7 @@ linked to. Fixed in 0.12.0.
 const series = await metrics.getTimeseries({ windowMs: 60 * 60_000, type: 'query' })
 
 // Recent traces, newest-last-seen first (each: entryCount, types, first/last, totalDuration, rootLabel).
-const traces: TraceSummary[] = await metrics.getTraces(50)
+const traces: TraceSummary[] = await metrics.getTraces(50, 1) // (size, 1-based page)
 
 // The nested span waterfall for one trace, or null when the trace is empty.
 const waterfall: Waterfall | null = await metrics.getWaterfall('abc123')

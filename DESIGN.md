@@ -10,7 +10,7 @@ core** and documents the rest as planned.
 | Piece | File | Notes |
 |---|---|---|
 | Entry model | `src/entry.ts` | `Entry` + `RecordInput` + `EntryType`. Adapted from the nestjs core, trimmed to the headless fields (no `batchId`/`spanId`/`instanceId`). Reserved entry-type values keep future watchers non-breaking. |
-| Storage contract | `src/store.ts` | `TelescopeStore` — `record` / `get` / `list` / `count` / `prune` / `clear`, plus an `EntryQuery` (type / tag / familyHash / traceId / before / after / search / limit). |
+| Storage contract | `src/store.ts` | `TelescopeStore` — `record` / `get` / `list` / `count` / `prune` / `clear`, plus an `EntryQuery` (type / tag / familyHash / traceId / before / after / search / page / size). |
 | In-memory store | `src/in_memory_store.ts` | Bounded ring buffer (default 1000), newest-first, id index, search over content + tags, keepLast-aware prune. |
 | Diagnostics watcher | `src/diagnostics_watcher.ts` | The KEY integration. ONE generic watcher subscribing to all `agora:<lib>:<event>` channels. |
 | Request watcher | `src/request_watcher.ts` + `src/telescope_middleware.ts` | Pure `recordRequest()` core (unit-testable) + the `server` middleware shell. |
@@ -72,7 +72,7 @@ grouping the NestJS dashboard's "busiest events" panel used.
 | **AI diagnosers** | LLM-assisted root-causing over recorded entries. |
 | **Alerts** | `new-exception` and family-seen dedup (needs an atomic `markFamilySeen` on the store contract). |
 | **OTel export** | Bridge entries / the diagnostics span channels to an OTel exporter. |
-| **Rollups / keyset cursors / per-type retention** | Present in the nestjs `StorageProvider`; trimmed here. The `EntryQuery` uses simple `before`/`limit` instead of opaque cursors. |
+| **Rollups / keyset cursors / per-type retention** | Present in the nestjs `StorageProvider`; trimmed here. The `EntryQuery` uses simple `before` + `{ page, size }` offset pagination instead of opaque cursors. |
 
 ## Testing
 

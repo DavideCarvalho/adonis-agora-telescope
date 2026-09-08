@@ -84,9 +84,15 @@ export interface EntriesQuery {
   search?: string;
   /** Keyset cursor: strictly older than this ISO timestamp (pass the oldest row's `createdAt`). */
   before?: string;
-  limit?: number;
-  /** 1-based page for offset pagination. */
+  /**
+   * 1-based page for offset pagination (default `1`). `{ page, size }` is the
+   * pagination pair every `@adonis-agora/*` library uses — it mirrors
+   * `@adonis-agora/filter`'s `FilterInput` shape on purpose (structural match,
+   * filter is not a dependency).
+   */
   page?: number;
+  /** Page size (server-capped at 500, default 50). */
+  size?: number;
 }
 
 /** How a request reached the app — a screen visit, a data fetch, or a static file. */
@@ -640,8 +646,10 @@ export interface TopNPanelData {
 export interface TablePanelData {
   rows: Array<Record<string, unknown>>;
   total?: number;
+  /** 1-based page number, echoing the requested `query.page`. */
   page?: number;
-  limit?: number;
+  /** Page size, echoing the requested `query.size`. */
+  size?: number;
 }
 
 export interface DistributionPanelData {

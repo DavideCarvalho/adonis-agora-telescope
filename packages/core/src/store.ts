@@ -30,13 +30,21 @@ export interface EntryQuery {
    * etc. Composes with every other filter.
    */
   search?: string;
-  /** Cap the number of returned entries. */
-  limit?: number;
   /**
-   * Skip this many entries before returning, for offset pagination. Applied AFTER
-   * ordering (newest-first), so `{ limit: 25, offset: 25 }` is the second page.
+   * 1-based page number for offset pagination (default `1`). The skipped rows are
+   * computed as `(page - 1) * size` by each store, counted over MATCHES and applied
+   * AFTER ordering (newest-first), so `{ page: 2, size: 25 }` is the second page.
+   *
+   * Mirrors `@adonis-agora/filter`'s `FilterInput.page` ON PURPOSE: every
+   * `@adonis-agora/*` library exposes the same `{ page, size }` pagination shape.
+   * Structural match only — filter is deliberately NOT a dependency here.
    */
-  offset?: number;
+  page?: number;
+  /**
+   * Page size — the maximum number of entries returned. Mirrors
+   * `@adonis-agora/filter`'s `FilterInput.size` (see {@link EntryQuery.page}).
+   */
+  size?: number;
 }
 
 /** One row of {@link TelescopeStore.listTraceIds} — a trace and when it was last seen. */
@@ -68,10 +76,13 @@ export interface BucketCountQuery {
 
 /** The window + page for {@link TelescopeStore.listTraceIds}. */
 export interface TraceIdQuery {
-  /** How many trace ids to return. */
-  limit: number;
-  /** How many to skip, for offset pagination. */
-  offset?: number;
+  /**
+   * Page size — how many trace ids to return. Mirrors `@adonis-agora/filter`'s
+   * `FilterInput.size` (structural match, not a dependency), like {@link EntryQuery}.
+   */
+  size: number;
+  /** 1-based page number (default `1`); the store skips `(page - 1) * size` rows. */
+  page?: number;
   /** Only traces with an entry strictly older than this instant. */
   before?: Date;
   /** Only traces with an entry newer than this instant. */

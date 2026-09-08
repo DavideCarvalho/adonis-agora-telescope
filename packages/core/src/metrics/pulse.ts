@@ -587,7 +587,7 @@ export class PulseService {
     const windowEnd = new Date();
     const windowStart = new Date(windowEnd.getTime() - windowMs);
 
-    const listQuery: EntryQuery = { after: windowStart, limit: this.scanCap };
+    const listQuery: EntryQuery = { after: windowStart, size: this.scanCap };
     const entries = await this.store.list(listQuery);
     const truncated = entries.length >= this.scanCap;
 

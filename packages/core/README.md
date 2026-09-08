@@ -13,7 +13,7 @@ node ace configure @adonis-agora/telescope
 import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
-telescope.list({ type: 'request', limit: 50 })
+telescope.list({ type: 'request', size: 50 })
 telescope.byTrace('abc123')
 telescope.topFamilies(10, 'diagnostic')
 ```

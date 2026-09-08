@@ -3,8 +3,8 @@ import { fillLinkHref, tablePagination } from '../../src/ui/ext_table.js';
 
 describe('tablePagination — paged extension table', () => {
   it('reports page 2 of 3 with both prev and next available', () => {
-    // A provider on page 2: 10-row limit, 25 total → 3 pages, mid-range.
-    const p = tablePagination({ rows: new Array(10).fill({}), total: 25, page: 2, limit: 10 });
+    // A provider on page 2: 10-row page size, 25 total → 3 pages, mid-range.
+    const p = tablePagination({ rows: new Array(10).fill({}), total: 25, page: 2, size: 10 });
     expect(p.page).toBe(2);
     expect(p.totalPages).toBe(3);
     expect(p.hasPrev).toBe(true);
@@ -12,13 +12,13 @@ describe('tablePagination — paged extension table', () => {
   });
 
   it('disables prev on the first page', () => {
-    const p = tablePagination({ rows: new Array(10).fill({}), total: 25, page: 1, limit: 10 });
+    const p = tablePagination({ rows: new Array(10).fill({}), total: 25, page: 1, size: 10 });
     expect(p.hasPrev).toBe(false);
     expect(p.hasNext).toBe(true);
   });
 
   it('disables next on the last page', () => {
-    const p = tablePagination({ rows: new Array(5).fill({}), total: 25, page: 3, limit: 10 });
+    const p = tablePagination({ rows: new Array(5).fill({}), total: 25, page: 3, size: 10 });
     expect(p.page).toBe(3);
     expect(p.totalPages).toBe(3);
     expect(p.hasNext).toBe(false);

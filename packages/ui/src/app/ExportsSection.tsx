@@ -56,7 +56,7 @@ export function ExportsSection() {
       const entries = await client.listEntries({
         ...(type ? { type } : {}),
         ...(search ? { search } : {}),
-        limit: Math.max(1, Math.min(MAX_LIMIT, limit)),
+        size: Math.max(1, Math.min(MAX_LIMIT, limit)),
       });
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `telescope-export-${type || 'all'}-${stamp}.${format}`;

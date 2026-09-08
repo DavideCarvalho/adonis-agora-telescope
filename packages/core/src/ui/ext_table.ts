@@ -8,22 +8,25 @@
 /**
  * The provider payload for a `{ kind: 'table', paged: true }` panel — the shape
  * a {@link DataProvider} MUST return when the panel opts into paging. `page` /
- * `limit` normally echo the requested `query.page` / `query.limit`; `total` is
+ * `size` normally echo the requested `query.page` / `query.size` (the ecosystem's
+ * `{ page, size }` pagination pair, mirroring `@adonis-agora/filter`); `total` is
  * the full, unpaginated row count so the UI can render "page X of Y".
  */
 export interface PagedTableData {
   rows?: Array<Record<string, unknown>>;
   total?: number;
+  /** 1-based page number. */
   page?: number;
-  limit?: number;
+  /** Page size. */
+  size?: number;
 }
 
 /** The pager state the UI renders from a {@link PagedTableData} payload. */
 export interface TablePagination {
   /** Current 1-based page (clamped to >= 1). */
   page: number;
-  /** Rows-per-page used to compute the page count. */
-  limit: number;
+  /** Page size (rows-per-page) used to compute the page count. */
+  size: number;
   /** Full unpaginated row count. */
   total: number;
   /** Number of pages (>= 1). */
@@ -36,18 +39,18 @@ export interface TablePagination {
 
 /**
  * Normalize a paged provider payload into pager state: clamp `page` to >= 1,
- * derive `limit`/`total` defensively (so a provider echoing only `rows` still
+ * derive `size`/`total` defensively (so a provider echoing only `rows` still
  * renders one page), and compute `totalPages` + prev/next availability.
  */
 export function tablePagination(data: PagedTableData): TablePagination {
   const rows = data.rows ?? [];
   const page = Math.max(1, data.page ?? 1);
-  const limit = data.limit && data.limit > 0 ? data.limit : rows.length || 1;
+  const size = data.size && data.size > 0 ? data.size : rows.length || 1;
   const total = data.total ?? rows.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const totalPages = Math.max(1, Math.ceil(total / size));
   return {
     page,
-    limit,
+    size,
     total,
     totalPages,
     hasPrev: page > 1,

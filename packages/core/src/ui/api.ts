@@ -41,10 +41,10 @@ export interface RetentionInfo {
   sampling: RetentionSamplingRate[];
 }
 
-/** Default number of entries returned by the list endpoint when no `limit` is given. */
-const DEFAULT_LIMIT = 50;
-/** Hard ceiling on `limit` so a hostile query string can't ask for everything. */
-const MAX_LIMIT = 500;
+/** Default page size for the list endpoint when no `size` is given. */
+const DEFAULT_SIZE = 50;
+/** Hard ceiling on `size` so a hostile query string can't ask for everything. */
+const MAX_SIZE = 500;
 
 /**
  * The JSON-API handler functions over a {@link TelescopeService}. Each takes the
@@ -75,25 +75,31 @@ export class TelescopeApi {
 
   /**
    * `GET <path>/api/entries` — list entries newest-first, with optional filters:
-   * `?type=`, `?traceId=`, `?search=`, `?limit=` (capped), `?before=` (ISO date).
+   * `?type=`, `?traceId=`, `?search=`, `?before=` (ISO date), plus the ecosystem's
+   * `?page=` (1-based) / `?size=` (capped) pagination pair.
    */
   async list(ctx: UiHttpContext): Promise<unknown> {
     const query = buildQuery(ctx.request);
-    const limit = query.limit ?? DEFAULT_LIMIT;
-    // One row past the page tells us whether a next page exists. A COUNT would have
-    // to re-run the same filters -- including the `search` LIKE -- over the whole
-    // table, which costs more than the page itself.
-    const rows = await this.service.list({ ...query, limit: limit + 1 });
-    const hasMore = rows.length > limit;
-    const entries = hasMore ? rows.slice(0, limit) : rows;
-    const page = Math.floor((query.offset ?? 0) / limit) + 1;
+    const size = query.size ?? DEFAULT_SIZE;
+    const page = query.page ?? 1;
+    const entries = await this.service.list(query);
+    // One row past the page tells us whether a next page exists -- a COUNT would
+    // re-run the same filters (including the `search` LIKE) over the whole table,
+    // which costs more than the page itself. Since the offset is DERIVED from
+    // `(page - 1) * size`, that row can't be had by asking for `size + 1` (it would
+    // move the offset too): it is `{ page: page * size + 1, size: 1 }`, the first row
+    // AFTER this page. Only a full page can have a successor, so a short page skips
+    // the probe entirely.
+    const hasMore =
+      entries.length === size &&
+      (await this.service.list({ ...query, page: page * size + 1, size: 1 })).length > 0;
 
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
       .send({
         data: entries.map(toSummary),
-        meta: { count: entries.length, page, limit, hasMore, query: describe(query) },
+        meta: { count: entries.length, page, size, hasMore, query: describe(query) },
       });
   }
 
@@ -123,7 +129,7 @@ export class TelescopeApi {
    * top tags. `?limit=` caps each top-N list; `?type=` scopes `topFamilies`.
    */
   async stats(ctx: UiHttpContext): Promise<unknown> {
-    const limit = clampLimit(readNumber(ctx.request, 'limit') ?? 10, 50);
+    const limit = clampSize(readNumber(ctx.request, 'limit') ?? 10, 50);
     const type = readString(ctx.request, 'type');
     const [count, topFamilies, topTags] = await Promise.all([
       this.service.count(),
@@ -151,7 +157,7 @@ export class TelescopeApi {
     try {
       const data = await this.metrics.getStats({
         type,
-        ...(topExceptions !== undefined ? { topExceptions: clampLimit(topExceptions, 200) } : {}),
+        ...(topExceptions !== undefined ? { topExceptions: clampSize(topExceptions, 200) } : {}),
         windowMs,
         ...(buckets !== undefined ? { buckets } : {}),
       });
@@ -182,7 +188,7 @@ export class TelescopeApi {
   }
 
   /**
-   * `GET <path>/api/metrics/traces?limit=&page=` — recent traces, newest-last-seen
+   * `GET <path>/api/metrics/traces?page=&size=` — recent traces, newest-last-seen
    * first, paginated.
    *
    * `hasMore` instead of a total: counting distinct traces means a `COUNT(DISTINCT
@@ -190,18 +196,15 @@ export class TelescopeApi {
    * row tells the UI whether to enable "next", which is all a Prev/Next pager needs.
    */
   async metricsTraces(ctx: UiHttpContext): Promise<unknown> {
-    const limit = clampLimit(readNumber(ctx.request, 'limit') ?? 50);
+    const size = clampSize(readNumber(ctx.request, 'size') ?? 50);
     const page = Math.max(1, Math.floor(readNumber(ctx.request, 'page') ?? 1));
-    const offset = (page - 1) * limit;
 
-    const rows = await this.metrics.getTraces(limit + 1, offset);
-    const hasMore = rows.length > limit;
-    const data = hasMore ? rows.slice(0, limit) : rows;
+    const { rows: data, hasMore } = await this.metrics.getTracesPage(size, page);
 
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
-      .send({ data, meta: { count: data.length, page, limit, hasMore } });
+      .send({ data, meta: { count: data.length, page, size, hasMore } });
   }
 
   /**
@@ -213,7 +216,7 @@ export class TelescopeApi {
    */
   async metricsScreens(ctx: UiHttpContext): Promise<unknown> {
     const windowMs = readNumber(ctx.request, 'windowMs') ?? 3_600_000;
-    const limit = clampLimit(readNumber(ctx.request, 'limit') ?? 50, 200);
+    const limit = clampSize(readNumber(ctx.request, 'limit') ?? 50, 200);
     const kind = readString(ctx.request, 'kind');
     if (kind !== undefined && kind !== 'page' && kind !== 'api' && kind !== 'asset') {
       return ctx.response.status(400).send({ error: '`kind` must be page, api or asset' });
@@ -410,7 +413,7 @@ function summarize(entry: Entry): string {
 
 /** Build an {@link EntryQuery} from the request's query string. */
 export function buildQuery(request: UiRequest): EntryQuery {
-  const query: EntryQuery = { limit: clampLimit(readNumber(request, 'limit') ?? DEFAULT_LIMIT) };
+  const query: EntryQuery = { size: clampSize(readNumber(request, 'size') ?? DEFAULT_SIZE) };
   const type = readString(request, 'type');
   if (type !== undefined) query.type = type;
   const tag = readString(request, 'tag');
@@ -425,9 +428,7 @@ export function buildQuery(request: UiRequest): EntryQuery {
     if (!Number.isNaN(date.getTime())) query.before = date;
   }
   const page = readNumber(request, 'page');
-  if (page !== undefined && page > 1) {
-    query.offset = (Math.floor(page) - 1) * (query.limit ?? DEFAULT_LIMIT);
-  }
+  if (page !== undefined && page > 1) query.page = Math.floor(page);
   return query;
 }
 
@@ -440,8 +441,8 @@ function describe(query: EntryQuery): Record<string, unknown> {
   return out;
 }
 
-function clampLimit(value: number, max: number = MAX_LIMIT): number {
-  if (!Number.isFinite(value) || value <= 0) return DEFAULT_LIMIT;
+function clampSize(value: number, max: number = MAX_SIZE): number {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_SIZE;
   return Math.min(Math.floor(value), max);
 }
 

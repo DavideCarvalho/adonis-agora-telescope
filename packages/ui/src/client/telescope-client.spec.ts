@@ -21,12 +21,12 @@ const client = (fetch: typeof globalThis.fetch) =>
 describe('TelescopeClient', () => {
   it('lists entries with filters and unwraps the data envelope', async () => {
     const { fetch, calls } = stubFetch({ data: [{ id: 'e1', type: 'request' }], meta: {} });
-    const rows = await client(fetch).listEntries({ type: 'request', search: 'users', limit: 25 });
+    const rows = await client(fetch).listEntries({ type: 'request', search: 'users', size: 25 });
     expect(rows).toEqual([{ id: 'e1', type: 'request' }]);
     expect(calls[0]).toContain('/telescope/api/entries?');
     expect(calls[0]).toContain('type=request');
     expect(calls[0]).toContain('search=users');
-    expect(calls[0]).toContain('limit=25');
+    expect(calls[0]).toContain('size=25');
   });
 
   it('fetches a single entry by id', async () => {

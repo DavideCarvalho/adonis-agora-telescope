@@ -118,7 +118,7 @@ describe('heartbeat suppression', () => {
       safeRecord({ type: 'query', content: { sql: 'work' } }, 'test');
     });
     await flush();
-    const kept = await store.list({ limit: 10 });
+    const kept = await store.list({ size: 10 });
     expect(kept.map((e) => (e.content as { sql: string }).sql)).toEqual(['work']);
     expect(kept[0]?.origin).toBe('schedule');
   });

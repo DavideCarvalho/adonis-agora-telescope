@@ -178,24 +178,24 @@ own admin UI:
 import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
 
 const client = new TelescopeClient({ baseUrl: '/telescope/api' })
-const entries = await client.listEntries({ type: 'exception', limit: 20 })
+const entries = await client.listEntries({ type: 'exception', size: 20 })
 ```
 
 `new TelescopeClient(options?)` takes `baseUrl` (defaults to the base resolved for the current
-page), `fetch` (inject your own for tests) and `limit` (the default list cap, `50`). Every request
+page), `fetch` (inject your own for tests) and `size` (the default page size, `50`). Every request
 is sent same-origin, so it inherits whatever session already gates the dashboard.
 
 ### Reading
 
 | Method | Returns |
 | ------ | ------- |
-| `listEntries(query?)` | `EntrySummary[]` for a `{ type, tag, traceId, search, before, limit }` filter. |
+| `listEntries(query?)` | `EntrySummary[]` for a `{ type, tag, traceId, search, before, page, size }` filter. |
 | `getEntry(id)` | One `Entry` with its full `content`. |
 | `entriesByTrace(traceId)` | Every entry on one trace. |
 | `stats(limit?, type?)` | Count plus the busiest families and tags. |
 | `metricsStats(type, windowMs?, buckets?)` | The per-type analytics block for one entry type. |
 | `metricsTimeseries(windowMs?, buckets?, type?)` | Bucketed throughput, total and by type. |
-| `traces(limit?)` | Recent traces, newest-active first. |
+| `traces(size?)` | Recent traces, newest-active first. |
 | `waterfall(traceId)` | One trace as a nested span tree. |
 | `nPlusOne(traceId, threshold?)` | Repeated-query loops on one trace. |
 | `pulse(windowMs?, topN?)` | The whole [Pulse](/docs/telescope/packages/pulse) rollup. |

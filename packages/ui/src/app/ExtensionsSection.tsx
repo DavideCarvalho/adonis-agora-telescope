@@ -333,10 +333,10 @@ function TablePanel({
   onOpenTrace: (traceId: string) => void;
 }) {
   const [page, setPage] = useState(1);
-  const limit = 25;
+  const size = 25;
   const query = useMemo(() => {
     const base = asQuery(panel.data.query);
-    return panel.paged ? { ...base, page: String(page), limit: String(limit) } : base;
+    return panel.paged ? { ...base, page: String(page), size: String(size) } : base;
   }, [panel.data.query, panel.paged, page]);
   const state = useExtensionData<TablePanelData>(ext, panel.data.provider, query);
 
@@ -350,9 +350,7 @@ function TablePanel({
       >
         {(data) => {
           const totalPages =
-            panel.paged && data.total !== undefined
-              ? Math.max(1, Math.ceil(data.total / limit))
-              : 1;
+            panel.paged && data.total !== undefined ? Math.max(1, Math.ceil(data.total / size)) : 1;
           return (
             <div className="flex flex-col gap-2.5">
               <Table>

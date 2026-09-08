@@ -72,7 +72,7 @@ export function useTelescopeQuery<T>(
 }
 
 const queryKey = (q: EntriesQuery) =>
-  `${q.type ?? ''}:${q.tag ?? ''}:${q.traceId ?? ''}:${q.search ?? ''}:${q.limit ?? ''}`;
+  `${q.type ?? ''}:${q.tag ?? ''}:${q.traceId ?? ''}:${q.search ?? ''}:${q.size ?? ''}`;
 
 export function useEntries(query: EntriesQuery) {
   const client = useTelescopeClient();
@@ -95,9 +95,9 @@ export function useTraceEntries(traceId: string) {
   return useTelescopeQuery(['trace-entries', traceId], () => client.entriesByTrace(traceId));
 }
 
-export function useTraces(limit = 50) {
+export function useTraces(size = 50) {
   const client = useTelescopeClient();
-  return useTelescopeQuery(['traces', limit], () => client.traces(limit));
+  return useTelescopeQuery(['traces', size], () => client.traces(size));
 }
 
 /** Per-route traffic over a window. */
@@ -108,10 +108,10 @@ export function useScreens(windowMs: number, kind: string, limit = 100) {
   );
 }
 
-/** One page of traces. `page` is 1-based and owned by the caller. */
-export function useTracesPage(limit: number, page: number) {
+/** One page of traces. `page` is 1-based and owned by the caller; `size` is the page size. */
+export function useTracesPage(size: number, page: number) {
   const client = useTelescopeClient();
-  return useTelescopeQuery(['traces-page', limit, page], () => client.tracesPage(limit, page));
+  return useTelescopeQuery(['traces-page', size, page], () => client.tracesPage(size, page));
 }
 
 export function useWaterfall(traceId: string) {
