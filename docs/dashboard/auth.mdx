@@ -166,7 +166,7 @@ request and an authenticated-but-wrong-role request deny with `false`, and the g
 request-shape heuristic (below) answers `401` for both: it only recognizes the built-in
 `credentials.token`/`credentials.basic` gate, and has no way to see a session cookie.
 The wrong-role case should really be `403`. Wrap the call and return the enriched
-{@link AuthorizeDecision} (`{ allowed, reason }`) form to tell the guard which denial this
+`AuthorizeDecision` (`{ allowed, reason }`) form to tell the guard which denial this
 is:
 
 ```ts title="config/telescope_ui.ts"
