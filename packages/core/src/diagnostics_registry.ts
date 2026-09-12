@@ -74,7 +74,7 @@ export interface DiagnosticEvent<TPayload = unknown> {
    * when known — stamped by `@adonis-agora/diagnostics`'s `emit(..., { durationMs })`.
    * Absent on a point-in-time event with no associated duration, and on envelopes
    * from an `@adonis-agora/diagnostics` version that predates this field. Read by the
-   * OTel bridge ({@link ../otel/mapper.js}) to decide span-vs-log; see its docs for
+   * OTel bridge ({@link ./otel/mapper.js}) to decide span-vs-log; see its docs for
    * the full mapping (including the `payload.durationMs` fallback some libs use).
    */
   durationMs?: number;
