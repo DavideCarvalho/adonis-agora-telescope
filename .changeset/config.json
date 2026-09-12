@@ -3,7 +3,7 @@
   "changelog": [
     "@changesets/changelog-github",
     {
-      "repo": "DavideCarvalho/adonis-telescope"
+      "repo": "DavideCarvalho/adonis-agora-telescope"
     }
   ],
   "commit": false,
