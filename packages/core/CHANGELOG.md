@@ -1,5 +1,16 @@
 # @adonis-agora/telescope
 
+## 0.21.1
+
+### Patch Changes
+
+- [`dce73c7`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/dce73c7475723ec9cedff9b0c35ac88396bc2a45) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Point the `DiagnosticEvent.durationMs` doc link at the OTel mapper's real path
+  
+  The JSDoc on `DiagnosticEvent.durationMs` linked the OTel bridge as
+  `{@link ../otel/mapper.js}`. `diagnostics_registry.ts` sits in `packages/core/src/`,
+  so that path resolves to `packages/core/otel/mapper.js`, which does not exist — the
+  mapper is `packages/core/src/otel/mapper.ts`, one level down, not up. Now `./otel/mapper.js`.
+
 ## 0.21.0
 
 ### Minor Changes
