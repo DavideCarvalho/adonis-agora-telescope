@@ -8,6 +8,23 @@
     "url": "git+https://github.com/DavideCarvalho/adonis-agora-telescope.git",
     "directory": "packages/ui"
   },
+  "homepage": "https://davidecarvalho.github.io/agora/docs/telescope",
+  "bugs": {
+    "url": "https://github.com/DavideCarvalho/adonis-agora-telescope/issues"
+  },
+  "keywords": [
+    "adonisjs",
+    "adonis",
+    "telescope",
+    "observability",
+    "dashboard",
+    "spa",
+    "react",
+    "tracing",
+    "pulse",
+    "agora",
+    "tanstack-intent"
+  ],
   "author": "Davi Carvalho <davi@goflip.ai>",
   "type": "module",
   "main": "./dist/providers/telescope_ui_dashboard_provider.js",
@@ -81,18 +98,5 @@
   },
   "engines": {
     "node": ">=20.6.0"
-  },
-  "keywords": [
-    "adonisjs",
-    "adonis",
-    "telescope",
-    "observability",
-    "dashboard",
-    "spa",
-    "react",
-    "tracing",
-    "pulse",
-    "agora",
-    "tanstack-intent"
-  ]
+  }
 }

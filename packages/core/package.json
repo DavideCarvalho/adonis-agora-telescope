@@ -8,6 +8,23 @@
     "url": "git+https://github.com/DavideCarvalho/adonis-agora-telescope.git",
     "directory": "packages/core"
   },
+  "homepage": "https://davidecarvalho.github.io/agora/docs/telescope",
+  "bugs": {
+    "url": "https://github.com/DavideCarvalho/adonis-agora-telescope/issues"
+  },
+  "keywords": [
+    "adonisjs",
+    "adonis",
+    "telescope",
+    "observability",
+    "diagnostics",
+    "tracing",
+    "agora",
+    "tanstack-intent",
+    "opentelemetry",
+    "otlp",
+    "grafana"
+  ],
   "author": "Davi Carvalho <davi@goflip.ai>",
   "type": "module",
   "main": "./dist/src/index.js",
@@ -189,18 +206,5 @@
   },
   "engines": {
     "node": ">=20.6.0"
-  },
-  "keywords": [
-    "adonisjs",
-    "adonis",
-    "telescope",
-    "observability",
-    "diagnostics",
-    "tracing",
-    "agora",
-    "tanstack-intent",
-    "opentelemetry",
-    "otlp",
-    "grafana"
-  ]
+  }
 }
