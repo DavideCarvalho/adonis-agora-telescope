@@ -202,7 +202,7 @@
     "cron-parser": "5.10.1",
     "luxon": "3.7.2",
     "typescript": "7.0.2",
-    "vitest": "5.0.0"
+    "vitest": "5.0.1"
   },
   "engines": {
     "node": ">=20.6.0"
