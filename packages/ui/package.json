@@ -77,7 +77,7 @@
   },
   "devDependencies": {
     "@adonis-agora/telescope": "workspace:*",
-    "@adonisjs/core": "7.5.0",
+    "@adonisjs/core": "7.5.2",
     "@tailwindcss/postcss": "4.3.3",
     "@tanstack/intent": "0.4.0",
     "@tanstack/react-query": "5.103.2",
