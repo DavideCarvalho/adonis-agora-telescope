@@ -197,7 +197,7 @@
     "@opentelemetry/sdk-trace-base": "2.12.0",
     "@tanstack/intent": "0.5.5",
     "@types/better-sqlite3": "9.6.0",
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "better-sqlite3": "13.0.3",
     "cron-parser": "5.10.2",
     "luxon": "3.7.2",
