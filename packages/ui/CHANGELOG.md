@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 1.5.2
+
+### Patch Changes
+
+- fix(deps): update dependency @base-ui/react to v1.9.0 ([#172](https://github.com/DavideCarvalho/adonis-agora-telescope/issues/172))
+
 ## 1.5.1
 
 ### Patch Changes
