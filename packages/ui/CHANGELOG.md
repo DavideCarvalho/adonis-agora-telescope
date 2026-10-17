@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 2.0.0
+
+### Major Changes
+
+- [#184](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/184) [`01f7971`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/01f7971a23fe5f3ab0822e4377c89acb65cf10c2) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Drop Node.js 20 and 22: `engines.node` is now `>=24`. Node 20 reached end-of-life on 2026-04-30, and AdonisJS 7, which these packages require as a peer, needs Node 24 or later (`@adonisjs/core` declares `engines.node >=24.0.0`). The supported lines are the ones Node still maintains that AdonisJS 7 accepts: 24 and 26, both tested in CI.
+
 ## 1.5.2
 
 ### Patch Changes
