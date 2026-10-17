@@ -1,5 +1,7 @@
 # `@adonis-agora/telescope`
 
+[![npm version](https://img.shields.io/npm/v/@adonis-agora/telescope)](https://www.npmjs.com/package/@adonis-agora/telescope) [![npm downloads](https://img.shields.io/npm/dm/@adonis-agora/telescope)](https://www.npmjs.com/package/@adonis-agora/telescope) [![CI](https://github.com/DavideCarvalho/adonis-agora-telescope/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/DavideCarvalho/adonis-agora-telescope/actions/workflows/ci.yml) [![license](https://img.shields.io/npm/l/@adonis-agora/telescope)](https://www.npmjs.com/package/@adonis-agora/telescope)
+
 > Laravel Telescope-style **headless** observability for **AdonisJS** — records
 > every HTTP request and every `agora:<lib>:<event>` diagnostics publish as a
 > queryable **entry**, so you (or a future dashboard) can answer "what just
