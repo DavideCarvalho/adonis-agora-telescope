@@ -186,6 +186,11 @@ composes with [`@adonis-agora/context`](https://github.com/DavideCarvalho/adonis
 (trace correlation) and [`@adonis-agora/diagnostics`](https://github.com/DavideCarvalho/adonis-diagnostics)
 (the events it records) — but depends on neither.
 
+## Sponsors
+
+Every Agora library is MIT and stays free. The work is funded by partners and
+sponsors — [become one](https://davidecarvalho.github.io/agora/partners).
+
 ## License
 
 MIT © Davi Carvalho
