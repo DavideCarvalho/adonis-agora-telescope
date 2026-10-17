@@ -13,8 +13,8 @@ import { describe, expect, it } from 'vitest';
  * manifests as npm would.
  */
 
-// `new URL` rather than `import.meta.dirname`, which only exists from Node 20.11 — these packages
-// declare `engines.node: ">=20.6.0"`, and a test asserting that field must not itself need more.
+// `new URL` rather than `import.meta.dirname` (Node 20.11+). Not required since `engines.node` became
+// `">=22"`, but it keeps this test free of any runtime floor of its own.
 const PACKAGES_DIR = fileURLToPath(new URL('../..', import.meta.url));
 
 /** A range is anything carrying a comparator/wildcard — `>=`, `^`, `~`, `||`, `-`, `x`, `*`. */
@@ -93,7 +93,7 @@ describe('published package manifests', () => {
       expect(node, 'engines.node must be declared').toBeTypeOf('string');
       expect(
         RANGE.test(node as string),
-        `engines.node is "${node}" — an exact version. Use a range such as ">=20.6.0"; Renovate's global rangeStrategy:pin must not reach engines.`,
+        `engines.node is "${node}" — an exact version. Use a range such as ">=22"; Renovate's global rangeStrategy:pin must not reach engines.`,
       ).toBe(true);
     },
   );
