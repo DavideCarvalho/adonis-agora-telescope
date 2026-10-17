@@ -29,6 +29,28 @@ jobs:
 
       - run: pnpm typecheck
 
-      - run: pnpm test
-
       - run: pnpm build
+
+  # The test suite runs on every Node line the packages support (`engines.node: ">=22"`): the
+  # maintained 22 and 24 LTS lines and the current 26. Lint, typecheck and build above stay on the
+  # single pinned version — they do not depend on the runtime, so the matrix only multiplies this.
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24, 26]
+    name: test (node ${{ matrix.node }})
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: pnpm/action-setup@v6.1.0
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm test
