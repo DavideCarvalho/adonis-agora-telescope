@@ -4,7 +4,7 @@ description: >-
   Set up @adonis-agora/telescope in an AdonisJS app. Covers node ace configure
   codemods (telescope_provider + TelescopeMiddleware on the server stack +
   config/telescope.ts), defineConfig keys (enabled/store/stores/watchers/redact),
-  the storage.memory and storage.lucid drivers, the headless TelescopeService query
+  the storage.memory, storage.lucid and storage.tiered drivers, the headless TelescopeService query
   API (list/find/byTrace/count/topFamilies/topTags/getHealth), recordException for
   non-HTTP paths, opt-in requestCapture body gates, and why /telescope 404s without
   @adonis-agora/telescope-ui. Use for "install telescope", "telemetry is empty",
