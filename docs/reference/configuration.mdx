@@ -37,7 +37,7 @@ export default defineConfig({
 | ------------ | -------------------------------- | ----------------------------- | --------------------------------------------------------------- |
 | `enabled`    | `boolean`                        | `true`                        | Master switch. `false` records nothing and starts no watcher.   |
 | `store`      | `string \| TelescopeStore`       | `'memory'`                    | Which named driver in `stores` is active, or a [store instance](/docs/telescope/concepts/storage). |
-| `stores`     | `Record<string, StoreProvider>`  | `{}`                          | Named [storage drivers](/docs/telescope/packages/storages) built with the `storage` factory (`storage.memory` / `storage.lucid`). |
+| `stores`     | `Record<string, StoreProvider>`  | `{}`                          | Named [storage drivers](/docs/telescope/packages/storages) built with the `storage` factory (`storage.memory` / `storage.lucid` / `storage.tiered`). |
 | `watchers`   | `WatcherName[]`                  | `['request', 'diagnostics']`  | Any of `request`, `diagnostics`, `logs`. Omit a name to disable it. |
 | `diagnostics`| `{ exclude?, recordClaimed? }`   | `{ exclude: [], recordClaimed: false }` | Mute noisy `lib:event` keys with `exclude`; `recordClaimed` also records events a lib-specific watcher already recorded as a typed entry. |
 | `logs`       | `{ minLevel?, tags? }`           | `{ minLevel: 'trace', tags: [] }` | Tuning for the `logs` watcher: raise the floor (`'warn'` drops debug/info) and append tags to every log entry. |
@@ -70,7 +70,10 @@ See [Built-in redaction](/docs/telescope/recipes/tags-and-redaction#built-in-red
 Storage is config-driven: `store` picks one of the named drivers in `stores`. The `memory`
 driver (`storage.memory({ limit })`) is the bounded ring buffer; the `lucid` driver
 (`storage.lucid({ connection? })`) is a persistent SQL store — `@adonisjs/lucid` is an
-optional peer imported only when `lucid` is selected. See [Storage drivers](/docs/telescope/packages/storages).
+optional peer imported only when `lucid` is selected; the `tiered` driver
+(`storage.tiered({ hot, cold: storage.parquet({ location }), hotFor })`) keeps a hot driver minutes
+deep and moves older entries to Parquet on each prune cycle. See [Storage drivers](/docs/telescope/packages/storages)
+and [Scaling storage](/docs/telescope/concepts/scaling-storage).
 The bare `store: 'memory'` shorthand still works with no `stores` map (uses `maxEntries`, default `1000`).
 </Callout>
 

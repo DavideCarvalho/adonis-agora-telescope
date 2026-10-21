@@ -272,10 +272,15 @@ export { TelescopeService } from './service.js';
 // — storage —
 export type { EntryQuery, TelescopeStore } from './store.js';
 export type {
+  ColdStoreProvider,
   LucidStoreConfig,
   MemoryStoreConfig,
+  ParquetEngineConfig,
+  ParquetLocationConfig,
+  ParquetStoreConfig,
   StoreContext,
   StoreProvider,
+  TieredStoreConfig,
 } from './stores/factory.js';
 export { storage } from './stores/factory.js';
 export type {
@@ -295,6 +300,23 @@ export {
 } from './stores/lucid.js';
 export type { InMemoryStoreOptions } from './stores/memory.js';
 export { InMemoryTelescopeStore } from './stores/memory.js';
+export type {
+  ColdEngineContext,
+  ColdFile,
+  ColdReadEngine,
+  ParquetColdStoreOptions,
+} from './stores/parquet.js';
+export { ParquetColdStore } from './stores/parquet.js';
+export type { DuckDbEngineOptions } from './stores/parquet_duckdb.js';
+export type {
+  ColdObject,
+  ColdObjectStore,
+  S3ClientLike,
+  S3LocationOptions,
+} from './stores/parquet_location.js';
+export { DirectoryLocation, S3Location } from './stores/parquet_location.js';
+export type { TieredPruneReport, TieredStoreOptions } from './stores/tiered.js';
+export { TieredTelescopeStore } from './stores/tiered.js';
 export type { EntrySubscriber, Unsubscribe } from './stream/entry_events.js';
 // — live-stream (SSE entry-events pub/sub) —
 export { EntryEvents } from './stream/entry_events.js';

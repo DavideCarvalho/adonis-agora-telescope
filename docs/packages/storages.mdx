@@ -8,9 +8,9 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import { Callout } from 'fumadocs-ui/components/callout'
 
 Storage is **not a separate package** — it lives in `@adonis-agora/telescope` as a config-driven
-driver, selected in `config/telescope.ts` with the `storage` factory. Two drivers ship:
-`memory` (the default, bounded ring buffer) and `lucid` (a persistent, SQL-backed store).
-Both implement the same `TelescopeStore` contract, so `TelescopeService`, the dashboard,
+driver, selected in `config/telescope.ts` with the `storage` factory. Three drivers ship:
+`memory` (the default, bounded ring buffer), `lucid` (a persistent, SQL-backed store) and
+`tiered` (a hot driver plus a Parquet cold tier). All implement the same `TelescopeStore` contract, so `TelescopeService`, the dashboard,
 alerts and the AI diagnoser all work against either one unchanged.
 
 ```ts title="config/telescope.ts"
@@ -179,8 +179,34 @@ growth by running [`prune` on a schedule](/docs/telescope/concepts/storage#reten
 — e.g. an `@adonisjs/scheduler` job calling `store.prune(cutoff, keepLast)`.
 </Callout>
 
+## The tiered driver
+
+`storage.tiered({ hot, cold, hotFor })` keeps a hot driver (usually `storage.lucid()`) minutes
+deep and moves older entries, on each prune cycle, to `storage.parquet({ location, engine })`:
+hourly Parquet files in a directory or an S3 bucket, read with hyparquet (pure JS, the default)
+or DuckDB (opt-in). `hyparquet`, `hyparquet-writer`, `hyparquet-compressors`,
+`@duckdb/node-api` and `@aws-sdk/client-s3` are optional peers, each imported only when its
+option is selected.
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  store: 'tiered',
+  stores: {
+    tiered: storage.tiered({
+      hot: storage.lucid(),
+      cold: storage.parquet({ location: { dir: 'storage/telescope' } }),
+      hotFor: '5m',
+    }),
+  },
+  prune: { after: '7d' }, // moves entries to cold; `after` is the cold tier's retention
+})
+```
+
+The layout, read routing, the DuckDB lockdown, measurements and every option are on
+[Scaling storage](/docs/telescope/concepts/scaling-storage#rung-3-tiered--hot-database-cold-parquet).
+
 ## Writing a different backend
 
-The two shipped drivers are two implementations of one small contract — a Mongo, Redis, or
+The shipped drivers are two implementations of one small contract — a Mongo, Redis, or
 ClickHouse store is the same six methods, passed as a `store` instance. See the
 [custom storage guide](/docs/telescope/recipes/custom-storage).
