@@ -1,5 +1,15 @@
 # @adonis-agora/telescope
 
+## 0.23.0
+
+### Minor Changes
+
+- [#199](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/199) [`5fd17c2`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/5fd17c2a51043151155f1a6b46507183c0c41bce) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Add a tiered store: `storage.tiered({ hot, cold: storage.parquet({ location, engine }), hotFor })` keeps a hot driver (usually `storage.lucid()`) minutes deep and, on each prune cycle, moves older entries to hourly Parquet files in a directory or on S3 (through the host's own `S3Client`), deleting them from the hot tier only after the files are written. Reads route hot-then-cold and merge newest-first without duplicates, so `{ page, size }` pages across the tier boundary. The cold tier is read with pure-JS hyparquet by default, or DuckDB (`engine: 'duckdb'`, optional peer `@duckdb/node-api`), which is started with extension auto-load off and external access limited to its data directory, so it never loads `httpfs`/`aws`. New optional peers: `hyparquet`, `hyparquet-writer`, `hyparquet-compressors`, `@duckdb/node-api`, `@aws-sdk/client-s3`. See the new "Scaling storage" docs page.
+
+### Patch Changes
+
+- [#199](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/199) [`5fd17c2`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/5fd17c2a51043151155f1a6b46507183c0c41bce) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - The Parquet cold tier no longer leaves unhandled promise rejections behind when a file is deleted while it is being read (retention or compaction racing a dashboard read). hyparquet prefetches several byte ranges per file on filtered reads and awaits only the first that fails; the rest used to reject unhandled, which crashes a Node process running with the default `--unhandled-rejections=throw`.
+
 ## 0.22.0
 
 ### Minor Changes
