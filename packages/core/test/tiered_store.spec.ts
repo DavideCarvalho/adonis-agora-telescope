@@ -79,6 +79,16 @@ describe.each(ENGINES)('tiered store (memory hot, %s cold)', (engine) => {
     expect(await store.count()).toBe(all.length);
   });
 
+  it('keeps the newest keepLast entries when hot entries are already past retention', async () => {
+    await recordSpread(store, 600);
+    vi.setSystemTime(START + 3 * 60 * MINUTE);
+    await store.prune(new Date(START + 2 * 60 * MINUTE), 100);
+
+    // Cold expiry keeps whole files, so at least 100 survive.
+    expect(await store.count()).toBeGreaterThanOrEqual(100);
+    expect(await hot.count()).toBe(0);
+  });
+
   it('pages across the tier boundary newest-first, gap-free, without duplicates', async () => {
     const all = await recordSpread(store, 400);
     vi.setSystemTime(START + 400 * 1000);

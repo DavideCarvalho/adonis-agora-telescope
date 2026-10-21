@@ -190,7 +190,10 @@ export class TieredTelescopeStore implements TelescopeStore {
 
     if (hotCutoff > olderThan) {
       // Move-then-delete. A failure in `moveToCold` leaves the hot store as it was.
-      report.moved = await this.moveToCold(olderThan, hotCutoff);
+      // With `keepLast`, hot entries already past retention move too, so the cold
+      // tier's expiry applies the count across both tiers.
+      const moveAfter = keepLast === undefined ? olderThan : new Date(0);
+      report.moved = await this.moveToCold(moveAfter, hotCutoff);
       report.hotDeleted = await this.hot.prune(hotCutoff);
     } else {
       // Retention is shorter than the hot window: nothing ever reaches cold.

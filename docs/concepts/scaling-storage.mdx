@@ -192,6 +192,7 @@ to look at every row.
 | `tiered.cold` | — | `storage.parquet({ ... })`. |
 | `tiered.hotFor` | — | How long entries stay hot (`'5m'`, `90_000`). Keep it shorter than `prune.after`. |
 | `tiered.moveBatchSize` | `5000` | Hot entries read per page while moving. |
+| `tiered.moveFlushSize` | `50000` | Entries buffered before a move writes them out as files. |
 | `tiered.compact` | `true` | Merge each closed hour's files during prune. |
 | `parquet.location` | — | `{ dir }`, `{ s3: { client, bucket, prefix? } }`, or a custom `ColdObjectStore`. |
 | `parquet.engine` | `'hyparquet'` | `'hyparquet'`, `'duckdb'`, or `{ duckdb: { memoryLimit?, threads?, cacheDir?, cacheBytes? } }`. |

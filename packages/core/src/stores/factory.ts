@@ -87,6 +87,8 @@ export interface TieredStoreConfig {
   hotFor: string | number;
   /** Hot entries read per page while moving. Default 5,000. */
   moveBatchSize?: number;
+  /** Entries buffered before a move writes them out as files. Default 50,000. */
+  moveFlushSize?: number;
   /** Merge each closed hour's files during prune. Default `true`. */
   compact?: boolean;
 }
@@ -210,6 +212,7 @@ export const storage = {
         cold,
         hotForMs,
         ...(config.moveBatchSize !== undefined ? { moveBatchSize: config.moveBatchSize } : {}),
+        ...(config.moveFlushSize !== undefined ? { moveFlushSize: config.moveFlushSize } : {}),
         ...(config.compact !== undefined ? { compact: config.compact } : {}),
       });
     };
