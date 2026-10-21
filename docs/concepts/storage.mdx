@@ -58,7 +58,8 @@ export default defineConfig({
 
 Each factory returns a lazy thunk — listing it in `stores` costs nothing, and a driver's
 peer dependency (`@adonisjs/lucid` for `lucid`) is only imported when it is the *active*
-one. Two drivers ship in the box: `memory` and `lucid`.
+one. Three drivers ship in the box: `memory`, `lucid`, and `tiered` (a hot store plus Parquet
+files for everything older — see [Scaling storage](/docs/telescope/concepts/scaling-storage)).
 
 ## Querying
 
@@ -199,6 +200,13 @@ import { MyMongoStore } from '#telescope/mongo_store'
 
 export default defineConfig({ store: new MyMongoStore(mongo) })
 ```
+
+## Outgrowing one table
+
+When a single `telescope_entries` table can't keep up with your write rate or the retention you
+want, keep it as the **hot** tier and move older entries to Parquet with `storage.tiered()`. The
+[Scaling storage](/docs/telescope/concepts/scaling-storage) page lays out the whole ladder, the
+signals for each step, and the config.
 
 > A store decides *where* entries live. **[Extensions](/docs/telescope/concepts/extensions)**
 > decide what *new things* the dashboard can show.

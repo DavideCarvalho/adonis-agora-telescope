@@ -2,7 +2,8 @@
 name: telescope-storage-retention
 description: >-
   Storage, retention, redaction and sampling in @adonis-agora/telescope — the
-  storage.memory ring buffer vs the storage.lucid SQL driver (optional peer,
+  storage.memory ring buffer vs the storage.lucid SQL driver vs the
+  storage.tiered hot-plus-Parquet driver (optional peers,
   create_telescope_entries_table migration), the TelescopeStore contract
   (record/get/list/count/prune/clear), prune {after,keepLast,intervalMs}, the
   overload guard + setTelescopePaused, redact {keys,perType}, tail-sampling rules
@@ -27,9 +28,11 @@ sources:
 
 A store sits between capture and query: watchers `record` into it, and
 `TelescopeService` reads out of it. Storage is **config-driven** — build named
-drivers with the `storage` factory, pick one with `store`. Two ship in the box:
-`memory` (bounded ring buffer) and `lucid` (persistent SQL via an optional
-`@adonisjs/lucid` peer imported lazily only when selected).
+drivers with the `storage` factory, pick one with `store`. Three ship in the box:
+`memory` (bounded ring buffer), `lucid` (persistent SQL via an optional
+`@adonisjs/lucid` peer imported lazily only when selected) and `tiered` (a hot
+driver kept minutes deep plus a Parquet cold tier for everything older — see the
+Scaling storage docs).
 
 ## Setup
 

@@ -1,5 +1,5 @@
 {
   "title": "Concepts",
   "icon": "Compass",
-  "pages": ["capture", "storage", "extensions", "performance", "protection"]
+  "pages": ["capture", "storage", "scaling-storage", "extensions", "performance", "protection"]
 }

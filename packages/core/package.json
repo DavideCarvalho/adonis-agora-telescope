@@ -141,13 +141,18 @@
     "@adonisjs/lucid": "^22.4.0",
     "@adonisjs/mail": "^10.2.0",
     "@anthropic-ai/sdk": ">=0.32.0 <1.0.0",
+    "@aws-sdk/client-s3": "^3.400.0",
+    "@duckdb/node-api": ">=1.5.6-r.1 <2.0.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-logs-otlp-http": ">=0.200.0 <1.0.0",
     "@opentelemetry/exporter-trace-otlp-http": ">=0.200.0 <1.0.0",
     "@opentelemetry/resources": "^2.0.0",
     "@opentelemetry/sdk-logs": ">=0.200.0 <1.0.0",
     "@opentelemetry/sdk-trace-base": "^2.0.0",
-    "cron-parser": "^4.0.0 || ^5.0.0"
+    "cron-parser": "^4.0.0 || ^5.0.0",
+    "hyparquet": "^1.31.0",
+    "hyparquet-compressors": "^1.1.0",
+    "hyparquet-writer": ">=0.17.0 <1.0.0"
   },
   "peerDependenciesMeta": {
     "@adonisjs/lucid": {
@@ -182,6 +187,21 @@
     },
     "cron-parser": {
       "optional": true
+    },
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "@duckdb/node-api": {
+      "optional": true
+    },
+    "hyparquet": {
+      "optional": true
+    },
+    "hyparquet-compressors": {
+      "optional": true
+    },
+    "hyparquet-writer": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -189,6 +209,8 @@
     "@adonisjs/core": "7.6.0",
     "@adonisjs/lucid": "22.4.2",
     "@anthropic-ai/sdk": "0.135.0",
+    "@aws-sdk/client-s3": "3.1154.0",
+    "@duckdb/node-api": "1.5.6-r.1",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/exporter-logs-otlp-http": "0.223.0",
     "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
@@ -200,6 +222,9 @@
     "@types/node": "26.6.5",
     "better-sqlite3": "13.0.3",
     "cron-parser": "5.10.2",
+    "hyparquet": "1.31.5",
+    "hyparquet-compressors": "1.1.2",
+    "hyparquet-writer": "0.17.0",
     "luxon": "3.7.2",
     "typescript": "7.0.2",
     "vitest": "5.0.5"

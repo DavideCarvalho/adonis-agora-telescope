@@ -141,7 +141,7 @@ export default defineConfig({
 ## Storage
 
 Storage is a **config-driven driver**, built with the `storage` factory and selected
-by `store`. Two drivers ship in the box:
+by `store`. Three drivers ship in the box:
 
 - **`memory`** — `InMemoryTelescopeStore`, a bounded ring buffer (great for dev/tests,
   lost on restart). `storage.memory({ limit })`.
@@ -149,6 +149,11 @@ by `store`. Two drivers ship in the box:
   [`@adonisjs/lucid`](https://lucid.adonisjs.com) (sqlite / Postgres / MySQL), so
   entries survive restarts. `storage.lucid({ connection })`. `@adonisjs/lucid` is an
   **optional peer** — imported lazily only when the `lucid` driver is selected.
+- **`tiered`** — `TieredTelescopeStore`: a hot driver (usually `lucid`) kept minutes deep,
+  plus hourly Parquet files in a directory or on S3 for everything older, moved there by
+  the pruner. Read with pure-JS hyparquet by default or DuckDB on request.
+  `storage.tiered({ hot: storage.lucid(), cold: storage.parquet({ location: { dir } }), hotFor: '5m' })`.
+  See [Scaling storage](./docs/concepts/scaling-storage.mdx) for when to use it.
 
 ```ts
 import { defineConfig, storage } from '@adonis-agora/telescope'

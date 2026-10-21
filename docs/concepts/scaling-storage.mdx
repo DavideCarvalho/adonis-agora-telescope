@@ -1,0 +1,207 @@
+---
+title: Scaling storage
+icon: TrendingUp
+description: Grow Telescope's storage with your volume — from the in-memory default to your app's database, a dedicated one, and a tiered store that keeps minutes of data hot and everything older as Parquet on disk or S3. Each step is a config change.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Every driver implements the same [`TelescopeStore`](/docs/telescope/concepts/storage) contract,
+so the dashboard, the query API, alerts and the pruner behave the same on all of them. What
+changes as you climb is **how much Telescope holds, for how long, and what it costs the rest
+of your app**. Pick the lowest rung that fits; move up when a signal below says so.
+
+| Rung | Store | Fits | Move up when |
+|---|---|---|---|
+| **0 — In memory** | `storage.memory()` (the default) | Local dev, one process | You run more than one process, or want entries to survive a restart |
+| **1 — Your database** | `storage.lucid()` on the app's connection | Multi-process apps at modest volume | Telescope competes with your app for its database |
+| **2 — A dedicated database** | `storage.lucid({ connection: 'telescope' })` | Isolation, no new kind of infrastructure | The pruner can't keep up, or you want longer retention than a row store holds cheaply |
+| **3 — Tiered** | Hot: rung 1 or 2, minutes deep. Cold: Parquet in a directory or on S3 | High volume, long retention, no new database to run | Cold queries are too slow for how often you run them |
+
+Rungs are not a sequence you have to walk: an app that knows it writes a lot can start at 3.
+A columnar database (ClickHouse) is the natural rung after 3; it is not shipped yet, and a
+[custom store](/docs/telescope/recipes/custom-storage) can provide it today.
+
+## Signals that say "move up"
+
+- **Your app's own queries slow down while Telescope writes.** Rung 1 is sharing a database it
+  shouldn't — go to 2.
+- **The `telescope_entries` table keeps growing** although `prune` is configured. Each prune
+  cycle is one `DELETE` of everything past `prune.after`; at a high write rate that delete gets
+  long and the table bloats. Shorter retention or rung 3 fix it; rung 3 keeps the history.
+- **You want days of `request` / `query` history**, not hours. A row store can hold it, but
+  every prune cycle pays to delete it again.
+
+<Callout type="warn">
+Before climbing, check what you capture. Query capture usually dominates volume — every SQL
+statement becomes an entry. [Tail-sampling](/docs/telescope/packages/advanced) keeps the slow and
+failed ones and drops most of the rest, and often keeps you on the rung you're on. Sampling is
+also the only lever for capture's CPU cost: the storage choice does not change it.
+</Callout>
+
+## Rung 1 → 2: a dedicated database
+
+Same driver, its own Lucid connection. Nothing else changes.
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  store: 'lucid',
+  stores: { lucid: storage.lucid({ connection: 'telescope' }) },
+  prune: { after: '24h' },
+})
+```
+
+## Rung 3: tiered — hot database, cold Parquet
+
+The hot tier is the store you already have, kept minutes deep. When the pruner runs, entries
+older than `hotFor` are written as Parquet files instead of being thrown away, and deleted from
+the hot tier only after the files are written. Reads span both tiers.
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  store: 'tiered',
+  stores: {
+    tiered: storage.tiered({
+      hot: storage.lucid(),                                   // the app's own database
+      cold: storage.parquet({ location: { dir: 'storage/telescope' } }),
+      hotFor: '5m',                                           // how long entries stay hot
+    }),
+  },
+  // Drives the move to cold. `after` is the COLD tier's retention.
+  prune: { after: '7d', intervalMs: 60_000 },
+})
+```
+
+Install the cold tier's packages (optional peers of the core, pure JavaScript):
+
+```sh
+npm install hyparquet hyparquet-writer hyparquet-compressors
+```
+
+What happens on each prune cycle:
+
+1. **Move.** Hot entries older than `now - hotFor` (and newer than `prune.after`) are written to
+   cold, then the hot tier deletes everything older than `now - hotFor`. If the write fails, the
+   files it wrote are removed and the hot tier is left as it was; the next cycle retries.
+2. **Expire.** Cold files whose whole hour is older than `prune.after` are deleted. Retention is
+   per hourly file, so an hour stays visible until all of it has expired. `prune.keepLast` keeps
+   the newest expired files until they hold at least that many entries.
+3. **Compact.** Each closed hour's files (one per cycle) are merged into one file per 200k rows,
+   written before the inputs are deleted.
+
+Reads go to the hot tier first and to cold for whatever the answer still needs. `list` merges
+both newest-first and drops duplicate ids, so `{ page, size }` pages straight across the tier
+boundary; when the hot tier fills a page with entries newer than anything in cold, cold is not
+read at all. `get` falls through to cold on a hot miss, and the traces screen and throughput
+chart combine both tiers. If the cold tier can't be read, hot results are still returned and a
+warning is logged.
+
+<Callout type="info">
+Tiering caps the hot table's **size**, not the **writes** it takes: every entry is still
+inserted into the hot database, read once to move it, then deleted. Keep sampling on for
+high-volume types. And because a move is driven by the pruner, run the pruner on **one**
+process — e.g. `prune: { after: '7d', enabled: env.get('TELESCOPE_PRUNER') === 'true' }`.
+Several pruners moving the same window write the rows more than once; reads never show the
+duplicates, but the files and counts carry them.
+</Callout>
+
+### Layout
+
+```
+type=<type>/dt=<yyyy-mm-dd>/hour=<hh>/<instanceId>-<uuid>.parquet
+```
+
+`type` comes first, so a query on one type lists only that type's files and a bucket lifecycle
+rule can give each type its own retention. Rows are sorted by `created_at, id`, row groups hold
+10,000 rows with statistics on, and `id` / `trace_id` carry bloom filters, so a time-bounded
+read or a trace lookup skips the row groups that can't match. `content` and `tags` are JSON
+text, as in the Lucid table.
+
+### On S3
+
+Pass your own `S3Client` (`@aws-sdk/client-s3`). Telescope uses it for every byte, so your
+credentials, region, endpoint (GovCloud, a VPC endpoint, MinIO) and retry policy apply.
+
+```ts
+import { S3Client } from '@aws-sdk/client-s3'
+
+const s3 = new S3Client({ region: 'us-east-1' })
+
+storage.parquet({
+  location: { s3: { client: s3, bucket: 'observability', prefix: 'telescope/v1' } },
+})
+```
+
+Reads are ranged `GetObject` calls: a footer or a row group is fetched without the whole file.
+
+### Cold engine: pure JavaScript by default
+
+The cold tier is read with [hyparquet](https://github.com/hyparam/hyparquet): plain JavaScript,
+nothing native, nothing downloaded at runtime, and every byte of it visible to image scanners.
+
+If your images may ship native code and you run wide scans over the cold tier (traces and tags
+across days, full-text search), you can opt into **DuckDB** instead, an optional peer:
+
+```sh
+npm install @duckdb/node-api
+```
+
+```ts
+storage.parquet({
+  location: { dir: 'storage/telescope' },
+  engine: { duckdb: { memoryLimit: '512MB', threads: 2 } },   // or simply 'duckdb'
+})
+```
+
+Selecting DuckDB without installing it fails at boot with an error naming the package; there
+is no silent fallback. The hyparquet packages are still needed with DuckDB (they write the
+files and read their footers).
+
+<Callout type="warn">
+Image scanners report `@duckdb/node-api` clean because they only see its `package.json` files:
+the ~70 MB native library it loads (with everything DuckDB links statically) is not cataloged by
+Trivy, Grype or syft. Treat that as unverified rather than clean. Telescope starts DuckDB with
+extension auto-install and auto-load off, external file access limited to the data (or cache)
+directory, and the configuration locked, so it never downloads or loads `httpfs` / `aws`. On S3,
+files are fetched through your `S3Client` into a local cache directory (`cacheDir`, default under
+the OS temp dir, capped by `cacheBytes`, default 1 GiB) and read from there.
+</Callout>
+
+Measured on one machine (300k entries in one directory, 30 row groups):
+
+| Read | hyparquet | DuckDB |
+|---|---|---|
+| Newest 50 of a type | 4 ms | 26 ms |
+| Page 20 of 50, all types | 10 ms | 39 ms |
+| Point lookup by id | 12 ms | 3 ms |
+| One trace (ids clustered in time, as real traces are) | 16 ms | 4 ms |
+| Tag filter matching 0.1% of rows (full scan) | 211 ms | 16 ms |
+| Throughput chart, 60 buckets over every row | 50 ms | 15 ms |
+| Write 300k entries | 2.4 s | — (always hyparquet) |
+
+hyparquet wins the newest-first pages the dashboard opens with; DuckDB wins anything that has
+to look at every row.
+
+### Options
+
+| Option | Default | |
+|---|---|---|
+| `tiered.hot` | — | Any `storage.*` driver (usually `storage.lucid()`) or a store instance. |
+| `tiered.cold` | — | `storage.parquet({ ... })`. |
+| `tiered.hotFor` | — | How long entries stay hot (`'5m'`, `90_000`). Keep it shorter than `prune.after`. |
+| `tiered.moveBatchSize` | `5000` | Hot entries read per page while moving. |
+| `tiered.moveFlushSize` | `50000` | Entries buffered before a move writes them out as files. |
+| `tiered.compact` | `true` | Merge each closed hour's files during prune. |
+| `parquet.location` | — | `{ dir }`, `{ s3: { client, bucket, prefix? } }`, or a custom `ColdObjectStore`. |
+| `parquet.engine` | `'hyparquet'` | `'hyparquet'`, `'duckdb'`, or `{ duckdb: { memoryLimit?, threads?, cacheDir?, cacheBytes? } }`. |
+| `parquet.instanceId` | `<hostname>-<pid>` | Written into file names, so pods never collide. |
+| `parquet.rowGroupSize` | `10000` | Rows per row group. |
+| `parquet.maxRowsPerFile` | `200000` | Rows per file (writes and compaction). |
+
+## Moving between rungs
+
+A new store starts empty and the old one's entries age out on their own retention — Telescope
+is observability, not a system of record, so there is nothing to migrate. Moving from rung 1 or
+2 to 3 keeps the same hot table: only entries older than `hotFor` start moving to cold.
