@@ -175,6 +175,24 @@ describe.each(ENGINES)('parquet cold store (%s engine, local dir)', (engine) => 
     expect(rows.length).toBeGreaterThan(0);
   });
 
+  it('leaves no unhandled rejection behind when files vanish mid-read', async () => {
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', record);
+    try {
+      // Filtered reads prefetch several byte ranges per file at once; a file deleted
+      // after its footer is cached fails all of them, and only the first is awaited.
+      await cold.list();
+      for (const file of parquetFiles(tmp.dir)) rmSync(file);
+      await cold.list({ type: 'query' });
+      await cold.get(entries[0]!.id);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } finally {
+      process.off('unhandledRejection', record);
+    }
+    expect(unhandled).toEqual([]);
+  });
+
   it('clears every file', async () => {
     await cold.clear();
     expect(parquetFiles(tmp.dir)).toHaveLength(0);

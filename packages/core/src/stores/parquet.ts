@@ -505,12 +505,21 @@ export class ParquetColdStore {
     const location = this.location;
     return {
       byteLength: file.size,
-      async slice(start: number, end?: number): Promise<ArrayBuffer> {
-        const bytes = await location.read(file.key, start, end);
-        return bytes.buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength,
-        ) as ArrayBuffer;
+      slice(start: number, end?: number): Promise<ArrayBuffer> {
+        const read = location
+          .read(file.key, start, end)
+          .then(
+            (bytes) =>
+              bytes.buffer.slice(
+                bytes.byteOffset,
+                bytes.byteOffset + bytes.byteLength,
+              ) as ArrayBuffer,
+          );
+        // hyparquet starts sibling reads it abandons when one fails, e.g. on a file
+        // deleted mid-read. Marking each read handled keeps those from crashing the
+        // process; whoever awaits it still gets the error.
+        read.catch(() => {});
+        return read;
       },
     };
   }
