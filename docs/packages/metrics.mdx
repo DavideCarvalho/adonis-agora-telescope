@@ -25,8 +25,9 @@ import {
 
 <Callout type="info">
 Everything here is **read-only** and **storage-agnostic**. `MetricsService` works through the
-[`TelescopeStore.list`](/docs/telescope/concepts/storage) interface only — never a specific
-driver — and it reads **already-redacted** stored entries, so analysis can never bypass
+[`TelescopeStore`](/docs/telescope/concepts/storage) interface only (`list`, plus the
+[optional fast paths](/docs/telescope/concepts/storage#optional-fast-paths) when the store has
+them) — never a specific driver — and it reads **already-redacted** stored entries, so analysis can never bypass
 [redaction](/docs/telescope/concepts/protection). The pure functions take an array of entries
 you have already fetched.
 </Callout>

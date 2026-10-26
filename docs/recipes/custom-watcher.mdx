@@ -32,9 +32,11 @@ interface EmitterLike {
 `emitter.on(...)` returns an unsubscribe function (the real Adonis emitter, built on
 `emittery`, does exactly this) — keep it and call it in `stop()`.
 
-You record through `safeRecord(input, source)`, the guarded helper: it resolves the live
+You record through `safeRecord(() => input, source)`, the guarded helper: it resolves the live
 runtime store, backfills the active `@adonis-agora/context` trace id when you don't set one, and
-swallows every failure so your watcher can never break the path it observes.
+swallows every failure so your watcher can never break the path it observes. The builder
+function runs only when the entry will be recorded, so a paused or disabled Telescope builds
+nothing. Passing a plain `RecordInput` also works, at the cost of building it every time.
 
 ## Example — a queue-job watcher
 
@@ -76,7 +78,7 @@ export class QueueWatcher implements Watcher {
 
   private handle(data: unknown): void {
     if (!isQueueEvent(data)) return              // validate defensively
-    safeRecord(buildJobEntry(data), 'QueueWatcher')
+    safeRecord(() => buildJobEntry(data), 'QueueWatcher')
   }
 }
 
@@ -105,9 +107,10 @@ function buildJobEntry(event: QueueProcessedEvent): RecordInput<JobEntryContent>
   the dashboard's type filter and works with `list({ type: 'job' })`.
 - **`isQueueEvent`** rejects anything that doesn't structurally match — a watcher must
   tolerate junk on the channel without throwing.
-- **`safeRecord(..., 'QueueWatcher')`** does the dangerous part safely: a missing store, a
-  throwing `record`, or a rejected promise is caught and warn-logged with the source label,
-  never propagated into the job.
+- **`safeRecord(() => ..., 'QueueWatcher')`** does the dangerous part safely: a missing store,
+  a throwing builder or `record`, or a rejected promise is caught and logged with the source
+  label, never propagated into the job. The builder is skipped entirely while recording is
+  off or paused.
 - **`familyHash: event.queue`** makes `topFamilies(10, 'job')` answer "busiest queues", and
   the `failed` tag makes `list({ tag: 'failed' })` a one-liner.
 - **`currentTraceId()`** correlates the job to whatever request enqueued it, when context

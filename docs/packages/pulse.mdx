@@ -10,8 +10,10 @@ Individual entries answer *"what happened on this request?"*. **Pulse** answers 
 app doing right now?"* — a single aggregated snapshot over a trailing window: throughput, the
 request error rate and latency percentiles, the slowest entries, consistently-slow
 route/outgoing/job hotspots, N+1 query suspects, the top exception families, the cache hit
-ratio, and load-by-user. It is computed **on demand** from already-stored entries (a single
-windowed store scan), so there is no extra write cost and nothing to keep in sync.
+ratio, and load-by-user. It is computed **on demand** from already-stored entries (one
+windowed store scan without `content`, plus content reads for the request, cache and exception
+entries and the few rows a card displays), so there is no extra write cost and nothing to keep
+in sync.
 
 Pulse is part of the core — it is configured on `config/telescope.ts` and read three ways:
 

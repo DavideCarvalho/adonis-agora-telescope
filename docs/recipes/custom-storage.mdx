@@ -161,8 +161,14 @@ The core provider uses your instance instead of the in-memory store, and everyth
 downstream — `TelescopeService`, the dashboard, alerts, AI — works against it unchanged,
 because they all only know the contract.
 
-<Callout type="info">
-The contract is intentionally minimal — no rollups, no cursors. If your backend has
-cheap server-side aggregation, you can compute `topFamilies`/`topTags` there, but the
-default `TelescopeService` already derives them from `list`, so it's optional.
-</Callout>
+## Optional fast paths
+
+The contract is intentionally minimal — no rollups, no cursors. If your backend has cheap
+server-side aggregation, implement any of the four optional reads (`listTraceIds`,
+`countByBucket`, `countFamilies`, `countTags`, see
+[Storage](/docs/telescope/concepts/storage#optional-fast-paths)). Each one replaces a scan of
+`list` on a dashboard screen; leave one out and that screen falls back to the scan.
+
+`list` may also honour `EntryQuery.omitContent`: when it is set, return `content: null`
+without loading the field (in Mongo, a projection that excludes `content` and `contentText`).
+Ignoring the hint is correct too.

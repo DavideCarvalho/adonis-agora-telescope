@@ -110,7 +110,9 @@ slow-query card). The `familyHash` is a `queryFamilyHash(sql)` — the SQL norma
 template (literals replaced by `?`, whitespace collapsed) and FNV-1a hashed — so every
 execution of `select * from users where id = ?` rolls up into one family regardless of the id.
 Set `query.normalize: false` to hash the raw SQL verbatim (no grouping across literals), and
-`query.ignoreConnections` to drop specific connections (e.g. the telescope store's own).
+`query.ignoreConnections` to drop specific connections (e.g. a replica you don't want on the
+timeline). The `lucid` store's own queries are never recorded, whichever connection it uses.
+The SQL is templated into `familyHash` only for entries that survive sampling.
 
 <Callout type="warn">
 Bindings routinely carry PII / secrets (emails, tokens, password hashes), so by default they
@@ -609,9 +611,11 @@ interface Watcher {
 }
 ```
 
-Record through the exported `safeRecord(input, source)` helper — it resolves the runtime
+Record through the exported `safeRecord(() => input, source)` helper — it resolves the runtime
 store, backfills the active trace id, and swallows every failure so your watcher can never
-break the path it observes. The [custom watcher guide](/docs/telescope/recipes/custom-watcher)
+break the path it observes. Pass the entry as a builder function: it runs only once the entry
+will be recorded, so nothing is built while Telescope is off or paused, or for the store's own
+queries. A plain `RecordInput` is accepted too. The [custom watcher guide](/docs/telescope/recipes/custom-watcher)
 walks through a full example.
 
 ## Peer dependencies

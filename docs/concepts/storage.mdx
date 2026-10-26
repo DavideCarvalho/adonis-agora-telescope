@@ -34,10 +34,25 @@ returns the persisted `Entry`. Everything else is a read or a maintenance operat
 <Callout type="info">
 This is the trimmed Adonis port of aviary's NestJS `StorageProvider` — no opaque
 keyset cursors and no built-in rollup tables. The `EntryQuery` uses a simple
-`before` / `after` / `page` / `size` instead. Aggregates (`topFamilies`, `topTags`) are computed
-in `TelescopeService` over `list`, which is plenty for the in-memory and single-node
-SQL stores this ships with.
+`before` / `after` / `page` / `size` instead.
 </Callout>
+
+### Optional fast paths
+
+On top of the six required methods, a store may implement four optional reads. The
+dashboard detects each one by the method being present, and falls back to scanning `list`
+when it is absent, so a store without them is correct, just slower on a large table:
+
+| Method | Serves | Fallback when absent |
+|--------|--------|----------------------|
+| `listTraceIds({ size, page?, before?, after? })` | the traces screen: a page of distinct trace ids, most recently seen first | scans entries (up to the metrics scan cap) and groups them by `traceId` |
+| `countByBucket({ after, before, bucketMs, type? })` | the throughput chart: per-bucket, per-type counts | lists the window without content and buckets it in JS |
+| `countFamilies({ limit, type? })` | `topFamilies`: busiest `familyHash` values, ties to the most recently seen | lists the whole table without content and counts in JS |
+| `countTags({ limit, prefix? })` | `topTags`: most common tags, ties to the most recently seen | lists the whole table without content and counts in JS |
+
+The `memory` and `lucid` drivers implement all four. The redaction, sampling, streaming and
+OTel decorators the provider wraps around your store expose each method only when the store
+underneath has it.
 
 ## Choosing a driver
 
@@ -77,6 +92,7 @@ interface EntryQuery {
   search?: string      // case-insensitive substring over JSON content + tags
   page?: number        // 1-based page number (default 1)
   size?: number        // page size — how many entries to return
+  omitContent?: boolean // hint: the caller does not read `content`
 }
 ```
 
@@ -87,6 +103,11 @@ row offset as `(page - 1) * size`, so `{ page: 2, size: 25 }` is the second page
 
 `search` matches against the entry's JSON-serialized `content` **and** its `tags`, so a
 request matches by url, a diagnostic by event, a query by SQL — all from one box.
+
+`omitContent` is a hint, not a filter. Window-wide aggregations (Pulse, per-type stats) set
+it and then fetch the content of the few entries they display. A store may answer it by
+returning `content: null` without loading or parsing the column (the `lucid` driver does);
+a store that ignores it still answers correctly.
 
 ```ts
 await telescope.list({ type: 'query', search: 'users', size: 50 })
@@ -185,12 +206,15 @@ await store.prune(cutoff, 500)
 
 `prune(olderThan, keepLast?)` deletes entries older than `olderThan`; when `keepLast`
 is set, the newest N of the *matched-and-doomed* entries are retained. It returns the
-number deleted. Wire it into an `@adonisjs/scheduler` job (or a cron) for hands-off
+number deleted. The `lucid` driver deletes oldest-first in batches of 5,000 rows, each
+statement carrying a handful of bound values, so a backlog of any size prunes without hitting
+the database's bind-parameter limit. Wire it into an `@adonisjs/scheduler` job (or a cron) for hands-off
 retention.
 
 ## Writing your own store
 
-Implement the six-method contract and pass an instance to `store`. A Mongo, Redis, or
+Implement the six-method contract (plus any of the [optional fast paths](#optional-fast-paths)
+your backend can answer cheaply) and pass an instance to `store`. A Mongo, Redis, or
 ClickHouse store is just `record` + `list` + the maintenance methods. The
 [custom storage guide](/docs/telescope/recipes/custom-storage) walks through a full
 implementation.
