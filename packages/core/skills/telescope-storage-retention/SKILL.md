@@ -147,7 +147,10 @@ Source: `docs/concepts/protection.mdx` (Pausing on purpose).
 
 ### Pattern 5 — a custom store
 
-Implement the six-method contract and pass an instance as `store`. Two
+Implement the six required methods (`record`/`get`/`list`/`count`/`prune`/`clear`)
+and pass an instance as `store` — add the optional fast paths (`listTraceIds`,
+`countByBucket`, `countFamilies`, `countTags`) when you can, or decorators and the
+dashboard fall back to a full scan. Two
 responsibilities are easy to miss: `record` must resolve `traceId`/`origin`, and
 `search` needs serialized content text.
 
@@ -172,7 +175,7 @@ export class MongoTelescopeStore implements TelescopeStore {
                                contentText: JSON.stringify(entry.content) }) // search target
     return entry
   }
-  /* get / list / count / prune(olderThan, keepLast?) / clear */
+  /* get / list / count / prune(olderThan, keepLast?) / clear + optional listTraceIds/countByBucket/countFamilies/countTags */
 }
 
 // config/telescope.ts
