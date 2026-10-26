@@ -31,3 +31,9 @@ Faster recording and dashboard reads on the `lucid` store, and a fix for an endl
 - Redaction remembers which keys are masked instead of lowercasing every key of every entry, and
   never reads the value of a key it masks.
 - Latency percentiles no longer throw `RangeError` on windows with more than ~120k durations.
+- The `lucid` store works on MySQL without `ANSI_QUOTES`. The `tag` and `search` filters quoted
+  their columns with double quotes, which MySQL reads as string literals, so they matched nothing;
+  they now use identifier bindings, and LIKE patterns escape with `!` instead of a backslash.
+  `autoCreateTable` / `createTelescopeTable` issue backtick-quoted DDL and plain `CREATE INDEX` on
+  MySQL (an index that already exists is skipped); `createTableStatements` takes the Lucid dialect
+  name as an optional second argument.

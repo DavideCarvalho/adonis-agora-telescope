@@ -50,32 +50,70 @@ export interface TelescopeColumns {
  * indexes `list` / `prune` / `topFamilies` lean on, as one statement per array
  * element so each can be issued through Lucid's `rawQuery`.
  *
- * Portable across sqlite / Postgres / MySQL (quoted identifiers, no dialect-only
- * column types). A real deployment should still prefer the bundled migration stub
+ * Identifiers are double-quoted (sqlite / Postgres) unless `dialect` is a Lucid
+ * MySQL dialect name (`mysql` / `mysql2`), which gets backticks and plain
+ * `CREATE INDEX`; the column types are portable. A real deployment should still prefer the bundled migration stub
  * so the schema is versioned, but this lets a store stand itself up in tests and
  * scripts without a migration runner.
  */
-export function createTableStatements(tableName: string = DEFAULT_TABLE_NAME): string[] {
+export function createTableStatements(
+  tableName: string = DEFAULT_TABLE_NAME,
+  dialect?: string,
+): string[] {
+  const mysql = isMysql(dialect);
+  const q = (identifier: string) => (mysql ? `\`${identifier}\`` : `"${identifier}"`);
+  // MySQL has no `CREATE INDEX IF NOT EXISTS`; an index that already exists fails with
+  // ER_DUP_KEYNAME, which the store's reconcile treats as done.
+  const index = (suffix: string, columns: string[]) =>
+    `CREATE INDEX ${mysql ? '' : 'IF NOT EXISTS '}${q(`${tableName}_${suffix}`)} ON ${q(tableName)} (${columns.map(q).join(', ')})`;
   return [
-    `CREATE TABLE IF NOT EXISTS "${tableName}" (
-      "id" VARCHAR(255) PRIMARY KEY NOT NULL,
-      "type" VARCHAR(255) NOT NULL,
-      "family_hash" VARCHAR(255) NULL,
-      "content" TEXT NOT NULL,
-      "tags" TEXT NOT NULL,
-      "sequence" INTEGER NOT NULL,
-      "duration_ms" INTEGER NULL,
-      "origin" VARCHAR(255) NOT NULL,
-      "trace_id" VARCHAR(255) NULL,
-      "created_at" BIGINT NOT NULL
+    `CREATE TABLE IF NOT EXISTS ${q(tableName)} (
+      ${q('id')} VARCHAR(255) PRIMARY KEY NOT NULL,
+      ${q('type')} VARCHAR(255) NOT NULL,
+      ${q('family_hash')} VARCHAR(255) NULL,
+      ${q('content')} TEXT NOT NULL,
+      ${q('tags')} TEXT NOT NULL,
+      ${q('sequence')} INTEGER NOT NULL,
+      ${q('duration_ms')} INTEGER NULL,
+      ${q('origin')} VARCHAR(255) NOT NULL,
+      ${q('trace_id')} VARCHAR(255) NULL,
+      ${q('created_at')} BIGINT NOT NULL
     )`,
-    `CREATE INDEX IF NOT EXISTS "${tableName}_created_at_idx" ON "${tableName}" ("created_at")`,
-    `CREATE INDEX IF NOT EXISTS "${tableName}_trace_id_idx" ON "${tableName}" ("trace_id")`,
+    index('created_at_idx', ['created_at']),
+    index('trace_id_idx', ['trace_id']),
     // The dashboard's per-type reads are `WHERE type = ? AND created_at > ? ORDER BY
     // created_at DESC, sequence DESC LIMIT n`: this one index answers them in order.
-    `CREATE INDEX IF NOT EXISTS "${tableName}_type_created_at_sequence_idx" ON "${tableName}" ("type", "created_at", "sequence")`,
-    `CREATE INDEX IF NOT EXISTS "${tableName}_family_hash_created_at_idx" ON "${tableName}" ("family_hash", "created_at")`,
+    index('type_created_at_sequence_idx', ['type', 'created_at', 'sequence']),
+    index('family_hash_created_at_idx', ['family_hash', 'created_at']),
   ];
+}
+
+/** MySQL (and MariaDB) quote identifiers with backticks; a double-quoted name is a string there. */
+function isMysql(dialect: string | undefined): boolean {
+  return dialect === 'mysql' || dialect === 'mysql2';
+}
+
+/** The Lucid dialect name of `db`, from the client itself or the facade's default connection. */
+function dialectOf(db: LucidDatabaseLike): string | undefined {
+  return db.dialect?.name ?? db.connection?.().dialect?.name;
+}
+
+/** Whether `error` is MySQL's "index already exists". */
+function isDuplicateIndex(error: unknown): boolean {
+  const { code, errno } = (error ?? {}) as { code?: unknown; errno?: unknown };
+  return code === 'ER_DUP_KEYNAME' || errno === 1061;
+}
+
+/** Run the DDL for `tableName` on `db`, in its dialect. */
+async function runTableStatements(db: LucidDatabaseLike, tableName: string): Promise<void> {
+  const dialect = dialectOf(db);
+  for (const stmt of createTableStatements(tableName, dialect)) {
+    try {
+      await db.rawQuery(stmt);
+    } catch (error) {
+      if (!(isMysql(dialect) && isDuplicateIndex(error))) throw error;
+    }
+  }
 }
 
 // ── Schema fingerprint gate ──────────────────────────────────────────────────
@@ -111,11 +149,12 @@ export const SCHEMA_META_TABLE_NAME = 'telescope_schema_meta';
  * and introspection-free, portable across sqlite / Postgres / MySQL (quoted
  * identifiers, portable types) — mirroring {@link createTableStatements}' style.
  */
-function createSchemaMetaTableStatement(): string {
-  return `CREATE TABLE IF NOT EXISTS "${SCHEMA_META_TABLE_NAME}" (
-      "id" VARCHAR(255) PRIMARY KEY NOT NULL,
-      "fingerprint" VARCHAR(64) NOT NULL,
-      "applied_at" BIGINT NOT NULL
+function createSchemaMetaTableStatement(dialect?: string): string {
+  const q = (identifier: string) => (isMysql(dialect) ? `\`${identifier}\`` : `"${identifier}"`);
+  return `CREATE TABLE IF NOT EXISTS ${q(SCHEMA_META_TABLE_NAME)} (
+      ${q('id')} VARCHAR(255) PRIMARY KEY NOT NULL,
+      ${q('fingerprint')} VARCHAR(64) NOT NULL,
+      ${q('applied_at')} BIGINT NOT NULL
     )`;
 }
 
@@ -147,6 +186,10 @@ export interface LucidDatabaseLike {
   table(table: string): LucidInsertBuilderLike;
   /** Run a raw SQL statement (DDL, `MAX(sequence)` seed). */
   rawQuery(sql: string, bindings?: unknown[]): Promise<unknown>;
+  /** The dialect, when this is a single connection client. Picks the DDL's identifier quoting. */
+  dialect?: { name: string };
+  /** The default connection, when this is the `Database` facade. */
+  connection?(): { dialect?: { name: string } };
 }
 
 /** The structural query-builder surface the store leans on (Knex-shaped). */
@@ -376,16 +419,19 @@ export class LucidTelescopeStore implements TelescopeStore {
       if (query.tag !== undefined) {
         // A tag is one element of the JSON array text, e.g. `["lib:billing",...]`.
         // Match the quoted token so `lib:bill` never matches `lib:billing`.
-        builder = builder.whereRaw(`"tags" LIKE ? ESCAPE '\\'`, [
+        builder = builder.whereRaw(`?? LIKE ? ESCAPE '!'`, [
+          'tags',
           `%${likeEscape(JSON.stringify(query.tag))}%`,
         ]);
       }
       if (query.search !== undefined) {
         const needle = `%${likeEscape(query.search.toLowerCase())}%`;
-        builder = builder.whereRaw(
-          `(LOWER("content") LIKE ? ESCAPE '\\' OR LOWER("tags") LIKE ? ESCAPE '\\')`,
-          [needle, needle],
-        );
+        builder = builder.whereRaw(`(LOWER(??) LIKE ? ESCAPE '!' OR LOWER(??) LIKE ? ESCAPE '!')`, [
+          'content',
+          needle,
+          'tags',
+          needle,
+        ]);
       }
       // Newest-first: created_at desc, sequence desc as a deterministic tiebreaker.
       builder = builder.orderBy('created_at', 'desc').orderBy('sequence', 'desc');
@@ -749,16 +795,14 @@ export class LucidTelescopeStore implements TelescopeStore {
    */
   private async reconcileSchema(): Promise<void> {
     // (1) Idempotent, introspection-free marker table.
-    await this.db.rawQuery(createSchemaMetaTableStatement());
+    await this.db.rawQuery(createSchemaMetaTableStatement(dialectOf(this.db)));
     // (2) Read the stored fingerprint + (3) compute the expected one in memory.
     const stored = await this.readStoredFingerprint();
     const expected = computeSchemaFingerprint(this.tableName);
     // (4) Steady state: identical fingerprint ⇒ skip the entries-table DDL.
     if (stored === expected) return;
     // (5) Absent/mismatch ⇒ (re)create the table + indexes, then re-cache.
-    for (const stmt of createTableStatements(this.tableName)) {
-      await this.db.rawQuery(stmt);
-    }
+    await runTableStatements(this.db, this.tableName);
     await this.writeStoredFingerprint(expected);
   }
 
@@ -798,10 +842,7 @@ export async function createTelescopeTable(
   db: LucidDatabaseLike,
   options: CreateTableOptions = {},
 ): Promise<void> {
-  const tableName = options.tableName ?? DEFAULT_TABLE_NAME;
-  for (const stmt of createTableStatements(tableName)) {
-    await db.rawQuery(stmt);
-  }
+  await runTableStatements(db, options.tableName ?? DEFAULT_TABLE_NAME);
 }
 
 /** Parse JSON text columns back into an {@link Entry}. */
@@ -866,7 +907,11 @@ function toInt(value: unknown): number {
   return 0;
 }
 
-/** Escape LIKE wildcards so user input matches literally (escape char `\`). */
+/**
+ * Escape LIKE wildcards so user input matches literally. The escape character is `!`
+ * rather than a backslash, which MySQL would read as escaping the closing quote of
+ * `ESCAPE '\'`.
+ */
 function likeEscape(value: string): string {
-  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  return value.replace(/[!%_]/g, (ch) => `!${ch}`);
 }
