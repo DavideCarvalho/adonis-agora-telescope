@@ -151,10 +151,11 @@ the AI diagnoser all work against it unchanged. A few design notes:
   or string-format ambiguity.
 - `sequence` is seeded from `MAX(sequence)` on first use, so it keeps climbing
   monotonically across restarts.
-- Indexes back the hot read paths (`created_at`, `type`, `trace_id`, `family_hash`).
-- **Single pooled connection.** Writes are serialized (single-flight), so the store holds
-  at most one connection from the pool at a time — a watcher-event burst can't exhaust the
-  app's DB pool.
+- Indexes back the hot read paths (`created_at`, `trace_id`, `(type, created_at, sequence)`,
+  `(family_hash, created_at)`).
+- **Single pooled connection.** Writes are batched into multi-row inserts and serialized, so
+  the store holds at most one connection from the pool for writing — a watcher-event burst
+  can't exhaust the app's DB pool.
 - **Integer durations.** `duration_ms` is rounded to an integer at the store (it's an
   INTEGER column), so watchers timing with `performance.now()` never produce a fractional
   value Postgres would reject.

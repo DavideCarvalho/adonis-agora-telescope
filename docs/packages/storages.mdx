@@ -97,9 +97,9 @@ export default class extends BaseSchema {
       table.bigInteger('created_at').notNullable()
 
       table.index(['created_at'])
-      table.index(['type'])
       table.index(['trace_id'])
-      table.index(['family_hash'])
+      table.index(['type', 'created_at', 'sequence'])
+      table.index(['family_hash', 'created_at'])
     })
   }
 
@@ -108,6 +108,34 @@ export default class extends BaseSchema {
   }
 }
 ```
+
+If your app ran an earlier copy of this migration (with single-column `type` and
+`family_hash` indexes), add the two composite indexes with a migration of your own:
+
+```ts
+import { BaseSchema } from '@adonisjs/lucid/schema'
+
+export default class extends BaseSchema {
+  protected tableName = 'telescope_entries'
+
+  async up() {
+    this.schema.alterTable(this.tableName, (table) => {
+      table.index(['type', 'created_at', 'sequence'])
+      table.index(['family_hash', 'created_at'])
+    })
+  }
+
+  async down() {
+    this.schema.alterTable(this.tableName, (table) => {
+      table.dropIndex(['type', 'created_at', 'sequence'])
+      table.dropIndex(['family_hash', 'created_at'])
+    })
+  }
+}
+```
+
+With `autoCreateTable` there is nothing to do: the schema fingerprint changes and the store
+adds the new indexes on its next boot.
 
 <Callout type="info">
 For tests and scripts, you can skip the migration: pass `autoCreateTable: true` (the store

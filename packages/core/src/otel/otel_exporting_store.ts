@@ -1,6 +1,6 @@
 import type { Entry, RecordInput } from '../entry.js';
 import { getTelescopeRuntime } from '../registry.js';
-import type { EntryQuery, TelescopeStore } from '../store.js';
+import { type EntryQuery, forwardOptionalReads, type TelescopeStore } from '../store.js';
 import { mapEntryToOtel } from './mapper.js';
 import type { OtelExporter } from './otel_exporter.js';
 
@@ -44,6 +44,7 @@ export class OtelExportingTelescopeStore implements TelescopeStore {
     entryTypes: readonly string[],
   ) {
     this.entryTypes = new Set(entryTypes);
+    forwardOptionalReads(this, inner);
   }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {

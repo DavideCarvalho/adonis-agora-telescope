@@ -2,10 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
 import { type BatchOrigin, type Entry, isBatchOrigin, type RecordInput } from '../entry.js';
 import { resolveOrigin } from '../origin_scope.js';
+import { runAsTelescopeWork } from '../self_scope.js';
 import type {
   BucketCountQuery,
   BucketCountRow,
   EntryQuery,
+  FamilyCountQuery,
+  KeyCountRow,
+  TagCountQuery,
   TelescopeStore,
   TraceIdQuery,
   TraceIdRow,
@@ -66,9 +70,11 @@ export function createTableStatements(tableName: string = DEFAULT_TABLE_NAME): s
       "created_at" BIGINT NOT NULL
     )`,
     `CREATE INDEX IF NOT EXISTS "${tableName}_created_at_idx" ON "${tableName}" ("created_at")`,
-    `CREATE INDEX IF NOT EXISTS "${tableName}_type_idx" ON "${tableName}" ("type")`,
     `CREATE INDEX IF NOT EXISTS "${tableName}_trace_id_idx" ON "${tableName}" ("trace_id")`,
-    `CREATE INDEX IF NOT EXISTS "${tableName}_family_hash_idx" ON "${tableName}" ("family_hash")`,
+    // The dashboard's per-type reads are `WHERE type = ? AND created_at > ? ORDER BY
+    // created_at DESC, sequence DESC LIMIT n`: this one index answers them in order.
+    `CREATE INDEX IF NOT EXISTS "${tableName}_type_created_at_sequence_idx" ON "${tableName}" ("type", "created_at", "sequence")`,
+    `CREATE INDEX IF NOT EXISTS "${tableName}_family_hash_created_at_idx" ON "${tableName}" ("family_hash", "created_at")`,
   ];
 }
 
@@ -152,6 +158,8 @@ export interface LucidQueryBuilderLike {
   whereNotNull(column: string): this;
   orderBy(column: string, direction: 'asc' | 'desc'): this;
   groupBy(...columns: string[]): this;
+  /** Group by an expression. Optional: without it, `countByBucket` buckets rows in JS. */
+  groupByRaw?(sql: string, bindings?: unknown[]): this;
   limit(value: number): this;
   offset(value: number): this;
   /** Aggregate MAX with an alias, e.g. `max('created_at as last_at')`. Chainable so it
@@ -164,7 +172,8 @@ export interface LucidQueryBuilderLike {
 }
 
 export interface LucidInsertBuilderLike {
-  insert(row: Record<string, unknown>): Promise<unknown>;
+  /** Insert one row, or several in one statement. */
+  insert(row: Record<string, unknown> | Record<string, unknown>[]): Promise<unknown>;
 }
 
 /** Options for {@link LucidTelescopeStore} (and the `storage.lucid` factory). */
@@ -185,6 +194,46 @@ export interface LucidStoreOptions {
   autoCreateTable?: boolean;
 }
 
+/** Rows per multi-row INSERT. Ten columns each keeps a statement at 900 bound values,
+ *  under the smallest limit of any dialect Lucid drives (999 on older SQLite builds). */
+const INSERT_BATCH_ROWS = 90;
+/** Serialized bytes per INSERT, so a batch of large entries stays far below MySQL's
+ *  default `max_allowed_packet`. A single entry over it is still written, alone. */
+const INSERT_BATCH_BYTES = 4 * 1024 * 1024;
+/** Entries waiting to be written. Past this, new entries are dropped and counted
+ *  rather than queued: a database that stopped keeping up must not grow the heap. */
+const MAX_PENDING_WRITES = 10_000;
+/** Rows deleted per statement while pruning. */
+const PRUNE_BATCH_ROWS = 5_000;
+/** Rows read per page while counting tags. */
+const TAG_SCAN_PAGE_ROWS = 5_000;
+/** Every column but `content`, for reads that set {@link EntryQuery.omitContent}. */
+const COLUMNS_WITHOUT_CONTENT = [
+  'id',
+  'type',
+  'family_hash',
+  'tags',
+  'sequence',
+  'duration_ms',
+  'origin',
+  'trace_id',
+  'created_at',
+];
+
+/** One entry waiting in {@link LucidTelescopeStore}'s write buffer. */
+interface PendingWrite {
+  row: TelescopeColumns;
+  bytes: number;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}
+
+/** A row's position in newest-first order. */
+interface RowPosition {
+  createdAt: number;
+  sequence: number;
+}
+
 /**
  * A persistent, SQL-backed {@link TelescopeStore} on AdonisJS Lucid. Uses Lucid's
  * **async** query builder directly, so it works on every dialect Lucid supports
@@ -194,6 +243,15 @@ export interface LucidStoreOptions {
  * `created_at` is epoch-ms so ordering and age-pruning are integer comparisons.
  * `sequence` is seeded from `MAX(sequence)` on first use so it keeps climbing
  * across process restarts.
+ *
+ * Writes are buffered: every entry recorded during one tick of the event loop goes
+ * out in one multi-row INSERT (split to stay under each dialect's bind limit), one
+ * statement at a time, so the store never holds more than one pooled connection
+ * for writing and a burst of watcher events costs a handful of round trips instead
+ * of one each. `record()` still resolves once its entry is persisted.
+ *
+ * Every query the store runs is marked as telescope's own work (see
+ * `self_scope.ts`), so the query watcher never records them.
  *
  * Usually you don't construct this directly: `config/telescope.ts` selects it via
  * `storage.lucid({ ... })` and the provider builds it for you, lazily importing
@@ -206,14 +264,11 @@ export class LucidTelescopeStore implements TelescopeStore {
   /** Lazily-resolved init (table creation + sequence seed), run at most once. */
   private ready: Promise<void> | null = null;
   private sequence = 0;
-  /**
-   * Single-flight write chain: every `record()` insert is queued behind the previous one so the
-   * store holds at most ONE pooled connection at a time. A burst of watcher events can therefore
-   * never exhaust the host app's connection pool (which telescope may share). Reads
-   * (`get`/`list`/`prune`) are user-initiated and low-frequency, so they are intentionally NOT
-   * serialized.
-   */
-  private writeTail: Promise<unknown> = Promise.resolve();
+  private pending: PendingWrite[] = [];
+  /** The running drain, while one is scheduled or writing. */
+  private draining: Promise<void> | null = null;
+  private dropped = 0;
+  private warnedDrop = false;
 
   constructor(
     private readonly db: LucidDatabaseLike,
@@ -259,70 +314,94 @@ export class LucidTelescopeStore implements TelescopeStore {
       created_at: entry.createdAt.getTime(),
     };
 
-    // Queue the insert behind any in-flight write (see `writeTail`): at most one telescope
-    // connection is ever checked out of the pool. The entry is built eagerly above, so
-    // `sequence`/`created_at` reflect event order even though the insert itself is serialized.
-    const write = this.writeTail.then(() =>
-      this.db.table(this.tableName).insert(row as unknown as Record<string, unknown>),
-    );
-    // Advance the chain regardless of this write's outcome — a single failed insert must not
-    // wedge every subsequent write.
-    this.writeTail = write.then(
-      () => undefined,
-      () => undefined,
-    );
-    await write;
+    if (this.pending.length >= MAX_PENDING_WRITES) {
+      this.dropped += 1;
+      if (!this.warnedDrop) {
+        this.warnedDrop = true;
+        console.warn(
+          `@adonis-agora/telescope: ${MAX_PENDING_WRITES} entries are waiting to be written to ` +
+            `"${this.tableName}"; new entries are dropped until the database catches up.`,
+        );
+      }
+      return entry;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      this.pending.push({
+        row,
+        bytes: row.content.length + row.tags.length,
+        resolve,
+        reject,
+      });
+      this.scheduleDrain();
+    });
     return entry;
   }
 
-  async get(id: string): Promise<Entry | null> {
-    await this.init();
-    const row = await this.db.from(this.tableName).where('id', id).first();
-    return row ? hydrate(row as unknown as TelescopeColumns) : null;
+  /** Entries dropped because the write buffer was full. */
+  get droppedCount(): number {
+    return this.dropped;
   }
 
-  async list(query: EntryQuery = {}): Promise<Entry[]> {
-    await this.init();
-    let builder = this.db.from(this.tableName);
-    if (query.type !== undefined) builder = builder.where('type', query.type);
-    if (query.familyHash !== undefined) builder = builder.where('family_hash', query.familyHash);
-    if (query.traceId !== undefined) builder = builder.where('trace_id', query.traceId);
-    if (query.traceIds !== undefined) {
-      // An empty list means "no traces", not "no filter" — whereIn([]) already yields
-      // zero rows, but being explicit keeps a caller's empty page from becoming a scan.
-      if (query.traceIds.length === 0) return [];
-      builder = builder.whereIn('trace_id', query.traceIds);
-    }
-    if (query.before !== undefined)
-      builder = builder.where('created_at', '<', query.before.getTime());
-    if (query.after !== undefined)
-      builder = builder.where('created_at', '>', query.after.getTime());
-    if (query.tag !== undefined) {
-      // A tag is one element of the JSON array text, e.g. `["lib:billing",...]`.
-      // Match the quoted token so `lib:bill` never matches `lib:billing`.
-      builder = builder.whereRaw(`"tags" LIKE ? ESCAPE '\\'`, [
-        `%${likeEscape(JSON.stringify(query.tag))}%`,
-      ]);
-    }
-    if (query.search !== undefined) {
-      const needle = `%${likeEscape(query.search.toLowerCase())}%`;
-      builder = builder.whereRaw(
-        `(LOWER("content") LIKE ? ESCAPE '\\' OR LOWER("tags") LIKE ? ESCAPE '\\')`,
-        [needle, needle],
-      );
-    }
-    // Newest-first: created_at desc, sequence desc as a deterministic tiebreaker.
-    builder = builder.orderBy('created_at', 'desc').orderBy('sequence', 'desc');
-    // `{ page, size }` in, `LIMIT/OFFSET` out: the 1-based page becomes `(page - 1) * size`.
-    if (query.size !== undefined && query.size > 0) {
-      const size = Math.floor(query.size);
-      const page = Math.max(1, Math.floor(query.page ?? 1));
-      builder = builder.limit(size);
-      if (page > 1) builder = builder.offset((page - 1) * size);
-    }
+  /** Resolves once every entry recorded so far has been written (or has failed). */
+  async flush(): Promise<void> {
+    while (this.draining !== null) await this.draining;
+  }
 
-    const rows = await builder.select('*');
-    return rows.map((r) => hydrate(r as unknown as TelescopeColumns));
+  get(id: string): Promise<Entry | null> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const row = await this.db.from(this.tableName).where('id', id).first();
+      return row ? hydrate(row as unknown as TelescopeColumns) : null;
+    });
+  }
+
+  list(query: EntryQuery = {}): Promise<Entry[]> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      let builder = this.db.from(this.tableName);
+      if (query.type !== undefined) builder = builder.where('type', query.type);
+      if (query.familyHash !== undefined) builder = builder.where('family_hash', query.familyHash);
+      if (query.traceId !== undefined) builder = builder.where('trace_id', query.traceId);
+      if (query.traceIds !== undefined) {
+        // An empty list means "no traces", not "no filter" — whereIn([]) already yields
+        // zero rows, but being explicit keeps a caller's empty page from becoming a scan.
+        if (query.traceIds.length === 0) return [];
+        builder = builder.whereIn('trace_id', query.traceIds);
+      }
+      if (query.before !== undefined)
+        builder = builder.where('created_at', '<', query.before.getTime());
+      if (query.after !== undefined)
+        builder = builder.where('created_at', '>', query.after.getTime());
+      if (query.tag !== undefined) {
+        // A tag is one element of the JSON array text, e.g. `["lib:billing",...]`.
+        // Match the quoted token so `lib:bill` never matches `lib:billing`.
+        builder = builder.whereRaw(`"tags" LIKE ? ESCAPE '\\'`, [
+          `%${likeEscape(JSON.stringify(query.tag))}%`,
+        ]);
+      }
+      if (query.search !== undefined) {
+        const needle = `%${likeEscape(query.search.toLowerCase())}%`;
+        builder = builder.whereRaw(
+          `(LOWER("content") LIKE ? ESCAPE '\\' OR LOWER("tags") LIKE ? ESCAPE '\\')`,
+          [needle, needle],
+        );
+      }
+      // Newest-first: created_at desc, sequence desc as a deterministic tiebreaker.
+      builder = builder.orderBy('created_at', 'desc').orderBy('sequence', 'desc');
+      // `{ page, size }` in, `LIMIT/OFFSET` out: the 1-based page becomes `(page - 1) * size`.
+      if (query.size !== undefined && query.size > 0) {
+        const size = Math.floor(query.size);
+        const page = Math.max(1, Math.floor(query.page ?? 1));
+        builder = builder.limit(size);
+        if (page > 1) builder = builder.offset((page - 1) * size);
+      }
+
+      const rows = await (query.omitContent === true
+        ? builder.select(...COLUMNS_WITHOUT_CONTENT)
+        : builder.select('*'));
+      return rows.map((r) => hydrate(r as unknown as TelescopeColumns));
+    });
   }
 
   /**
@@ -334,110 +413,233 @@ export class LucidTelescopeStore implements TelescopeStore {
    * the window. Entries with a NULL `trace_id` are excluded: they belong to no trace
    * and would collapse into one meaningless bucket.
    */
-  async listTraceIds(query: TraceIdQuery): Promise<TraceIdRow[]> {
-    await this.init();
-    let builder = this.db.from(this.tableName);
-    if (query.before !== undefined)
-      builder = builder.where('created_at', '<', query.before.getTime());
-    if (query.after !== undefined)
-      builder = builder.where('created_at', '>', query.after.getTime());
+  listTraceIds(query: TraceIdQuery): Promise<TraceIdRow[]> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      let builder = this.db.from(this.tableName);
+      if (query.before !== undefined)
+        builder = builder.where('created_at', '<', query.before.getTime());
+      if (query.after !== undefined)
+        builder = builder.where('created_at', '>', query.after.getTime());
 
-    // `select()` resolves the query, so it goes LAST — every chainable clause
-    // (including the MAX aggregate) has to be applied before it.
-    const rows = await builder
-      .whereNotNull('trace_id')
-      .groupBy('trace_id')
-      .max('created_at as last_at')
-      .orderBy('last_at', 'desc')
-      .limit(query.size)
-      .offset((Math.max(1, Math.floor(query.page ?? 1)) - 1) * Math.max(0, Math.floor(query.size)))
-      .select('trace_id');
+      // `select()` resolves the query, so it goes LAST — every chainable clause
+      // (including the MAX aggregate) has to be applied before it.
+      const rows = await builder
+        .whereNotNull('trace_id')
+        .groupBy('trace_id')
+        .max('created_at as last_at')
+        .orderBy('last_at', 'desc')
+        .limit(query.size)
+        .offset(
+          (Math.max(1, Math.floor(query.page ?? 1)) - 1) * Math.max(0, Math.floor(query.size)),
+        )
+        .select('trace_id');
 
-    return (rows as unknown as Array<{ trace_id: string; last_at: unknown }>).map((row) => ({
-      traceId: row.trace_id,
-      lastAt: new Date(toInt(row.last_at)),
-    }));
+      return (rows as unknown as Array<{ trace_id: string; last_at: unknown }>).map((row) => ({
+        traceId: row.trace_id,
+        lastAt: new Date(toInt(row.last_at)),
+      }));
+    });
   }
 
   /**
-   * Per-bucket, per-type counts for the throughput chart.
+   * Per-bucket, per-type counts for the throughput chart, grouped in SQL so one row
+   * per `(bucket, type)` leaves the database instead of one per entry.
    *
-   * The win here is the PROJECTION, not the grouping: the chart needs `created_at`
-   * and `type` and nothing else, but the only way to get them was `list()`, which
-   * does `select('*')` — shipping every row's `content` JSON blob out of the database
-   * and running it through `hydrate()`, to then discard all of it except a timestamp
-   * and a string. Two scalar columns instead of a blob is orders of magnitude less
-   * bytes on the wire and no per-row JSON parse.
-   *
-   * The bucketing itself stays in JS, deliberately. Doing it in SQL needs a raw
-   * select expression (`(created_at - ?) / ?`), and Lucid exposes `groupByRaw` but no
-   * `selectRaw` — the alternative is `rawQuery`, whose result shape differs per driver
-   * (`{ rows }` on Postgres, an array on SQLite). Trading a portability bug for the
-   * second-order win is a bad deal; the row count is what would justify it, and after
-   * the redis-watcher filter that count drops by roughly an order of magnitude. If
-   * this is still hot with a clean table, THAT is when it earns the raw query.
+   * The bucket is `(created_at - start) - ((created_at - start) % bucketMs)`: integer
+   * arithmetic every dialect evaluates the same way, where `/` would be integer
+   * division on some and decimal on MySQL. Each group reports its newest
+   * `created_at`, and the bucket index is computed from that in JS. A builder
+   * without `groupByRaw` gets the per-row projection, bucketed here.
    */
-  async countByBucket(query: BucketCountQuery): Promise<BucketCountRow[]> {
-    await this.init();
-    const startMs = query.after.getTime();
-    const bucketMs = Math.max(1, Math.floor(query.bucketMs));
+  countByBucket(query: BucketCountQuery): Promise<BucketCountRow[]> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const startMs = query.after.getTime();
+      const bucketMs = Math.max(1, Math.floor(query.bucketMs));
 
-    let builder = this.db
-      .from(this.tableName)
-      .where('created_at', '>', startMs)
-      .where('created_at', '<=', query.before.getTime());
-    if (query.type !== undefined) builder = builder.where('type', query.type);
+      let builder = this.db
+        .from(this.tableName)
+        .where('created_at', '>', startMs)
+        .where('created_at', '<=', query.before.getTime());
+      if (query.type !== undefined) builder = builder.where('type', query.type);
 
-    const rows = (await builder.select('created_at', 'type')) as unknown as Array<{
-      created_at: unknown;
-      type: string;
-    }>;
+      const tally = new Map<string, BucketCountRow>();
+      const add = (createdAt: unknown, type: string, count: number) => {
+        const index = Math.floor((toInt(createdAt) - startMs) / bucketMs);
+        const key = `${index}\u0000${type}`;
+        const seen = tally.get(key);
+        if (seen === undefined) tally.set(key, { index, type, count });
+        else seen.count += count;
+      };
 
-    const tally = new Map<string, BucketCountRow>();
-    for (const row of rows) {
-      const index = Math.floor((toInt(row.created_at) - startMs) / bucketMs);
-      const key = `${index}\u0000${row.type}`;
-      const seen = tally.get(key);
-      if (seen === undefined) {
-        tally.set(key, { index, type: row.type, count: 1 });
+      if (typeof builder.groupByRaw === 'function') {
+        // `type` is a GROUP BY column; MAX() is how this builder surface selects it
+        // next to the aggregates. Aliased apart from the column so MySQL, which
+        // resolves GROUP BY names to select aliases first, still groups by the column.
+        const rows = (await builder
+          .groupByRaw('(?? - ?) - ((?? - ?) % ?)', [
+            'created_at',
+            startMs,
+            'created_at',
+            startMs,
+            bucketMs,
+          ])
+          .groupBy('type')
+          .max('type as entry_type')
+          .max('created_at as last_at')
+          .count('*', 'total')) as unknown as Array<{
+          entry_type: string;
+          last_at: unknown;
+          total: unknown;
+        }>;
+        for (const row of rows) add(row.last_at, row.entry_type, toInt(row.total));
       } else {
-        seen.count += 1;
+        const rows = (await builder.select('created_at', 'type')) as unknown as Array<{
+          created_at: unknown;
+          type: string;
+        }>;
+        for (const row of rows) add(row.created_at, row.type, 1);
       }
-    }
-    return [...tally.values()];
+      return [...tally.values()];
+    });
   }
 
-  async count(): Promise<number> {
-    await this.init();
-    const rows = await this.db.from(this.tableName).count('*', 'total');
-    return toInt(rows[0]?.total);
+  /**
+   * The busiest families, counted by `GROUP BY family_hash` — see
+   * {@link TelescopeStore.countFamilies}.
+   */
+  countFamilies(query: FamilyCountQuery): Promise<KeyCountRow[]> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const limit = Math.max(0, Math.floor(query.limit));
+      if (limit === 0) return [];
+      let builder = this.db
+        .from(this.tableName)
+        .whereNotNull('family_hash')
+        .where('family_hash', '<>', '');
+      if (query.type !== undefined) builder = builder.where('type', query.type);
+      // `family_hash` is the GROUP BY column; MAX() selects it next to the aggregates
+      // (see countByBucket for the alias).
+      const rows = (await builder
+        .groupBy('family_hash')
+        .max('family_hash as family_key')
+        .max('created_at as last_at')
+        .max('sequence as last_sequence')
+        .orderBy('total', 'desc')
+        .orderBy('last_at', 'desc')
+        .orderBy('last_sequence', 'desc')
+        .limit(limit)
+        .count('*', 'total')) as unknown as Array<{ family_key: string; total: unknown }>;
+      return rows.map((row) => ({ key: row.family_key, count: toInt(row.total) }));
+    });
   }
 
-  async prune(olderThan: Date, keepLast?: number): Promise<number> {
-    await this.init();
-    const cutoff = olderThan.getTime();
-    if (keepLast === undefined) {
-      return this.db.from(this.tableName).where('created_at', '<', cutoff).delete();
-    }
-    // Keep the newest `keepLast` of the doomed (older-than-cutoff) entries: find
-    // their ids ordered newest-first, skip the first `keepLast`, delete the rest.
-    const doomed = await this.db
-      .from(this.tableName)
-      .where('created_at', '<', cutoff)
-      .orderBy('created_at', 'desc')
-      .orderBy('sequence', 'desc')
-      .select('id');
-    const toDelete = doomed.slice(keepLast).map((r) => String(r.id));
-    if (toDelete.length === 0) return 0;
-    return this.db
-      .from(this.tableName)
-      .whereRaw(`"id" IN (${toDelete.map(() => '?').join(', ')})`, toDelete)
-      .delete();
+  /**
+   * The most common tags — see {@link TelescopeStore.countTags}. Tags are JSON text,
+   * so they are counted here, reading only the `tags` column a page at a time in
+   * primary-key order.
+   */
+  countTags(query: TagCountQuery): Promise<KeyCountRow[]> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const limit = Math.max(0, Math.floor(query.limit));
+      if (limit === 0) return [];
+      const tally = new Map<string, { count: number; newest: RowPosition }>();
+      let afterId: string | null = null;
+      for (;;) {
+        let builder = this.db.from(this.tableName);
+        if (afterId !== null) builder = builder.where('id', '>', afterId);
+        const rows = (await builder
+          .orderBy('id', 'asc')
+          .limit(TAG_SCAN_PAGE_ROWS)
+          .select('id', 'tags', 'created_at', 'sequence')) as unknown as Array<{
+          id: unknown;
+          tags: string;
+          created_at: unknown;
+          sequence: unknown;
+        }>;
+        for (const row of rows) {
+          const position = { createdAt: toInt(row.created_at), sequence: toInt(row.sequence) };
+          for (const tag of parseTags(row.tags)) {
+            if (query.prefix !== undefined && !tag.startsWith(query.prefix)) continue;
+            const seen = tally.get(tag);
+            if (seen === undefined) {
+              tally.set(tag, { count: 1, newest: position });
+            } else {
+              seen.count += 1;
+              if (isNewer(position, seen.newest)) seen.newest = position;
+            }
+          }
+        }
+        if (rows.length < TAG_SCAN_PAGE_ROWS) break;
+        afterId = String(rows[rows.length - 1]!.id);
+      }
+      return [...tally.entries()]
+        .sort(([, a], [, b]) => b.count - a.count || (isNewer(a.newest, b.newest) ? -1 : 1))
+        .slice(0, limit)
+        .map(([key, { count }]) => ({ key, count }));
+    });
   }
 
-  async clear(): Promise<void> {
-    await this.init();
-    await this.db.from(this.tableName).whereRaw('1 = 1').delete();
+  count(): Promise<number> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const rows = await this.db.from(this.tableName).count('*', 'total');
+      return toInt(rows[0]?.total);
+    });
+  }
+
+  /**
+   * Deletes oldest-first, {@link PRUNE_BATCH_ROWS} rows per statement, each batch
+   * addressed by its newest row's position rather than by id: a backlog of any size
+   * is pruned in bounded statements that never approach a bind limit.
+   */
+  prune(olderThan: Date, keepLast?: number): Promise<number> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const cutoff = olderThan.getTime();
+      // With `keepLast`, the doomed rows end at the first one past the newest
+      // `keepLast` of those older than the cutoff.
+      let newestDoomed: RowPosition | null = null;
+      if (keepLast !== undefined) {
+        newestDoomed = await this.position(
+          this.db
+            .from(this.tableName)
+            .where('created_at', '<', cutoff)
+            .orderBy('created_at', 'desc')
+            .orderBy('sequence', 'desc')
+            .offset(Math.max(0, Math.floor(keepLast))),
+        );
+        if (newestDoomed === null) return 0;
+      }
+      const doomed = (): LucidQueryBuilderLike => {
+        const builder = this.db.from(this.tableName);
+        return newestDoomed === null
+          ? builder.where('created_at', '<', cutoff)
+          : atOrBefore(builder, newestDoomed);
+      };
+
+      let deleted = 0;
+      for (;;) {
+        const batchEdge = await this.position(
+          doomed()
+            .orderBy('created_at', 'asc')
+            .orderBy('sequence', 'asc')
+            .offset(PRUNE_BATCH_ROWS - 1),
+        );
+        if (batchEdge === null) return deleted + toInt(await doomed().delete());
+        deleted += toInt(await atOrBefore(doomed(), batchEdge).delete());
+      }
+    });
+  }
+
+  clear(): Promise<void> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      await this.flush();
+      await this.db.from(this.tableName).whereRaw('1 = 1').delete();
+    });
   }
 
   /** Cap enforcement helper for callers running a scheduled trim. */
@@ -445,9 +647,81 @@ export class LucidTelescopeStore implements TelescopeStore {
     return this.maxEntries;
   }
 
+  /** The first row of an ordered query, as a position. */
+  private async position(builder: LucidQueryBuilderLike): Promise<RowPosition | null> {
+    const rows = await builder.limit(1).select('created_at', 'sequence');
+    const row = rows[0];
+    return row === undefined
+      ? null
+      : { createdAt: toInt(row.created_at), sequence: toInt(row.sequence) };
+  }
+
+  /** Start a drain on the next tick unless one is already running. */
+  private scheduleDrain(): void {
+    if (this.draining !== null) return;
+    this.draining = new Promise<void>((resolve) => {
+      setImmediate(() => {
+        void runAsTelescopeWork(() => this.drain()).finally(() => {
+          this.draining = null;
+          resolve();
+          // A write can arrive between the drain emptying the buffer and this callback.
+          if (this.pending.length > 0) this.scheduleDrain();
+        });
+      });
+    });
+  }
+
+  /** Write the buffer out, batch by batch, until it is empty. */
+  private async drain(): Promise<void> {
+    while (this.pending.length > 0) {
+      await this.writeBatch(this.takeBatch());
+    }
+    this.warnedDrop = false;
+  }
+
+  /** The oldest pending writes that fit one INSERT. */
+  private takeBatch(): PendingWrite[] {
+    let count = 0;
+    let bytes = 0;
+    for (const write of this.pending) {
+      if (count === INSERT_BATCH_ROWS) break;
+      if (count > 0 && bytes + write.bytes > INSERT_BATCH_BYTES) break;
+      count += 1;
+      bytes += write.bytes;
+    }
+    return this.pending.splice(0, count);
+  }
+
+  /**
+   * One multi-row INSERT. When it fails, its rows are retried one at a time, so a
+   * row the database rejects fails only its own `record()`.
+   */
+  private async writeBatch(batch: PendingWrite[]): Promise<void> {
+    try {
+      await this.db
+        .table(this.tableName)
+        .insert(batch.map((write) => write.row as unknown as Record<string, unknown>));
+      for (const write of batch) write.resolve();
+      return;
+    } catch (error) {
+      if (batch.length === 1) {
+        batch[0]!.reject(error);
+        return;
+      }
+    }
+    for (const write of batch) {
+      try {
+        await this.db.table(this.tableName).insert(write.row as unknown as Record<string, unknown>);
+        write.resolve();
+      } catch (error) {
+        write.reject(error);
+      }
+    }
+  }
+
   /** Run table creation (optional) + sequence seeding exactly once. */
   private init(): Promise<void> {
-    if (!this.ready) this.ready = this.doInit();
+    if (!this.ready) this.ready = runAsTelescopeWork(() => this.doInit());
     return this.ready;
   }
 
@@ -536,7 +810,7 @@ function hydrate(row: TelescopeColumns): Entry {
     id: row.id,
     type: row.type,
     familyHash: row.family_hash ?? null,
-    content: parseJson(row.content),
+    content: 'content' in row ? parseJson(row.content) : null,
     tags: parseTags(row.tags),
     sequence: toInt(row.sequence),
     durationMs:
@@ -545,6 +819,23 @@ function hydrate(row: TelescopeColumns): Entry {
     traceId: row.trace_id ?? null,
     createdAt: new Date(toInt(row.created_at)),
   };
+}
+
+/** Restrict `builder` to rows at or before `position` in oldest-first order. */
+function atOrBefore(builder: LucidQueryBuilderLike, position: RowPosition): LucidQueryBuilderLike {
+  return builder.whereRaw('(?? < ? OR (?? = ? AND ?? <= ?))', [
+    'created_at',
+    position.createdAt,
+    'created_at',
+    position.createdAt,
+    'sequence',
+    position.sequence,
+  ]);
+}
+
+/** Whether `a` comes before `b` in newest-first order. */
+function isNewer(a: RowPosition, b: RowPosition): boolean {
+  return a.createdAt > b.createdAt || (a.createdAt === b.createdAt && a.sequence > b.sequence);
 }
 
 function safeJson(value: unknown): string {

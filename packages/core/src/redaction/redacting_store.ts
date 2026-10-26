@@ -1,5 +1,5 @@
 import type { Entry, RecordInput } from '../entry.js';
-import type { EntryQuery, TelescopeStore } from '../store.js';
+import { type EntryQuery, forwardOptionalReads, type TelescopeStore } from '../store.js';
 import {
   type CompiledRedactSpec,
   compileRedactSpec,
@@ -27,6 +27,7 @@ export class RedactingTelescopeStore implements TelescopeStore {
     private readonly options: RedactOptions = {},
   ) {
     this.spec = compileRedactSpec(options);
+    forwardOptionalReads(this, inner);
   }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {

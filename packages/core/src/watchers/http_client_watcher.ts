@@ -289,7 +289,7 @@ export class HttpClientWatcher {
    */
   record(call: OutgoingCall): void {
     if (call.host !== null && this.ignoreHosts.has(call.host.toLowerCase())) return;
-    safeRecord(buildHttpClientEntry(call, this.slowMs), 'HttpClientWatcher');
+    safeRecord(() => buildHttpClientEntry(call, this.slowMs), 'HttpClientWatcher');
   }
 }
 

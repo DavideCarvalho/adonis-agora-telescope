@@ -141,7 +141,9 @@ export function estimateLatencyPercentiles(
 ): LatencyPercentilesOverride | undefined {
   if (durations.length === 0) return undefined;
   const histogram = buildHistogram(durations);
-  const max = Math.max(...durations);
+  // A loop, not `Math.max(...durations)`: spreading a large array overflows the stack.
+  let max = Number.NEGATIVE_INFINITY;
+  for (const duration of durations) if (duration > max) max = duration;
   return {
     p50: Math.min(estimatePercentileFromHistogram(histogram, 0.5), max),
     p95: Math.min(estimatePercentileFromHistogram(histogram, 0.95), max),
@@ -179,7 +181,8 @@ interface FamilyAccumulator {
   label: string;
 }
 
-function queryLabel(content: unknown): string {
+/** The label of a query family, from one of its entries' content. */
+export function familyLabel(content: unknown): string {
   if (isRecord(content) && typeof content.sql === 'string') {
     return content.sql.slice(0, MAX_FAMILY_LABEL_LENGTH);
   }
@@ -196,7 +199,7 @@ function computeFamilies(entries: Entry[], topFamilies: number): FamilyLatency[]
     } else {
       groups.set(entry.familyHash, {
         durations: typeof entry.durationMs === 'number' ? [entry.durationMs] : [],
-        label: queryLabel(entry.content),
+        label: familyLabel(entry.content),
       });
     }
   }

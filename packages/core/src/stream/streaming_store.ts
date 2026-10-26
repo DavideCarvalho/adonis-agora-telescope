@@ -1,5 +1,5 @@
 import type { Entry, RecordInput } from '../entry.js';
-import type { EntryQuery, TelescopeStore } from '../store.js';
+import { type EntryQuery, forwardOptionalReads, type TelescopeStore } from '../store.js';
 import type { EntryEvents } from './entry_events.js';
 
 /**
@@ -22,7 +22,9 @@ export class StreamingTelescopeStore implements TelescopeStore {
   constructor(
     private readonly inner: TelescopeStore,
     private readonly events: EntryEvents,
-  ) {}
+  ) {
+    forwardOptionalReads(this, inner);
+  }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
     const entry = await this.inner.record(input);

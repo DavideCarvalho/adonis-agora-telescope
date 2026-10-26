@@ -108,7 +108,7 @@ export class MailWatcher implements Watcher {
 
   private handle(data: unknown): void {
     if (typeof data !== 'object' || data === null) return;
-    safeRecord(buildMailEntry(data as MailSentEventLike), 'MailWatcher');
+    safeRecord(() => buildMailEntry(data as MailSentEventLike), 'MailWatcher');
   }
 }
 

@@ -72,8 +72,12 @@ export class TelescopeService {
    * the store's newest-first ordering.
    */
   async topFamilies(limit = 10, type?: string): Promise<CountBucket[]> {
+    if (typeof this.store.countFamilies === 'function') {
+      return this.store.countFamilies(type !== undefined ? { limit, type } : { limit });
+    }
     const counts = new Map<string, number>();
-    for (const entry of await this.store.list(type !== undefined ? { type } : {})) {
+    const query: EntryQuery = { omitContent: true, ...(type !== undefined ? { type } : {}) };
+    for (const entry of await this.store.list(query)) {
       if (!entry.familyHash) continue;
       counts.set(entry.familyHash, (counts.get(entry.familyHash) ?? 0) + 1);
     }
@@ -82,8 +86,11 @@ export class TelescopeService {
 
   /** Top-N most common tags across stored entries, optionally by prefix. */
   async topTags(limit = 10, prefix?: string): Promise<CountBucket[]> {
+    if (typeof this.store.countTags === 'function') {
+      return this.store.countTags(prefix !== undefined ? { limit, prefix } : { limit });
+    }
     const counts = new Map<string, number>();
-    for (const entry of await this.store.list()) {
+    for (const entry of await this.store.list({ omitContent: true })) {
       for (const tag of entry.tags) {
         if (prefix !== undefined && !tag.startsWith(prefix)) continue;
         counts.set(tag, (counts.get(tag) ?? 0) + 1);

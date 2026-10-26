@@ -241,7 +241,7 @@ export class ScheduleWatcher {
 
   /** Record one already-completed scheduled run. Fire-and-forget; never throws. */
   record(run: ScheduledRun): void {
-    safeRecord(buildScheduleEntry(run, this.slowMs), 'ScheduleWatcher');
+    safeRecord(() => buildScheduleEntry(run, this.slowMs), 'ScheduleWatcher');
   }
 
   /**

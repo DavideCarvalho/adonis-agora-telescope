@@ -57,7 +57,7 @@ The lucid driver needs its table; `node ace configure @adonis-agora/telescope`
 publishes it next to the config:
 
 ```sh
-node ace migration:run   # create_telescope_entries_table (+ indexes on created_at/type/trace_id/family_hash)
+node ace migration:run   # create_telescope_entries_table (+ indexes on created_at, trace_id, (type, created_at, sequence), (family_hash, created_at))
 ```
 
 Source: `docs/concepts/storage.mdx`, `docs/packages/storages.mdx`.

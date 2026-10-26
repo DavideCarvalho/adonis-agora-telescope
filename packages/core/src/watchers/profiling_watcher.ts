@@ -229,7 +229,7 @@ export class ProfilingWatcher {
    *  recording is fire-and-forget and never throws. */
   record(profile: CompletedProfile): void {
     if (profile.durationMs < this.minDurationMs) return;
-    safeRecord(buildProfileEntry(profile, this.slowMs), 'ProfilingWatcher');
+    safeRecord(() => buildProfileEntry(profile, this.slowMs), 'ProfilingWatcher');
   }
 }
 

@@ -142,7 +142,7 @@ export class QueueWatcher {
   }
 
   private handle(msg: unknown): void {
-    safeRecord(buildJobEntry(toMessage(msg), this.slowMs), 'QueueWatcher');
+    safeRecord(() => buildJobEntry(toMessage(msg), this.slowMs), 'QueueWatcher');
   }
 }
 

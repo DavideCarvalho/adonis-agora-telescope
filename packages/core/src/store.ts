@@ -45,6 +45,14 @@ export interface EntryQuery {
    * `@adonis-agora/filter`'s `FilterInput.size` (see {@link EntryQuery.page}).
    */
   size?: number;
+  /**
+   * The caller reads everything but `content`, so a store MAY return `content: null`
+   * instead of loading and parsing it. A hint, not a filter: a store that ignores it
+   * still answers correctly, and callers must not depend on content being absent.
+   * Aggregations over a whole window set it and fetch the content of the few entries
+   * they display afterwards.
+   */
+  omitContent?: boolean;
 }
 
 /** One row of {@link TelescopeStore.listTraceIds} — a trace and when it was last seen. */
@@ -72,6 +80,28 @@ export interface BucketCountQuery {
   bucketMs: number;
   /** Only entries of this type. */
   type?: string;
+}
+
+/** A grouping key and how many stored entries carry it. */
+export interface KeyCountRow {
+  key: string;
+  count: number;
+}
+
+/** What {@link TelescopeStore.countFamilies} counts. */
+export interface FamilyCountQuery {
+  /** How many families to return, busiest first. */
+  limit: number;
+  /** Only entries of this type. */
+  type?: string;
+}
+
+/** What {@link TelescopeStore.countTags} counts. */
+export interface TagCountQuery {
+  /** How many tags to return, most common first. */
+  limit: number;
+  /** Only tags starting with this prefix. */
+  prefix?: string;
 }
 
 /** The window + page for {@link TelescopeStore.listTraceIds}. */
@@ -154,4 +184,35 @@ export interface TelescopeStore {
    * scan-and-bucket, which is what this always used to do.
    */
   countByBucket?(query: BucketCountQuery): Promise<BucketCountRow[]>;
+
+  /**
+   * OPTIONAL fast path for `TelescopeService.topFamilies`: the busiest `familyHash`
+   * values across every stored entry, most entries first, ties going to the family
+   * seen most recently. Without it the service lists the whole table and counts in JS.
+   */
+  countFamilies?(query: FamilyCountQuery): Promise<KeyCountRow[]>;
+
+  /**
+   * OPTIONAL fast path for `TelescopeService.topTags`: the most common tags across
+   * every stored entry, ties going to the tag seen most recently. Without it the
+   * service lists the whole table and counts in JS.
+   */
+  countTags?(query: TagCountQuery): Promise<KeyCountRow[]>;
+}
+
+/** The optional read methods a store may implement on top of the required contract. */
+const OPTIONAL_READS = ['listTraceIds', 'countByBucket', 'countFamilies', 'countTags'] as const;
+
+/**
+ * Give a decorating store the optional read methods its inner store has, and only
+ * those: callers detect a capability by the method being there, so a decorator that
+ * always declared them would claim fast paths the store underneath cannot serve, and
+ * one that never did would hide them.
+ */
+export function forwardOptionalReads(target: TelescopeStore, inner: TelescopeStore): void {
+  const writable = target as unknown as Record<string, unknown>;
+  for (const name of OPTIONAL_READS) {
+    const method = inner[name];
+    if (typeof method === 'function') writable[name] = method.bind(inner);
+  }
 }

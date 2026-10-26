@@ -1,5 +1,5 @@
 import type { Entry, RecordInput } from '../entry.js';
-import type { EntryQuery, TelescopeStore } from '../store.js';
+import { type EntryQuery, forwardOptionalReads, type TelescopeStore } from '../store.js';
 import { passesSampling, type SamplingConfig } from './sampling.js';
 
 /**
@@ -24,7 +24,9 @@ export class SamplingTelescopeStore implements TelescopeStore {
     private readonly inner: TelescopeStore,
     private readonly sampling: SamplingConfig,
     private readonly random: () => number = Math.random,
-  ) {}
+  ) {
+    forwardOptionalReads(this, inner);
+  }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
     if (!passesSampling(this.sampling, input, this.random)) {
@@ -59,7 +61,10 @@ function droppedEntry<TContent>(input: RecordInput<TContent>): Entry<TContent> {
   return {
     id: '',
     type: input.type,
-    familyHash: input.familyHash ?? null,
+    // A getter, so a lazily computed key is not computed for an entry that is dropped.
+    get familyHash() {
+      return input.familyHash ?? null;
+    },
     content: input.content,
     tags: input.tags ?? [],
     sequence: -1,

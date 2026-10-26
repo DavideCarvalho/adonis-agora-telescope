@@ -82,7 +82,7 @@ export class CacheWatcher implements Watcher {
 
   private handle(operation: CacheOperation, data: unknown): void {
     const event: CacheEventLike = data && typeof data === 'object' ? (data as CacheEventLike) : {};
-    safeRecord(buildCacheEntry(operation, event), 'CacheWatcher');
+    safeRecord(() => buildCacheEntry(operation, event), 'CacheWatcher');
   }
 }
 

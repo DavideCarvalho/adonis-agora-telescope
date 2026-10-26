@@ -8,7 +8,13 @@ import {
 import type { RequestKind } from '../request_watcher.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
 import { type ScreenStats, summarizeScreens } from './screens.js';
-import { estimateLatencyPercentiles, type StatsResult, summarizeStats } from './stats.js';
+import {
+  estimateLatencyPercentiles,
+  type FamilyLatency,
+  familyLabel,
+  type StatsResult,
+  summarizeStats,
+} from './stats.js';
 import {
   bucketTimeseries,
   bucketTimeseriesFromCounts,
@@ -105,7 +111,7 @@ export class MetricsService {
       .filter((d): d is number => typeof d === 'number');
     const latencyPercentiles = estimateLatencyPercentiles(durations);
 
-    return summarizeStats({
+    const result = summarizeStats({
       entries,
       type: query.type,
       ...(query.topExceptions !== undefined ? { topExceptions: query.topExceptions } : {}),
@@ -117,6 +123,29 @@ export class MetricsService {
       truncated,
       ...(latencyPercentiles !== undefined ? { latencyPercentiles } : {}),
     });
+    if (result.families !== undefined) await this.labelFamilies(result.families, entries);
+    return result;
+  }
+
+  /**
+   * Fill in the labels of `families` from a read by id. A family is labelled from
+   * its newest entry, which a content-less scan returned without the SQL.
+   */
+  private async labelFamilies(families: FamilyLatency[], entries: Entry[]): Promise<void> {
+    const newest = new Map<string, Entry>();
+    for (const entry of entries) {
+      if (entry.familyHash !== null && !newest.has(entry.familyHash)) {
+        newest.set(entry.familyHash, entry);
+      }
+    }
+    await Promise.all(
+      families.map(async (family) => {
+        const sample = newest.get(family.familyHash);
+        if (sample === undefined || sample.content !== null) return;
+        const full = await this.store.get(sample.id);
+        if (full !== null) family.label = familyLabel(full.content);
+      }),
+    );
   }
 
   /** Throughput time-series over a trailing window (total + per-type per bucket). */
@@ -143,6 +172,7 @@ export class MetricsService {
 
     const { entries } = await this.collect({
       after: windowStart,
+      omitContent: true,
       ...(query.type !== undefined ? { type: query.type } : {}),
     });
     return bucketTimeseries(entries, windowStart, windowEnd, buckets);
@@ -277,7 +307,12 @@ export class MetricsService {
     type: string,
     after: Date,
   ): Promise<{ entries: Entry[]; truncated: boolean }> {
-    if (!isExceptionType(type)) return this.collect({ type, after });
+    if (!isExceptionType(type)) {
+      // Request status and cache operations are read from content; every other type's
+      // stats come from the scalar columns (query families are labelled afterwards).
+      const omitContent = type !== EntryType.Request && type !== EntryType.Cache;
+      return this.collect({ type, after, omitContent });
+    }
 
     const results = await Promise.all(
       EXCEPTION_ENTRY_TYPES.map((exceptionType) => this.collect({ type: exceptionType, after })),
