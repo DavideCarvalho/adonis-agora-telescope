@@ -4,13 +4,24 @@ import {
   SimpleLogRecordProcessor,
 } from '@opentelemetry/sdk-logs';
 import {
-  BasicTracerProvider,
   InMemorySpanExporter,
+  BatchSpanProcessor as SdkTraceBatchSpanProcessor,
+  TracerProvider as SdkTraceTracerProvider,
   SimpleSpanProcessor,
+} from '@opentelemetry/sdk-trace';
+import {
+  BasicTracerProvider as LegacyBasicTracerProvider,
+  BatchSpanProcessor as LegacyBatchSpanProcessor,
 } from '@opentelemetry/sdk-trace-base';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { ResolvedOtelConfig } from '../../src/define_config.js';
 import { DIAGNOSTIC_ENTRY_TYPE } from '../../src/diagnostics_watcher.js';
-import { createOtelExporter, type OtelExporter } from '../../src/otel/otel_exporter.js';
+import {
+  createOtelExporter,
+  loadTraceSdk,
+  type OtelExporter,
+  type TraceSdk,
+} from '../../src/otel/otel_exporter.js';
 import { OtelExportingTelescopeStore } from '../../src/otel/otel_exporting_store.js';
 import { RedactingTelescopeStore } from '../../src/redaction/redacting_store.js';
 import { resetTelescopeRuntime, setTelescopePaused } from '../../src/registry.js';
@@ -24,7 +35,7 @@ import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
  * by IN-MEMORY OTel exporters — this is "mocking the exporter's export() call"
  * via the SDK's own standard in-memory test doubles (the exact ones
  * `@adonis-agora/durable`'s own OTel test suite uses), rather than standing up a
- * fake HTTP receiver. It exercises the real `@opentelemetry/sdk-trace-base` /
+ * fake HTTP receiver. It exercises the real `@opentelemetry/sdk-trace` /
  * `sdk-logs` pipeline end-to-end (attribute/status/severity plumbing included),
  * just swapping the OTLP/HTTP network hop for an in-memory sink.
  */
@@ -35,8 +46,8 @@ function otelHarness(): {
 } {
   const spans = new InMemorySpanExporter();
   const logs = new InMemoryLogRecordExporter();
-  const tracerProvider = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(spans)],
+  const tracerProvider = new SdkTraceTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor({ exporter: spans })],
   });
   const loggerProvider = new LoggerProvider({
     processors: [new SimpleLogRecordProcessor({ exporter: logs })],
@@ -240,20 +251,85 @@ describe('OtelExportingTelescopeStore', () => {
   });
 });
 
+const OTEL_CONFIG: ResolvedOtelConfig = {
+  enabled: true,
+  endpoint: 'http://localhost:4318',
+  tracesPath: '/v1/traces',
+  logsPath: '/v1/logs',
+  headers: {},
+  serviceName: 'test-app',
+  entryTypes: ['diagnostic'],
+  timeoutMs: 1000,
+};
+
+const missing = (name: string) => () =>
+  Promise.reject(
+    Object.assign(new Error(`Cannot find package '${name}'`), { code: 'ERR_MODULE_NOT_FOUND' }),
+  );
+
 describe('createOtelExporter (real SDK wiring, no network)', () => {
-  it('builds an exporter exposing exportSpan/exportLog/shutdown without throwing', () => {
-    const exporter = createOtelExporter({
-      enabled: true,
-      endpoint: 'http://localhost:4318',
-      tracesPath: '/v1/traces',
-      logsPath: '/v1/logs',
-      headers: {},
-      serviceName: 'test-app',
-      entryTypes: ['diagnostic'],
-      timeoutMs: 1000,
-    });
+  it('builds an exporter exposing exportSpan/exportLog/shutdown without throwing', async () => {
+    const exporter = await createOtelExporter(OTEL_CONFIG);
     expect(typeof exporter.exportSpan).toBe('function');
     expect(typeof exporter.exportLog).toBe('function');
     expect(typeof exporter.shutdown).toBe('function');
+    await exporter.shutdown();
+  });
+
+  it('still builds on a host that only has the legacy @opentelemetry/sdk-trace-base', async () => {
+    const exporter = await createOtelExporter(OTEL_CONFIG, {
+      sdkTrace: missing('@opentelemetry/sdk-trace'),
+      sdkTraceBase: () => import('@opentelemetry/sdk-trace-base'),
+    });
+    expect(typeof exporter.exportSpan).toBe('function');
+    await exporter.shutdown();
+  });
+});
+
+/** Ends one span through `processor` and asserts it reached `exporter` on flush. */
+async function expectExportsThrough(
+  sdk: TraceSdk,
+  processor: ReturnType<TraceSdk['createBatchSpanProcessor']>,
+  exporter: InMemorySpanExporter,
+): Promise<void> {
+  const provider = new sdk.TracerProvider({ spanProcessors: [processor] });
+  provider.getTracer('test').startSpan('probe').end();
+  await provider.forceFlush();
+  expect(exporter.getFinishedSpans().map((span) => span.name)).toEqual(['probe']);
+  await provider.shutdown();
+}
+
+describe('loadTraceSdk', () => {
+  it('prefers @opentelemetry/sdk-trace (OTel JS 2.9+ / 3.x)', async () => {
+    const sdk = await loadTraceSdk();
+    expect(sdk.TracerProvider).toBe(SdkTraceTracerProvider);
+    // sdk-trace takes `{ exporter }`: the processor must hold the exporter itself.
+    const exporter = new InMemorySpanExporter();
+    const processor = sdk.createBatchSpanProcessor(exporter);
+    expect(processor).toBeInstanceOf(SdkTraceBatchSpanProcessor);
+    await expectExportsThrough(sdk, processor, exporter);
+  });
+
+  it('falls back to the deprecated @opentelemetry/sdk-trace-base when sdk-trace is absent', async () => {
+    const sdk = await loadTraceSdk({
+      sdkTrace: missing('@opentelemetry/sdk-trace'),
+      sdkTraceBase: () => import('@opentelemetry/sdk-trace-base'),
+    });
+    expect(sdk.TracerProvider).toBe(LegacyBasicTracerProvider);
+    // sdk-trace-base takes `(exporter, config?)`: passing `{ exporter }` there would
+    // silently store the wrapper object as the exporter and fail on the first flush.
+    const exporter = new InMemorySpanExporter();
+    const processor = sdk.createBatchSpanProcessor(exporter);
+    expect(processor).toBeInstanceOf(LegacyBatchSpanProcessor);
+    await expectExportsThrough(sdk, processor, exporter);
+  });
+
+  it('rethrows the sdk-trace error when neither package is installed', async () => {
+    await expect(
+      loadTraceSdk({
+        sdkTrace: missing('@opentelemetry/sdk-trace'),
+        sdkTraceBase: missing('@opentelemetry/sdk-trace-base'),
+      }),
+    ).rejects.toThrow("Cannot find package '@opentelemetry/sdk-trace'");
   });
 });

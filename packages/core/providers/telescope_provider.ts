@@ -250,7 +250,7 @@ export default class TelescopeProvider {
         import('../src/otel/otel_exporter.js'),
         import('../src/otel/otel_exporting_store.js'),
       ]);
-      const exporter = createOtelExporter(config.otel);
+      const exporter = await createOtelExporter(config.otel);
       this.otelExporter = exporter;
       return new OtelExportingTelescopeStore(store, exporter, config.otel.entryTypes);
     } catch (err) {

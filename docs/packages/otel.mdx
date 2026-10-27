@@ -31,7 +31,7 @@ two things: the config, and the OTel packages it lazily imports.
   <Tab value="npm">
 
 ```sh
-npm i @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/sdk-logs \
+npm i @opentelemetry/api @opentelemetry/sdk-trace @opentelemetry/sdk-logs \
   @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-logs-otlp-http \
   @opentelemetry/resources
 ```
@@ -40,7 +40,7 @@ npm i @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/sdk-logs \
   <Tab value="pnpm">
 
 ```sh
-pnpm add @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/sdk-logs \
+pnpm add @opentelemetry/api @opentelemetry/sdk-trace @opentelemetry/sdk-logs \
   @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-logs-otlp-http \
   @opentelemetry/resources
 ```
@@ -49,7 +49,7 @@ pnpm add @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/sdk-log
   <Tab value="yarn">
 
 ```sh
-yarn add @opentelemetry/api @opentelemetry/sdk-trace-base @opentelemetry/sdk-logs \
+yarn add @opentelemetry/api @opentelemetry/sdk-trace @opentelemetry/sdk-logs \
   @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-logs-otlp-http \
   @opentelemetry/resources
 ```
@@ -64,6 +64,15 @@ All six are OPTIONAL peers. They are never imported unless `otel.enabled` is `tr
 installing them, boot logs an error and telescope disables OTel export for that run instead of
 crashing.
 </Callout>
+
+Both OpenTelemetry JS release lines work: the 2.x line (`@opentelemetry/resources` 2.x,
+`sdk-trace` 2.9+, `sdk-logs` 0.220+, the `0.2xx` exporters) and the 3.x line (`resources` / `sdk-logs` /
+`sdk-trace` 3.x, the `0.300.x` exporters, `@opentelemetry/api` 1.10). Install every package
+from the same line.
+
+`@opentelemetry/sdk-trace` replaced the deprecated `@opentelemetry/sdk-trace-base`, which has no
+3.x release. A host that still has only `sdk-trace-base` 2.x installed keeps exporting: telescope
+loads `sdk-trace` when it is present and falls back to `sdk-trace-base` otherwise.
 
 ## Configuration
 
