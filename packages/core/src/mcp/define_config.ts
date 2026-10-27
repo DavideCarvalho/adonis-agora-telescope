@@ -3,6 +3,7 @@ import {
   defaultAuthorize,
   normalizePath,
   type UiCredentials,
+  withCredentialStatus,
 } from '../ui/define_config.js';
 
 /** The tools the MCP server can expose, in catalogue order. */
@@ -79,7 +80,7 @@ export function resolveConfig(config: TelescopeMcpConfig = {}): ResolvedTelescop
   return {
     enabled: config.enabled ?? true,
     path: normalizePath(config.path ?? '/telescope/mcp'),
-    authorize: config.authorize ?? defaultAuthorize(credentials),
+    authorize: withCredentialStatus(config.authorize ?? defaultAuthorize(credentials)),
     credentials,
     tools: new Set<McpToolName>(tools),
   };
