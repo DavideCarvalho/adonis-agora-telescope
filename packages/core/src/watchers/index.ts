@@ -1,5 +1,5 @@
 /** Keep in sync with this package's `version` in package.json. */
-export const VERSION = '0.24.0';
+export const VERSION = '0.25.0';
 
 export type { CacheEntryContent, CacheEventLike, CacheOperation } from './cache_watcher.js';
 // — cache watcher —
