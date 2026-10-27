@@ -315,8 +315,12 @@ export function useLiveTail(enabled: boolean, cap = 100) {
     source.onerror = () => setStatus('error');
 
     return () => {
-      if (flushTimer !== null) clearTimeout(flushTimer);
       source.close();
+      // Commit what arrived in the last window rather than dropping it on a toggle.
+      if (flushTimer !== null) {
+        clearTimeout(flushTimer);
+        flush();
+      }
     };
   }, [enabled, client, injectedFactory, cap]);
 
