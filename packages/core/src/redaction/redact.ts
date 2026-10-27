@@ -210,6 +210,10 @@ export function redactBoundedWith(
   const maxContentBytes = options.maxContentBytes ?? DEFAULT_MAX_CONTENT_BYTES;
   const seen = new WeakSet<object>();
   const keyMasked = maskedKeyLookup(spec);
+  // Dotted paths only matter when `paths` were configured. Without them (the
+  // default) skip building a path string per visited key/index — it was the walk's
+  // main allocation and nothing would ever read it.
+  const trackPaths = paths.size > 0;
 
   // Mutable walk state: node + byte budgets and a truncation flag. Kept in the
   // closure (not threaded through args) so the per-call accounting stays cheap.
@@ -258,7 +262,8 @@ export function redactBoundedWith(
           mapped.push(SIZE_MARKER);
           break;
         }
-        mapped.push(walk(node[index], path ? `${path}.${index}` : String(index), depth + 1));
+        const childPath = trackPaths ? (path ? `${path}.${index}` : String(index)) : '';
+        mapped.push(walk(node[index], childPath, depth + 1));
       }
       if (node.length > maxArrayLength) {
         truncated = true;
@@ -305,8 +310,8 @@ export function redactBoundedWith(
         }
         // Object keys are real serialized bytes — charge them too.
         bytesRemaining -= key.length;
-        const childPath = path ? `${path}.${key}` : key;
-        if (keyMasked(key) || paths.has(childPath)) {
+        const childPath = trackPaths ? (path ? `${path}.${key}` : key) : '';
+        if (keyMasked(key) || (trackPaths && paths.has(childPath))) {
           result[key] = mask;
         } else {
           result[key] = walk(node[key], childPath, depth + 1);

@@ -41,7 +41,8 @@ function reportRecordFailure(error: unknown): void {
  * invisible — the exact failure this function exists to avoid causing.
  */
 export function isUnder(url: string, prefix: string): boolean {
-  const path = url.split('?')[0] ?? url;
+  const query = url.indexOf('?');
+  const path = query === -1 ? url : url.slice(0, query);
   if (path === prefix) return true;
   return path.startsWith(prefix.endsWith('/') ? prefix : `${prefix}/`);
 }

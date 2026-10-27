@@ -265,6 +265,9 @@ export type LiveStatus = 'connecting' | 'live' | 'error' | 'unsupported' | 'idle
  * or unmount. Falls back to `'unsupported'` when no `EventSource` is available (SSR / jsdom without
  * an injected factory), so a live-tail toggle degrades cleanly rather than throwing.
  */
+/** How long live-tail frames are collected before they are committed as one update. */
+const LIVE_TAIL_FLUSH_MS = 100;
+
 export function useLiveTail(enabled: boolean, cap = 100) {
   const client = useTelescopeClient();
   const injectedFactory = useContext(EventSourceFactoryContext);
@@ -288,16 +291,33 @@ export function useLiveTail(enabled: boolean, cap = 100) {
 
     setStatus('connecting');
     const source = factory(client.streamUrl());
+    // Frames arriving within one flush window are committed together: a busy app streams
+    // hundreds of entries a second, and one state update per frame re-rendered the whole
+    // entries table for each of them. Arrival order is kept (newest-first), as is the cap.
+    let buffered: EntrySummary[] = [];
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      flushTimer = null;
+      const arrived = buffered;
+      buffered = [];
+      if (arrived.length === 0) return;
+      setEntries((prev) => [...arrived, ...prev].slice(0, cap));
+    };
     source.addEventListener('open', () => setStatus('live'));
     source.addEventListener('entry', (event) => {
       const summary = parseEntryFrame(event.data);
       if (summary === null) return;
       setStatus('live');
-      setEntries((prev) => [summary, ...prev].slice(0, cap));
+      buffered.unshift(summary);
+      if (buffered.length > cap) buffered.length = cap;
+      flushTimer ??= setTimeout(flush, LIVE_TAIL_FLUSH_MS);
     });
     source.onerror = () => setStatus('error');
 
-    return () => source.close();
+    return () => {
+      if (flushTimer !== null) clearTimeout(flushTimer);
+      source.close();
+    };
   }, [enabled, client, injectedFactory, cap]);
 
   const clear = useCallback(() => setEntries([]), []);

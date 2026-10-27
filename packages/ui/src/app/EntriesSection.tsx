@@ -82,6 +82,10 @@ export function EntriesSection({
     return merged;
   }, [state.data, tail.entries, live, page, type, search]);
 
+  // Ids of the rows that arrived through the live tail, for the "new row" highlight —
+  // a Set so styling each row is a lookup rather than a scan of the whole tail.
+  const tailIds = useMemo(() => new Set(tail.entries.map((t) => t.id)), [tail.entries]);
+
   const columns = useMemo(
     () => [
       {
@@ -246,10 +250,7 @@ export function EntriesSection({
               rowKey={(e) => e.id}
               onRowClick={(e) => onOpenEntry(e.id)}
               rowClassName={(e) =>
-                cn(
-                  'hover:bg-brand/5',
-                  live && page === 1 && tail.entries.some((t) => t.id === e.id) && 'row-new',
-                )
+                cn('hover:bg-brand/5', live && page === 1 && tailIds.has(e.id) && 'row-new')
               }
               pagination={{
                 page,
