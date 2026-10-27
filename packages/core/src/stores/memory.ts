@@ -31,7 +31,15 @@ export interface InMemoryStoreOptions {
  */
 export class InMemoryTelescopeStore implements TelescopeStore {
   private readonly maxEntries: number;
-  private readonly entries: Entry[] = [];
+  /**
+   * Retained entries, OLDEST-first, starting at {@link head}. Appending at the end and
+   * advancing `head` to evict keeps `record()` O(1) amortized — an `unshift` + `pop`
+   * pair moved every retained pointer on each write, which with a large `maxEntries`
+   * dominated the cost of recording. Readers walk it backwards (newest-first).
+   */
+  private slots: (Entry | undefined)[] = [];
+  /** Index of the oldest live entry in {@link slots}; everything before it is evicted. */
+  private head = 0;
   private readonly byId = new Map<string, Entry>();
   private sequence = 0;
 
@@ -56,8 +64,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
       createdAt: new Date(),
     };
 
-    // Newest-first ordering: unshift so index 0 is always the most recent.
-    this.entries.unshift(entry as Entry);
+    this.slots.push(entry as Entry);
     this.byId.set(entry.id, entry as Entry);
     this.evictOverflow();
     return entry;
@@ -76,8 +83,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     // over MATCHES, so it must be consumed after the filters and before the page is
     // filled — the same order the SQL store gets from OFFSET/LIMIT.
     let toSkip = size === undefined ? 0 : (Math.max(1, Math.floor(query.page ?? 1)) - 1) * size;
-    // `entries` is already newest-first.
-    for (const entry of this.entries) {
+    for (const entry of this.newestFirst()) {
       if (query.type !== undefined && entry.type !== query.type) continue;
       if (query.tag !== undefined && !entry.tags.includes(query.tag)) continue;
       if (query.familyHash !== undefined && entry.familyHash !== query.familyHash) continue;
@@ -103,7 +109,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
    */
   async listTraceIds(query: TraceIdQuery): Promise<TraceIdRow[]> {
     const lastAt = new Map<string, number>();
-    for (const entry of this.entries) {
+    for (const entry of this.newestFirst()) {
       if (entry.traceId === null) continue;
       if (query.before !== undefined && !(entry.createdAt < query.before)) continue;
       if (query.after !== undefined && !(entry.createdAt > query.after)) continue;
@@ -128,7 +134,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     const bucketMs = Math.max(1, Math.floor(query.bucketMs));
     const tally = new Map<string, BucketCountRow>();
 
-    for (const entry of this.entries) {
+    for (const entry of this.newestFirst()) {
       if (query.type !== undefined && entry.type !== query.type) continue;
       const at = entry.createdAt.getTime();
       if (at <= startMs || at > endMs) continue;
@@ -146,7 +152,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
 
   async countFamilies(query: FamilyCountQuery): Promise<KeyCountRow[]> {
     const counts = new Map<string, number>();
-    for (const entry of this.entries) {
+    for (const entry of this.newestFirst()) {
       if (!entry.familyHash) continue;
       if (query.type !== undefined && entry.type !== query.type) continue;
       counts.set(entry.familyHash, (counts.get(entry.familyHash) ?? 0) + 1);
@@ -156,7 +162,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
 
   async countTags(query: TagCountQuery): Promise<KeyCountRow[]> {
     const counts = new Map<string, number>();
-    for (const entry of this.entries) {
+    for (const entry of this.newestFirst()) {
       for (const tag of entry.tags) {
         if (query.prefix !== undefined && !tag.startsWith(query.prefix)) continue;
         counts.set(tag, (counts.get(tag) ?? 0) + 1);
@@ -166,38 +172,58 @@ export class InMemoryTelescopeStore implements TelescopeStore {
   }
 
   async count(): Promise<number> {
-    return this.entries.length;
+    return this.slots.length - this.head;
   }
 
   async prune(olderThan: Date, keepLast?: number): Promise<number> {
-    // Indices of the doomed entries (older than the cutoff), newest-first.
-    const doomed: number[] = [];
-    for (let i = 0; i < this.entries.length; i++) {
-      const entry = this.entries[i];
-      if (entry && entry.createdAt < olderThan) doomed.push(i);
+    // The doomed entries (older than the cutoff), newest-first.
+    const doomed: Entry[] = [];
+    for (const entry of this.newestFirst()) {
+      if (entry.createdAt < olderThan) doomed.push(entry);
     }
-    // Keep the newest N of the doomed set: since `entries` is newest-first, the
-    // first `keepLast` doomed indices are the newest doomed ones.
+    // Keep the newest N of the doomed set: since `doomed` is newest-first, the
+    // first `keepLast` doomed entries are the newest doomed ones.
     const toDelete = keepLast !== undefined ? doomed.slice(keepLast) : doomed;
     if (toDelete.length === 0) return 0;
-    // Delete from the back so earlier indices stay valid.
-    const ascending = [...toDelete].sort((a, b) => b - a);
-    for (const index of ascending) {
-      const [removed] = this.entries.splice(index, 1);
-      if (removed) this.byId.delete(removed.id);
+    const deleted = new Set<Entry>(toDelete);
+    const kept: Entry[] = [];
+    for (let i = this.head; i < this.slots.length; i++) {
+      const entry = this.slots[i];
+      if (entry === undefined) continue;
+      if (deleted.has(entry)) this.byId.delete(entry.id);
+      else kept.push(entry);
     }
+    this.slots = kept;
+    this.head = 0;
     return toDelete.length;
   }
 
   async clear(): Promise<void> {
-    this.entries.length = 0;
+    this.slots = [];
+    this.head = 0;
     this.byId.clear();
   }
 
+  /** Live entries, newest-first (the order every read returns). */
+  private *newestFirst(): Generator<Entry> {
+    for (let i = this.slots.length - 1; i >= this.head; i--) {
+      const entry = this.slots[i];
+      if (entry !== undefined) yield entry;
+    }
+  }
+
   private evictOverflow(): void {
-    while (this.entries.length > this.maxEntries) {
-      const removed = this.entries.pop();
+    while (this.slots.length - this.head > this.maxEntries) {
+      const removed = this.slots[this.head];
+      this.slots[this.head] = undefined;
+      this.head++;
       if (removed) this.byId.delete(removed.id);
+    }
+    // Compact once the evicted prefix is at least half the backing array, so memory
+    // stays bounded at ~2x `maxEntries` and the copy cost amortizes to O(1) per write.
+    if (this.head > 0 && this.head >= this.slots.length - this.head) {
+      this.slots = this.slots.slice(this.head);
+      this.head = 0;
     }
   }
 }

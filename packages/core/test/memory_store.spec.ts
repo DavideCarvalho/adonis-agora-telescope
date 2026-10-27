@@ -108,6 +108,34 @@ describe('InMemoryTelescopeStore', () => {
     expect((await store.list()).map((e) => e.content)).toEqual([4, 3, 2]);
   });
 
+  it('keeps order, lookups and eviction correct across many wrap-arounds', async () => {
+    const store = makeStore(4);
+    const ids: string[] = [];
+    for (let i = 0; i < 1_003; i++) ids.push((await store.record({ type: 'x', content: i })).id);
+    expect(await store.count()).toBe(4);
+    expect((await store.list()).map((e) => e.content)).toEqual([1_002, 1_001, 1_000, 999]);
+    expect((await store.list({ size: 2, page: 2 })).map((e) => e.content)).toEqual([1_000, 999]);
+    expect(await store.get(ids[998] as string)).toBeNull();
+    expect((await store.get(ids[999] as string))?.content).toBe(999);
+  });
+
+  it('prunes and keeps recording after the buffer has wrapped', async () => {
+    const store = makeStore(3);
+    const entries = [];
+    for (let i = 0; i < 7; i++) entries.push(await store.record({ type: 'x', content: i }));
+    // Live: 6, 5, 4. Age the two oldest live ones past the cutoff.
+    (entries[4] as { createdAt: Date }).createdAt = new Date(Date.now() - 10_000);
+    (entries[5] as { createdAt: Date }).createdAt = new Date(Date.now() - 9_000);
+    expect(await store.prune(new Date(Date.now() - 5_000), 1)).toBe(1);
+    expect((await store.list()).map((e) => e.content)).toEqual([6, 5]);
+    expect(await store.get(entries[4]?.id as string)).toBeNull();
+
+    await store.record({ type: 'x', content: 7 });
+    await store.record({ type: 'x', content: 8 });
+    expect((await store.list()).map((e) => e.content)).toEqual([8, 7, 6]);
+    expect(await store.get(entries[5]?.id as string)).toBeNull();
+  });
+
   it('prune deletes entries older than the cutoff', async () => {
     const store = makeStore();
     const old = await store.record({ type: 'x', content: 'old' });

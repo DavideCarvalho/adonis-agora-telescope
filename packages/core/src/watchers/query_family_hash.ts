@@ -28,11 +28,31 @@ function fnv1a(input: string): string {
 }
 
 /**
+ * Hashes of already-normalized SQL, keyed by the raw string. An app runs the same
+ * few hundred parameterized statements over and over, and normalizing one is three
+ * regex passes over the whole text — on every recorded query. The hash is a pure
+ * function of the string, so a hit is exactly what recomputing would return.
+ */
+const normalizedHashes = new Map<string, string>();
+const MAX_CACHED_SQL = 2_000;
+const MAX_CACHED_SQL_LENGTH = 4_096;
+
+/**
  * Grouping key for "the same query". With `normalize` on (the default) the SQL is
  * templated first, so every execution of the same shape shares a hash regardless
  * of bound values; with it off the raw SQL is hashed verbatim (whitespace/literals
  * distinguish entries — no cross-execution grouping).
  */
 export function queryFamilyHash(sql: string, normalize = true): string {
-  return fnv1a(normalize ? normalizeSql(sql) : sql);
+  if (!normalize) return fnv1a(sql);
+  const cached = normalizedHashes.get(sql);
+  if (cached !== undefined) return cached;
+  const hash = fnv1a(normalizeSql(sql));
+  if (sql.length <= MAX_CACHED_SQL_LENGTH) {
+    // Bounded: an app that inlines literals into its SQL produces endless distinct
+    // strings, so start over rather than grow without limit.
+    if (normalizedHashes.size >= MAX_CACHED_SQL) normalizedHashes.clear();
+    normalizedHashes.set(sql, hash);
+  }
+  return hash;
 }
