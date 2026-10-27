@@ -73,8 +73,11 @@ export default defineConfig({
 })
 ```
 
-Guard outcomes: denied with no credential → `401` (+ `WWW-Authenticate`); denied
-with a rejected credential → `403`; a throwing hook → `403` (fail-closed).
+Guard outcomes for a custom hook: a bare `false` (or `{ allowed: false }` with no
+`reason`) → `403` (fail-closed); `{ allowed: false, reason: 'unauthenticated' }` → `401`
+(+ `WWW-Authenticate`); `reason: 'forbidden'` → `403`; a throwing hook → `403`. Only
+the BUILT-IN credentials gate (no `authorize` configured) splits by request shape:
+no credential presented → `401`, rejected credential → `403`.
 
 Source: `docs/dashboard/auth.mdx` (Delegate to your app's auth, Guard behaviour).
 

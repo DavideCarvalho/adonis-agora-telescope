@@ -25,28 +25,25 @@ export type AccessDeniedOption = GenericAccessDeniedOption<UiHttpContext>;
 
 /**
  * The enriched form of an {@link AuthorizeHook}'s return value: a plain `allowed` plus an OPTIONAL
- * `reason` telling the guard exactly which denial this is, instead of it having to guess.
+ * `reason` telling the guard exactly which denial this is.
  *
- * Return this instead of a bare `boolean` when your hook authenticates some way the guard cannot see
- * by inspecting the request itself — most commonly a session cookie (e.g.
- * `@adonis-agora/authz`'s `authorizeByRoles`, which reads `ctx.auth`). Without a `reason` the guard
- * falls back to its request-shape heuristic (see {@link AuthorizeHook}), which only recognizes the
- * built-in `credentials.token`/`credentials.basic` gate — a session-authenticated-but-wrong-role
- * request would otherwise come back `401` ("please authenticate") when it should be `403`
- * ("you're signed in, but not allowed").
+ * This is the dashboard-gate contract shared (copied verbatim) by every `@adonis-agora` console —
+ * telescope, durable, media, payments, agent, authz:
+ * - `true` / `{ allowed: true }` → proceed.
+ * - `{ allowed: false, reason: 'unauthenticated' }` → `401` (nobody is signed in).
+ * - `{ allowed: false, reason: 'forbidden' }` → `403` (signed in, but not authorized).
+ * - a bare `false`, or `{ allowed: false }` with no `reason` → `403` (fail closed).
+ * - the hook throws → `403`.
  *
- * `reason` reuses the same vocabulary as {@link AccessDeniedInfo.reason}, so a hook and a custom
- * `accessDenied` renderer speak the same two words:
- * - `'unauthenticated'` → the guard answers `401` (nobody is signed in).
- * - `'forbidden'` → the guard answers `403` (signed in, but not authorized).
+ * So a hook that wants the "please sign in" `401` (e.g. `@adonis-agora/authz`'s `authorizeByRoles`
+ * for an anonymous visitor) must say so with `reason: 'unauthenticated'`. `reason` reuses the same
+ * vocabulary as {@link AccessDeniedInfo.reason}, so a hook and a custom `accessDenied` renderer
+ * speak the same two words.
  */
 export interface AuthorizeDecision {
   /** Whether the request may proceed. */
   allowed: boolean;
-  /**
-   * Why `allowed` is `false`. Omit it to fall back to the guard's request-shape heuristic (the same
-   * one a bare `false` return gets) — useful when the hook itself doesn't know which case applies.
-   */
+  /** Why `allowed` is `false`. Omitted on a denial → `403` (fail closed). */
   reason?: 'unauthenticated' | 'forbidden';
 }
 
@@ -59,13 +56,16 @@ export type AuthorizeResult = boolean | AuthorizeDecision;
  * context, so a host can inspect headers, a session, an injected user — whatever
  * its own auth exposes. Sync or async.
  *
- * A bare `false` denial is translated to `401`/`403` by a heuristic: `401` when the request presents
- * no `Authorization` header and no `?token`, `403` otherwise. That heuristic was built for this
- * library's OWN `credentials: { token, basic }` gate, where "no credential in the request" and "not
- * authenticated" are the same fact. A host authenticating some other way — a session cookie, most
- * commonly — can return an {@link AuthorizeDecision} (`{ allowed, reason }`) instead of a bare
- * boolean to tell the guard precisely which denial this is, bypassing the heuristic entirely. See
- * {@link AuthorizeDecision} and the "Delegate to your app's auth" doc section.
+ * A bare `false` from a custom hook is a `403`. To answer `401` ("please authenticate") return an
+ * {@link AuthorizeDecision} with `reason: 'unauthenticated'`; see that type for the full contract
+ * and the "Delegate to your app's auth" doc section. A hook may also answer the request itself
+ * (e.g. `ctx.response.redirect('/login')`) and return `false`: the guard then writes nothing.
+ *
+ * Only the BUILT-IN gate ({@link defaultAuthorize}, used when no custom `authorize` is configured)
+ * distinguishes `401` from `403` by request shape — `401` when the request presented no
+ * `Authorization` header and no `?token`, `403` when a credential was presented but rejected — since
+ * for its `credentials: { token, basic }` "no credential in the request" and "not authenticated" are
+ * the same fact.
  */
 export type AuthorizeHook = (ctx: UiHttpContext) => AuthorizeResult | Promise<AuthorizeResult>;
 
@@ -284,6 +284,9 @@ function matchesBasic(ctx: UiHttpContext, basic: { username: string; password: s
   return safeEqual(username, basic.username) && safeEqual(password, basic.password);
 }
 
+/** Hooks minted by {@link defaultAuthorize}, so {@link withCredentialStatus} can recognize them. */
+const defaultHooks = new WeakSet<AuthorizeHook>();
+
 /**
  * The default access policy used when no custom `authorize` is configured:
  *
@@ -291,15 +294,50 @@ function matchesBasic(ctx: UiHttpContext, basic: { username: string; password: s
  * - if `basic` credentials are set and the request presents them → allow;
  * - otherwise allow only when NOT in production (so a dev dashboard "just works"
  *   while a production deploy is denied unless explicitly gated).
+ *
+ * Returns a plain `boolean` on purpose, so composing it (`if (await defaultAuthorize(c)(ctx))`) is
+ * safe. The `401`-vs-`403` split for this gate is added by `resolveConfig` (see
+ * {@link withCredentialStatus}) — also when the host passes `authorize: defaultAuthorize(...)`
+ * explicitly.
  */
 export function defaultAuthorize(credentials: UiCredentials): AuthorizeHook {
-  return (ctx) => {
+  const hook: AuthorizeHook = (ctx) => {
     if (credentials.token !== undefined) {
       const presented = readToken(ctx);
       if (presented !== undefined && safeEqual(presented, credentials.token)) return true;
     }
     if (credentials.basic !== undefined && matchesBasic(ctx, credentials.basic)) return true;
     return !isProduction();
+  };
+  defaultHooks.add(hook);
+  return hook;
+}
+
+/**
+ * Whether the request presented ANY credential the built-in gate understands: an `Authorization`
+ * header (Bearer or Basic) or a `?token`.
+ */
+function presentedCredential(ctx: UiHttpContext): boolean {
+  return (
+    ctx.request.header('authorization') !== undefined || typeof ctx.request.qs().token === 'string'
+  );
+}
+
+/**
+ * Give a {@link defaultAuthorize} hook its request-shape denial reason: `'unauthenticated'` (→ `401`,
+ * with `WWW-Authenticate` so a browser prompts) when no credential was presented, `'forbidden'`
+ * (→ `403`) when one was presented but rejected. Any other (custom) hook is returned untouched — its
+ * bare `false` is a `403`, per the {@link AuthorizeDecision} contract.
+ *
+ * @internal Used by the UI and MCP `resolveConfig`.
+ */
+export function withCredentialStatus(authorize: AuthorizeHook): AuthorizeHook {
+  if (!defaultHooks.has(authorize)) return authorize;
+  return async (ctx) => {
+    const result = await authorize(ctx);
+    const allowed = typeof result === 'boolean' ? result : result.allowed;
+    if (allowed) return true;
+    return { allowed: false, reason: presentedCredential(ctx) ? 'forbidden' : 'unauthenticated' };
   };
 }
 
@@ -310,7 +348,7 @@ export function resolveConfig(config: TelescopeUiConfig = {}): ResolvedTelescope
     enabled: config.enabled ?? true,
     path: normalizePath(config.path ?? '/telescope'),
     recordOwnRequests: config.recordOwnRequests ?? false,
-    authorize: config.authorize ?? defaultAuthorize(credentials),
+    authorize: withCredentialStatus(config.authorize ?? defaultAuthorize(credentials)),
     credentials,
     // Validate + resolve now so a misconfigured secret/login fails closed at boot, not on the first
     // login attempt. `null` when `dashboardAuth` is omitted (behavior unchanged).

@@ -152,8 +152,8 @@ export default defineConfig({
   `credentials.token`/`credentials.basic` gate.
 - `effectiveRoles` includes global token claims **and** app-level DB roles; `roles` is
   any-of (passes when the user holds at least one).
-- No authenticated user → `false` (the guard answers `401`/`403`, or honors a redirect you
-  write).
+- No authenticated user → `false` (the guard answers `403`, or honors a redirect you
+  write — see below for getting a `401` instead).
 - It accepts any context shape (the dashboards type `authorize` differently), reading
   `ctx.auth` structurally and never touching AdonisJS internals.
 
@@ -161,13 +161,12 @@ The same helper works across every `@adonis-agora` dashboard — telescope, dura
 and agent — so one RBAC gate config reads the same everywhere.
 
 <Callout type="warn">
-Composed as-is, `authorizeByRoles` returns a bare `boolean` — so BOTH a genuinely-anonymous
-request and an authenticated-but-wrong-role request deny with `false`, and the guard's
-request-shape heuristic (below) answers `401` for both: it only recognizes the built-in
-`credentials.token`/`credentials.basic` gate, and has no way to see a session cookie.
-The wrong-role case should really be `403`. Wrap the call and return the enriched
-`AuthorizeDecision` (`{ allowed, reason }`) form to tell the guard which denial this
-is:
+Composed as-is, a hook returning a bare `boolean` denies BOTH a genuinely-anonymous request
+and an authenticated-but-wrong-role request with `false`, and a bare `false` from a custom
+hook is always a `403` (fail closed — the guard cannot see a session cookie, so it does not
+guess). To send an anonymous visitor a `401` ("Sign in required") instead, return the
+enriched `AuthorizeDecision` (`{ allowed, reason }`) form and tell the guard which denial
+this is:
 
 ```ts title="config/telescope_ui.ts"
 import { defineConfig } from '@adonis-agora/telescope/ui'
@@ -185,8 +184,8 @@ export default defineConfig({
 })
 ```
 
-Now a signed-in user missing the `ADMIN` role gets a precise `403`, and an anonymous
-visitor still gets `401` — see [Guard behaviour](#guard-behaviour) below for exactly how
+Now a signed-in user missing the `ADMIN` role gets `403`, and an anonymous visitor gets
+`401` — see [Guard behaviour](#guard-behaviour) below for exactly how
 the guard uses `reason`.
 </Callout>
 
@@ -261,39 +260,47 @@ the page working.
 
 ## Guard behaviour
 
-The guard translates an `authorize` decision into an HTTP outcome, distinguishing two
-denial cases so clients and browsers behave correctly:
+The guard translates an `authorize` decision into an HTTP outcome. This mapping is the
+dashboard-gate contract shared by every `@adonis-agora` console (telescope, durable, media,
+payments, agent, authz):
 
 | Outcome                                                     | Status | Meaning                                            |
 | ---------------------------------------------------------- | ------ | -------------------------------------------------- |
 | `authorize` returned `true` (or `{ allowed: true }`)       | —      | Request proceeds to the handler.                   |
 | Denied with `reason: 'unauthenticated'`                    | `401`  | "Authenticate" — sends `WWW-Authenticate` so a browser prompts. |
 | Denied with `reason: 'forbidden'`                          | `403`  | "Forbidden" — signed in, but not allowed.           |
-| Denied (`false`, or `{ allowed: false }` with no `reason`), **no** credential presented | `401` | Same "Authenticate" outcome, decided by the fallback heuristic below. |
-| Denied (`false`, or `{ allowed: false }` with no `reason`), a credential **was** presented but rejected | `403` | Same "Forbidden" outcome, decided by the fallback heuristic below. |
+| Denied with a bare `false`, or `{ allowed: false }` with no `reason` | `403` | Fail-closed "Forbidden" — whatever the request looked like. |
 | `authorize` **threw**                                      | `403`  | Fail-closed — a buggy hook never accidentally opens the door. |
 | Denied, but the hook already set a `location` header       | —      | The hook's redirect stands; the guard writes no status and no body. |
 
 ### Bare `boolean` vs the enriched `{ allowed, reason }` return
 
 An `authorize` hook may return a plain `boolean` (as every example above does) **or** an
-object, `{ allowed: boolean, reason?: 'unauthenticated' | 'forbidden' }`. Both are
-backward compatible — a hook returning a bare `boolean` today keeps behaving byte-for-byte
-the same.
+object, `{ allowed: boolean, reason?: 'unauthenticated' | 'forbidden' }`.
 
-The `reason` is the escape hatch. It only matters on a denial (`allowed: false`), and it
-exists because the guard cannot see how a custom hook authenticates. Its fallback
-heuristic — "presented a credential" means an `Authorization` header was present or a
-`?token=` was in the query string — was built for this library's OWN
-`credentials.token`/`credentials.basic` gate, where "no credential in the request" and
-"not authenticated" are the same fact. A hook that authenticates some **other** way
-(a session cookie, most commonly — see the `authorizeByRoles` example above) can bypass
-that heuristic entirely by setting `reason` explicitly:
+The `reason` only matters on a denial (`allowed: false`):
 
-- `reason: 'unauthenticated'` → always `401`, regardless of what the request looked like.
-- `reason: 'forbidden'` → always `403`, regardless of what the request looked like.
-- `reason` omitted → falls back to the request-shape heuristic, exactly like a bare
-  `false` always has.
+- `reason: 'unauthenticated'` → `401` (with `WWW-Authenticate`), regardless of what the
+  request looked like.
+- `reason: 'forbidden'` → `403`.
+- `reason` omitted, or a bare `false` → `403`. The guard does not try to guess from the
+  request whether anybody is signed in — a custom hook that wants the "please sign in"
+  answer says so with `reason: 'unauthenticated'`.
+
+The one place the request shape still matters is the **built-in** gate — the default policy
+plus `credentials.token`/`credentials.basic`, used when you configure no `authorize` (or pass
+`authorize: defaultAuthorize(...)`). There "no credential in the request" and "not
+authenticated" are the same fact, so it answers `401` (+ `WWW-Authenticate`, so a browser
+prompts) when the request presented no `Authorization` header and no `?token=`, and `403`
+when a credential was presented but rejected. The exported `defaultAuthorize(...)` itself
+still returns a plain `boolean`, so composing it inside your own hook is safe.
+
+<Callout type="info">
+**Changed in this release:** a custom hook returning a bare `false` used to fall back to that
+request-shape heuristic too, so a session-authenticated user without the right role (no
+`Authorization` header) got `401 — Sign in required`. It is now a `403`. If you relied on
+the `401`, return `{ allowed: false, reason: 'unauthenticated' }`.
+</Callout>
 
 <Callout type="warn">
 The guard runs on every route that serves recorded data — every `/api/*` endpoint (including

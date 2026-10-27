@@ -21,22 +21,17 @@ export interface GuardResult {
  * decision into a {@link GuardResult}. Framework-light: takes the same minimal
  * HTTP context the handlers do, so it is unit-testable without a server.
  *
- * The hook may return a bare `boolean` OR an {@link AuthorizeDecision}
- * (`{ allowed, reason? }`) — see that type for the full rationale. A denial's status is decided,
- * in order:
- * 1. An explicit `reason` on an {@link AuthorizeDecision} wins outright: `'unauthenticated'` → `401`,
- *    `'forbidden'` → `403`. This is the escape hatch for a hook that authenticates some way the guard
- *    cannot see by inspecting the request (a session cookie, most commonly — e.g.
- *    `@adonis-agora/authz`'s `authorizeByRoles`).
- * 2. Otherwise (a bare `false`, or `{ allowed: false }` with no `reason`) the REQUEST-SHAPE heuristic
- *    this guard has always used runs: **401** when the request presented NO credential at all (an
- *    `Authorization` header is absent and no `?token`) — prompts the host/browser to authenticate;
- *    **403** when a credential WAS presented but rejected (wrong token/password). Built for this
- *    library's own `credentials: { token, basic }` gate, where "no credential in the request" and
- *    "not authenticated" are the same fact — a hook authenticating another way should prefer (1).
+ * The hook may return a bare `boolean` OR an {@link AuthorizeDecision} (`{ allowed, reason? }`).
+ * The mapping is the dashboard-gate contract shared by every `@adonis-agora` console:
+ * - `true` / `{ allowed: true }` → allowed.
+ * - `reason: 'unauthenticated'` → `401`.
+ * - `reason: 'forbidden'` → `403`.
+ * - a bare `false`, or `{ allowed: false }` with no `reason` → `403` (fail closed).
+ * - the hook throws → `403` (fail closed — never leaks the dashboard).
  *
- * Any error thrown by a custom `authorize` hook fails closed (403) rather than
- * leaking the dashboard.
+ * No request-shape guessing happens here. The built-in credentials gate gets its `401` (no
+ * credential presented) vs `403` (credential rejected) split by `resolveConfig` wrapping
+ * `defaultAuthorize` into a hook that returns the matching `reason`.
  */
 export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Promise<GuardResult> {
   let result: AuthorizeResult;
@@ -51,14 +46,7 @@ export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Pr
 
   const reason = typeof result === 'boolean' ? undefined : result.reason;
   if (reason === 'unauthenticated') return { allowed: false, status: 401, message: 'Unauthorized' };
-  if (reason === 'forbidden') return { allowed: false, status: 403, message: 'Forbidden' };
-
-  const presentedCredential =
-    ctx.request.header('authorization') !== undefined || typeof ctx.request.qs().token === 'string';
-
-  return presentedCredential
-    ? { allowed: false, status: 403, message: 'Forbidden' }
-    : { allowed: false, status: 401, message: 'Unauthorized' };
+  return { allowed: false, status: 403, message: 'Forbidden' };
 }
 
 /**
