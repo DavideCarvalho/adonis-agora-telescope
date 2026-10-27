@@ -23,6 +23,16 @@ function profileLabel(ctx: HttpContextLike): string {
   return `${method} ${pattern ?? ctx.request.url()}`;
 }
 
+/** Let a recording settle on its own; a failure is reported, never thrown. */
+function recordInBackground(recording: Promise<unknown>): void {
+  recording.catch(reportRecordFailure);
+}
+
+function reportRecordFailure(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`TelescopeMiddleware: failed to record telescope entry: ${message}`);
+}
+
 /**
  * Whether `url` is the dashboard prefix itself or something under it.
  *
@@ -87,28 +97,33 @@ export default class TelescopeMiddleware {
       // Recording is wrapped so it can never mask the error it observes.
       try {
         const request = (ctx as unknown as HttpContextLike).request;
-        await recordExceptionInStore(store, error, {
-          method: request.method(),
-          url: request.url(),
-        });
-      } catch {
-        // Observability must never break the request it observes.
+        recordInBackground(
+          recordExceptionInStore(store, error, {
+            method: request.method(),
+            url: request.url(),
+          }),
+        );
+      } catch (recordError) {
+        reportRecordFailure(recordError);
       }
       throw error;
     } finally {
-      // Post-response phase: record the now-complete request. Awaited so a slow
-      // store surfaces back-pressure here rather than leaking an unhandled
-      // rejection, but wrapped so observability can never break the request.
+      // Post-response phase: record the now-complete request. Not awaited — Adonis
+      // writes the response only once the middleware chain resolves, so waiting on
+      // the store here would put its write latency on every request. Everything
+      // read from `ctx` is read synchronously, before this returns.
       try {
-        await recordRequest(store, ctx as unknown as HttpContextLike, startedAt, {
-          // Body capture is opt-in: only pass `capture` when configured, so the
-          // default stays "no body field" and zero body-read overhead.
-          ...(runtime.requestCapture !== null ? { capture: runtime.requestCapture } : {}),
-          // Host enrichment (screen tag, tenant, …). Absent unless configured.
-          ...(runtime.requestEnrichment !== null ? { enrich: runtime.requestEnrichment } : {}),
-        });
-      } catch {
-        // Observability must never break the request it observes.
+        recordInBackground(
+          recordRequest(store, ctx as unknown as HttpContextLike, startedAt, {
+            // Body capture is opt-in: only pass `capture` when configured, so the
+            // default stays "no body field" and zero body-read overhead.
+            ...(runtime.requestCapture !== null ? { capture: runtime.requestCapture } : {}),
+            // Host enrichment (screen tag, tenant, …). Absent unless configured.
+            ...(runtime.requestEnrichment !== null ? { enrich: runtime.requestEnrichment } : {}),
+          }),
+        );
+      } catch (recordError) {
+        reportRecordFailure(recordError);
       }
       // Stop + record the profile (if one was armed/sampled) within the same
       // `finally` so its `cpu_profile` entry shares this request's trace context.

@@ -6,6 +6,9 @@ import type {
   BucketCountQuery,
   BucketCountRow,
   EntryQuery,
+  FamilyCountQuery,
+  KeyCountRow,
+  TagCountQuery,
   TelescopeStore,
   TraceIdQuery,
   TraceIdRow,
@@ -141,6 +144,27 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     return [...tally.values()];
   }
 
+  async countFamilies(query: FamilyCountQuery): Promise<KeyCountRow[]> {
+    const counts = new Map<string, number>();
+    for (const entry of this.entries) {
+      if (!entry.familyHash) continue;
+      if (query.type !== undefined && entry.type !== query.type) continue;
+      counts.set(entry.familyHash, (counts.get(entry.familyHash) ?? 0) + 1);
+    }
+    return topCounts(counts, query.limit);
+  }
+
+  async countTags(query: TagCountQuery): Promise<KeyCountRow[]> {
+    const counts = new Map<string, number>();
+    for (const entry of this.entries) {
+      for (const tag of entry.tags) {
+        if (query.prefix !== undefined && !tag.startsWith(query.prefix)) continue;
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return topCounts(counts, query.limit);
+  }
+
   async count(): Promise<number> {
     return this.entries.length;
   }
@@ -187,4 +211,12 @@ function matchesSearch(entry: Entry, needle: string): boolean {
     // Content with a circular reference / BigInt — fall back to no match.
     return false;
   }
+}
+
+/** The `limit` largest counts; ties keep the order the keys were first seen in. */
+function topCounts(counts: Map<string, number>, limit: number): KeyCountRow[] {
+  return [...counts.entries()]
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, Math.max(0, Math.floor(limit)));
 }

@@ -97,9 +97,9 @@ export default class extends BaseSchema {
       table.bigInteger('created_at').notNullable()
 
       table.index(['created_at'])
-      table.index(['type'])
       table.index(['trace_id'])
-      table.index(['family_hash'])
+      table.index(['type', 'created_at', 'sequence'])
+      table.index(['family_hash', 'created_at'])
     })
   }
 
@@ -108,6 +108,34 @@ export default class extends BaseSchema {
   }
 }
 ```
+
+If your app ran an earlier copy of this migration (with single-column `type` and
+`family_hash` indexes), add the two composite indexes with a migration of your own:
+
+```ts
+import { BaseSchema } from '@adonisjs/lucid/schema'
+
+export default class extends BaseSchema {
+  protected tableName = 'telescope_entries'
+
+  async up() {
+    this.schema.alterTable(this.tableName, (table) => {
+      table.index(['type', 'created_at', 'sequence'])
+      table.index(['family_hash', 'created_at'])
+    })
+  }
+
+  async down() {
+    this.schema.alterTable(this.tableName, (table) => {
+      table.dropIndex(['type', 'created_at', 'sequence'])
+      table.dropIndex(['family_hash', 'created_at'])
+    })
+  }
+}
+```
+
+With `autoCreateTable` there is nothing to do: the schema fingerprint changes and the store
+adds the new indexes on its next boot.
 
 <Callout type="info">
 For tests and scripts, you can skip the migration: pass `autoCreateTable: true` (the store
@@ -138,7 +166,10 @@ For tests, scripts, or a hand-wired store instance, the core also exports:
 - **`LucidTelescopeStore`** — implements the async `TelescopeStore` contract (`record` /
   `get` / `list` / `count` / `prune` / `clear`).
 - **`createTelescopeTable(db, options?)`** — idempotent DDL helper.
-- **`createTableStatements(tableName?)`** — the raw `CREATE TABLE` + index statements.
+- **`createTableStatements(tableName?, dialect?)`** — the raw `CREATE TABLE` + index
+  statements. Pass the Lucid dialect name (`'mysql'`) to get backtick-quoted identifiers and
+  plain `CREATE INDEX` (MySQL has no `IF NOT EXISTS` for indexes); without it the statements
+  use double-quoted identifiers, for sqlite and Postgres.
 - **`DEFAULT_TABLE_NAME`** — `'telescope_entries'`.
 
 ```ts
@@ -156,7 +187,8 @@ provider boot.
 
 - **Dialect-agnostic.** It uses Lucid's async query builder directly, so it works on every
   dialect Lucid supports (sqlite / Postgres / MySQL) — no synchronous driver handle, no
-  dialect lock-in.
+  dialect lock-in. Filters quote columns through identifier bindings, so MySQL needs no
+  `ANSI_QUOTES`; `autoCreateTable` reads the dialect from the connection and issues DDL for it.
 - **JSON-text columns.** `content` and `tags` are stored as JSON text and round-tripped on
   read — portable everywhere.
 - **Integer timestamps.** `created_at` is epoch milliseconds, so newest-first ordering and
@@ -166,9 +198,25 @@ provider boot.
   across restarts.
 - **Tag matching.** `tag` filters match the quoted token inside the JSON array text, so
   `lib:bill` never matches `lib:billing`.
-- **Single pooled connection.** Writes are serialized (single-flight), so the store holds
-  at most one connection from the pool at a time — a watcher-event burst can't exhaust the
-  app's DB pool.
+- **Batched writes, single pooled connection.** Every entry recorded in one tick of the event
+  loop goes out in one multi-row `INSERT` (at most 90 rows and 4 MB per statement), one
+  statement at a time, so the store holds at most one pooled connection for writing — a
+  watcher-event burst can't exhaust the app's DB pool. `record()` resolves once its row is
+  written. If a batch is rejected, its rows are retried one at a time, so only the bad row's
+  `record()` fails.
+- **Bounded write buffer.** At most 10,000 entries wait to be written. Past that, new entries
+  are dropped and counted on `store.droppedCount`, with one `console.warn` per overflow.
+- **Its own queries are not recorded.** Every query the store runs is excluded from the query
+  watcher, so sharing the app's connection with `debug: true` records neither the store's
+  INSERTs nor the dashboard's reads.
+- **Dashboard aggregates in SQL.** The store implements every
+  [optional fast path](/docs/telescope/concepts/storage#optional-fast-paths): the throughput
+  chart is a `GROUP BY` over time buckets, `topFamilies` a `GROUP BY family_hash … LIMIT`, and
+  `topTags` reads only the `tags` column in pages of 5,000 rows. `list({ omitContent: true })`
+  selects every column but `content`.
+- **Bounded prune.** `prune` deletes oldest-first in batches of 5,000 rows, each statement
+  carrying a few bound values, so a backlog larger than the dialect's bind limit still prunes.
+  With `keepLast` it finds the boundary row with one `ORDER BY … LIMIT 1 OFFSET keepLast`.
 - **Integer durations.** `duration_ms` is rounded to an integer at the store (it's an
   INTEGER column), so watchers timing with `performance.now()` never produce a fractional
   value Postgres would reject.

@@ -2,6 +2,7 @@ import { currentTraceId } from '../context_accessor.js';
 import type { RecordInput } from '../entry.js';
 import { isHeartbeat } from '../origin_scope.js';
 import { getTelescopeRuntime } from '../registry.js';
+import { isTelescopeWork } from '../self_scope.js';
 import type { TelescopeStore } from '../store.js';
 
 /**
@@ -22,10 +23,14 @@ export function resolveStore(): TelescopeStore | null {
  * fire-and-forget: a missing store, a throwing `record`, or a rejected promise can
  * never break (or block) the emit it is observing.
  *
+ * Pass `input` as a function to build the entry only once it is known to be
+ * recorded: while telescope is off, paused, or observing its own queries, nothing
+ * is built at all.
+ *
  * The active `@adonis-agora/context` trace id is backfilled when the caller did not set
  * `traceId` explicitly, mirroring how the core watchers correlate entries.
  */
-export function safeRecord(input: RecordInput, source: string): void {
+export function safeRecord(input: RecordInput | (() => RecordInput), source: string): void {
   let store: TelescopeStore | null;
   try {
     store = resolveStore();
@@ -42,10 +47,13 @@ export function safeRecord(input: RecordInput, source: string): void {
   // it finds is recorded on its own. Set `recordHeartbeat: true` in config/telescope.ts
   // to keep them (debugging the poll loop itself is the case that wants them).
   if (isHeartbeat() && !getTelescopeRuntime().recordHeartbeat) return;
+  // Telescope's own store queries (see self_scope.ts) are not app activity.
+  if (isTelescopeWork()) return;
 
   try {
+    const built = typeof input === 'function' ? input() : input;
     const resolved: RecordInput =
-      input.traceId === undefined ? { ...input, traceId: currentTraceId() } : input;
+      built.traceId === undefined ? { ...built, traceId: currentTraceId() } : built;
     // Fire-and-forget: the store is async but the subscriber is sync. Swallow
     // rejections so an observed code path is never affected by telescope.
     void Promise.resolve(store.record(resolved)).catch((err) => reportError(source, err));

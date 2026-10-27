@@ -27,9 +27,9 @@ export default class extends BaseSchema {
       table.bigInteger('created_at').notNullable()
 
       table.index(['created_at'])
-      table.index(['type'])
       table.index(['trace_id'])
-      table.index(['family_hash'])
+      table.index(['type', 'created_at', 'sequence'])
+      table.index(['family_hash', 'created_at'])
     })
   }
 

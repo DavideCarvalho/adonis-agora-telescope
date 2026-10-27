@@ -233,7 +233,7 @@ export class LogsWatcher {
 
   /** Build + record a log entry from the level method's arguments. */
   private record(level: LogLevel, args: unknown[]): void {
-    safeRecord(buildLogEntry(level, args, this.extraTags), 'LogsWatcher');
+    safeRecord(() => buildLogEntry(level, args, this.extraTags), 'LogsWatcher');
   }
 }
 

@@ -98,16 +98,27 @@ unique error families can't grow either without limit.
 ## Persistent storage and reads
 
 The [Lucid store](/docs/telescope/packages/storages) keeps `created_at` as an integer and
-indexes the hot read columns (`created_at`, `type`, `trace_id`, `family_hash`), so the
-common queries — recent entries, one trace, one type — are index scans, not table scans.
+indexes the hot read paths (`created_at`, `trace_id`, `(type, created_at, sequence)` and
+`(family_hash, created_at)`), so the common queries — recent entries, one trace, the newest
+of one type — are index scans, not table scans or sorts. Aggregates the dashboard needs
+(per-bucket throughput, the busiest families) are grouped in SQL, and window-wide scans
+(Pulse, per-type stats) read every column but `content`, fetching content only for the
+handful of rows they display.
 It never auto-evicts on `record` (that would add a query per write); bound it by running
 [`prune` on a schedule](/docs/telescope/concepts/storage#retention-and-pruning) instead.
 
-Writes are also **serialized** — a single-flight `writeTail` chain queues each `record`
-insert behind the previous one, so the store holds at most one pooled connection at any
-moment. A burst of watcher events can never exhaust the host app's DB connection pool,
-even when Telescope shares the app's default connection. Reads (`get` / `list` / `prune`)
-are user-initiated and low-frequency, so they are intentionally not serialized.
+Writes are **batched and serialized**: every entry recorded during one tick of the event
+loop goes out in one multi-row `INSERT` (split to stay under each dialect's bind limit), one
+statement at a time, so the store holds at most one pooled connection for writing. A burst of
+watcher events can never exhaust the host app's DB connection pool, even when Telescope
+shares the app's default connection. The buffer is bounded: past 10,000 waiting entries new
+ones are dropped (and counted on the store's `droppedCount`) instead of growing the heap.
+The request middleware does not wait for its entry to be written, so the store's latency
+never lands on the response. Reads (`get` / `list` / `prune`) are user-initiated and
+low-frequency, so they are intentionally not serialized.
+
+The store's own queries are never recorded by the query watcher, even when it shares the
+app's connection with `debug: true`.
 
 ## Alerts polling is unref'd
 

@@ -225,29 +225,49 @@ export class TieredTelescopeStore implements TelescopeStore {
   }
 
   /**
-   * Copy hot entries in `[after, before)` to cold. Pages are offset-based over a fixed
-   * window that nothing is deleted from until the whole move succeeded, so no entry is
-   * skipped; entries reach the window only by ageing past `before`, after this cycle's
-   * snapshot. Resolves to the number of entries written.
+   * Copy hot entries in `[after, before)` to cold, newest first, a page at a time.
+   *
+   * Pages are cut by time rather than by offset, so each read starts where the last
+   * ended instead of skipping every row already moved. A page ends at the oldest
+   * millisecond it reached, read whole by a second query, and the next page starts
+   * strictly before it: entries sharing a timestamp are never split across pages.
+   * Nothing is deleted from hot until the whole move succeeded; entries reach the
+   * window only by ageing past `before`, after this cycle's snapshot. Resolves to
+   * the number of entries written.
    */
   private async moveToCold(after: Date, before: Date): Promise<number> {
-    const window: EntryQuery = { after: new Date(after.getTime() - 1), before };
+    const windowAfter = new Date(after.getTime() - 1);
     const written: string[] = [];
     let buffered: Entry[] = [];
     let moved = 0;
+    let pageBefore = before;
     try {
-      for (let page = 1; ; page++) {
-        const rows = await this.hot.list({ ...window, page, size: this.moveBatchSize });
-        buffered.push(...rows);
-        if (
-          buffered.length >= this.moveFlushSize ||
-          (rows.length < this.moveBatchSize && buffered.length > 0)
-        ) {
+      for (;;) {
+        const rows = await this.hot.list({
+          after: windowAfter,
+          before: pageBefore,
+          size: this.moveBatchSize,
+        });
+        const full = rows.length === this.moveBatchSize;
+        if (full) {
+          const edge = rows[rows.length - 1]!.createdAt.getTime();
+          for (const row of rows) if (row.createdAt.getTime() > edge) buffered.push(row);
+          buffered.push(
+            ...(await this.hot.list({
+              after: new Date(edge - 1),
+              before: new Date(edge + 1),
+            })),
+          );
+          pageBefore = new Date(edge);
+        } else {
+          buffered.push(...rows);
+        }
+        if (buffered.length >= this.moveFlushSize || (!full && buffered.length > 0)) {
           written.push(...(await this.cold.write(buffered)));
           moved += buffered.length;
           buffered = [];
         }
-        if (rows.length < this.moveBatchSize) break;
+        if (!full) break;
       }
     } catch (error) {
       await this.cold.location.delete(written).catch(() => undefined);

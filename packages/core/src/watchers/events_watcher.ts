@@ -87,7 +87,7 @@ export class EventsWatcher {
   private handle(event: unknown, data: unknown): void {
     const name = eventName(event);
     if (this.ignore.has(name)) return;
-    safeRecord(buildEventEntry(name, data), 'EventsWatcher');
+    safeRecord(() => buildEventEntry(name, data), 'EventsWatcher');
   }
 }
 

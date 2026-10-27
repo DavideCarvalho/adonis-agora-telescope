@@ -54,7 +54,9 @@ onto the **server** middleware stack, and publishes `config/telescope.ts`.
 | Logs          | `log`        | started at boot, off by default      | level, message, structured context, traceId     |
 
 The request and exception watchers come from the same middleware: it records the request
-in a `finally`, and catches + records any thrown error before re-throwing it untouched.
+in a `finally`, and catches + records any thrown error before re-throwing it untouched. Both
+are written in the background, so the response never waits for the store; a failed write is
+reported on `console.error`.
 The diagnostics watcher subscribes to every Agora channel (current and future). See
 [Capture & correlation](/docs/telescope/concepts/capture) for the full mechanics.
 

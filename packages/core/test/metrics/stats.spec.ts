@@ -302,3 +302,12 @@ describe('summarizeStats — exception group type', () => {
     });
   });
 });
+
+describe('estimateLatencyPercentiles on a large window', () => {
+  it('handles more durations than fit in one call frame', () => {
+    const durations = Array.from({ length: 300_000 }, (_, i) => i % 1_000);
+    const estimate = estimateLatencyPercentiles(durations);
+    expect(estimate?.p99).toBeLessThanOrEqual(999);
+    expect(estimate?.p50).toBeGreaterThan(0);
+  });
+});

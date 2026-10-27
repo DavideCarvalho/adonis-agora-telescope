@@ -325,7 +325,7 @@ export class RedisWatcher {
     durationMs: number | null,
   ): void {
     this.accountForFlood(command);
-    safeRecord(buildRedisEntry(command, connection, durationMs), 'RedisWatcher');
+    safeRecord(() => buildRedisEntry(command, connection, durationMs), 'RedisWatcher');
   }
 
   /**

@@ -126,11 +126,12 @@ export class LucidQueryWatcher implements Watcher {
     // hits the store's own DB, a replica used only for the timeline, etc.
     if (this.ignoreConnections.has(data.connection.toLowerCase())) return;
     safeRecord(
-      buildQueryEntry(data, {
-        slowMs: this.slowMs,
-        captureBindings: this.captureBindings,
-        normalize: this.normalize,
-      }),
+      () =>
+        buildQueryEntry(data, {
+          slowMs: this.slowMs,
+          captureBindings: this.captureBindings,
+          normalize: this.normalize,
+        }),
       'LucidQueryWatcher',
     );
   }
@@ -168,11 +169,17 @@ export function buildQueryEntry(
   ];
   if (durationMs !== null && durationMs >= slowMs) tags.push('slow');
 
+  let familyHash: string | undefined;
   return {
     type: EntryType.Query,
     // Group by SQL template (see queryFamilyHash) so "the same query" rolls up
     // for the Pulse slow-query + N+1 cards. `normalize: false` hashes verbatim.
-    familyHash: normalize ? queryFamilyHash(event.sql) : queryFamilyHash(event.sql, false),
+    // Computed on first read, which a sampled-out entry never gets to: templating
+    // a large statement costs more than the rest of the entry.
+    get familyHash() {
+      familyHash ??= queryFamilyHash(event.sql, normalize);
+      return familyHash;
+    },
     content,
     durationMs,
     traceId,

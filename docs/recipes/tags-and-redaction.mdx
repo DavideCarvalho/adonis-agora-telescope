@@ -104,7 +104,7 @@ building a custom entry's `content`:
 import { redact } from '@adonis-agora/telescope'
 
 safeRecord(
-  { type: EntryType.Query, content: { sql, bindings: redact(bindings) } },
+  () => ({ type: EntryType.Query, content: { sql, bindings: redact(bindings) } }),
   'MyQueryWatcher',
 )
 ```

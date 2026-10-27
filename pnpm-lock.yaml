@@ -260,6 +260,9 @@ importers:
       hyparquet-writer:
         specifier: 0.17.0
         version: 0.17.0
+      knex:
+        specifier: 3.3.0
+        version: 3.3.0(better-sqlite3@13.0.3)(supports-color@10.2.2)
       luxon:
         specifier: 3.7.2
         version: 3.7.2

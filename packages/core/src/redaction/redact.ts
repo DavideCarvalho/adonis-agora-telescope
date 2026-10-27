@@ -154,6 +154,29 @@ export function compileRedactSpec(options: RedactOptions): CompiledRedactSpec {
   };
 }
 
+/**
+ * Whether a key is masked, remembered per spec. Content keys come from a small vocabulary that
+ * repeats on every entry, so this saves lowercasing (and allocating) each key of each entry.
+ * Bounded so content with unbounded key sets (ids used as keys) cannot grow it.
+ */
+const MASKED_KEY_CACHE_LIMIT = 4_096;
+const maskedKeyCaches = new WeakMap<CompiledRedactSpec, (key: string) => boolean>();
+
+function maskedKeyLookup(spec: CompiledRedactSpec): (key: string) => boolean {
+  const known = maskedKeyCaches.get(spec);
+  if (known !== undefined) return known;
+  const decided = new Map<string, boolean>();
+  const lookup = (key: string): boolean => {
+    const cached = decided.get(key);
+    if (cached !== undefined) return cached;
+    const masked = spec.keySet.has(key.toLowerCase());
+    if (decided.size < MASKED_KEY_CACHE_LIMIT) decided.set(key, masked);
+    return masked;
+  };
+  maskedKeyCaches.set(spec, lookup);
+  return lookup;
+}
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -179,7 +202,6 @@ export function redactBoundedWith(
   spec: CompiledRedactSpec,
 ): RedactBoundedResult {
   const mask = options.mask ?? DEFAULT_MASK;
-  const keySet = spec.keySet;
   const paths = spec.paths;
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
   const maxStringLength = options.maxStringLength ?? DEFAULT_MAX_STRING_LENGTH;
@@ -187,6 +209,7 @@ export function redactBoundedWith(
   const maxNodes = options.maxNodes ?? DEFAULT_MAX_NODES;
   const maxContentBytes = options.maxContentBytes ?? DEFAULT_MAX_CONTENT_BYTES;
   const seen = new WeakSet<object>();
+  const keyMasked = maskedKeyLookup(spec);
 
   // Mutable walk state: node + byte budgets and a truncation flag. Kept in the
   // closure (not threaded through args) so the per-call accounting stays cheap.
@@ -272,7 +295,7 @@ export function redactBoundedWith(
       }
       seen.add(node);
       const result: Record<string, unknown> = {};
-      for (const [key, child] of Object.entries(node)) {
+      for (const key of Object.keys(node)) {
         // Stop iterating the moment a budget runs out: ONE trailing marker, not
         // one marker per remaining field (keys + markers themselves cost bytes).
         if (nodesRemaining <= 0 || bytesRemaining <= 0) {
@@ -283,10 +306,10 @@ export function redactBoundedWith(
         // Object keys are real serialized bytes — charge them too.
         bytesRemaining -= key.length;
         const childPath = path ? `${path}.${key}` : key;
-        if (keySet.has(key.toLowerCase()) || paths.has(childPath)) {
+        if (keyMasked(key) || paths.has(childPath)) {
           result[key] = mask;
         } else {
-          result[key] = walk(child, childPath, depth + 1);
+          result[key] = walk(node[key], childPath, depth + 1);
         }
       }
       seen.delete(node);

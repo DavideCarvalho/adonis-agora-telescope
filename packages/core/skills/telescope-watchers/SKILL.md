@@ -70,7 +70,8 @@ export default defineConfig({
   watchers: ['query'],
   // Bindings carry PII/secrets: redacted to [REDACTED] placeholders unless you opt in.
   query: { slowMs: 500, captureBindings: false, normalize: true },
-  // ignoreConnections: ['telescope'] — drop e.g. telescope's own lucid-store writes.
+  // ignoreConnections: ['analytics'] — drop e.g. a replica used only for the timeline.
+  // (The store's own INSERTs/reads/prunes are excluded automatically.)
 })
 ```
 
@@ -129,7 +130,8 @@ Source: `docs/packages/watchers.mdx` (Profiling watcher, Schedule watcher).
 ### Pattern 3 — a custom watcher
 
 Implement `{ type, start(emitter), stop() }` over the structural `EmitterLike`
-(`on` returns an unsubscribe function). Record through `safeRecord(input, source)`:
+(`on` returns an unsubscribe function). Record through `safeRecord(() => input, source)`:
+pass a builder so nothing is built while paused/off or for the store's own queries;
 it resolves the runtime store, backfills `currentTraceId()`, and swallows every
 failure so your watcher cannot break the path it observes.
 
@@ -154,7 +156,7 @@ export class QueueWatcher implements Watcher {
 
   private handle(data: unknown): void {
     if (!isQueueEvent(data)) return                    // tolerate junk on the channel
-    safeRecord(buildJobEntry(data), 'QueueWatcher')    // guarded; never throws
+    safeRecord(() => buildJobEntry(data), 'QueueWatcher')    // guarded; never throws
   }
 }
 
@@ -250,10 +252,10 @@ emitter.on('queue:processed', (d) => {
 ```
 
 ```ts
-// Correct — validate defensively, build plain content, let safeRecord guard the store.
+// Correct — validate defensively, build plain content lazily, let safeRecord guard the store.
 private handle(data: unknown): void {
   if (!isQueueEvent(data)) return
-  safeRecord(buildJobEntry(data), 'QueueWatcher')
+  safeRecord(() => buildJobEntry(data), 'QueueWatcher')
 }
 ```
 

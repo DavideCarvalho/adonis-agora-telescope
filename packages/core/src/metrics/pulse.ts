@@ -1,6 +1,6 @@
-import { type Entry, EntryType, isExceptionType } from '../entry.js';
+import { type Entry, EntryType, EXCEPTION_ENTRY_TYPES, isExceptionType } from '../entry.js';
 import { detectNPlusOne } from '../query/n_plus_one.js';
-import type { EntryQuery, TelescopeStore } from '../store.js';
+import type { TelescopeStore } from '../store.js';
 import {
   type CacheStats,
   type LatencyStats,
@@ -236,7 +236,8 @@ function pushDuration(map: Map<string, number[]>, key: string, durationMs: numbe
 
 interface NPlusOneAccumulator {
   familyHash: string;
-  sql: string;
+  /** The entry whose SQL the hotspot reports. */
+  sample: Entry;
   perRequest: number;
   traces: number;
   total: number;
@@ -266,6 +267,76 @@ export function summarizePulse(
   options: PulseOptions,
   truncated = false,
 ): PulseSummary {
+  return finishPulse(draftPulse(entries, windowStart, windowEnd, options, truncated), (e) => e);
+}
+
+/**
+ * A pulse summary short of the two lists labelled from content: the slowest entries
+ * and the N+1 hotspots' SQL. Everything else reads the content of request, cache and
+ * exception entries only, so a whole-window scan can skip the content of the rest
+ * (query entries, by far the most numerous) and fetch it for these few afterwards.
+ */
+interface PulseDraft {
+  summary: Omit<PulseSummary, 'slowest' | 'nPlusOne'>;
+  slowest: Entry[];
+  nPlusOne: NPlusOneAccumulator[];
+}
+
+/** The entries whose content {@link finishPulse} reads. */
+function draftSamples(draft: PulseDraft): Entry[] {
+  return [...draft.slowest, ...draft.nPlusOne.map((hotspot) => hotspot.sample)];
+}
+
+/** Label the draft's slowest entries and N+1 hotspots, reading content through `withContent`. */
+function finishPulse(draft: PulseDraft, withContent: (entry: Entry) => Entry): PulseSummary {
+  const { summary } = draft;
+  return {
+    windowStart: summary.windowStart,
+    windowEnd: summary.windowEnd,
+    windowMs: summary.windowMs,
+    counts: summary.counts,
+    throughput: summary.throughput,
+    requests: summary.requests,
+    ...(summary.cache !== undefined ? { cache: summary.cache } : {}),
+    slowest: draft.slowest.map((entry) => ({
+      id: entry.id,
+      type: entry.type,
+      durationMs: entry.durationMs as number,
+      label: truncate(labelFrom(withContent(entry))),
+      traceId: entry.traceId,
+    })),
+    slowRoutes: summary.slowRoutes,
+    slowOutgoing: summary.slowOutgoing,
+    slowJobs: summary.slowJobs,
+    topExceptions: summary.topExceptions,
+    nPlusOne: draft.nPlusOne.map((h) => ({
+      familyHash: h.familyHash,
+      sql: truncate(sqlOf(withContent(h.sample))),
+      perRequest: h.perRequest,
+      traces: h.traces,
+      total: h.total,
+      totalDurationMs: h.totalDurationMs,
+      sampleTraceId: h.sampleTraceId,
+    })),
+    loadByUser: summary.loadByUser,
+    scanned: summary.scanned,
+    truncated: summary.truncated,
+  };
+}
+
+/** The SQL of a query entry, or `''`. */
+function sqlOf(entry: Entry): string {
+  const record = asRecord(entry.content);
+  return record !== null && typeof record.sql === 'string' ? record.sql : '';
+}
+
+function draftPulse(
+  entries: Entry[],
+  windowStart: Date,
+  windowEnd: Date,
+  options: PulseOptions,
+  truncated: boolean,
+): PulseDraft {
   const enabled = (card: PulseCardName): boolean => options.cards.has(card);
   const windowMs = Math.max(0, windowEnd.getTime() - windowStart.getTime());
 
@@ -401,18 +472,11 @@ export function summarizePulse(
   }
 
   // Slowest entries across all types.
-  const slowest: PulseSlowEntry[] = enabled('slowest')
+  const slowest: Entry[] = enabled('slowest')
     ? slowCandidates
         .slice()
         .sort((a, b) => (b.durationMs ?? 0) - (a.durationMs ?? 0) || a.id.localeCompare(b.id))
         .slice(0, options.topN)
-        .map((entry) => ({
-          id: entry.id,
-          type: entry.type,
-          durationMs: entry.durationMs as number,
-          label: truncate(labelFrom(entry)),
-          traceId: entry.traceId,
-        }))
     : [];
 
   // Slow hotspots — reuse percentile via toHotspots.
@@ -426,7 +490,7 @@ export function summarizePulse(
   const slowJobs = enabled('slowJobs') ? toHotspots(jobDurations, options, 0) : [];
 
   // N+1 hotspots — reuse detectNPlusOne per trace, aggregated across traces.
-  let nPlusOne: PulseNPlusOne[] = [];
+  let nPlusOne: NPlusOneAccumulator[] = [];
   if (enabled('nPlusOne')) {
     const hotspots = new Map<string, NPlusOneAccumulator>();
     const familyDurationInTrace = new Map<string, number>();
@@ -454,7 +518,8 @@ export function summarizePulse(
         } else {
           hotspots.set(insight.familyHash, {
             familyHash: insight.familyHash,
-            sql: insight.sql,
+            // detectNPlusOne reports the SQL of the family's first entry in the trace.
+            sample: traceEntries.find((entry) => entry.familyHash === insight.familyHash)!,
             perRequest: insight.count,
             traces: 1,
             total: insight.count,
@@ -472,16 +537,7 @@ export function summarizePulse(
           b.traces - a.traces ||
           a.familyHash.localeCompare(b.familyHash),
       )
-      .slice(0, options.topN)
-      .map((h) => ({
-        familyHash: h.familyHash,
-        sql: truncate(h.sql),
-        perRequest: h.perRequest,
-        traces: h.traces,
-        total: h.total,
-        totalDurationMs: h.totalDurationMs,
-        sampleTraceId: h.sampleTraceId,
-      }));
+      .slice(0, options.topN);
   }
 
   // Load by user — top users by total request time.
@@ -498,22 +554,24 @@ export function summarizePulse(
     : [];
 
   return {
-    windowStart: windowStart.toISOString(),
-    windowEnd: windowEnd.toISOString(),
-    windowMs,
-    counts,
-    throughput,
-    requests,
-    ...(cache !== undefined ? { cache } : {}),
+    summary: {
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+      windowMs,
+      counts,
+      throughput,
+      requests,
+      ...(cache !== undefined ? { cache } : {}),
+      slowRoutes,
+      slowOutgoing,
+      slowJobs,
+      topExceptions,
+      loadByUser,
+      scanned: entries.length,
+      truncated,
+    },
     slowest,
-    slowRoutes,
-    slowOutgoing,
-    slowJobs,
-    topExceptions,
     nPlusOne,
-    loadByUser,
-    scanned: entries.length,
-    truncated,
   };
 }
 
@@ -587,16 +645,66 @@ export class PulseService {
     const windowEnd = new Date();
     const windowStart = new Date(windowEnd.getTime() - windowMs);
 
-    const listQuery: EntryQuery = { after: windowStart, size: this.scanCap };
-    const entries = await this.store.list(listQuery);
-    const truncated = entries.length >= this.scanCap;
-
     const options: PulseOptions = {
       ...this.base,
       topN: query.topN ?? this.base.topN,
     };
-    return summarizePulse(entries, windowStart, windowEnd, options, truncated);
+
+    // The window is scanned without content; only the types the cards read content
+    // from get it back, and the slowest / N+1 rows are labelled from a read by id.
+    const scanned = await this.store.list({
+      after: windowStart,
+      size: this.scanCap,
+      omitContent: true,
+    });
+    const truncated = scanned.length >= this.scanCap;
+    const entries = await this.withContentFor(scanned, contentTypes(options.cards), windowStart);
+    const draft = draftPulse(entries, windowStart, windowEnd, options, truncated);
+    const samples = await this.withContentById(draftSamples(draft));
+    return finishPulse(draft, (entry) => samples.get(entry.id) ?? entry);
   }
+
+  /**
+   * `entries` with content restored for those of `types` the store returned without
+   * it, read back one list per type over the same window. Each list holds the newest
+   * `scanCap` entries of its type, which covers every one of them in `entries`.
+   */
+  private async withContentFor(
+    entries: Entry[],
+    types: ReadonlySet<string>,
+    after: Date,
+  ): Promise<Entry[]> {
+    const missing = new Set<string>();
+    for (const entry of entries) {
+      if (entry.content === null && types.has(entry.type)) missing.add(entry.type);
+    }
+    if (missing.size === 0) return entries;
+    const full = new Map<string, Entry>();
+    const lists = await Promise.all(
+      [...missing].map((type) => this.store.list({ type, after, size: this.scanCap })),
+    );
+    for (const list of lists) for (const entry of list) full.set(entry.id, entry);
+    return entries.map((entry) => full.get(entry.id) ?? entry);
+  }
+
+  /** The entries among `entries` that lack content, read back by id. */
+  private async withContentById(entries: Entry[]): Promise<Map<string, Entry>> {
+    const ids = new Set<string>();
+    for (const entry of entries) if (entry.content === null) ids.add(entry.id);
+    const found = await Promise.all([...ids].map((id) => this.store.get(id)));
+    const byId = new Map<string, Entry>();
+    for (const entry of found) if (entry !== null) byId.set(entry.id, entry);
+    return byId;
+  }
+}
+
+/** The entry types whose content the enabled cards aggregate over. */
+function contentTypes(cards: ReadonlySet<PulseCardName>): ReadonlySet<string> {
+  const types = new Set<string>();
+  if (cards.has('requests') || cards.has('slowRoutes')) types.add(EntryType.Request);
+  if (cards.has('cache')) types.add(EntryType.Cache);
+  if (cards.has('exceptions')) for (const type of EXCEPTION_ENTRY_TYPES) types.add(type);
+  return types;
 }
 
 function positiveOr(value: number | undefined, fallback: number): number {
