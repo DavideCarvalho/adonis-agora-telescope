@@ -3,6 +3,7 @@ import type { NextFn } from '@adonisjs/core/types/http';
 import { recordExceptionInStore } from './exception_watcher.js';
 import type { ProfileHandle } from './profiling/profiler_service.js';
 import { getTelescopeRuntime } from './registry.js';
+import { failureMessage, reportFailure } from './report_failure.js';
 import { type HttpContextLike, recordRequest } from './request_watcher.js';
 
 /** The bit of AdonisJS's real `HttpContext` a route-labelled profile needs beyond
@@ -29,8 +30,8 @@ function recordInBackground(recording: Promise<unknown>): void {
 }
 
 function reportRecordFailure(error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`TelescopeMiddleware: failed to record telescope entry: ${message}`);
+  const line = `TelescopeMiddleware: failed to record telescope entry: ${failureMessage(error)}`;
+  reportFailure(line, line);
 }
 
 /**

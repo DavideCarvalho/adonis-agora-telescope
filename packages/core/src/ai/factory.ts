@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import type { ResolvedTelescopeAiConfig } from './define_config.js';
 import { DiagnosisCache, type DiagnosisStore } from './diagnosis_cache.js';
 import { type AnthropicMessagesClient, TelescopeAiDiagnoser } from './telescope_ai_diagnoser.js';
@@ -23,8 +22,7 @@ export function createDiagnoser(
   let client: AnthropicMessagesClient | null = config.client;
   if (client === null) {
     if (config.apiKey === null) return null;
-    // The SDK's `Anthropic` instance satisfies the structural client contract.
-    client = new Anthropic({ apiKey: config.apiKey }) as unknown as AnthropicMessagesClient;
+    client = lazyAnthropicClient(config.apiKey);
   }
 
   const cache =
@@ -39,4 +37,32 @@ export function createDiagnoser(
     ...(cache !== undefined ? { cache } : {}),
     ...(options.logger !== undefined ? { logger: options.logger } : {}),
   });
+}
+
+/**
+ * An {@link AnthropicMessagesClient} that imports `@anthropic-ai/sdk` (an optional
+ * peer) on the first diagnosis instead of at boot. Diagnoses are rare and on demand;
+ * importing the SDK eagerly cost every process that loads telescope a few MB of heap
+ * and module-load time for a client most never call.
+ */
+function lazyAnthropicClient(apiKey: string): AnthropicMessagesClient {
+  let client: Promise<AnthropicMessagesClient> | null = null;
+  return {
+    messages: {
+      async create(body) {
+        if (client === null) {
+          client = import('@anthropic-ai/sdk').then(
+            // The SDK's `Anthropic` instance satisfies the structural client contract.
+            ({ default: Anthropic }) =>
+              new Anthropic({ apiKey }) as unknown as AnthropicMessagesClient,
+          );
+          // A failed import (peer missing) is retried on the next diagnosis.
+          client.catch(() => {
+            client = null;
+          });
+        }
+        return (await client).messages.create(body);
+      },
+    },
+  };
 }

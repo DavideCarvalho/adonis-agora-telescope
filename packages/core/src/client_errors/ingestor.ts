@@ -2,6 +2,7 @@ import { currentUserRef } from '../context_accessor.js';
 import { EntryType, type RecordInput } from '../entry.js';
 import { exceptionFamilyHash } from '../exception_family_hash.js';
 import { getTelescopeRuntime } from '../registry.js';
+import { failureMessage, reportFailure } from '../report_failure.js';
 import type { TelescopeStore } from '../store.js';
 import type { ResolvedClientErrorsConfig } from './config.js';
 import { ClientErrorRateLimiter } from './rate_limiter.js';
@@ -75,8 +76,8 @@ export function storeRecorder(
 }
 
 function reportError(err: unknown): void {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`telescope client-errors: failed to record entry: ${message}`);
+  const line = `telescope client-errors: failed to record entry: ${failureMessage(err)}`;
+  reportFailure(line, line);
 }
 
 /**

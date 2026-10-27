@@ -104,12 +104,60 @@ function isDuplicateIndex(error: unknown): boolean {
   return code === 'ER_DUP_KEYNAME' || errno === 1061;
 }
 
+/**
+ * Whether `error` is a concurrent `CREATE ... IF NOT EXISTS` losing a race. `IF NOT
+ * EXISTS` is not atomic in Postgres: when two processes boot against a fresh database
+ * at once (several pods / a web + a worker), the slower CREATE fails with a unique
+ * violation on the catalog (`pg_type_typname_nsp_index` / `pg_class_relname_nsp_index`)
+ * or "relation already exists" instead of being a no-op. The winner's DDL is in
+ * flight, so re-issuing the statement a moment later is the no-op it was meant to be.
+ */
+function isConcurrentDdlRace(error: unknown): boolean {
+  const { code, errno } = (error ?? {}) as { code?: unknown; errno?: unknown };
+  return (
+    code === '23505' || // unique_violation on a pg catalog index
+    code === '42P07' || // duplicate_table
+    code === '42710' || // duplicate_object (index)
+    code === 'ER_TABLE_EXISTS_ERROR' ||
+    errno === 1050
+  );
+}
+
+/** Whether `error` is a primary-key collision on insert (pg / mysql / sqlite). */
+function isDuplicateKey(error: unknown): boolean {
+  const { code, errno } = (error ?? {}) as { code?: unknown; errno?: unknown };
+  return (
+    code === '23505' ||
+    code === 'ER_DUP_ENTRY' ||
+    errno === 1062 ||
+    code === 'SQLITE_CONSTRAINT_PRIMARYKEY' ||
+    code === 'SQLITE_CONSTRAINT_UNIQUE'
+  );
+}
+
+/** Attempts (including the first) for one idempotent DDL statement racing another process. */
+const DDL_RACE_ATTEMPTS = 4;
+
+/** Issue one idempotent (`IF NOT EXISTS`) DDL statement, retrying when it loses a concurrent race. */
+async function runIdempotentDdl(db: LucidDatabaseLike, stmt: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await db.rawQuery(stmt);
+      return;
+    } catch (error) {
+      if (attempt >= DDL_RACE_ATTEMPTS || !isConcurrentDdlRace(error)) throw error;
+      // Let the winning process commit its CREATE, then re-check.
+      await new Promise((resolve) => setTimeout(resolve, 25 * 2 ** attempt));
+    }
+  }
+}
+
 /** Run the DDL for `tableName` on `db`, in its dialect. */
 async function runTableStatements(db: LucidDatabaseLike, tableName: string): Promise<void> {
   const dialect = dialectOf(db);
   for (const stmt of createTableStatements(tableName, dialect)) {
     try {
-      await db.rawQuery(stmt);
+      await runIdempotentDdl(db, stmt);
     } catch (error) {
       if (!(isMysql(dialect) && isDuplicateIndex(error))) throw error;
     }
@@ -143,6 +191,9 @@ const SCHEMA_REVISION = 1;
  * never invalidate the gate.
  */
 export const SCHEMA_META_TABLE_NAME = 'telescope_schema_meta';
+
+/** How long a failed store init is shared by callers before the next call retries it. */
+export const INIT_RETRY_DELAY_MS = 5_000;
 
 /**
  * `CREATE TABLE IF NOT EXISTS` DDL for the fingerprint marker table. Idempotent
@@ -304,8 +355,10 @@ export class LucidTelescopeStore implements TelescopeStore {
   private readonly tableName: string;
   private readonly maxEntries: number | null;
   private readonly autoCreateTable: boolean;
-  /** Lazily-resolved init (table creation + sequence seed), run at most once. */
+  /** Lazily-resolved init (table creation + sequence seed), run once — re-run after a failure. */
   private ready: Promise<void> | null = null;
+  /** When the current {@link ready} attempt failed (epoch ms), or null while it has not. */
+  private initFailedAt: number | null = null;
   private sequence = 0;
   private pending: PendingWrite[] = [];
   /** The running drain, while one is scheduled or writing. */
@@ -765,9 +818,30 @@ export class LucidTelescopeStore implements TelescopeStore {
     }
   }
 
-  /** Run table creation (optional) + sequence seeding exactly once. */
+  /**
+   * Run table creation (optional) + sequence seeding once. A FAILED init is not cached
+   * forever: after {@link INIT_RETRY_DELAY_MS} the next call tries again, so a transient
+   * error at boot (database not reachable yet, a concurrent-DDL race with another
+   * process) no longer leaves this store failing every entry for the life of the
+   * process. Inside the delay, callers share the failed attempt instead of each
+   * re-issuing the DDL.
+   */
   private init(): Promise<void> {
-    if (!this.ready) this.ready = runAsTelescopeWork(() => this.doInit());
+    if (
+      this.ready !== null &&
+      this.initFailedAt !== null &&
+      Date.now() - this.initFailedAt >= INIT_RETRY_DELAY_MS
+    ) {
+      this.ready = null;
+    }
+    if (!this.ready) {
+      this.initFailedAt = null;
+      const attempt = runAsTelescopeWork(() => this.doInit());
+      this.ready = attempt;
+      attempt.catch(() => {
+        if (this.ready === attempt) this.initFailedAt = Date.now();
+      });
+    }
     return this.ready;
   }
 
@@ -794,8 +868,8 @@ export class LucidTelescopeStore implements TelescopeStore {
    * change, or a {@link SCHEMA_REVISION} bump) runs the DDL, then re-caches.
    */
   private async reconcileSchema(): Promise<void> {
-    // (1) Idempotent, introspection-free marker table.
-    await this.db.rawQuery(createSchemaMetaTableStatement(dialectOf(this.db)));
+    // (1) Idempotent, introspection-free marker table (race-safe across processes).
+    await runIdempotentDdl(this.db, createSchemaMetaTableStatement(dialectOf(this.db)));
     // (2) Read the stored fingerprint + (3) compute the expected one in memory.
     const stored = await this.readStoredFingerprint();
     const expected = computeSchemaFingerprint(this.tableName);
@@ -815,11 +889,17 @@ export class LucidTelescopeStore implements TelescopeStore {
   /** Upserts this table's marker row (delete + insert, portable across dialects). */
   private async writeStoredFingerprint(fingerprint: string): Promise<void> {
     await this.db.from(SCHEMA_META_TABLE_NAME).where('id', this.tableName).delete();
-    await this.db.table(SCHEMA_META_TABLE_NAME).insert({
-      id: this.tableName,
-      fingerprint,
-      applied_at: Date.now(),
-    });
+    try {
+      await this.db.table(SCHEMA_META_TABLE_NAME).insert({
+        id: this.tableName,
+        fingerprint,
+        applied_at: Date.now(),
+      });
+    } catch (error) {
+      // Another process reconciled the same table concurrently and wrote its marker
+      // between our delete and insert — the schema is in place either way.
+      if (!isDuplicateKey(error)) throw error;
+    }
   }
 }
 
