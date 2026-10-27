@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 2.0.1
+
+### Patch Changes
+
+- [#229](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/229) [`0ba2c6e`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/0ba2c6e04bc595f98f7e85fd6331dd052e0369b9) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - The live tail batches incoming SSE frames into one state update per 100 ms instead of re-rendering the entries table for every frame, and the "new row" highlight uses a Set lookup instead of scanning the tail for each row.
+
 ## 2.0.0
 
 ### Major Changes
