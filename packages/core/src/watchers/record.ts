@@ -2,6 +2,7 @@ import { currentTraceId } from '../context_accessor.js';
 import type { RecordInput } from '../entry.js';
 import { isHeartbeat } from '../origin_scope.js';
 import { getTelescopeRuntime } from '../registry.js';
+import { failureMessage, reportFailure } from '../report_failure.js';
 import { isTelescopeWork } from '../self_scope.js';
 import type { TelescopeStore } from '../store.js';
 
@@ -63,6 +64,7 @@ export function safeRecord(input: RecordInput | (() => RecordInput), source: str
 }
 
 function reportError(source: string, err: unknown): void {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`${source}: failed to record telescope entry: ${message}`);
+  const line = `${source}: failed to record telescope entry: ${failureMessage(err)}`;
+  // Rate-limited: a broken store fails every entry, and one line per entry floods the logs.
+  reportFailure(line, line);
 }

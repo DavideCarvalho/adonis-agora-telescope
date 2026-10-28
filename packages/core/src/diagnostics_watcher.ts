@@ -6,6 +6,7 @@ import {
   isDiagnosticEvent,
 } from './diagnostics_registry.js';
 import { EntryType, type RecordInput } from './entry.js';
+import { failureMessage, reportFailure } from './report_failure.js';
 import type { TelescopeStore } from './store.js';
 
 /** Telescope entry `type` produced by this watcher. */
@@ -157,14 +158,22 @@ export class DiagnosticsWatcher {
       // This runs inside a synchronous `node:diagnostics_channel` subscriber, so we
       // CANNOT await the now-async store. Fire-and-forget and swallow rejections —
       // telescope must never break (or block) an emitting code path.
-      void this.store.record(buildDiagnosticEntry(msg)).catch((err) => {
-        console.error('DiagnosticsWatcher: failed to record diagnostic event:', err);
-      });
+      void this.store.record(buildDiagnosticEntry(msg)).catch(reportDiagnosticFailure);
     } catch (err) {
       // NOT rethrown — telescope must never break an emitting code path.
-      console.error('DiagnosticsWatcher: failed to record diagnostic event:', err);
+      reportDiagnosticFailure(err);
     }
   }
+}
+
+/**
+ * Report a failed diagnostic record. The first occurrence of a failure logs the full
+ * error (stack included) as before; identical repeats are folded into a periodic count
+ * so a broken store cannot flood the logs with one stack per event.
+ */
+function reportDiagnosticFailure(err: unknown): void {
+  const line = `DiagnosticsWatcher: failed to record diagnostic event: ${failureMessage(err)}`;
+  reportFailure(line, line, console.error, err);
 }
 
 /** Map a {@link DiagnosticEvent} envelope to a Telescope {@link RecordInput}. */
