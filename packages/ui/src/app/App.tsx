@@ -1,27 +1,37 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import type { ExtensionEntryType } from '../client/types.js';
 import { ENTRY_TYPES } from '../client/types.js';
 import { CommandPalette, type PaletteTarget } from './CommandPalette.js';
-import { EntriesSection } from './EntriesSection.js';
-import { EntryDetail } from './EntryDetail.js';
-import { ExceptionsSection } from './ExceptionsSection.js';
-import { ExportsSection } from './ExportsSection.js';
-import { ExtensionsSection } from './ExtensionsSection.js';
 import { MoonIcon, SunIcon } from './icons.js';
+import { lazySection } from './lazy-section.js';
 import { OverviewSection } from './OverviewSection.js';
-import { ProfilesSection } from './ProfilesSection.js';
-import { PulseSection } from './PulseSection.js';
 import { Button } from './primitives/button.js';
 import { Tooltip, TooltipProvider } from './primitives/tooltip.js';
-import { QueueManagerSection } from './QueueManagerSection.js';
 import { RetentionIndicator } from './RetentionIndicator.js';
-import { SchedulesLiveSection } from './SchedulesLiveSection.js';
-import { ScreensSection } from './ScreensSection.js';
-import { TraceDetail } from './TraceDetail.js';
-import { TracesSection } from './TracesSection.js';
 import { typeColor, typeLabel } from './ui.js';
 import { useHashRoute } from './use-hash-route.js';
 import { useMeta } from './use-telescope.js';
+
+// Every section except the landing Overview is its own chunk (loaded on first visit), so the
+// initial page only downloads and parses the shell + Overview.
+const EntriesSection = lazySection(() => import('./EntriesSection.js'), 'EntriesSection');
+const EntryDetail = lazySection(() => import('./EntryDetail.js'), 'EntryDetail');
+const ExceptionsSection = lazySection(() => import('./ExceptionsSection.js'), 'ExceptionsSection');
+const ExportsSection = lazySection(() => import('./ExportsSection.js'), 'ExportsSection');
+const ExtensionsSection = lazySection(() => import('./ExtensionsSection.js'), 'ExtensionsSection');
+const ProfilesSection = lazySection(() => import('./ProfilesSection.js'), 'ProfilesSection');
+const PulseSection = lazySection(() => import('./PulseSection.js'), 'PulseSection');
+const QueueManagerSection = lazySection(
+  () => import('./QueueManagerSection.js'),
+  'QueueManagerSection',
+);
+const SchedulesLiveSection = lazySection(
+  () => import('./SchedulesLiveSection.js'),
+  'SchedulesLiveSection',
+);
+const ScreensSection = lazySection(() => import('./ScreensSection.js'), 'ScreensSection');
+const TraceDetail = lazySection(() => import('./TraceDetail.js'), 'TraceDetail');
+const TracesSection = lazySection(() => import('./TracesSection.js'), 'TracesSection');
 
 type SectionKey =
   | 'overview'
@@ -251,53 +261,59 @@ export function App() {
           </header>
 
           <main className="min-w-0 flex-1 overflow-x-hidden p-4">
-            {route.name === 'entry' ? (
-              <EntryDetail id={route.id} onOpenTrace={openTrace} onBack={() => goBack('entries')} />
-            ) : route.name === 'trace' ? (
-              <TraceDetail
-                traceId={route.traceId}
-                onOpenEntry={openEntry}
-                onBack={() => goBack('traces')}
-              />
-            ) : route.name === 'overview' ? (
-              <OverviewSection
-                onOpenTrace={openTrace}
-                onOpenEntry={openEntry}
-                onOpenQueues={() => go('queues')}
-                onOpenPulse={() => go('pulse')}
-                onOpenExceptions={() => go('exceptions')}
-                onOpenType={openType}
-              />
-            ) : route.name === 'pulse' ? (
-              <PulseSection onOpenTrace={openTrace} />
-            ) : route.name === 'entries' ? (
-              <EntriesSection
-                key={route.type ?? 'default'}
-                onOpenEntry={openEntry}
-                onOpenTrace={openTrace}
-                {...(route.type !== undefined ? { presetType: route.type } : {})}
-              />
-            ) : route.name === 'screens' ? (
-              <ScreensSection onOpenType={openType} />
-            ) : route.name === 'traces' ? (
-              <TracesSection onOpenTrace={openTrace} />
-            ) : route.name === 'exceptions' ? (
-              <ExceptionsSection onOpenType={(type) => navigate({ name: 'entries', type })} />
-            ) : route.name === 'schedules' ? (
-              <SchedulesLiveSection />
-            ) : route.name === 'queues' ? (
-              <QueueManagerSection />
-            ) : route.name === 'profiles' ? (
-              <ProfilesSection />
-            ) : route.name === 'exports' ? (
-              <ExportsSection />
-            ) : (
-              <ExtensionsSection
-                selectedId={route.dashboardId ?? null}
-                onSelect={(id) => navigate({ name: 'extensions', dashboardId: id })}
-                onOpenTrace={openTrace}
-              />
-            )}
+            <Suspense fallback={<p className="text-xs text-muted-foreground">Loading…</p>}>
+              {route.name === 'entry' ? (
+                <EntryDetail
+                  id={route.id}
+                  onOpenTrace={openTrace}
+                  onBack={() => goBack('entries')}
+                />
+              ) : route.name === 'trace' ? (
+                <TraceDetail
+                  traceId={route.traceId}
+                  onOpenEntry={openEntry}
+                  onBack={() => goBack('traces')}
+                />
+              ) : route.name === 'overview' ? (
+                <OverviewSection
+                  onOpenTrace={openTrace}
+                  onOpenEntry={openEntry}
+                  onOpenQueues={() => go('queues')}
+                  onOpenPulse={() => go('pulse')}
+                  onOpenExceptions={() => go('exceptions')}
+                  onOpenType={openType}
+                />
+              ) : route.name === 'pulse' ? (
+                <PulseSection onOpenTrace={openTrace} />
+              ) : route.name === 'entries' ? (
+                <EntriesSection
+                  key={route.type ?? 'default'}
+                  onOpenEntry={openEntry}
+                  onOpenTrace={openTrace}
+                  {...(route.type !== undefined ? { presetType: route.type } : {})}
+                />
+              ) : route.name === 'screens' ? (
+                <ScreensSection onOpenType={openType} />
+              ) : route.name === 'traces' ? (
+                <TracesSection onOpenTrace={openTrace} />
+              ) : route.name === 'exceptions' ? (
+                <ExceptionsSection onOpenType={(type) => navigate({ name: 'entries', type })} />
+              ) : route.name === 'schedules' ? (
+                <SchedulesLiveSection />
+              ) : route.name === 'queues' ? (
+                <QueueManagerSection />
+              ) : route.name === 'profiles' ? (
+                <ProfilesSection />
+              ) : route.name === 'exports' ? (
+                <ExportsSection />
+              ) : (
+                <ExtensionsSection
+                  selectedId={route.dashboardId ?? null}
+                  onSelect={(id) => navigate({ name: 'extensions', dashboardId: id })}
+                  onOpenTrace={openTrace}
+                />
+              )}
+            </Suspense>
           </main>
         </div>
       </div>
