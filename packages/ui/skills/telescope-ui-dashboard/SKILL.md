@@ -3,8 +3,8 @@ name: telescope-ui-dashboard
 description: >-
   Mount and consume the @adonis-agora/telescope-ui observability console for
   @adonis-agora/telescope — register telescope_ui_dashboard_provider AFTER ui_provider
-  in adonisrc.ts, the pre-built React SPA's ten sections (overview, entries + live
-  tail, traces/waterfall, Pulse, exception groups, live queues/schedules, exports,
+  in adonisrc.ts, the pre-built React SPA's eleven sections (overview, entries + live
+  tail, traces/waterfall, AI spend + agent runs, Pulse, exception groups, live queues/schedules, exports,
   CPU profiles, extensions), the dependency-free TelescopeClient from /client,
   GET /api/meta capability discovery, mutation gates (replay/arm/retry/enqueue), and
   client-side JSON/CSV exports. Use for "show the dashboard", "telescope 404",
