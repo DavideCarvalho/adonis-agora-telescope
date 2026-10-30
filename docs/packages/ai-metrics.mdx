@@ -1,0 +1,213 @@
+---
+title: "AI spend & agent runs"
+icon: Sparkles
+description: An AI screen in the dashboard (spend by feature, model and payer; agent runs with queue / model / tools timings; unpriced calls) plus agora_ai_* / agora_agent_* metrics for Grafana, over OTLP or a Prometheus scrape endpoint.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+`@adonis-agora/agent` publishes what every AI call costs and where every agent run spent its
+time, on the diagnostics bus:
+
+- `agora:agent:usage.recorded`: one event per usage-ledger row, covering agent turns **and** the
+  external AI calls an app records through `recordUsage` (transcription, embeddings, a one-off
+  completion). It carries amounts and attribution only, never content: `actorRef` (`@platform`
+  for platform cost), `feature` (`agent:<name>` for turns), `modelId`, `provider`, tokens (in,
+  out, cache read and write), `audioSeconds`, `characters`, `requests`, `costUsd` and
+  `costSource` (`provider` | `estimate`).
+- `agora:agent:run.finished` / `run.failed` / `run.cancelled`: `durationMs`, `ttftMs`,
+  `costUsd`, `modelId`, `agentName`, plus `queueMs`, `modelMs`, `toolsMs`, `modelCalls`,
+  `toolCalls` and `stepTimings` (per step: the model's ms and each tool's name and ms).
+
+Telescope turns them into two things: an **AI screen** in the dashboard, and **metrics** for
+Grafana.
+
+<Callout type="info">
+Both need `@adonis-agora/agent` **0.93.0** or later. With an older agent lib the screen says so
+instead of showing an empty, reassuring "$0".
+</Callout>
+
+## The AI screen
+
+`#/ai` in the dashboard (sidebar: **AI**), backed by `GET <path>/api/metrics/ai`. It reads the
+`diagnostic` entries the generic diagnostics watcher already records, so it needs the
+`diagnostics` watcher (on by default) and nothing else.
+
+- **Spend**: total cost over the selected window, the share the platform paid (`@platform`), the
+  share priced by an estimate rather than the provider's own figure, the unpriced call count,
+  tokens, a spend-over-time chart (users vs platform), and breakdowns by feature, by model and by
+  payer (top N).
+- **Agent runs**: one row per finished, failed or cancelled run: agent, status (with the failure
+  code), model, duration, a stacked **queue / model / tools** bar, steps, tool calls and cost.
+  Below it, the **slowest** and the **most expensive** runs. Clicking a run opens its per-step
+  breakdown (`stepTimings`: model time and each tool call) with links to the run's **trace
+  waterfall** and its raw event.
+- **Unpriced calls**: usage rows that carried no cost, grouped by feature, model and provider,
+  with their tokens, audio seconds and characters, so you can see what is missing a price.
+
+The screen distinguishes "nothing happened" from "not measured": when the window holds agent
+events but no `usage.recorded`, it says the app's agent lib predates 0.93.0; runs without a
+timing breakdown are counted and flagged the same way.
+
+`GET <path>/api/metrics/ai` accepts `?windowMs=` (default 24h), `?buckets=` (spend chart,
+default 24), `?top=` (rows per breakdown, default 10) and `?runs=` (runs table, default 50). It
+reads one indexed slice per event (`familyHash = agent:<event>`), so other diagnostics never
+crowd agent events out of the scan; `truncated: true` means a slice hit the scan cap.
+
+## Metrics
+
+Nine instruments, fed **directly from the `agora:agent:*` channels**, not from stored entries: a
+count never depends on sampling, retention, the overload guard or whether the `diagnostics`
+watcher is on. Both outputs below (OTLP and the Prometheus scrape) read the same table, so they
+expose the same series.
+
+| Metric (as Prometheus shows it) | Type | Unit | Attributes |
+|---|---|---|---|
+| `agora_ai_cost_usd_total` | counter | USD | `feature`, `model`, `provider`, `cost_source`, `platform` |
+| `agora_ai_tokens_total` | counter | tokens | `direction` (`in` \| `out` \| `cache_read` \| `cache_write`), `feature`, `model` |
+| `agora_ai_audio_seconds_total` | counter | seconds | same as cost |
+| `agora_ai_requests_total` | counter | calls | same as cost |
+| `agora_agent_run_duration_ms` | histogram | ms | `agent`, `status` |
+| `agora_agent_run_queue_ms` | histogram | ms | `agent`, `status` |
+| `agora_agent_run_model_ms` | histogram | ms | `agent`, `status` |
+| `agora_agent_run_tools_ms` | histogram | ms | `agent`, `status` |
+| `agora_agent_tool_duration_ms` | histogram | ms | `tool` |
+
+- `cost_source` is `provider`, `estimate`, or `none` for a call with no cost. Cost is only added
+  when the row has one; every row adds to `agora_ai_requests_total` (by `requests`, default 1),
+  so **unpriced calls** are `agora_ai_requests_total{cost_source="none"}`.
+- `platform` is `true` when the payer is `@platform`. `provider` is `unknown` when absent.
+- `agent` is the agent's name, `default` for the default agent. `status` is `completed`,
+  `failed` or `cancelled`. A cancelled run only has duration and queue time.
+- Tool durations come from each run's `stepTimings`, one observation per tool call.
+- Histogram buckets (ms): 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 30000,
+  60000, 120000, 300000, 600000.
+- **No high-cardinality attributes**: `actorRef`, `runId` and `threadId` are never metric
+  attributes. Per-payer spend lives on the AI screen.
+- The OTLP instruments are created with the OTLP names without `_total` and with an **empty
+  unit**: the unit is in the name, and an OTLP unit would make Prometheus' OTLP translation
+  append `_milliseconds` and diverge from the scrape endpoint. With it empty, both paths produce
+  exactly the names above.
+
+### OTLP (push)
+
+The metrics signal joins the [OTel export](/docs/telescope/packages/otel), opt-in and
+independent of traces/logs. Install the metrics peers (they are optional and only imported when
+this is on):
+
+```sh
+npm i @opentelemetry/api @opentelemetry/sdk-metrics \
+  @opentelemetry/exporter-metrics-otlp-http @opentelemetry/resources
+```
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  otel: {
+    serviceName: 'my-app',
+    metrics: {
+      enabled: true,
+      endpoint: 'http://localhost:4318', // default: otel.endpoint
+      // path: '/v1/metrics',            // default
+      // headers: {},                    // default: otel.headers, or {} when endpoint is overridden
+      // exportIntervalMs: 60_000,       // default
+    },
+  },
+})
+```
+
+| Option | Default | |
+|---|---|---|
+| `otel.metrics.enabled` | `false` | Push metrics. Independent of `otel.enabled` (traces and logs). |
+| `otel.metrics.endpoint` | `otel.endpoint` | Base URL of the OTLP/HTTP receiver for metrics. |
+| `otel.metrics.path` | `'/v1/metrics'` | Appended to the endpoint. |
+| `otel.metrics.headers` | `otel.headers` when `endpoint` is not overridden, else `{}` | A traces backend's token is never sent to a different metrics host. |
+| `otel.metrics.exportIntervalMs` | `60000` | Periodic reader interval. |
+
+`otel.serviceName` and `otel.timeoutMs` apply to metrics too. Like the traces/logs bridge, the
+exporter owns a private `MeterProvider` and never registers a global one, so it coexists with an
+app's own OTel SDK (e.g. `@adonisjs/otel`). Missing peers log an error at boot and leave metrics
+off; they never crash the app.
+
+#### Metrics to one place, traces and logs to another
+
+Each signal can point at its own endpoint. A typical case: traces and logs go to a hosted
+backend that does not ingest OTLP metrics (PostHog, for example), while metrics go to a
+Collector or a local Grafana:
+
+```ts title="config/telescope.ts"
+otel: {
+  enabled: true,                              // traces + logs
+  endpoint: 'https://us.i.posthog.com',       // traces/logs backend
+  tracesPath: '/i/v1/traces',
+  logsPath: '/i/v1/logs',
+  headers: { Authorization: `Bearer ${env.get('POSTHOG_KEY')}` },
+  metrics: {
+    enabled: true,
+    endpoint: env.get('OTEL_METRICS_ENDPOINT', 'http://localhost:4318'), // own host, own (empty) headers
+  },
+},
+```
+
+### Prometheus scrape (pull)
+
+Off by default. When on, `GET <path>/metrics` (e.g. `/telescope/metrics`) serves the same metrics
+in the Prometheus text format (0.0.4), from an in-process, dependency-free registry: no OTel
+packages and no Collector needed.
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  prometheus: { enabled: true /*, maxSeriesPerMetric: 2000 */ },
+})
+```
+
+- The route is registered by the `ui_provider`, next to the JSON API, and runs the **same
+  guard**: the `authorize` hook, plus the `dashboardAuth` session when configured. Configure your
+  scraper the way you call the API, e.g. a bearer token your `authorize` hook accepts.
+- Counters are cumulative since process start; each process (pod) is its own target.
+- `maxSeriesPerMetric` caps distinct label sets per metric (default 2000). Past the cap, new
+  combinations are dropped and counted in `agora_ai_metrics_dropped_series_total{metric}`.
+
+```yaml title="prometheus.yml"
+scrape_configs:
+  - job_name: my-app
+    metrics_path: /telescope/metrics
+    authorization: { credentials: <token your authorize hook accepts> }
+    static_configs: [{ targets: ['my-app:3333'] }]
+```
+
+## Grafana dashboard
+
+An importable dashboard ships with the package at
+`node_modules/@adonis-agora/telescope/grafana/agora-ai-dashboard.json` (Dashboards → New →
+Import). It takes a Prometheus data source and a service (`job`) as variables and shows:
+
+- total, platform and estimated spend; AI calls; unpriced calls; agent runs;
+- cost per day by feature, cost by model, spend rate by feature, tokens per minute by direction;
+- p50 / p90 of run duration, queue, model and tools time by agent;
+- p50 / p90 of tool duration by tool;
+- unpriced calls by feature / model / provider.
+
+"Cost per day by feature" uses a negative `offset` so each bar sits on the day it covers; that
+needs Prometheus 3 (or 2.x with `--enable-feature=promql-negative-offset`).
+
+## Try it locally
+
+`grafana/otel-lgtm` bundles an OTel Collector, Prometheus, Tempo, Loki and Grafana in one
+container:
+
+```sh
+docker run --rm -p 3000:3000 -p 4317:4317 -p 4318:4318 grafana/otel-lgtm
+```
+
+Point `otel.metrics.endpoint` at `http://localhost:4318` (the default), run some agent turns,
+open Grafana at `http://localhost:3000` and import the dashboard JSON above. Metrics arrive under
+the names in the table; with the default 60s export interval, give it a minute (or set
+`exportIntervalMs: 5000` while trying it).
+
+## Notable exports
+
+From `@adonis-agora/telescope`: `AGENT_METRICS`, `AGENT_METRIC_BUCKETS_MS`,
+`AgentMetricsRegistry`, `agentMetricPoints`, `subscribeAgentObservations`, `readUsage`,
+`readRun`, `readAgentEvent`, `agentEventOfEntry`, `summarizeAiUsage` and their types
+(`AiUsageSummary`, `AiRunRow`, `UsageObservation`, `RunObservation`, …), plus
+`OtelMetricsConfig` and `PrometheusConfig`.

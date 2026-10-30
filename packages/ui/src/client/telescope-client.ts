@@ -1,5 +1,6 @@
 import { resolveApiBase } from './api-base.js';
 import type {
+  AiUsageSummary,
   ArmOutcome,
   ArmProfileResult,
   DiagnoseOutcome,
@@ -206,6 +207,11 @@ export class TelescopeClient {
   /** Per-route traffic over a window, optionally narrowed to page visits or API calls. */
   screens(windowMs?: number, kind?: string, limit?: number): Promise<ScreenStats[]> {
     return this.data<ScreenStats[]>('/metrics/screens', toQuery({ windowMs, kind, limit }));
+  }
+
+  /** AI spend, agent runs and unpriced calls over a window. */
+  ai(windowMs?: number, buckets?: number): Promise<AiUsageSummary> {
+    return this.data<AiUsageSummary>('/metrics/ai', toQuery({ windowMs, buckets }));
   }
 
   traces(size = this.size): Promise<TraceSummary[]> {

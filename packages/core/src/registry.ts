@@ -1,4 +1,5 @@
 import type { DiagnosisCoordinator } from './ai/diagnosis_coordinator.js';
+import type { AgentMetricsRegistry } from './ai_metrics/agent_metrics.js';
 import type { ExtensionRegistry } from './extension/registry.js';
 import type { ProfilerService } from './profiling/profiler_service.js';
 import type { RequestCaptureOptions, RequestEnrichment } from './request_watcher.js';
@@ -94,6 +95,12 @@ export interface TelescopeRuntime {
    * (no DI) to serve the queue console; `null` degrades those routes to a clear "not configured" 404.
    */
   queueManager: QueueManager | null;
+  /**
+   * The in-process registry behind the Prometheus scrape endpoint (`GET <ui path>/metrics`),
+   * published by the core provider when `prometheus.enabled` is set, or `null`. The UI provider
+   * reads it per request (no DI) and answers 404 while it is `null`.
+   */
+  aiMetrics: AgentMetricsRegistry | null;
 }
 
 const RUNTIME_KEY = Symbol.for('@agora/telescope:runtime');
@@ -113,6 +120,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   diagnosisCoordinator: null,
   cpuProfiler: null,
   queueManager: null,
+  aiMetrics: null,
 };
 globalStore[RUNTIME_KEY] = runtime;
 
@@ -191,6 +199,11 @@ export function setTelescopeQueueManager(manager: QueueManager | null): void {
   runtime.queueManager = manager;
 }
 
+/** Publish (or clear) the Prometheus registry the `<ui path>/metrics` route serves. */
+export function setTelescopeAiMetrics(registry: AgentMetricsRegistry | null): void {
+  runtime.aiMetrics = registry;
+}
+
 /**
  * Toggle the overload-shed flag (called by the overload guard). While paused,
  * every ingestion entry point drops new entries. Idempotent.
@@ -219,4 +232,5 @@ export function resetTelescopeRuntime(): void {
   runtime.diagnosisCoordinator = null;
   runtime.cpuProfiler = null;
   runtime.queueManager = null;
+  runtime.aiMetrics = null;
 }

@@ -408,6 +408,35 @@ export default class TelescopeUiProvider {
       })
       .as('telescope_ui.metrics_n_plus_one');
 
+    router
+      .get(`${apiBase}/metrics/ai`, async (ctx: GuardedContext) => {
+        if (!(await gate(ctx))) return;
+        return api.metricsAi(ctx);
+      })
+      .as('telescope_ui.metrics_ai');
+
+    // Prometheus scrape of the AI-usage / agent-run metrics (`agora_ai_*`, `agora_agent_*`).
+    // Opt-in (core `prometheus.enabled`) and behind the same gate as the JSON API: a scraper
+    // authenticates the way any API client does (the `authorize` hook, or `dashboardAuth`'s
+    // session). A static route, so it wins over the SPA's `<path>/*` wildcard. The registry is
+    // read per request from the runtime slot the core provider fills at boot.
+    if (coreConfig.prometheus.enabled) {
+      router
+        .get(`${config.path}/metrics`, async (ctx: GuardedContext) => {
+          if (!(await gate(ctx))) return;
+          const registry = getTelescopeRuntime().aiMetrics ?? null;
+          if (registry === null) {
+            return ctx.response.status(404).send({ error: 'Prometheus metrics are not running.' });
+          }
+          return ctx.response
+            .status(200)
+            .header('content-type', 'text/plain; version=0.0.4; charset=utf-8')
+            .header('cache-control', 'no-store')
+            .send(registry.prometheus());
+        })
+        .as('telescope_ui.prometheus');
+    }
+
     // Pulse — aggregated health rollup. Registered only when enabled in core config.
     if (coreConfig.pulse.enabled) {
       router

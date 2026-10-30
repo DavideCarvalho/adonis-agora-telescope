@@ -23,7 +23,8 @@
     "tanstack-intent",
     "opentelemetry",
     "otlp",
-    "grafana"
+    "grafana",
+    "prometheus"
   ],
   "author": "Davi Carvalho <davi@goflip.ai>",
   "type": "module",
@@ -118,6 +119,7 @@
   },
   "files": [
     "dist/",
+    "grafana/",
     "README.md",
     "CHANGELOG.md",
     "skills"
@@ -145,9 +147,11 @@
     "@duckdb/node-api": ">=1.5.6-r.1 <2.0.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-logs-otlp-http": ">=0.200.0 <1.0.0",
+    "@opentelemetry/exporter-metrics-otlp-http": ">=0.200.0 <1.0.0",
     "@opentelemetry/exporter-trace-otlp-http": ">=0.200.0 <1.0.0",
     "@opentelemetry/resources": "^2.0.0 || ^3.0.0",
     "@opentelemetry/sdk-logs": ">=0.220.0 <1.0.0 || ^3.0.0",
+    "@opentelemetry/sdk-metrics": "^2.0.0 || ^3.0.0",
     "@opentelemetry/sdk-trace": "^2.9.0 || ^3.0.0",
     "@opentelemetry/sdk-trace-base": "^2.0.0",
     "cron-parser": "^4.0.0 || ^5.0.0",
@@ -206,6 +210,12 @@
     },
     "hyparquet-writer": {
       "optional": true
+    },
+    "@opentelemetry/exporter-metrics-otlp-http": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-metrics": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -217,9 +227,11 @@
     "@duckdb/node-api": "1.5.6-r.2",
     "@opentelemetry/api": "1.10.0",
     "@opentelemetry/exporter-logs-otlp-http": "0.300.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "0.300.0",
     "@opentelemetry/exporter-trace-otlp-http": "0.300.0",
     "@opentelemetry/resources": "3.0.0",
     "@opentelemetry/sdk-logs": "3.0.0",
+    "@opentelemetry/sdk-metrics": "3.0.0",
     "@opentelemetry/sdk-trace": "3.0.0",
     "@opentelemetry/sdk-trace-base": "2.12.0",
     "@tanstack/intent": "0.5.6",

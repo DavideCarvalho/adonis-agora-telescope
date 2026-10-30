@@ -108,6 +108,12 @@ export function useScreens(windowMs: number, kind: string, limit = 100) {
   );
 }
 
+/** AI spend, agent runs and unpriced calls over a window. */
+export function useAi(windowMs: number, buckets = 24) {
+  const client = useTelescopeClient();
+  return useTelescopeQuery(['ai', windowMs, buckets], () => client.ai(windowMs, buckets));
+}
+
 /** One page of traces. `page` is 1-based and owned by the caller; `size` is the page size. */
 export function useTracesPage(size: number, page: number) {
   const client = useTelescopeClient();

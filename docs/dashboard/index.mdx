@@ -56,7 +56,7 @@ the core is running.
 
 ## What it shows
 
-The console is a client of the JSON API below and nothing else. Its left sidebar carries ten
+The console is a client of the JSON API below and nothing else. Its left sidebar carries eleven
 sections:
 
 - **Overview** — the triage landing page: error rate, failed jobs, slow routes, recent failures,
@@ -68,6 +68,9 @@ sections:
 - **Traces** — every entry recorded under one trace id, so you can replay a whole request's
   story: the request, its queries, the diagnostics it published, and the exception that ended it,
   laid out as a waterfall with any N+1 loops flagged.
+- **AI** — AI spend by feature, model and payer (with the platform and estimated shares), agent
+  runs with their queue / model / tools timings and per-step breakdown, and the calls that carried
+  no cost. See [AI spend & agent runs](/docs/telescope/packages/ai-metrics).
 - **Pulse** — the [health rollup](/docs/telescope/packages/pulse) over a selectable window.
 - **Exceptions** — exceptions grouped by class and message, with occurrence counts and a
   when-it-fired sparkline.
@@ -108,6 +111,8 @@ Analytics, all windowed and all reading the same stored entries the tables show:
 | `GET <path>/api/metrics/waterfall/:traceId`     | One trace laid out as a waterfall.                       |
 | `GET <path>/api/metrics/n-plus-one/:traceId`    | Repeated-query loops detected on one trace.              |
 | `GET <path>/api/metrics/pulse`                  | The [Pulse](/docs/telescope/packages/pulse) health rollup. Present unless `pulse` is disabled. |
+| `GET <path>/api/metrics/ai`                     | The [AI screen](/docs/telescope/packages/ai-metrics): spend, agent runs, unpriced calls. `?windowMs=`, `?buckets=`, `?top=`, `?runs=`. |
+| `GET <path>/metrics`                            | Prometheus scrape of the `agora_ai_*` / `agora_agent_*` metrics (text format, same guard). Only when core `prometheus.enabled` is set. |
 
 Actions, each off by default and answering `403` until you turn it on:
 

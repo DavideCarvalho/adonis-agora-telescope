@@ -235,8 +235,59 @@ export interface TelescopeConfig {
    * disabled, none of the `@opentelemetry/*` packages are ever imported: they stay
    * genuinely optional peers. See {@link OtelConfig} and the `otel` docs page for
    * the exact diagnostics-entry → span/log mapping.
+   *
+   * `otel.metrics` adds the OTLP METRICS signal (AI spend and agent run timings), switched on
+   * independently of the traces/logs above and able to target its own endpoint.
    */
   otel?: OtelConfig;
+
+  /**
+   * Prometheus scrape endpoint for the AI-usage and agent-run metrics (`agora_ai_*`,
+   * `agora_agent_*`): `GET <telescope_ui path>/metrics` in the text exposition format, served by
+   * the `ui_provider` behind the same `authorize` / `dashboardAuth` guard as the JSON API. OFF by
+   * default. Lets Prometheus (and so Grafana) read the metrics without an OTel Collector.
+   */
+  prometheus?: PrometheusConfig;
+}
+
+/** See {@link TelescopeConfig.prometheus}. */
+export interface PrometheusConfig {
+  /** Serve `GET <telescope_ui path>/metrics`. Default `false`. */
+  enabled?: boolean;
+  /**
+   * Max distinct label sets kept per metric. A new combination past the cap is dropped (existing
+   * series keep counting) and tallied in `agora_ai_metrics_dropped_series_total`. Default `2000`.
+   */
+  maxSeriesPerMetric?: number;
+}
+
+/**
+ * The OTLP metrics signal (see {@link OtelConfig.metrics}): the AI-usage and agent-run
+ * instruments listed in the `otel` docs page, pushed from a PRIVATE `MeterProvider` that never
+ * registers itself globally. Needs `@opentelemetry/sdk-metrics` and
+ * `@opentelemetry/exporter-metrics-otlp-http` (optional peers, imported only when this is on).
+ */
+export interface OtelMetricsConfig {
+  /**
+   * Push metrics. Default `false`. Independent of {@link OtelConfig.enabled}, which governs
+   * traces and logs only: metrics can be on while traces/logs are off, and vice versa.
+   */
+  enabled?: boolean;
+  /**
+   * Base URL of the OTLP/HTTP receiver for metrics. Defaults to {@link OtelConfig.endpoint}. Set
+   * it when metrics go somewhere else than traces/logs (e.g. a local Grafana while traces go to a
+   * hosted backend that does not ingest OTLP metrics).
+   */
+  endpoint?: string;
+  /** Path appended to the metrics endpoint. Default `'/v1/metrics'`. */
+  path?: string;
+  /**
+   * Headers for the metrics exports. Defaults to {@link OtelConfig.headers} when `endpoint` is not
+   * overridden, and to `{}` when it is (credentials for one backend never leak to another).
+   */
+  headers?: Record<string, string>;
+  /** How often the periodic reader pushes, in ms. Default `60000`. */
+  exportIntervalMs?: number;
 }
 
 /**
@@ -279,6 +330,12 @@ export interface OtelConfig {
   entryTypes?: string[];
   /** Per-export HTTP timeout, in ms. Default `5000`. */
   timeoutMs?: number;
+  /**
+   * The OTLP METRICS signal: AI spend, tokens and agent run timings as counters and histograms.
+   * Opt-in and independent of `enabled` (which governs traces and logs). See
+   * {@link OtelMetricsConfig}.
+   */
+  metrics?: OtelMetricsConfig;
 }
 
 /** Diagnostics-watcher configuration (see {@link TelescopeConfig.diagnostics}). */
@@ -426,6 +483,8 @@ export interface ResolvedTelescopeConfig {
   clientErrors: ResolvedClientErrorsConfig;
   /** Resolved OTel-export settings (always present; `enabled` defaults `false`). */
   otel: ResolvedOtelConfig;
+  /** Resolved Prometheus scrape settings (always present; `enabled` defaults `false`). */
+  prometheus: { enabled: boolean; maxSeriesPerMetric: number };
 }
 
 /** The fully-resolved OTel-export config (see {@link OtelConfig}). */
@@ -437,6 +496,20 @@ export interface ResolvedOtelConfig {
   headers: Record<string, string>;
   serviceName: string;
   entryTypes: string[];
+  timeoutMs: number;
+  metrics: ResolvedOtelMetricsConfig;
+}
+
+/** The fully-resolved OTLP metrics config (see {@link OtelMetricsConfig}). */
+export interface ResolvedOtelMetricsConfig {
+  enabled: boolean;
+  /** Full URL: endpoint + path. */
+  url: string;
+  headers: Record<string, string>;
+  exportIntervalMs: number;
+  /** Same as {@link ResolvedOtelConfig.serviceName}. */
+  serviceName: string;
+  /** Same as {@link ResolvedOtelConfig.timeoutMs}. */
   timeoutMs: number;
 }
 
@@ -510,20 +583,40 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     },
     clientErrors: resolveClientErrors(config.clientErrors),
     otel: resolveOtel(config.otel),
+    prometheus: {
+      enabled: config.prometheus?.enabled ?? false,
+      maxSeriesPerMetric: Math.max(1, Math.floor(config.prometheus?.maxSeriesPerMetric ?? 2000)),
+    },
   };
 }
 
 /** Resolve the (optional) OTel-export block. Absent/`enabled: false` ⇒ disabled. */
 function resolveOtel(otel: TelescopeConfig['otel']): ResolvedOtelConfig {
+  const endpoint = otel?.endpoint ?? DEFAULT_OTEL_ENDPOINT;
+  const headers = otel?.headers ?? {};
+  const serviceName = otel?.serviceName ?? process.env.OTEL_SERVICE_NAME ?? 'adonis-app';
+  const timeoutMs = otel?.timeoutMs ?? DEFAULT_OTEL_TIMEOUT_MS;
+  const metrics = otel?.metrics;
+  const metricsEndpoint = (metrics?.endpoint ?? endpoint).replace(/\/+$/, '');
   return {
     enabled: otel?.enabled ?? false,
-    endpoint: otel?.endpoint ?? DEFAULT_OTEL_ENDPOINT,
+    endpoint,
     tracesPath: otel?.tracesPath ?? '/v1/traces',
     logsPath: otel?.logsPath ?? '/v1/logs',
-    headers: otel?.headers ?? {},
-    serviceName: otel?.serviceName ?? process.env.OTEL_SERVICE_NAME ?? 'adonis-app',
+    headers,
+    serviceName,
     entryTypes: otel?.entryTypes ?? ['diagnostic'],
-    timeoutMs: otel?.timeoutMs ?? DEFAULT_OTEL_TIMEOUT_MS,
+    timeoutMs,
+    metrics: {
+      enabled: metrics?.enabled ?? false,
+      url: `${metricsEndpoint}${metrics?.path ?? '/v1/metrics'}`,
+      // A metrics endpoint of its own gets headers of its own: the traces backend's token is
+      // never sent to a different host by default.
+      headers: metrics?.headers ?? (metrics?.endpoint === undefined ? headers : {}),
+      exportIntervalMs: Math.max(1000, metrics?.exportIntervalMs ?? 60_000),
+      serviceName,
+      timeoutMs,
+    },
   };
 }
 

@@ -25,6 +25,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 const features = tableFeatures({ rowPaginationFeature });
 
 /**
+ * The same features plus the client-side paginated row model, for {@link DataTableProps.clientPageSize}.
+ * Since TanStack Table 9.3 a row model is a FEATURE slot: the old `getPaginatedRowModel` table
+ * option is silently ignored, which left every client-paged table rendering all of its rows.
+ */
+const pagedFeatures = tableFeatures({
+  rowPaginationFeature,
+  paginatedRowModel: createPaginatedRowModel(),
+});
+
+/**
  * Server-driven pagination state. The page NUMBER lives with the caller (usually in
  * the URL hash), not here, so a reload or a shared link lands on the same page.
  */
@@ -86,13 +96,12 @@ export function DataTable<TRow extends RowData>({
 
   const table = useTable({
     key: id,
-    features,
-    columns,
+    features: paginateInBrowser ? pagedFeatures : features,
+    columns: columns as never,
     data,
     ...(rowKey ? { getRowId: (row: TRow, index: number) => rowKey(row, index) } : {}),
     ...(paginateInBrowser
       ? {
-          getPaginatedRowModel: createPaginatedRowModel(),
           state: { pagination: { pageIndex: clientPage, pageSize: clientPageSize } },
           onPaginationChange: (updater: unknown) => {
             const next =

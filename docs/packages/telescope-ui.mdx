@@ -67,13 +67,14 @@ It needs the core UI to be enabled (that is the backend the SPA talks to); if
 ## What it shows
 
 The console holds no server-side state of its own — every view is a call to the core's read
-routes. Ten sections sit in the left sidebar, in this order:
+routes. Eleven sections sit in the left sidebar, in this order:
 
 | Section | What you get |
 | ------- | ------------ |
 | **Overview** | The triage landing page, and where you start. Requests, error rate (green at zero, amber above it, red past 5%), failed jobs and slow routes across the top; then recent failures, N+1 hotspots, the slowest entries, queues needing attention, slowest jobs, load by user, a throughput sparkline, a by-type breakdown, and the current retention posture. |
 | **Entries** | The full entries table — time, type, one-line summary, duration, tags — filterable by type and free-text search, with a **Live tail** toggle that streams new entries in as they are recorded. Active filters show as removable pills. |
 | **Traces** | Recent traces, newest-active first: the root label, a colored dot per entry type on the trace, entry count, total duration, last activity. Opening one shows the waterfall and any N+1 loops detected on it. |
+| **AI** | AI spend over a window: total, platform and estimated shares, spend over time, and breakdowns by feature, model and payer; agent runs with a queue / model / tools bar, the slowest and most expensive, and a per-step breakdown linking to the run's trace; calls with no cost. Says so when the app's agent lib predates the events it reads. See [AI spend & agent runs](/docs/telescope/packages/ai-metrics). |
 | **Pulse** | The [health rollup](/docs/telescope/packages/pulse) over a selectable window — throughput, error rate, status breakdown, and top-N cards for slowest entries, slow routes, exceptions, N+1 hotspots, load by user and cache hit ratio. |
 | **Exceptions** | Exceptions grouped by class and message over a window, each with its occurrence count, when it was last seen, and a sparkline of when it fired. |
 | **Queues** | The live queue console — see [Live Queue Manager](/docs/telescope/packages/watchers#live-queue-manager). Queue counts, job lookup by id, one job's full record, and (when you enable them) **Retry** and **Enqueue**. Counts the driver genuinely cannot report show as `—` rather than a fabricated zero. |

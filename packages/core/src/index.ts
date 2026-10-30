@@ -13,6 +13,7 @@ export {
   DiagnosisCoordinator,
   formatDiagnosisMarkdown,
 } from './ai/diagnosis_coordinator.js';
+export * from './ai_metrics/index.js';
 // — client-error ingestion (public front-end error endpoint) —
 export {
   type ClientErrorHttpContext,
@@ -61,7 +62,6 @@ export type {
   DiagnosticEntryContent,
   DiagnosticsWatcherOptions,
 } from './diagnostics_watcher.js';
-
 // — watchers —
 export {
   buildDiagnosticEntry,

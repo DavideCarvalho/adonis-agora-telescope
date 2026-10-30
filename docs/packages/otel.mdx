@@ -17,8 +17,10 @@ already sees everything through the diagnostics registry, so this is one new cap
 N per-lib bridges.
 
 <Callout type="info">
-This is a v1: **traces and logs**. Metrics are intentionally deferred — see [Future
-work](#future-work) for why.
+This page covers **traces and logs**. The METRICS signal (`otel.metrics`) exports AI spend and
+agent run timings as counters and histograms, independently of the two signals here and to its
+own endpoint if needed: see [AI spend & agent runs](/docs/telescope/packages/ai-metrics).
+Generic per-entry metrics remain deferred, see [Future work](#future-work).
 </Callout>
 
 ## Install
@@ -226,7 +228,9 @@ up correlated by trace id — no per-lib Grafana wiring.
 
 ## Future work
 
-- **Metrics are deferred.** Turning arbitrary, heterogeneous diagnostics payloads into
+- **Generic metrics are deferred.** (The AI-usage and agent-run metrics are the exception: their
+  events have a known schema, so they ship as `otel.metrics`, see
+  [AI spend & agent runs](/docs/telescope/packages/ai-metrics).) Turning arbitrary, heterogeneous diagnostics payloads into
   meaningful COUNTERS/HISTOGRAMS needs per-event semantic knowledge (is `payload.amount` a
   gauge, a counter increment, or just an attribute?) that spans/logs don't need — a span or log
   is a reasonable default for ANY event, but a metric is not. A future iteration could add an
