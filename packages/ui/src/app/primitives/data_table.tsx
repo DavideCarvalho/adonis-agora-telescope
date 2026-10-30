@@ -97,6 +97,9 @@ export function DataTable<TRow extends RowData>({
   const table = useTable({
     key: id,
     features: paginateInBrowser ? pagedFeatures : features,
+    // Callers are still type-checked against `DataTableProps.columns` (the base feature set).
+    // The cast only bridges that to whichever feature set is picked here: `pagedFeatures` adds a
+    // row-model slot and no column-level API, so a column valid for one is valid for the other.
     columns: columns as never,
     data,
     ...(rowKey ? { getRowId: (row: TRow, index: number) => rowKey(row, index) } : {}),

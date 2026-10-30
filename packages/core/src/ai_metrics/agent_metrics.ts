@@ -189,7 +189,8 @@ export class AgentMetricsRegistry {
       let cell = series.get(key);
       if (cell === undefined) {
         if (series.size >= this.maxSeries) {
-          this.drop(def.name);
+          // The exposed name, so the drop joins with the series it describes.
+          this.drop(`${def.name}_total`);
           return;
         }
         cell = { labels: point.attributes, value: 0 };

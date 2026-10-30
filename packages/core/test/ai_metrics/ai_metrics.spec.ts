@@ -91,6 +91,14 @@ describe('agent event readers', () => {
     expect(r?.queueMs).toBeUndefined();
   });
 
+  it('reads run fields nested under `context` too', () => {
+    const r = readRun('run.failed', {
+      runId: 'r',
+      context: { agentName: 'writer', durationMs: 120, queueMs: 7 },
+    });
+    expect(r).toMatchObject({ agent: 'writer', durationMs: 120, queueMs: 7 });
+  });
+
   it('reads failed and cancelled runs', () => {
     expect(readRun('run.failed', runPayload({ code: 'model_error' }))).toMatchObject({
       status: 'failed',
@@ -215,7 +223,9 @@ describe('AgentMetricsRegistry', () => {
     const text = registry.prometheus();
     expect(text).toContain('feature="a"');
     expect(text).not.toContain('feature="b"');
-    expect(text).toContain('agora_ai_metrics_dropped_series_total{metric="agora_ai_cost_usd"} 2');
+    expect(text).toContain(
+      'agora_ai_metrics_dropped_series_total{metric="agora_ai_cost_usd_total"} 2',
+    );
   });
 
   it('escapes label values', () => {

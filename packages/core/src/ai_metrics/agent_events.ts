@@ -221,7 +221,7 @@ export function readRun(event: string, payload: unknown): RunObservation | null 
     'costUsd',
   ] as const;
   for (const key of numbers) {
-    const value = num(p[key]);
+    const value = num(pick(key));
     if (value !== undefined) out[key] = value;
   }
   return out;

@@ -307,8 +307,8 @@ export class MetricsService {
       windowStart,
       windowEnd,
       ...(query.buckets !== undefined ? { buckets: this.clampBuckets(query.buckets) } : {}),
-      ...(query.top !== undefined ? { top: query.top } : {}),
-      ...(query.runs !== undefined ? { runsLimit: query.runs } : {}),
+      ...(query.top !== undefined ? { top: clampCount(query.top, 50) } : {}),
+      ...(query.runs !== undefined ? { runsLimit: clampCount(query.runs, 200) } : {}),
     });
     return { ...summary, truncated: reads.some((read) => read.truncated) };
   }
@@ -380,4 +380,9 @@ export class MetricsService {
       truncated: results.some((result) => result.truncated),
     };
   }
+}
+
+/** A row count in `[1, max]`; a non-finite value falls back to `max`. */
+function clampCount(value: number, max: number): number {
+  return Number.isFinite(value) ? Math.min(max, Math.max(1, Math.floor(value))) : max;
 }
