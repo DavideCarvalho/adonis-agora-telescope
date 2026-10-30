@@ -232,6 +232,29 @@ export class TelescopeApi {
       .send({ data, meta: { count: data.length, windowMs, kind: kind ?? null } });
   }
 
+  /**
+   * `GET <path>/api/metrics/ai?windowMs=&buckets=&top=&runs=` — the AI screen: spend (total,
+   * platform and estimated shares, by feature / model / actor, over time), agent runs with their
+   * queue / model / tools timings and per-step breakdown, and the calls that carried no cost.
+   */
+  async metricsAi(ctx: UiHttpContext): Promise<unknown> {
+    const windowMs = readNumber(ctx.request, 'windowMs') ?? 86_400_000;
+    const buckets = readNumber(ctx.request, 'buckets');
+    const top = readNumber(ctx.request, 'top');
+    const runs = readNumber(ctx.request, 'runs');
+    try {
+      const data = await this.metrics.getAi({
+        windowMs,
+        ...(buckets !== undefined ? { buckets } : {}),
+        ...(top !== undefined ? { top: clampSize(top, 50) } : {}),
+        ...(runs !== undefined ? { runs: clampSize(runs, 200) } : {}),
+      });
+      return ctx.response.status(200).header('content-type', 'application/json').send({ data });
+    } catch (err) {
+      return ctx.response.status(400).send({ error: asMessage(err) });
+    }
+  }
+
   /** `GET <path>/api/metrics/waterfall/:traceId` — span waterfall for one trace, or 404. */
   async metricsWaterfall(ctx: UiHttpContext, traceId: string): Promise<unknown> {
     const data = await this.metrics.getWaterfall(traceId);

@@ -668,3 +668,127 @@ export interface GaugePanelData {
 export interface BreakdownPanelData {
   segments: Array<{ label: string; value: number; color?: string }>;
 }
+
+// ── AI (`GET <base>/metrics/ai`) ─────────────────────────────────────────────
+
+/** One row of a spend breakdown (by feature, model or actor). */
+export interface AiSpendRow {
+  key: string;
+  costUsd: number;
+  calls: number;
+  /** Calls in this group that carried no cost. */
+  unpricedCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/** One time bucket of spend. */
+export interface AiSpendBucket {
+  /** Bucket start, ISO. */
+  start: string;
+  costUsd: number;
+  platformUsd: number;
+  estimatedUsd: number;
+  calls: number;
+}
+
+/** The spend half of the AI screen. */
+export interface AiSpend {
+  totalUsd: number;
+  /** Paid by the platform (`actorRef === '@platform'`). */
+  platformUsd: number;
+  /** Priced by an estimate rather than the provider's own figure. */
+  estimatedUsd: number;
+  calls: number;
+  unpricedCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  audioSeconds: number;
+  byFeature: AiSpendRow[];
+  byModel: AiSpendRow[];
+  /** Top N payers; `@platform` is the platform itself. */
+  byActor: AiSpendRow[];
+  buckets: AiSpendBucket[];
+}
+
+/** One tool call's share of a step. */
+export interface AiToolTiming {
+  toolName: string;
+  ms: number;
+}
+
+/** One step of a run: its model call and the tools it ran. */
+export interface AiStepTiming {
+  step: number;
+  modelMs?: number;
+  toolsMs: number;
+  tools: AiToolTiming[];
+}
+
+export type AiRunStatus = 'completed' | 'failed' | 'cancelled';
+
+/** One agent run, from its terminal `run.finished` / `run.failed` / `run.cancelled` event. */
+export interface AiRunRow {
+  entryId: string;
+  /** The trace the run's event was recorded under — the link to the trace waterfall. */
+  traceId: string | null;
+  at: string;
+  status: AiRunStatus;
+  agent: string;
+  runId: string | null;
+  threadId: string | null;
+  modelId: string | null;
+  durationMs: number | null;
+  ttftMs: number | null;
+  queueMs: number | null;
+  modelMs: number | null;
+  toolsMs: number | null;
+  steps: number | null;
+  modelCalls: number | null;
+  toolCalls: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+  code: string | null;
+  stepTimings: AiStepTiming[];
+}
+
+/** Calls with no cost, grouped by feature, model and provider. */
+export interface AiUnpricedRow {
+  feature: string;
+  model: string;
+  provider: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  audioSeconds: number;
+  characters: number;
+  lastAt: string;
+}
+
+/** What the window held, so the screen can tell "nothing happened" from "not emitted yet". */
+export interface AiCoverage {
+  usageEvents: number;
+  runEvents: number;
+  agentEvents: number;
+  /** Agent events exist but none is `usage.recorded`: the agent lib predates it. */
+  legacyAgentLib: boolean;
+  runsWithoutTimings: number;
+}
+
+/** `GET <base>/metrics/ai` payload. */
+export interface AiUsageSummary {
+  windowStart: string;
+  windowEnd: string;
+  spend: AiSpend;
+  /** Most recent first. */
+  runs: AiRunRow[];
+  slowest: AiRunRow[];
+  mostExpensive: AiRunRow[];
+  unpriced: AiUnpricedRow[];
+  coverage: AiCoverage;
+  /** A per-event scan hit its cap: the window is incomplete. */
+  truncated: boolean;
+}

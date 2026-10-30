@@ -260,6 +260,14 @@ const OTEL_CONFIG: ResolvedOtelConfig = {
   serviceName: 'test-app',
   entryTypes: ['diagnostic'],
   timeoutMs: 1000,
+  metrics: {
+    enabled: false,
+    url: 'http://localhost:4318/v1/metrics',
+    headers: {},
+    exportIntervalMs: 60_000,
+    serviceName: 'test-app',
+    timeoutMs: 1000,
+  },
 };
 
 const missing = (name: string) => () =>

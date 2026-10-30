@@ -1,4 +1,7 @@
 import type { ApplicationService } from '@adonisjs/core/types';
+import { AgentMetricsRegistry } from '../src/ai_metrics/agent_metrics.js';
+import type { OtelMetricsExporter } from '../src/ai_metrics/otel_metrics_exporter.js';
+import { subscribeAgentObservations } from '../src/ai_metrics/subscribe.js';
 import {
   type ClientErrorHttpContext,
   ClientErrorIngestor,
@@ -20,6 +23,7 @@ import {
   getTelescopeRuntime,
   registerEnabledWatchers,
   resetTelescopeRuntime,
+  setTelescopeAiMetrics,
   setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
   setTelescopePaused,
@@ -58,6 +62,8 @@ export default class TelescopeProvider {
   private pruner: TelescopePruner | null = null;
   private overloadGuard: OverloadGuard | null = null;
   private otelExporter: OtelExporter | null = null;
+  private otelMetricsExporter: OtelMetricsExporter | null = null;
+  private unsubscribePrometheus: (() => void) | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -93,6 +99,8 @@ export default class TelescopeProvider {
     );
     setTelescopeEntryEvents(this.entryEvents);
     setTelescopeRecordHeartbeat(config.recordHeartbeat);
+
+    await this.startAiMetrics(config);
 
     if (config.watchers.has('diagnostics')) {
       const watcher = new DiagnosticsWatcher(store, {
@@ -263,6 +271,37 @@ export default class TelescopeProvider {
     }
   }
 
+  /**
+   * Start the AI-usage / agent-run metrics: the in-process registry behind the Prometheus scrape
+   * (`prometheus.enabled`) and the OTLP metrics signal (`otel.metrics.enabled`). Both subscribe to
+   * the `agora:agent:*` channels directly, independent of the `diagnostics` watcher and of
+   * sampling, so every event is counted exactly once. Missing OTel peers leave the OTLP side off
+   * with a logged error rather than failing boot.
+   */
+  private async startAiMetrics(config: ResolvedTelescopeConfig): Promise<void> {
+    if (config.prometheus.enabled) {
+      const registry = new AgentMetricsRegistry({
+        maxSeriesPerMetric: config.prometheus.maxSeriesPerMetric,
+      });
+      this.unsubscribePrometheus = subscribeAgentObservations((o) => registry.observe(o));
+      setTelescopeAiMetrics(registry);
+    }
+    if (!config.otel.metrics.enabled) return;
+    try {
+      const { createOtelMetricsExporter } = await import(
+        '../src/ai_metrics/otel_metrics_exporter.js'
+      );
+      this.otelMetricsExporter = await createOtelMetricsExporter(config.otel.metrics);
+    } catch (err) {
+      console.error(
+        '@adonis-agora/telescope: config.otel.metrics.enabled is true, but @opentelemetry/sdk-metrics, ' +
+          '@opentelemetry/exporter-metrics-otlp-http and @opentelemetry/resources could not be ' +
+          'loaded (are they installed?). OTLP metrics export is disabled for this boot:',
+        err,
+      );
+    }
+  }
+
   /** Construct the extension registry, giving each extension a context over the store + container. */
   private buildExtensionRegistry(
     config: ResolvedTelescopeConfig,
@@ -292,6 +331,10 @@ export default class TelescopeProvider {
     // down, so a graceful shutdown never silently drops the tail of a trace.
     await this.otelExporter?.shutdown();
     this.otelExporter = null;
+    this.unsubscribePrometheus?.();
+    this.unsubscribePrometheus = null;
+    await this.otelMetricsExporter?.shutdown();
+    this.otelMetricsExporter = null;
     resetTelescopeRuntime();
   }
 }

@@ -1,3 +1,5 @@
+import { AGENT_METRIC_EVENTS } from '../ai_metrics/agent_events.js';
+import { type AiUsageSummary, summarizeAiUsage } from '../ai_metrics/ai_usage.js';
 import { type Entry, EntryType, EXCEPTION_ENTRY_TYPES, isExceptionType } from '../entry.js';
 import {
   detectNPlusOne,
@@ -49,6 +51,16 @@ export interface ScreensQuery {
   /** Only page visits, only API calls, or only assets. Omit for all. */
   kind?: RequestKind;
   limit?: number;
+}
+
+export interface AiQuery {
+  windowMs: number;
+  /** Spend timeseries buckets. Default 24. */
+  buckets?: number;
+  /** Rows per spend breakdown (feature / model / actor). Default 10. */
+  top?: number;
+  /** Rows in the runs table. Default 50. */
+  runs?: number;
 }
 
 export interface TimeseriesQuery {
@@ -255,6 +267,52 @@ export class MetricsService {
     });
   }
 
+  /**
+   * The AI screen: spend, agent runs and unpriced calls over a window, from the `diagnostic`
+   * entries the generic watcher records for `agora:agent:*`.
+   *
+   * One indexed read per event (`familyHash` is `agent:<event>`), so a busy app's other
+   * diagnostics never crowd the agent events out of the scan budget. When the window has no
+   * `usage.recorded` at all, a small probe of any `lib:agent` entry tells the screen whether the
+   * app runs an agent lib that predates that event, or simply did nothing AI-related.
+   */
+  async getAi(query: AiQuery): Promise<AiUsageSummary & { truncated: boolean }> {
+    if (!Number.isFinite(query.windowMs) || query.windowMs <= 0) {
+      throw new RangeError(`windowMs must be a positive, finite number (got ${query.windowMs}).`);
+    }
+    const windowEnd = new Date();
+    const windowStart = new Date(windowEnd.getTime() - query.windowMs);
+    const reads = await Promise.all(
+      AGENT_METRIC_EVENTS.map((event) =>
+        this.collect({
+          type: EntryType.Diagnostic,
+          familyHash: `agent:${event}`,
+          after: windowStart,
+        }),
+      ),
+    );
+    const entries = reads.flatMap((read) => read.entries);
+    const usageRead = reads[0];
+    if (usageRead !== undefined && usageRead.entries.length === 0) {
+      const seen = new Set(entries.map((entry) => entry.id));
+      const probe = await this.store.list({
+        type: EntryType.Diagnostic,
+        tag: 'lib:agent',
+        after: windowStart,
+        size: 50,
+      });
+      for (const entry of probe) if (!seen.has(entry.id)) entries.push(entry);
+    }
+    const summary = summarizeAiUsage(entries, {
+      windowStart,
+      windowEnd,
+      ...(query.buckets !== undefined ? { buckets: this.clampBuckets(query.buckets) } : {}),
+      ...(query.top !== undefined ? { top: clampCount(query.top, 50) } : {}),
+      ...(query.runs !== undefined ? { runsLimit: clampCount(query.runs, 200) } : {}),
+    });
+    return { ...summary, truncated: reads.some((read) => read.truncated) };
+  }
+
   /** The span waterfall for a single trace, or `null` when the trace is empty. */
   async getWaterfall(traceId: string): Promise<Waterfall | null> {
     const entries = await this.store.list({ traceId });
@@ -322,4 +380,9 @@ export class MetricsService {
       truncated: results.some((result) => result.truncated),
     };
   }
+}
+
+/** A row count in `[1, max]`; a non-finite value falls back to `max`. */
+function clampCount(value: number, max: number): number {
+  return Number.isFinite(value) ? Math.min(max, Math.max(1, Math.floor(value))) : max;
 }

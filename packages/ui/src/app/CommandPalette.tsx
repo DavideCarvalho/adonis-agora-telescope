@@ -15,6 +15,7 @@ export type PaletteTarget =
         | 'pulse'
         | 'entries'
         | 'traces'
+        | 'ai'
         | 'exceptions'
         | 'exports'
         | 'profiles'
@@ -57,6 +58,12 @@ const PAGE_ACTIONS: PaletteAction[] = [
     label: 'Traces',
     hint: 'waterfall + N+1',
     target: { kind: 'section', key: 'traces' },
+  },
+  {
+    id: 'ai',
+    label: 'AI',
+    hint: 'spend + agent runs',
+    target: { kind: 'section', key: 'ai' },
   },
   {
     id: 'exceptions',

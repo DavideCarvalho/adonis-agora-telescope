@@ -6,6 +6,9 @@ Part of the Agora ecosystem.
 
 ## What it shows
 
+- **AI** — AI spend (total, platform and estimated shares, by feature / model / payer, over time),
+  agent runs with queue / model / tools timings and a per-step breakdown linked to the trace, and
+  unpriced calls, from `@adonis-agora/agent` ≥ 0.93.0's `usage.recorded` and `run.*` events.
 - **Pulse** — the `getHealth` "at a glance" rollup: throughput, error rate, p99 latency, HTTP status
   breakdown, slowest entries, slow routes, top exceptions, N+1 hotspots, load-by-user, cache hit ratio.
 - **Entries** — the entries list with type + free-text filters and an **SSE live tail** that prepends

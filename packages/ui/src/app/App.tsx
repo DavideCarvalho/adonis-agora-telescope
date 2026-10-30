@@ -14,6 +14,7 @@ import { useMeta } from './use-telescope.js';
 
 // Every section except the landing Overview is its own chunk (loaded on first visit), so the
 // initial page only downloads and parses the shell + Overview.
+const AiSection = lazySection(() => import('./AiSection.js'), 'AiSection');
 const EntriesSection = lazySection(() => import('./EntriesSection.js'), 'EntriesSection');
 const EntryDetail = lazySection(() => import('./EntryDetail.js'), 'EntryDetail');
 const ExceptionsSection = lazySection(() => import('./ExceptionsSection.js'), 'ExceptionsSection');
@@ -39,6 +40,7 @@ type SectionKey =
   | 'entries'
   | 'traces'
   | 'screens'
+  | 'ai'
   | 'exceptions'
   | 'exports'
   | 'extensions'
@@ -49,7 +51,7 @@ type SectionKey =
 /**
  * The sidebar's built-in section list — order matches `@dudousxd/nestjs-telescope-ui`'s
  * `DashboardLayout` NAV wherever this console shares the page (Overview, Entries, Traces, Pulse,
- * Queues, Schedules, Exports, Profiles), plus this console's own additions (Exceptions — a
+ * Queues, Schedules, Exports, Profiles, AI), plus this console's own additions (Exceptions — a
  * dedicated grouped-exception view nestjs folds into Entries/Pulse instead; Screens).
  *
  * Contributed dashboards are NOT here: they are rendered below this list, each under its own
@@ -63,6 +65,7 @@ const NAV: { key: SectionKey; label: string }[] = [
   { key: 'entries', label: 'Entries' },
   { key: 'traces', label: 'Traces' },
   { key: 'screens', label: 'Screens' },
+  { key: 'ai', label: 'AI' },
   { key: 'pulse', label: 'Pulse' },
   { key: 'exceptions', label: 'Exceptions' },
   { key: 'queues', label: 'Queues' },
@@ -294,6 +297,8 @@ export function App() {
                 />
               ) : route.name === 'screens' ? (
                 <ScreensSection onOpenType={openType} />
+              ) : route.name === 'ai' ? (
+                <AiSection onOpenTrace={openTrace} onOpenEntry={openEntry} />
               ) : route.name === 'traces' ? (
                 <TracesSection onOpenTrace={openTrace} />
               ) : route.name === 'exceptions' ? (
