@@ -239,7 +239,7 @@
     "@types/node": "26.6.5",
     "better-sqlite3": "13.0.3",
     "cron-parser": "5.10.2",
-    "hyparquet": "1.31.5",
+    "hyparquet": "1.32.0",
     "hyparquet-compressors": "1.1.2",
     "hyparquet-writer": "0.17.0",
     "knex": "3.3.0",
