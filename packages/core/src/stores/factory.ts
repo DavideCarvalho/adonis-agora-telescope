@@ -165,7 +165,7 @@ export const storage = {
           ? (config.location as ColdObjectStore)
           : 'dir' in config.location && typeof config.location.dir === 'string'
             ? new locations.DirectoryLocation(config.location.dir)
-            : new locations.S3Location((config.location as { s3: S3LocationOptions }).s3);
+            : new locations.S3Location(s3LocationOptions(config.location));
       const engine = config.engine ?? 'hyparquet';
       return ParquetColdStore.create({
         location,
@@ -220,3 +220,10 @@ export const storage = {
     };
   },
 };
+
+function s3LocationOptions(location: ParquetLocationConfig): S3LocationOptions {
+  if ('s3' in location && location.s3) return location.s3;
+  throw new Error(
+    '@adonis-agora/telescope: storage.parquet() needs a `location` with `dir`, `s3`, or a ColdObjectStore.',
+  );
+}

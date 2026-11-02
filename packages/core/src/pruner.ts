@@ -61,7 +61,8 @@ export class TelescopePruner {
   private readonly runs: PruneRun[] = [];
   /** Start time (epoch ms) of the most recent SCHEDULED cycle, for nextRunAt. */
   private lastScheduledRunAtMs: number | null = null;
-  private scheduledCycleRunning = false;
+  /** The cycle in progress, scheduled or manual. Only one runs at a time. */
+  private inFlight: Promise<number> | null = null;
   private readonly clock: Clock;
   private readonly logger: PrunerLogger;
 
@@ -85,15 +86,10 @@ export class TelescopePruner {
     this.timer = setInterval(() => {
       // A cycle can outlast the interval (moving a backlog to a cold tier). Starting another would
       // copy the same entries twice, since nothing is deleted until a move has finished.
-      if (this.scheduledCycleRunning) return;
-      this.scheduledCycleRunning = true;
-      this.runCycle('scheduled')
-        .catch((error: unknown) => {
-          this.logger.warn(`Telescope prune failed: ${asError(error).message}`);
-        })
-        .finally(() => {
-          this.scheduledCycleRunning = false;
-        });
+      if (this.inFlight) return;
+      this.runExclusive('scheduled').catch((error: unknown) => {
+        this.logger.warn(`Telescope prune failed: ${asError(error).message}`);
+      });
     }, this.config.intervalMs);
     this.timer.unref?.();
   }
@@ -108,10 +104,19 @@ export class TelescopePruner {
 
   /**
    * Run ONE prune cycle on demand (e.g. a future dashboard's "Prune now"),
-   * recording it as a `manual` run. Resolves to the number of entries deleted.
+   * recording it as a `manual` run. Resolves to the number of entries deleted. While a cycle
+   * is running, it waits for that one and resolves to its result instead of starting another.
    */
   async pruneNow(): Promise<number> {
-    return this.runCycle('manual');
+    return this.inFlight ?? this.runExclusive('manual');
+  }
+
+  private runExclusive(trigger: PruneTrigger): Promise<number> {
+    const cycle = this.runCycle(trigger).finally(() => {
+      this.inFlight = null;
+    });
+    this.inFlight = cycle;
+    return cycle;
   }
 
   /** Recent prune runs (newest-first), copied so callers can't mutate the ring. */

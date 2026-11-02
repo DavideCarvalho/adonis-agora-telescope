@@ -88,7 +88,7 @@ describe.skipIf(!endpoint).each(ENGINES)('parquet cold store on S3 (%s engine)',
 
 describe('S3Location.delete on MinIO (MissingContentMD5)', () => {
   it('falls back to single deletes and stops trying the batch call', async () => {
-    const sent: Array<{ name: string; key?: string }> = [];
+    const sent: Array<{ name: string; key: string | undefined }> = [];
     const client = {
       send: async (command: { constructor: { name: string }; input: { Key?: string } }) => {
         sent.push({ name: command.constructor.name, key: command.input.Key });

@@ -132,6 +132,10 @@ describe('TelescopePruner scheduling', () => {
       finish(0);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(prune).toHaveBeenCalledTimes(2);
+      const manual = pruner.pruneNow();
+      expect(prune).toHaveBeenCalledTimes(2);
+      finish(7);
+      await expect(manual).resolves.toBe(7);
       pruner.stop();
     } finally {
       vi.useRealTimers();
