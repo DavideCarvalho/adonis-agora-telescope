@@ -1,5 +1,13 @@
 # @adonis-agora/telescope
 
+## 0.27.1
+
+### Patch Changes
+
+- [#248](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/248) [`d2c1e16`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/d2c1e16c428f079e362e7b006e2ccc8a304c1e91) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `S3Location.delete` now works on MinIO versions that reject `DeleteObjects` with `MissingContentMD5`: it falls back to single deletes and remembers, so the Parquet cold tier can expire and compact there.
+
+- [#248](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/248) [`d2c1e16`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/d2c1e16c428f079e362e7b006e2ccc8a304c1e91) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - The pruner no longer starts a scheduled cycle while the last one is running, which duplicated entries in the cold tier during long moves. `storage.parquet` now keeps a ready-made location that has a field named `s3` or `dir` instead of replacing it.
+
 ## 0.27.0
 
 ### Minor Changes
