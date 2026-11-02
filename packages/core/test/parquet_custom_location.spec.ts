@@ -20,7 +20,9 @@ class HostLocation implements ColdObjectStore {
 describe('storage.parquet location', () => {
   it('keeps a ready-made location even when it has a field named s3', async () => {
     const location = new HostLocation();
-    const cold = await storage.parquet({ location, engine: 'hyparquet', instanceId: 'pod' })({} as never);
+    const cold = await storage.parquet({ location, engine: 'hyparquet', instanceId: 'pod' })(
+      {} as never,
+    );
 
     expect((cold as unknown as { location: unknown }).location).toBe(location);
   });

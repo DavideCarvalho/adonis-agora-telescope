@@ -1,7 +1,7 @@
 import { CreateBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { S3Location } from '../src/stores/parquet_location.js';
 import type { ParquetColdStore } from '../src/stores/parquet.js';
+import { S3Location } from '../src/stores/parquet_location.js';
 import { ENGINES, ids, makeEntries, openCold, referenceList, tempDir } from './parquet_helpers.js';
 
 /**
