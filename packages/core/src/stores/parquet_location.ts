@@ -144,6 +144,11 @@ export interface S3LocationOptions {
 
 type S3Commands = typeof import('@aws-sdk/client-s3');
 
+function isMissingContentMd5(error: unknown): boolean {
+  const { name, Code } = (error ?? {}) as { name?: string; Code?: string };
+  return name === 'MissingContentMD5' || Code === 'MissingContentMD5';
+}
+
 /**
  * An S3 bucket (or any S3-compatible store) through the host's own client. Reads are
  * ranged `GetObject` calls, so a footer or a row group is fetched without the file.
@@ -151,6 +156,7 @@ type S3Commands = typeof import('@aws-sdk/client-s3');
 export class S3Location implements ColdObjectStore {
   private readonly prefix: string;
   private commands: S3Commands | null = null;
+  private batchDeleteUnsupported = false;
 
   constructor(private readonly options: S3LocationOptions) {
     const raw = options.prefix ?? '';
@@ -218,14 +224,34 @@ export class S3Location implements ColdObjectStore {
 
   async delete(keys: string[]): Promise<void> {
     if (keys.length === 0) return;
-    const { DeleteObjectsCommand } = await this.sdk();
+    const { DeleteObjectCommand, DeleteObjectsCommand } = await this.sdk();
+    const deleteOneByOne = async (batch: string[]) => {
+      for (const key of batch) {
+        await this.options.client.send(
+          new DeleteObjectCommand({ Bucket: this.options.bucket, Key: this.prefix + key }),
+        );
+      }
+    };
     for (let i = 0; i < keys.length; i += 1000) {
-      await this.options.client.send(
-        new DeleteObjectsCommand({
-          Bucket: this.options.bucket,
-          Delete: { Objects: keys.slice(i, i + 1000).map((key) => ({ Key: this.prefix + key })) },
-        }),
-      );
+      const batch = keys.slice(i, i + 1000);
+      if (this.batchDeleteUnsupported) {
+        await deleteOneByOne(batch);
+        continue;
+      }
+      try {
+        await this.options.client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.options.bucket,
+            Delete: { Objects: batch.map((key) => ({ Key: this.prefix + key })) },
+          }),
+        );
+      } catch (error) {
+        if (!isMissingContentMd5(error)) throw error;
+        // MinIO without flexible-checksum support insists on Content-MD5, which current SDKs no
+        // longer send on DeleteObjects (they send CRC32). Remember it: the batch call never works.
+        this.batchDeleteUnsupported = true;
+        await deleteOneByOne(batch);
+      }
     }
   }
 }

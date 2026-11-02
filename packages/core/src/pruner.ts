@@ -61,6 +61,7 @@ export class TelescopePruner {
   private readonly runs: PruneRun[] = [];
   /** Start time (epoch ms) of the most recent SCHEDULED cycle, for nextRunAt. */
   private lastScheduledRunAtMs: number | null = null;
+  private scheduledCycleRunning = false;
   private readonly clock: Clock;
   private readonly logger: PrunerLogger;
 
@@ -82,9 +83,17 @@ export class TelescopePruner {
   start(): void {
     if (!this.config.enabled || this.timer) return;
     this.timer = setInterval(() => {
-      this.runCycle('scheduled').catch((error: unknown) => {
-        this.logger.warn(`Telescope prune failed: ${asError(error).message}`);
-      });
+      // A cycle can outlast the interval (moving a backlog to a cold tier). Starting another would
+      // copy the same entries twice, since nothing is deleted until a move has finished.
+      if (this.scheduledCycleRunning) return;
+      this.scheduledCycleRunning = true;
+      this.runCycle('scheduled')
+        .catch((error: unknown) => {
+          this.logger.warn(`Telescope prune failed: ${asError(error).message}`);
+        })
+        .finally(() => {
+          this.scheduledCycleRunning = false;
+        });
     }, this.config.intervalMs);
     this.timer.unref?.();
   }

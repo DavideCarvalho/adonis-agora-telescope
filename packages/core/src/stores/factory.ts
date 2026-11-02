@@ -158,12 +158,14 @@ export const storage = {
         import('./parquet_location.js'),
       ]);
       const libs = await loadParquetLibs();
+      // A ready-made store comes first: a subclass may well keep a field named `s3` or `dir`, and
+      // reading it as options would silently replace the host's class with a plain location.
       const location =
-        'dir' in config.location && typeof config.location.dir === 'string'
-          ? new locations.DirectoryLocation(config.location.dir)
-          : 's3' in config.location
-            ? new locations.S3Location(config.location.s3)
-            : (config.location as ColdObjectStore);
+        'write' in config.location && typeof config.location.write === 'function'
+          ? (config.location as ColdObjectStore)
+          : 'dir' in config.location && typeof config.location.dir === 'string'
+            ? new locations.DirectoryLocation(config.location.dir)
+            : new locations.S3Location((config.location as { s3: S3LocationOptions }).s3);
       const engine = config.engine ?? 'hyparquet';
       return ParquetColdStore.create({
         location,
