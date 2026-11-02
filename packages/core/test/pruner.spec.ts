@@ -115,3 +115,30 @@ describe('TelescopePruner', () => {
     expect(pruner.getRuns()).toHaveLength(100);
   });
 });
+
+describe('TelescopePruner scheduling', () => {
+  it('does not start a scheduled cycle while the previous one is still running', async () => {
+    vi.useFakeTimers();
+    try {
+      let finish: (value: number) => void = () => {};
+      const prune = vi.fn(() => new Promise<number>((resolve) => (finish = resolve)));
+      const store = { prune } as unknown as TelescopeStore;
+      const pruner = new TelescopePruner(store, cfg({ intervalMs: 1_000 }), { logger: silent });
+
+      pruner.start();
+      await vi.advanceTimersByTimeAsync(3_500);
+      expect(prune).toHaveBeenCalledTimes(1);
+
+      finish(0);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(prune).toHaveBeenCalledTimes(2);
+      const manual = pruner.pruneNow();
+      expect(prune).toHaveBeenCalledTimes(2);
+      finish(7);
+      await expect(manual).resolves.toBe(7);
+      pruner.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

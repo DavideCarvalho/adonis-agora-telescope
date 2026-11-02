@@ -1,6 +1,7 @@
 import { CreateBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ParquetColdStore } from '../src/stores/parquet.js';
+import { S3Location } from '../src/stores/parquet_location.js';
 import { ENGINES, ids, makeEntries, openCold, referenceList, tempDir } from './parquet_helpers.js';
 
 /**
@@ -82,5 +83,39 @@ describe.skipIf(!endpoint).each(ENGINES)('parquet cold store on S3 (%s engine)',
     expect(expired).toBe(
       entries.filter((e) => e.createdAt.getTime() < Date.UTC(2026, 9, 20, 12)).length,
     );
+  });
+});
+
+describe('S3Location.delete on MinIO (MissingContentMD5)', () => {
+  it('falls back to single deletes and stops trying the batch call', async () => {
+    const sent: Array<{ name: string; key: string | undefined }> = [];
+    const client = {
+      send: async (command: { constructor: { name: string }; input: { Key?: string } }) => {
+        sent.push({ name: command.constructor.name, key: command.input.Key });
+        if (command.constructor.name === 'DeleteObjectsCommand') {
+          throw Object.assign(new Error('missing md5'), { name: 'MissingContentMD5' });
+        }
+        return {};
+      },
+    };
+    const location = new S3Location({ client, bucket: 'b', prefix: 'cold' });
+
+    await location.delete(['a']);
+    await location.delete(['b']);
+
+    expect(sent).toEqual([
+      { name: 'DeleteObjectsCommand', key: undefined },
+      { name: 'DeleteObjectCommand', key: 'cold/a' },
+      { name: 'DeleteObjectCommand', key: 'cold/b' },
+    ]);
+  });
+
+  it('rethrows any other batch error', async () => {
+    const client = {
+      send: async () => {
+        throw new Error('boom');
+      },
+    };
+    await expect(new S3Location({ client, bucket: 'b' }).delete(['a'])).rejects.toThrow('boom');
   });
 });
