@@ -264,8 +264,8 @@ importers:
         specifier: 1.32.0
         version: 1.32.0
       hyparquet-compressors:
-        specifier: 1.1.2
-        version: 1.1.2
+        specifier: 1.1.3
+        version: 1.1.3
       hyparquet-writer:
         specifier: 0.18.0
         version: 0.18.0
@@ -2297,8 +2297,8 @@ packages:
     resolution: {integrity: sha512-eKCa6bwnJhvxj14kZk5NCPc6Hb6BdsU9DZcOnmQKSnO1VKrfV0zCvtttPZUsBvjmNDn8rpcJfpwSYnHBjc95MQ==}
     engines: {node: '>=18.18.0'}
 
-  hyparquet-compressors@1.1.2:
-    resolution: {integrity: sha512-0Hx6w0ZpVpNCefKy5xBYLTp6rKeZn/tsUzuliNzfKqSCdLcTQSfwATEoeedS703Y17k1qNS61HwRME5aOeNkPg==}
+  hyparquet-compressors@1.1.3:
+    resolution: {integrity: sha512-QqObpH8Vu1NKF5qzv7yWwgVso8sQE6irx0L5+WZ5QQ+xXnCQE5/X9K8hzYD6Z4wVjTmsMnZUO1vbutXLhU9AFQ==}
 
   hyparquet-writer@0.18.0:
     resolution: {integrity: sha512-1vDuEneasjp2yuk/OnLqli5aArzHQw8NYVbJD7ytpHZ3outmJaHHRcNbA7BiiFxonWGhwgPPWnVSsREv6LxE4A==}
@@ -5164,7 +5164,7 @@ snapshots:
 
   human-signals@8.0.1: {}
 
-  hyparquet-compressors@1.1.2:
+  hyparquet-compressors@1.1.3:
     dependencies:
       fzstd: 0.1.1
       hysnappy: 1.1.1
