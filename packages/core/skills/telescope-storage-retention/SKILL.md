@@ -43,7 +43,7 @@ import { defineConfig, storage } from '@adonis-agora/telescope'
 export default defineConfig({
   store: 'lucid',
   stores: {
-    memory: storage.memory({ limit: 5000 }),   // dev/tests — per-process, lost on restart
+    memory: storage.memory({ maxEntries: 5000 }),   // dev/tests — per-process, lost on restart
     lucid: storage.lucid(),                    // or storage.lucid({ connection: 'pg', tableName: 'tscope' })
   },
   // Retention pruner — OFF unless a prune block is present.
@@ -191,7 +191,7 @@ Source: `docs/recipes/custom-storage.mdx`.
 ```ts
 // Wrong — per-process ring buffer, lost on every restart/deploy; in a cluster each
 // worker shows a different slice of reality.
-defineConfig({ store: 'memory', stores: { memory: storage.memory({ limit: 1000 }) } })
+defineConfig({ store: 'memory', stores: { memory: storage.memory({ maxEntries: 1000 }) } })
 ```
 
 ```ts

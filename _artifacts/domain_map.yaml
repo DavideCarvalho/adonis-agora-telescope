@@ -35,7 +35,7 @@ domains:
     surface:
       - "node ace configure @adonis-agora/telescope"
       - "defineConfig({ enabled, store, stores, watchers, extensions, redact })"
-      - storage.memory({ limit }) / storage.lucid({ connection })
+      - storage.memory({ maxEntries }) / storage.lucid({ connection })
       - TelescopeService: list/find/byTrace/count/topFamilies/topTags/getHealth
       - recordException(error, ctx?)
       - requestCapture gates (maxBodyBytes/skipBodyContentTypes/skipBody)
@@ -72,7 +72,7 @@ domains:
     package: "@adonis-agora/telescope"
     surface:
       - "TelescopeStore contract: record/get/list/count/prune/clear"
-      - "storage.memory({ limit }) ring buffer; storage.lucid({ connection?, tableName?, autoCreateTable?, maxEntries? })"
+      - "storage.memory({ maxEntries }) ring buffer; storage.lucid({ connection?, tableName?, autoCreateTable?, maxEntries? })"
       - "prune { after, keepLast, intervalMs } background pruner (off unless present)"
       - "overload guard { maxEventLoopLagMs, startupGraceMs }; setTelescopePaused()"
       - "redact { enabled, keys, perType }; sampling number | { rate, keepErrors, keepSlowMs }"

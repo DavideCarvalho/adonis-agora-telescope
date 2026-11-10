@@ -24,14 +24,11 @@ export interface StoreContext {
  */
 export type StoreProvider = (ctx: StoreContext) => Promise<TelescopeStore>;
 
-/** Options for the `memory` store driver. */
-export interface MemoryStoreConfig extends InMemoryStoreOptions {
-  /**
-   * Hard cap on retained entries. Past it, the oldest entries are evicted (ring-buffer
-   * semantics). Alias of {@link InMemoryStoreOptions.maxEntries}. Default 1000.
-   */
-  limit?: number;
-}
+/**
+ * Options for the `memory` store driver: `maxEntries` is the hard cap on retained entries.
+ * Past it, the oldest entries are evicted (ring-buffer semantics). Default 1000.
+ */
+export type MemoryStoreConfig = InMemoryStoreOptions;
 
 /** Options for the `lucid` store driver. */
 export interface LucidStoreConfig extends LucidStoreOptions {
@@ -102,7 +99,7 @@ export interface TieredStoreConfig {
  * export default defineConfig({
  *   store: 'memory',
  *   stores: {
- *     memory: storage.memory({ limit: 1000 }),
+ *     memory: storage.memory({ maxEntries: 1000 }),
  *     lucid: storage.lucid({ connection: 'pg' }),
  *   },
  * })
@@ -117,8 +114,9 @@ export const storage = {
   memory(config: MemoryStoreConfig = {}): StoreProvider {
     return async () => {
       const { InMemoryTelescopeStore } = await import('./memory.js');
-      const maxEntries = config.limit ?? config.maxEntries;
-      return new InMemoryTelescopeStore(maxEntries !== undefined ? { maxEntries } : {});
+      return new InMemoryTelescopeStore(
+        config.maxEntries !== undefined ? { maxEntries: config.maxEntries } : {},
+      );
     };
   },
 

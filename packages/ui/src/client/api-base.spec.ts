@@ -37,23 +37,13 @@ describe('resolveApiBase', () => {
   const noDoc = { getElementById: () => null } as unknown as Document;
 
   it('prefers the JSON data block the provider injects', () => {
-    const win = {
-      __TELESCOPE_DASHBOARD_BASE__: '/stale/api',
-      location: { pathname: '/telescope/' },
-    } as unknown as Window;
+    const win = { location: { pathname: '/telescope/' } } as unknown as Window;
     expect(resolveApiBase(win, docWith('{"apiBase":"/custom/api/"}'))).toBe('/custom/api');
   });
   it('ignores a block that is not JSON, or carries no base', () => {
     const win = { location: { pathname: '/telescope/' } } as unknown as Window;
     expect(resolveApiBase(win, docWith('{nope'))).toBe('/telescope/api');
     expect(resolveApiBase(win, docWith('{"apiBase":""}'))).toBe('/telescope/api');
-  });
-  it('prefers the injected global over the location when there is no block', () => {
-    const win = {
-      __TELESCOPE_DASHBOARD_BASE__: '/custom/api/',
-      location: { pathname: '/telescope/' },
-    } as unknown as Window;
-    expect(resolveApiBase(win, noDoc)).toBe('/custom/api');
   });
   it('falls back to the location-derived base', () => {
     const win = { location: { pathname: '/telescope/' } } as unknown as Window;

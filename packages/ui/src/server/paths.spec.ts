@@ -89,7 +89,7 @@ describe('injectApiBase', () => {
     // A host CSP of `script-src 'self' 'nonce-…'` drops an inline script without a word, and the
     // console then 404s on every request while rendering fine. A data block cannot be refused.
     const out = injectApiBase('<head></head>', '/telescope/api');
-    expect(out).not.toContain('window.__TELESCOPE_DASHBOARD_BASE__');
+    expect(out).not.toContain('window.');
     expect(out).not.toMatch(/<script>/);
   });
   it('escapes a base that would otherwise close the data block early', () => {

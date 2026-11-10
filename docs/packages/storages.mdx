@@ -19,7 +19,7 @@ import { defineConfig, storage } from '@adonis-agora/telescope'
 export default defineConfig({
   store: 'memory',
   stores: {
-    memory: storage.memory({ limit: 1000 }),
+    memory: storage.memory({ maxEntries: 1000 }),
     lucid: storage.lucid({ connection: 'pg' }),
   },
 })
@@ -30,12 +30,12 @@ is the active one. `storage.lucid` imports `@adonisjs/lucid` only when `store: '
 
 ## The memory driver
 
-`storage.memory({ limit })` is the zero-config default — a bounded in-process ring buffer.
+`storage.memory({ maxEntries })` is the zero-config default — a bounded in-process ring buffer.
 It is lost on restart and lives per-process; ideal for development and tests.
 
 | Option  | Default | Description                                                       |
 | ------- | ------- | --------------------------------------------------------------- |
-| `limit` | `1000`  | Hard cap on retained entries. Oldest evicted past it (ring buffer). |
+| `maxEntries` | `1000` | Hard cap on retained entries. Oldest evicted past it (ring buffer). |
 
 ## The lucid driver
 

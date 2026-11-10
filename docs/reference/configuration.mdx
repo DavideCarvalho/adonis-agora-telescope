@@ -24,7 +24,7 @@ export default defineConfig({
   enabled: true,
   store: 'memory',
   stores: {
-    memory: storage.memory({ limit: 1000 }),
+    memory: storage.memory({ maxEntries: 1000 }),
     // lucid: storage.lucid({ connection: 'pg' }),
   },
   watchers: ['request', 'diagnostics'],
@@ -69,7 +69,7 @@ See [Built-in redaction](/docs/telescope/recipes/tags-and-redaction#built-in-red
 
 <Callout type="info">
 Storage is config-driven: `store` picks one of the named drivers in `stores`. The `memory`
-driver (`storage.memory({ limit })`) is the bounded ring buffer; the `lucid` driver
+driver (`storage.memory({ maxEntries })`) is the bounded ring buffer; the `lucid` driver
 (`storage.lucid({ connection? })`) is a persistent SQL store — `@adonisjs/lucid` is an
 optional peer imported only when `lucid` is selected; the `tiered` driver
 (`storage.tiered({ hot, cold: storage.parquet({ location }), hotFor })`) keeps a hot driver minutes

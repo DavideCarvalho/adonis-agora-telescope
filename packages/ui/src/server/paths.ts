@@ -78,14 +78,12 @@ export const CONFIG_ELEMENT_ID = 'telescope-dashboard-config';
  * Hand the resolved JSON API base to the served `index.html`, so the client calls the exact base
  * the provider mounted (no build-time coupling). Inserted right before `</head>`.
  *
- * It goes in as a JSON DATA BLOCK (`<script type="application/json">{"apiBase":…}</script>`), not
- * as an inline script assigning `window.__TELESCOPE_DASHBOARD_BASE__`. A data block is never
- * executed, so no Content-Security-Policy can refuse it; an inline script IS, and a host with
- * `script-src 'self' 'nonce-…'` (`@adonisjs/shield`'s `@nonce`, the recommended setup) silently
- * dropped ours — the SPA then derived a base from its own URL, which happens to be right for the
- * usual `<mount>/api` layout but not for a custom one, and there every request from a console that
- * had rendered perfectly answered 404. The global is still read by the SPA as a fallback, but this
- * is no longer how the provider speaks.
+ * It goes in as a JSON DATA BLOCK (`<script type="application/json">{"apiBase":…}</script>`), never
+ * as an inline script. A data block is never executed, so no Content-Security-Policy can refuse it;
+ * an inline script IS, and a host with `script-src 'self' 'nonce-…'` (`@adonisjs/shield`'s
+ * `@nonce`, the recommended setup) silently drops it — the SPA then derives a base from its own
+ * URL, which is right for the usual `<mount>/api` layout but not for a custom one, where every
+ * request from a console that rendered perfectly answers 404.
  */
 export function injectApiBase(html: string, apiBase: string): string {
   // `<` escaped as `\u003c` inside the JSON: a data block ends at the first `</script`, and a

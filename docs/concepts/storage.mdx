@@ -65,7 +65,7 @@ import { defineConfig, storage } from '@adonis-agora/telescope'
 export default defineConfig({
   store: 'memory',
   stores: {
-    memory: storage.memory({ limit: 1000 }),
+    memory: storage.memory({ maxEntries: 1000 }),
     lucid: storage.lucid({ connection: 'pg' }),
   },
 })
@@ -117,13 +117,13 @@ await telescope.list({ familyHash: 'billing:invoice-paid' })
 
 ## The memory driver
 
-`storage.memory({ limit })` (the default `store: 'memory'`) is `InMemoryTelescopeStore` —
+`storage.memory({ maxEntries })` (the default `store: 'memory'`) is `InMemoryTelescopeStore` —
 a **bounded ring buffer**:
 
 - Newest-first ordering (entries are `unshift`ed, so index 0 is the most recent).
 - An id index for O(1) `get`.
 - `search` over JSON content + tags.
-- A hard `limit` cap (default **1000**) — past it, the oldest entries are evicted so an
+- A hard `maxEntries` cap (default **1000**) — past it, the oldest entries are evicted so an
   unbounded process can never OOM.
 
 ```ts title="config/telescope.ts"
@@ -132,7 +132,7 @@ import { defineConfig, storage } from '@adonis-agora/telescope'
 export default defineConfig({
   store: 'memory',
   stores: {
-    memory: storage.memory({ limit: 5000 }),   // raise the cap; oldest beyond this are evicted
+    memory: storage.memory({ maxEntries: 5000 }),   // raise the cap; oldest beyond this are evicted
   },
 })
 ```

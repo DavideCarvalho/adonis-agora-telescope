@@ -90,7 +90,7 @@ export interface TelescopeConfig {
   /**
    * Hard cap on retained entries for the in-memory store when selected by the bare
    * `store: 'memory'` shorthand (no `stores` map). Oldest entries are evicted past
-   * this. Default 1000. Prefer `storage.memory({ limit })` in the `stores` map.
+   * this. Default 1000. Prefer `storage.memory({ maxEntries })` in the `stores` map.
    */
   maxEntries?: number;
 
@@ -523,7 +523,7 @@ export interface ResolvedOtelMetricsConfig {
  * export default defineConfig({
  *   store: 'memory',
  *   stores: {
- *     memory: storage.memory({ limit: 1000 }),
+ *     memory: storage.memory({ maxEntries: 1000 }),
  *     lucid: storage.lucid({ connection: 'pg' }),
  *   },
  * })

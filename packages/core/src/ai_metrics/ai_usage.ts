@@ -100,8 +100,6 @@ export interface AiCoverage {
   runEvents: number;
   /** Every agent event seen, of any kind (`run.started`, `tool-call`, …). */
   agentEvents: number;
-  /** Agent events exist but none is `usage.recorded`: the agent lib predates the ledger event. */
-  legacyAgentLib: boolean;
   /** Runs whose terminal event carried no timing breakdown (queue/model/tools). */
   runsWithoutTimings: number;
 }
@@ -232,7 +230,6 @@ export function summarizeAiUsage(
     usageEvents: 0,
     runEvents: 0,
     agentEvents: 0,
-    legacyAgentLib: false,
     runsWithoutTimings: 0,
   };
 
@@ -309,7 +306,6 @@ export function summarizeAiUsage(
     }
   }
 
-  coverage.legacyAgentLib = coverage.agentEvents > 0 && coverage.usageEvents === 0;
   spend.totalUsd = round(spend.totalUsd);
   spend.platformUsd = round(spend.platformUsd);
   spend.estimatedUsd = round(spend.estimatedUsd);

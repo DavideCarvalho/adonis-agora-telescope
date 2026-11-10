@@ -51,7 +51,7 @@ export default defineConfig({
   enabled: true,                          // master switch
   store: 'memory',                        // which driver in `stores` is active
   stores: {
-    memory: storage.memory({ limit: 1000 }),   // bounded ring buffer, lost on restart
+    memory: storage.memory({ maxEntries: 1000 }),   // bounded ring buffer, lost on restart
     // lucid: storage.lucid({ connection: 'pg' }), // persistent SQL store (optional peer)
   },
   watchers: ['request', 'diagnostics'],   // omit one to disable it
