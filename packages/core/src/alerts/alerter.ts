@@ -14,10 +14,6 @@ import { durationToMs } from './parse_duration.js';
 /** Stack frames carried in a `new-exception` alert (the Slack channel re-clips). */
 const ALERT_STACK_FRAME_LIMIT = 12;
 
-/** Window used only to count occurrences on an `every-exception` alert when the
- *  rule omits its own `window`. Firing is per-flush, so this is display-only. */
-const DEFAULT_EVERY_WINDOW = '1h';
-
 export interface AlerterDeps {
   alerts: ResolvedAlerts;
   /** Wall-clock seam (ms). Defaults to `Date.now`. */
