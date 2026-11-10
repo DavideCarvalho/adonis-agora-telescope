@@ -1,0 +1,91 @@
+---
+title: Migrating to 1.0
+icon: CircleArrowUp
+description: Move an app from @adonis-agora/telescope 0.x to 1.0. Your config, providers and code stay the same; only the version range and the Node.js requirement change.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+1.0 keeps every config key, provider, subpath and export from 0.27. Your
+`config/telescope*.ts` files, `adonisrc.ts` providers, middleware and dashboard routes stay as
+they are.
+
+<Callout type="info">
+While 1.0 is in release candidate, install it with the `rc` tag:
+`pnpm add @adonis-agora/telescope@rc @adonis-agora/telescope-ui@rc`.
+</Callout>
+
+## Update the version range
+
+A `0.x` range does not match `1.0.0`, so a plain `pnpm update` keeps you on 0.27. Change the
+range in `package.json`.
+
+Before:
+
+```json title="package.json"
+{
+  "dependencies": {
+    "@adonis-agora/telescope": "^0.27.1",
+    "@adonis-agora/telescope-ui": "^2.1.0"
+  }
+}
+```
+
+After:
+
+```json title="package.json"
+{
+  "dependencies": {
+    "@adonis-agora/telescope": "^1.0.0",
+    "@adonis-agora/telescope-ui": "^2.1.1"
+  }
+}
+```
+
+Then install:
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm install
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm install
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn install
+```
+
+</Tab>
+</Tabs>
+
+`@adonis-agora/telescope-ui` stays on 2.x: it accepts telescope 1.x as its peer, so it installs
+without a peer warning.
+
+## Run on Node.js 24 or newer
+
+Both packages declare `"engines": { "node": ">=24" }`.
+
+Before:
+
+```txt title=".nvmrc"
+22
+```
+
+After:
+
+```txt title=".nvmrc"
+24
+```
+
+Use the same version in your Dockerfile, CI and hosting settings.

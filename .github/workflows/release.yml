@@ -69,6 +69,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm check:package
 
       # A Renovate patch/minor bump automerges on its own and brings no changeset with it, so
       # the new dependency would reach npm only with the next hand-written changeset. This writes
@@ -232,6 +233,17 @@ jobs:
       # EVERY package looks unpublished and it republishes already-live versions, which npm
       # rejects -- turning a fine release red. Revisit when changesets supports npm 12.
       - run: npm install -g 'npm@^11.5.1'
+
+      # `changeset version --snapshot` refuses to run in pre mode (`.changeset/pre.json`). While a
+      # prerelease line is open, every push to master already publishes under its tag (e.g. `rc`),
+      # so there is nothing for a snapshot to add: say so and stop instead of failing midway.
+      - name: Refuse in pre mode
+        run: |
+          if [ -f .changeset/pre.json ]; then
+            tag=$(node -p "require('./.changeset/pre.json').tag")
+            echo "::error::Changesets is in pre mode ($tag): push to master publishes under the '$tag' dist-tag; snapshots are disabled until 'pnpm changeset pre exit'."
+            exit 1
+          fi
 
       - run: pnpm install --frozen-lockfile
 
