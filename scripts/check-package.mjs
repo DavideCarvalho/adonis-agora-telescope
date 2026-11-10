@@ -40,11 +40,15 @@ for (const dir of readdirSync(packagesDir, { withFileTypes: true })) {
       stdio: ['ignore', 'ignore', 'inherit'],
     });
     const tarball = readdirSync(out).find((f) => f.endsWith('.tgz'));
+    if (tarball === undefined) throw new Error(`npm pack produced no tarball in ${out}`);
     execFileSync(bin('attw'), [join(out, tarball), '--profile', 'esm-only'], {
       cwd,
       stdio: 'inherit',
     });
-  } catch {
+  } catch (error) {
+    // A tool that ran already printed its findings; name the package and the cause anyway, so a
+    // missing bin or a pack failure is not reported as a bare "failed".
+    console.error(`\n${manifest.name}: ${error instanceof Error ? error.message : String(error)}`);
     failed = true;
   } finally {
     rmSync(out, { recursive: true, force: true });
