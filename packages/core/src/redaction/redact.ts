@@ -233,7 +233,7 @@ export function redactBoundedWith(
     bytesRemaining -= NODE_BYTE_OVERHEAD;
 
     if (typeof node === 'string') {
-      const kept = node.length > maxStringLength ? maxStringLength : node.length;
+      const kept = Math.min(node.length, maxStringLength);
       bytesRemaining -= kept;
       if (node.length > maxStringLength) {
         truncated = true;

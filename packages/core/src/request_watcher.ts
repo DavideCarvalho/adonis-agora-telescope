@@ -87,7 +87,7 @@ export function classifyRequest(request: RequestLike, responseContentType?: stri
   // An Inertia visit sets this and asks for JSON, but it is a screen navigation.
   if (headerString(request, 'x-inertia') !== undefined) return 'page';
 
-  if (responseContentType !== undefined && responseContentType.includes('text/html')) return 'page';
+  if (responseContentType?.includes('text/html')) return 'page';
 
   const accept = headerString(request, 'accept') ?? '';
   // `text/html` before any `application/json` in the list: browsers send both, and
