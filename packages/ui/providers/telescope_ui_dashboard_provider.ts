@@ -56,6 +56,7 @@ export default class TelescopeUiDashboardProvider {
   async boot() {
     const uiConfig = resolveUiConfig(
       this.app.config.get<TelescopeUiConfig | undefined>('telescope_ui', undefined),
+      { inProduction: this.app.inProduction === true },
     );
     // If the core UI (JSON API) is off, there is no backend for the SPA to talk to — serve nothing.
     if (!uiConfig.enabled) return;
@@ -79,9 +80,6 @@ export default class TelescopeUiDashboardProvider {
       basePath: path,
       ...(auth !== null ? { loginHref: `${loginBase}/login` } : {}),
       accessDenied: uiConfig.accessDenied,
-      // A browser answers `WWW-Authenticate: Basic` with a native prompt — wanted only when the
-      // built-in `basic` credentials can actually accept it; otherwise it is noise over the page.
-      challenge: uiConfig.credentials.basic !== undefined,
     };
 
     // Resolve the router from the container — NOT the `@adonisjs/core/services/router` façade,

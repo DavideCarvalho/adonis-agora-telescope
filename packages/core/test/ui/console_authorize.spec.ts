@@ -2,6 +2,7 @@ import { Container } from '@adonisjs/core/container';
 import type { HttpContext } from '@adonisjs/core/http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  authorizeByToken,
   type ConsoleAuthorize,
   type ConsoleAuthorizeResult,
   type ConsoleAuthorizer,
@@ -173,7 +174,7 @@ describe('telescope_ui authorize accepts every console form', () => {
     const denied = ctx({}, container);
     expect(await enforceGuard(denied.ctx, guard)).toBe(false);
     expect(denied.res.statusCode).toBe(403);
-    expect(denied.res.body).toEqual({ error: 'Forbidden' });
+    expect(denied.res.body).toEqual({ error: 'forbidden' });
   });
 
   it("API guard: reason 'unauthenticated' → 401", async () => {
@@ -181,6 +182,7 @@ describe('telescope_ui authorize accepts every console form', () => {
     const guard = gated((_ctx) => ({ allowed: false, reason: 'unauthenticated' }));
     expect(await enforceGuard(c, guard)).toBe(false);
     expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'unauthenticated' });
   });
 
   it('API guard: { redirectTo } → 401 JSON carrying the path', async () => {
@@ -192,7 +194,7 @@ describe('telescope_ui authorize accepts every console form', () => {
       ),
     ).toBe(false);
     expect(res.statusCode).toBe(401);
-    expect(res.body).toEqual({ error: 'Unauthorized', redirectTo: '/login' });
+    expect(res.body).toEqual({ error: 'unauthenticated', redirectTo: '/login' });
     expect(res.headers.location).toBeUndefined();
   });
 
@@ -216,7 +218,7 @@ describe('telescope_ui authorize accepts every console form', () => {
     expect(String(res.body)).toContain('<!doctype html>');
   });
 
-  it('omitted authorize keeps the default: open outside production, 401 in production', async () => {
+  it('omitted authorize: open outside production, 403 in production', async () => {
     process.env.NODE_ENV = 'development';
     const dev = ctx();
     expect(await enforceGuard(dev.ctx, resolveConfig({}).authorize)).toBe(true);
@@ -224,6 +226,48 @@ describe('telescope_ui authorize accepts every console form', () => {
     process.env.NODE_ENV = 'production';
     const prod = ctx();
     expect(await enforceGuard(prod.ctx, resolveConfig({}).authorize)).toBe(false);
-    expect(prod.res.statusCode).toBe(401);
+    expect(prod.res.statusCode).toBe(403);
+    expect(prod.res.body).toEqual({ error: 'forbidden' });
+  });
+});
+
+describe('authorizeByToken', () => {
+  it('allows a matching Authorization: Bearer header', async () => {
+    const guard = resolveConfig({ authorize: authorizeByToken({ token: 's3cr3t' }) }).authorize;
+    const ok = ctx({ authorization: 'Bearer s3cr3t' });
+    expect(await enforceGuard(ok.ctx, guard)).toBe(true);
+    const caseInsensitive = ctx({ authorization: 'bearer   s3cr3t ' });
+    expect(await enforceGuard(caseInsensitive.ctx, guard)).toBe(true);
+  });
+
+  it('answers 401 unauthenticated to a missing or wrong token', async () => {
+    const guard = resolveConfig({ authorize: authorizeByToken({ token: 's3cr3t' }) }).authorize;
+    for (const headers of [
+      {},
+      { authorization: 'Bearer nope' },
+      { authorization: 'Basic s3cr3t' },
+    ]) {
+      const { ctx: c, res } = ctx(headers);
+      expect(await enforceGuard(c, guard)).toBe(false);
+      expect(res.statusCode).toBe(401);
+      expect(res.body).toEqual({ error: 'unauthenticated' });
+    }
+  });
+
+  it('reads the header only: no query string, no custom header', async () => {
+    const check = authorizeByToken({ token: 's3cr3t' }) as (c: unknown) => ConsoleAuthorizeResult;
+    const res = new RecordingResponse();
+    const viaQuery = { request: makeRequest('GET', { token: 's3cr3t' }, {}), response: res };
+    expect(check(viaQuery)).toEqual({ allowed: false, reason: 'unauthenticated' });
+    const viaHeader = {
+      request: makeRequest('GET', {}, { 'x-telescope-token': 's3cr3t' }),
+      response: res,
+    };
+    expect(check(viaHeader)).toEqual({ allowed: false, reason: 'unauthenticated' });
+  });
+
+  it('throws at config time on an empty or undefined token', () => {
+    expect(() => authorizeByToken({ token: undefined })).toThrow(/non-empty/);
+    expect(() => authorizeByToken({ token: '' })).toThrow(/non-empty/);
   });
 });

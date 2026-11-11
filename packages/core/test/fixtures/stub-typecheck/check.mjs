@@ -201,7 +201,7 @@ try {
    * The env module `node ace configure` leaves in a real app, carrying every var the stubs read.
    *
    * Optionality is modelled the way a consumer would actually declare it, and that is load-bearing:
-   * a var feeding a REQUIRED field (`channels[].url`, `credentials.basic.password`,
+   * a var feeding a REQUIRED field (`channels[].url`,
    * `dashboardAuth.secret`) must be `Env.schema.string()`, because `string | undefined` does not
    * satisfy `string`. A var feeding an optional field stays `.optional()` — which is exactly what
    * the AI stub's own comment instructs, so this also pins that `apiKey` accepts what that
@@ -216,9 +216,7 @@ try {
       '',
       "export default await Env.create(new URL('../', import.meta.url), {",
       '  ANTHROPIC_API_KEY: Env.schema.string.optional(),',
-      '  TELESCOPE_UI_TOKEN: Env.schema.string.optional(),',
       '  TELESCOPE_MCP_TOKEN: Env.schema.string.optional(),',
-      '  TELESCOPE_UI_PASSWORD: Env.schema.string(),',
       '  TELESCOPE_DASHBOARD_SECRET: Env.schema.string(),',
       '  TELESCOPE_SLACK_WEBHOOK: Env.schema.string(),',
       '  TELESCOPE_ALERT_WEBHOOK: Env.schema.string(),',

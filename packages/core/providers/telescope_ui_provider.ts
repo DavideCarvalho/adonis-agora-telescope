@@ -14,6 +14,7 @@ import {
   writeSessionCookie,
 } from '../src/ui/dashboard_auth.js';
 import {
+  MISSING_AUTHORIZE_WARNING,
   type ResolvedTelescopeUiConfig,
   resolveConfig,
   type TelescopeUiConfig,
@@ -43,18 +44,33 @@ import { SchedulesApi } from '../src/ui/schedules_api.js';
 export default class TelescopeUiProvider {
   constructor(protected app: ApplicationService) {}
 
+  /** Log a warning through the app logger when one is bound, else the console. Never throws. */
+  private async warn(message: string): Promise<void> {
+    try {
+      const logger = await this.app.container.make('logger');
+      logger.warn(message);
+    } catch {
+      console.warn(message);
+    }
+  }
+
   /** Warn once so a throwing `login` hook doesn't spam the logs on every failed attempt. */
   private warnedOnHookThrow = false;
 
   private resolve(): ResolvedTelescopeUiConfig {
     return resolveConfig(
       this.app.config.get<TelescopeUiConfig | undefined>('telescope_ui', undefined),
+      { inProduction: this.app.inProduction === true },
     );
   }
 
   async boot() {
     const config = this.resolve();
     if (!config.enabled) return;
+    // Without `authorize`, production denies every console request: say so once, at boot.
+    if (!config.authorizeConfigured && this.app.inProduction === true) {
+      await this.warn(MISSING_AUTHORIZE_WARNING);
+    }
 
     let store: TelescopeStore | null;
     try {

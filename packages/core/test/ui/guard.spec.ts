@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveConfig as resolveMcpConfig } from '../../src/mcp/define_config.js';
-import {
-  type AuthorizeDecision,
-  defaultAuthorize,
-  resolveConfig,
-} from '../../src/ui/define_config.js';
+import { type AuthorizeDecision, resolveConfig } from '../../src/ui/define_config.js';
 import { enforceGuard, enforcePageGuard, runGuard } from '../../src/ui/guard.js';
 import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
 
@@ -30,7 +26,7 @@ describe('runGuard', () => {
     // Authorization header/?token, and the old request-shape heuristic answered 401 "Sign in".
     const { ctx: c } = ctx();
     const result = await runGuard(c, () => false);
-    expect(result).toEqual({ allowed: false, status: 403, message: 'Forbidden' });
+    expect(result).toEqual({ allowed: false, status: 403, message: 'forbidden' });
   });
 
   it('403s on a bare false when a credential WAS presented', async () => {
@@ -44,7 +40,7 @@ describe('runGuard', () => {
     const result = await runGuard(c, () => {
       throw new Error('boom');
     });
-    expect(result).toEqual({ allowed: false, status: 403, message: 'Forbidden' });
+    expect(result).toEqual({ allowed: false, status: 403, message: 'forbidden' });
   });
 
   it('awaits an async authorize hook', async () => {
@@ -66,14 +62,14 @@ describe('runGuard with an enriched AuthorizeDecision return', () => {
     // An explicit reason overrides that heuristic.
     const { ctx: c } = ctx();
     const result = await runGuard(c, () => ({ allowed: false, reason: 'forbidden' }));
-    expect(result).toEqual({ allowed: false, status: 403, message: 'Forbidden' });
+    expect(result).toEqual({ allowed: false, status: 403, message: 'forbidden' });
   });
 
   it("401s on reason: 'unauthenticated' even when a credential WAS presented", async () => {
     // An explicit reason overrides the heuristic in both directions.
     const { ctx: c } = ctx({}, { authorization: 'Bearer whatever' });
     const result = await runGuard(c, () => ({ allowed: false, reason: 'unauthenticated' }));
-    expect(result).toEqual({ allowed: false, status: 401, message: 'Unauthorized' });
+    expect(result).toEqual({ allowed: false, status: 401, message: 'unauthenticated' });
   });
 
   it('403s when allowed: false has no reason, whatever the request looks like', async () => {
@@ -82,7 +78,7 @@ describe('runGuard with an enriched AuthorizeDecision return', () => {
     expect(await runGuard(noCredential, () => ({ allowed: false }))).toEqual({
       allowed: false,
       status: 403,
-      message: 'Forbidden',
+      message: 'forbidden',
     });
     expect((await runGuard(withCredential, () => ({ allowed: false }))).status).toBe(403);
   });
@@ -105,8 +101,8 @@ describe('enforceGuard', () => {
     const { ctx: c, res } = ctx();
     expect(await enforceGuard(c, unauthenticated)).toBe(false);
     expect(res.statusCode).toBe(401);
-    expect(res.headers['www-authenticate']).toContain('Basic');
-    expect((res.body as { error: string }).error).toBe('Unauthorized');
+    expect(res.headers['www-authenticate']).toBe('Bearer realm="Telescope"');
+    expect(res.body).toEqual({ error: 'unauthenticated' });
   });
 
   it('writes 403 JSON (no challenge) when a custom hook returns a bare false with no credential', async () => {
@@ -114,7 +110,7 @@ describe('enforceGuard', () => {
     expect(await enforceGuard(c, () => false)).toBe(false);
     expect(res.statusCode).toBe(403);
     expect(res.headers['www-authenticate']).toBeUndefined();
-    expect((res.body as { error: string }).error).toBe('Forbidden');
+    expect((res.body as { error: string }).error).toBe('forbidden');
   });
 
   it('writes 403 when a credential was presented and rejected', async () => {
@@ -154,53 +150,7 @@ describe('enforceGuard', () => {
     expect(await enforceGuard(c, () => ({ allowed: false, reason: 'forbidden' }))).toBe(false);
     expect(res.statusCode).toBe(403);
     expect(res.headers['www-authenticate']).toBeUndefined();
-    expect((res.body as { error: string }).error).toBe('Forbidden');
-  });
-});
-
-describe('default authorize policy', () => {
-  const ORIGINAL = process.env.NODE_ENV;
-  afterEach(() => {
-    process.env.NODE_ENV = ORIGINAL;
-  });
-
-  it('allows outside production when no credentials are configured', async () => {
-    process.env.NODE_ENV = 'development';
-    const authorize = defaultAuthorize({});
-    const { ctx: c } = ctx();
-    expect(await authorize(c)).toBe(true);
-  });
-
-  it('denies in production when no credentials are configured (default-deny)', async () => {
-    process.env.NODE_ENV = 'production';
-    const authorize = defaultAuthorize({});
-    const { ctx: c } = ctx();
-    expect(await authorize(c)).toBe(false);
-  });
-
-  it('allows in production with a matching bearer token', async () => {
-    process.env.NODE_ENV = 'production';
-    const authorize = defaultAuthorize({ token: 'secret' });
-    const { ctx: ok } = ctx({}, { authorization: 'Bearer secret' });
-    const { ctx: bad } = ctx({}, { authorization: 'Bearer nope' });
-    expect(await authorize(ok)).toBe(true);
-    expect(await authorize(bad)).toBe(false);
-  });
-
-  it('allows in production with a matching ?token query param', async () => {
-    process.env.NODE_ENV = 'production';
-    const authorize = defaultAuthorize({ token: 'secret' });
-    const { ctx: c } = ctx({ token: 'secret' });
-    expect(await authorize(c)).toBe(true);
-  });
-
-  it('allows in production with matching HTTP Basic credentials', async () => {
-    process.env.NODE_ENV = 'production';
-    const authorize = defaultAuthorize({ basic: { username: 'admin', password: 'pw' } });
-    const good = Buffer.from('admin:pw').toString('base64');
-    const bad = Buffer.from('admin:wrong').toString('base64');
-    expect(await authorize(ctx({}, { authorization: `Basic ${good}` }).ctx)).toBe(true);
-    expect(await authorize(ctx({}, { authorization: `Basic ${bad}` }).ctx)).toBe(false);
+    expect((res.body as { error: string }).error).toBe('forbidden');
   });
 });
 
@@ -219,10 +169,49 @@ describe('resolveConfig', () => {
   });
 
   it('uses the supplied authorize hook over the default policy', async () => {
-    process.env.NODE_ENV = 'production';
-    const resolved = resolveConfig({ authorize: () => true });
+    const resolved = resolveConfig({ authorize: () => true }, { inProduction: true });
     const { ctx: c } = ctx();
     expect(await resolved.authorize(c)).toEqual({ allowed: true });
+    expect(resolved.authorizeConfigured).toBe(true);
+  });
+
+  it('without authorize: open outside production', async () => {
+    const resolved = resolveConfig({}, { inProduction: false });
+    expect(resolved.authorizeConfigured).toBe(false);
+    const { ctx: c, res } = ctx();
+    expect(await enforceGuard(c, resolved.authorize)).toBe(true);
+    expect(res.sent).toBe(false);
+  });
+
+  it('without authorize: 403 on every API and page request in production, whatever is presented', async () => {
+    const { authorize } = resolveConfig({}, { inProduction: true });
+    for (const headers of [{}, { authorization: 'Bearer anything' }]) {
+      const api = ctx({ token: 'anything' }, headers);
+      expect(await enforceGuard(api.ctx, authorize)).toBe(false);
+      expect(api.res.statusCode).toBe(403);
+      expect(api.res.body).toEqual({ error: 'forbidden' });
+      const page = ctx({}, headers);
+      expect(await enforcePageGuard(page.ctx, authorize, { basePath: '/telescope' })).toBe(false);
+      expect(page.res.statusCode).toBe(403);
+      expect(page.res.body).toContain('<h1>Access denied</h1>');
+    }
+  });
+
+  it('without the option, production is read from NODE_ENV', async () => {
+    process.env.NODE_ENV = 'production';
+    expect(await runGuard(ctx().ctx, resolveConfig().authorize)).toMatchObject({ status: 403 });
+    process.env.NODE_ENV = 'development';
+    expect(await runGuard(ctx().ctx, resolveConfig().authorize)).toEqual({ allowed: true });
+  });
+
+  it('no longer reads the removed credentials option', async () => {
+    const legacy = { credentials: { token: 'secret' } } as unknown as Parameters<
+      typeof resolveConfig
+    >[0];
+    const resolved = resolveConfig(legacy, { inProduction: true });
+    expect(resolved).not.toHaveProperty('credentials');
+    const { ctx: c } = ctx({ token: 'secret' }, { authorization: 'Bearer secret' });
+    expect(await runGuard(c, resolved.authorize)).toMatchObject({ status: 403 });
   });
 
   it('defaults enabled to true', () => {
@@ -258,26 +247,16 @@ describe('enforcePageGuard (a BROWSER is refused with a page, not JSON)', () => 
     expect(res.body).toContain('<h1>Access denied</h1>');
   });
 
-  it("serves the 401 page (still with WWW-Authenticate) on reason: 'unauthenticated'", async () => {
+  it("serves the 401 page (no browser auth prompt) on reason: 'unauthenticated'", async () => {
     const { ctx: c, res } = ctx();
     expect(await enforcePageGuard(c, unauthenticated, options)).toBe(false);
     expect(res.statusCode).toBe(401);
-    expect(res.headers['www-authenticate']).toContain('Basic');
+    expect(res.headers['www-authenticate']).toBeUndefined();
     expect(res.headers['content-type']).toBe('text/html; charset=utf-8');
     expect(res.headers['cache-control']).toBe('no-store, must-revalidate');
     expect(res.body).toContain('<!doctype html>');
     expect(res.body).toContain('<h1>Sign in required</h1>');
     expect(res.body).toContain('Telescope');
-  });
-
-  it('drops the WWW-Authenticate challenge when told to (no basic credentials to answer it)', async () => {
-    const { ctx: c, res } = ctx();
-    expect(await enforcePageGuard(c, unauthenticated, { ...options, challenge: false })).toBe(
-      false,
-    );
-    expect(res.statusCode).toBe(401);
-    expect(res.headers['www-authenticate']).toBeUndefined();
-    expect(res.body).toContain('<h1>Sign in required</h1>');
   });
 
   it('serves the 403 page when a credential was presented and rejected', async () => {
@@ -355,7 +334,7 @@ describe('enforcePageGuard (a BROWSER is refused with a page, not JSON)', () => 
   });
 });
 
-describe('the built-in credentials gate keeps its 401-vs-403 request-shape split', () => {
+describe('the MCP endpoint keeps its own token / basic credentials', () => {
   const ORIGINAL = process.env.NODE_ENV;
   beforeEach(() => {
     process.env.NODE_ENV = 'production';
@@ -363,66 +342,8 @@ describe('the built-in credentials gate keeps its 401-vs-403 request-shape split
   afterEach(() => {
     process.env.NODE_ENV = ORIGINAL;
   });
-  const basic = { username: 'admin', password: 'pw' };
-  const wrongBasic = `Basic ${Buffer.from('admin:wrong').toString('base64')}`;
 
-  it('API: 401 + WWW-Authenticate when no credential was presented', async () => {
-    const { authorize } = resolveConfig({ credentials: { token: 'secret' } });
-    const { ctx: c, res } = ctx();
-    expect(await enforceGuard(c, authorize)).toBe(false);
-    expect(res.statusCode).toBe(401);
-    expect(res.headers['www-authenticate']).toContain('Basic');
-  });
-
-  it('API: 403 when a wrong token (header or ?token) was presented', async () => {
-    const { authorize } = resolveConfig({ credentials: { token: 'secret' } });
-    const header = ctx({}, { authorization: 'Bearer nope' });
-    expect(await enforceGuard(header.ctx, authorize)).toBe(false);
-    expect(header.res.statusCode).toBe(403);
-    const query = ctx({ token: 'nope' });
-    expect(await enforceGuard(query.ctx, authorize)).toBe(false);
-    expect(query.res.statusCode).toBe(403);
-  });
-
-  it('API: allows the matching credential', async () => {
-    const { authorize } = resolveConfig({ credentials: { token: 'secret' } });
-    const { ctx: c, res } = ctx({}, { authorization: 'Bearer secret' });
-    expect(await enforceGuard(c, authorize)).toBe(true);
-    expect(res.sent).toBe(false);
-  });
-
-  it('page: 401 sign-in page without a credential, 403 page with a wrong one', async () => {
-    const { authorize } = resolveConfig({ credentials: { basic } });
-    const options = { basePath: '/telescope' };
-    const none = ctx();
-    expect(await enforcePageGuard(none.ctx, authorize, options)).toBe(false);
-    expect(none.res.statusCode).toBe(401);
-    expect(none.res.headers['www-authenticate']).toContain('Basic');
-    expect(none.res.body).toContain('<h1>Sign in required</h1>');
-    const wrong = ctx({}, { authorization: wrongBasic });
-    expect(await enforcePageGuard(wrong.ctx, authorize, options)).toBe(false);
-    expect(wrong.res.statusCode).toBe(403);
-    expect(wrong.res.body).toContain('<h1>Access denied</h1>');
-  });
-
-  it('no credentials configured, production: 401 (default-deny still asks to authenticate)', async () => {
-    const { authorize } = resolveConfig();
-    const { ctx: c, res } = ctx();
-    expect(await enforceGuard(c, authorize)).toBe(false);
-    expect(res.statusCode).toBe(401);
-  });
-
-  it('also applies when the host passes authorize: defaultAuthorize(...) explicitly', async () => {
-    const { authorize } = resolveConfig({ authorize: defaultAuthorize({ token: 'secret' }) });
-    const none = ctx();
-    expect(await enforceGuard(none.ctx, authorize)).toBe(false);
-    expect(none.res.statusCode).toBe(401);
-    const wrong = ctx({ token: 'nope' });
-    expect(await enforceGuard(wrong.ctx, authorize)).toBe(false);
-    expect(wrong.res.statusCode).toBe(403);
-  });
-
-  it('the MCP config gets the same default-gate reasons', async () => {
+  it('401 without a credential, 403 with a wrong one, allowed with the right one', async () => {
     const { authorize } = resolveMcpConfig({ credentials: { token: 'secret' } });
     expect(await runGuard(ctx().ctx, authorize)).toMatchObject({ allowed: false, status: 401 });
     expect(await runGuard(ctx({}, { authorization: 'Bearer nope' }).ctx, authorize)).toMatchObject({
@@ -432,18 +353,26 @@ describe('the built-in credentials gate keeps its 401-vs-403 request-shape split
     expect(await runGuard(ctx({}, { authorization: 'Bearer secret' }).ctx, authorize)).toEqual({
       allowed: true,
     });
+    expect(await runGuard(ctx({ token: 'secret' }).ctx, authorize)).toEqual({ allowed: true });
   });
 
-  it('exported defaultAuthorize still returns a plain boolean (safe to compose)', async () => {
-    const authorize = defaultAuthorize({ token: 'secret' });
-    expect(await authorize(ctx().ctx)).toBe(false);
-    expect(await authorize(ctx({}, { authorization: 'Bearer nope' }).ctx)).toBe(false);
+  it('accepts HTTP Basic', async () => {
+    const { authorize } = resolveMcpConfig({
+      credentials: { basic: { username: 'admin', password: 'pw' } },
+    });
+    const good = `Basic ${Buffer.from('admin:pw').toString('base64')}`;
+    const bad = `Basic ${Buffer.from('admin:wrong').toString('base64')}`;
+    expect(await runGuard(ctx({}, { authorization: good }).ctx, authorize)).toEqual({
+      allowed: true,
+    });
+    expect(await runGuard(ctx({}, { authorization: bad }).ctx, authorize)).toMatchObject({
+      status: 403,
+    });
   });
 
-  it('a custom hook is NOT wrapped: its bare false stays 403', async () => {
-    const { authorize } = resolveConfig({ authorize: () => false });
-    const { ctx: c, res } = ctx();
-    expect(await enforceGuard(c, authorize)).toBe(false);
-    expect(res.statusCode).toBe(403);
+  it('is open outside production', async () => {
+    process.env.NODE_ENV = 'development';
+    const { authorize } = resolveMcpConfig();
+    expect(await runGuard(ctx().ctx, authorize)).toEqual({ allowed: true });
   });
 });

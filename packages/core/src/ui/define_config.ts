@@ -11,7 +11,6 @@ import {
 import {
   type ConsoleAuthorize,
   type ConsoleAuthorizeResult,
-  normalizeConsoleDecision,
   resolveConsoleAuthorize,
 } from './console_authorize.js';
 import type { UiHttpContext } from './http.js';
@@ -60,45 +59,20 @@ export interface AuthorizeDecision {
 export type AuthorizeResult = ConsoleAuthorizeResult | AuthorizeDecision;
 
 /**
- * The decision hook gating the dashboard + JSON API. Return `true` to allow the
- * request through, `false` to reject it. It receives the (framework-light) HTTP
- * context, so a host can inspect headers, a session, an injected user — whatever
- * its own auth exposes. Sync or async.
+ * The resolved decision hook gating the dashboard + JSON API: what `resolveConfig` turns the
+ * configured `authorize` (any {@link ConsoleAuthorize} form) into. Sync or async.
  *
- * A bare `false` from a custom hook is a `403`. To answer `401` ("please authenticate") return an
- * {@link AuthorizeDecision} with `reason: 'unauthenticated'`; see that type for the full contract
- * and the "Delegate to your app's auth" doc section. A hook may also answer the request itself
- * (e.g. `ctx.response.redirect('/login')`) and return `false`: the guard then writes nothing.
- *
- * Only the BUILT-IN gate ({@link defaultAuthorize}, used when no custom `authorize` is configured)
- * distinguishes `401` from `403` by request shape — `401` when the request presented no
- * `Authorization` header and no `?token`, `403` when a credential was presented but rejected — since
- * for its `credentials: { token, basic }` "no credential in the request" and "not authenticated" are
- * the same fact.
+ * A bare `false` is a `403`; `{ allowed: false, reason: 'unauthenticated' }` is a `401`;
+ * `{ redirectTo }` is a `302` for a page navigation and a `401` for an API call. A hook may also
+ * answer the request itself (e.g. `ctx.response.redirect('/login')`) and return `false`: the guard
+ * then writes nothing.
  */
 export type AuthorizeHook = (ctx: UiHttpContext) => AuthorizeResult | Promise<AuthorizeResult>;
 
 /**
- * Built-in credential gate used by the default {@link AuthorizeHook} when no
- * custom `authorize` is supplied. When set, a request is allowed in production
- * only if it presents the matching credential; otherwise the default policy is
- * "allow only outside production".
- */
-export interface UiCredentials {
-  /**
-   * A bearer/opaque token. A request is allowed when it carries
-   * `Authorization: Bearer <token>` OR `?token=<token>` matching this value.
-   */
-  token?: string;
-  /** HTTP Basic credentials (`Authorization: Basic <base64(user:pass)>`). */
-  basic?: { username: string; password: string };
-}
-
-/**
  * The shape of `config/telescope_ui.ts`. Everything is optional with sane
- * defaults: the dashboard is mounted at `/telescope`, and access is allowed
- * automatically outside production (and denied in production unless a `token` /
- * `basic` credential — or a custom `authorize` hook — says otherwise).
+ * defaults: the dashboard is mounted at `/telescope`; without `authorize` it is open
+ * outside production and answers `403` to every request in production.
  */
 export interface TelescopeUiConfig {
   /**
@@ -123,19 +97,16 @@ export interface TelescopeUiConfig {
    */
   recordOwnRequests?: boolean;
   /**
-   * Who may open the console. When omitted, the default policy is used: allow when
-   * not in production, otherwise require a configured {@link UiCredentials}. Provide
-   * this to delegate to your own app auth, in any {@link ConsoleAuthorize} form:
+   * Who may open the console (shell and API), in any {@link ConsoleAuthorize} form:
    * - a function: `(ctx) => ctx.auth.user?.isAdmin === true`;
    * - a {@link ConsoleAuthorizer} class (built through the container, so `@inject()` works);
-   * - a lazy import of such a class: `() => import('#policies/console_access')`.
+   * - a lazy import of such a class: `() => import('#policies/console_access')`;
+   * - `authorizeByToken({ token: env.get('CONSOLE_TOKEN') })` for `Authorization: Bearer` access.
+   *
+   * When omitted, the console is open outside production and answers `403` to every request in
+   * production (with one warning at boot).
    */
   authorize?: ConsoleAuthorize;
-  /**
-   * Built-in credentials for the default policy (ignored when a custom `authorize`
-   * is supplied). Lets you gate a production dashboard without writing a hook.
-   */
-  credentials?: UiCredentials;
 
   /**
    * Optional built-in login screen. When set, the provider mounts a server-rendered
@@ -214,7 +185,8 @@ export interface ResolvedTelescopeUiConfig {
   path: string;
   recordOwnRequests: boolean;
   authorize: AuthorizeHook;
-  credentials: UiCredentials;
+  /** Whether the host configured `authorize` (when not, the production default denies everything). */
+  authorizeConfigured: boolean;
   /** Resolved built-in login config, or `null` when `dashboardAuth` is unconfigured. */
   dashboardAuth: ResolvedDashboardAuth | null;
   /** The host's `accessDenied` option as given, or `null` for the built-in page with defaults. */
@@ -249,134 +221,45 @@ export function normalizePath(path: string): string {
   return p;
 }
 
-/** Whether the current process is running in production. */
+/** Whether the current process is running in production (used when the caller does not say). */
 function isProduction(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
-/**
- * Constant-time-ish string compare to avoid trivially leaking length/timing of a
- * configured secret. Not a substitute for a real auth system, but better than `===`
- * for a dev-tool credential check.
- */
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return mismatch === 0;
+/** Options for {@link resolveConfig}. */
+export interface ResolveUiConfigOptions {
+  /** Whether the app runs in production (`app.inProduction`). Defaults to `NODE_ENV === 'production'`. */
+  inProduction?: boolean;
 }
-
-/** Pull a bearer token from `Authorization: Bearer …` or `?token=…`. */
-function readToken(ctx: UiHttpContext): string | undefined {
-  const auth = ctx.request.header('authorization');
-  if (auth !== undefined) {
-    const match = /^Bearer\s+(.+)$/i.exec(auth.trim());
-    if (match?.[1] !== undefined) return match[1].trim();
-  }
-  const qsToken = ctx.request.qs().token;
-  return typeof qsToken === 'string' ? qsToken : undefined;
-}
-
-/** Decode and compare `Authorization: Basic …` against configured credentials. */
-function matchesBasic(ctx: UiHttpContext, basic: { username: string; password: string }): boolean {
-  const auth = ctx.request.header('authorization');
-  if (auth === undefined) return false;
-  const match = /^Basic\s+(.+)$/i.exec(auth.trim());
-  if (match?.[1] === undefined) return false;
-  let decoded: string;
-  try {
-    decoded = Buffer.from(match[1].trim(), 'base64').toString('utf8');
-  } catch {
-    return false;
-  }
-  const sep = decoded.indexOf(':');
-  if (sep === -1) return false;
-  const username = decoded.slice(0, sep);
-  const password = decoded.slice(sep + 1);
-  return safeEqual(username, basic.username) && safeEqual(password, basic.password);
-}
-
-/** Hooks minted by {@link defaultAuthorize}, so {@link withCredentialStatus} can recognize them. */
-const defaultHooks = new WeakSet<AuthorizeHook>();
 
 /**
- * The default access policy used when no custom `authorize` is configured:
+ * The warning logged once at boot when `authorize` is omitted and the app runs in production.
  *
- * - if a `token` credential is set and the request presents it → allow;
- * - if `basic` credentials are set and the request presents them → allow;
- * - otherwise allow only when NOT in production (so a dev dashboard "just works"
- *   while a production deploy is denied unless explicitly gated).
- *
- * Returns a plain `boolean` on purpose, so composing it (`if (await defaultAuthorize(c)(ctx))`) is
- * safe. The `401`-vs-`403` split for this gate is added by `resolveConfig` (see
- * {@link withCredentialStatus}) — also when the host passes `authorize: defaultAuthorize(...)`
- * explicitly.
+ * @internal Used by the UI provider.
  */
-export function defaultAuthorize(credentials: UiCredentials): AuthorizeHook {
-  const hook: AuthorizeHook = (ctx) => {
-    if (credentials.token !== undefined) {
-      const presented = readToken(ctx);
-      if (presented !== undefined && safeEqual(presented, credentials.token)) return true;
-    }
-    if (credentials.basic !== undefined && matchesBasic(ctx, credentials.basic)) return true;
-    return !isProduction();
-  };
-  defaultHooks.add(hook);
-  return hook;
-}
+export const MISSING_AUTHORIZE_WARNING =
+  '[@adonis-agora/telescope] console has no `authorize` configured: it is open outside production and denies every request in production. Set `authorize` in config/telescope_ui.ts.';
 
-/**
- * Whether the request presented ANY credential the built-in gate understands: an `Authorization`
- * header (Bearer or Basic) or a `?token`.
- */
-function presentedCredential(ctx: UiHttpContext): boolean {
-  return (
-    ctx.request.header('authorization') !== undefined || typeof ctx.request.qs().token === 'string'
-  );
-}
-
-/**
- * Give a {@link defaultAuthorize} hook its request-shape denial reason: `'unauthenticated'` (→ `401`,
- * with `WWW-Authenticate` so a browser prompts) when no credential was presented, `'forbidden'`
- * (→ `403`) when one was presented but rejected. Any other (custom) hook is returned untouched — its
- * bare `false` is a `403`, per the {@link AuthorizeDecision} contract.
- *
- * @internal Used by the UI and MCP `resolveConfig`.
- */
-export function withCredentialStatus(authorize: AuthorizeHook): AuthorizeHook {
-  if (!defaultHooks.has(authorize)) return authorize;
-  return async (ctx) => {
-    if (normalizeConsoleDecision(await authorize(ctx)).allowed) return true;
-    return { allowed: false, reason: presentedCredential(ctx) ? 'forbidden' : 'unauthenticated' };
-  };
-}
-
-/**
- * Resolve the configured `authorize` (any {@link ConsoleAuthorize} form) into the guard's hook.
- * A {@link defaultAuthorize} hook passed explicitly keeps its credential-aware `401`/`403` split.
- *
- * @internal Used by `resolveConfig`.
- */
-function resolveUiAuthorize(
-  authorize: ConsoleAuthorize | undefined,
-  credentials: UiCredentials,
-): AuthorizeHook {
-  if (authorize === undefined) return withCredentialStatus(defaultAuthorize(credentials));
-  if (defaultHooks.has(authorize as AuthorizeHook)) {
-    return withCredentialStatus(authorize as AuthorizeHook);
-  }
-  return resolveConsoleAuthorize(authorize);
+/** The default when `authorize` is omitted: open outside production, `403` in production. */
+function defaultConsoleAuthorize(inProduction: boolean): AuthorizeHook {
+  return () => !inProduction;
 }
 
 /** Apply defaults to a (possibly partial) config. */
-export function resolveConfig(config: TelescopeUiConfig = {}): ResolvedTelescopeUiConfig {
-  const credentials = config.credentials ?? {};
+export function resolveConfig(
+  config: TelescopeUiConfig = {},
+  options: ResolveUiConfigOptions = {},
+): ResolvedTelescopeUiConfig {
+  const inProduction = options.inProduction ?? isProduction();
   return {
     enabled: config.enabled ?? true,
     path: normalizePath(config.path ?? '/telescope'),
     recordOwnRequests: config.recordOwnRequests ?? false,
-    authorize: resolveUiAuthorize(config.authorize, credentials),
-    credentials,
+    authorize:
+      config.authorize === undefined
+        ? defaultConsoleAuthorize(inProduction)
+        : resolveConsoleAuthorize(config.authorize),
+    authorizeConfigured: config.authorize !== undefined,
     // Validate + resolve now so a misconfigured secret/login fails closed at boot, not on the first
     // login attempt. `null` when `dashboardAuth` is omitted (behavior unchanged).
     dashboardAuth: resolveDashboardAuth(config.dashboardAuth),

@@ -1,7 +1,7 @@
 ---
 title: Migrating to 1.0
 icon: CircleArrowUp
-description: Move an app from @adonis-agora/telescope 0.x to 1.0 and @adonis-agora/telescope-ui 2.x to 3.0 — the new version ranges, Node.js 24, and the few options that were removed.
+description: Move an app from @adonis-agora/telescope 0.x to 1.0 and @adonis-agora/telescope-ui 2.x to 3.0 — the new version ranges, Node.js 24, console access, and the few options that were removed.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout'
@@ -86,6 +86,75 @@ After:
 ```
 
 Use the same version in your Dockerfile, CI and hosting settings.
+
+## Console access: `credentials` is replaced by `authorize`
+
+`config/telescope_ui.ts` no longer takes `credentials: { token, basic }`, and the console no
+longer reads `?token=` or HTTP Basic. Without `authorize`, the console is open outside production
+and answers `403` to every request in production. The `TELESCOPE_UI_TOKEN` and
+`TELESCOPE_UI_PASSWORD` variables are no longer read; remove them from `start/env.ts` and `.env`.
+
+For token access, use `authorizeByToken`. It reads only the `Authorization: Bearer <token>`
+header.
+
+Before:
+
+```ts title="config/telescope_ui.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  credentials: {
+    token: env.get('TELESCOPE_UI_TOKEN'),
+    basic: { username: 'admin', password: env.get('TELESCOPE_UI_PASSWORD') },
+  },
+})
+```
+
+After:
+
+```ts title="config/telescope_ui.ts"
+import env from '#start/env'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }),
+})
+```
+
+```ts title="start/env.ts"
+export default await Env.create(new URL('../', import.meta.url), {
+  CONSOLE_TOKEN: Env.schema.string(),
+})
+```
+
+Send the header instead of the query string:
+
+```sh
+# Before
+open 'https://app.example.com/telescope?token=s3cr3t'
+# After
+curl -H 'Authorization: Bearer s3cr3t' https://app.example.com/telescope/api/entries
+```
+
+For people, gate the console on your app's own auth instead:
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
+})
+```
+
+If you had neither `authorize` nor `credentials`, the console is still open outside production
+and still closed in production; it now answers `403` there (it was `401`) and logs a warning at
+boot until you set `authorize`.
+
+The JSON errors are now lowercase codes: `{ "error": "forbidden" }` (`403`) and
+`{ "error": "unauthenticated" }` (`401`, with `redirectTo` when `authorize` returned one).
+
+`config/telescope_mcp.ts` keeps its own `credentials` option; it is unchanged.
 
 ## `storage.memory({ limit })` is now `maxEntries`
 

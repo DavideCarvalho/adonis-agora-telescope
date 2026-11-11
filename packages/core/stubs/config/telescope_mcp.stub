@@ -10,9 +10,8 @@ import { defineConfig } from '@adonis-agora/telescope/mcp'
  * a coding agent (Claude Code, Cursor, …) over the Model Context Protocol as a
  * JSON-RPC endpoint at 'POST /telescope/mcp'.
  *
- * Access reuses the SAME guard as the dashboard: allowed automatically outside
- * production, and in production only when a token / basic credential — or a custom
- * authorize hook — permits it. A denial is returned as a JSON-RPC -32001 error
+ * Access: allowed automatically outside production, and in production only when a
+ * token / basic credential below — or a custom authorize hook — permits it. A denial is returned as a JSON-RPC -32001 error
  * (MCP has no transport-level 401).
  */
 export default defineConfig({
@@ -27,7 +26,7 @@ export default defineConfig({
   // path: '/telescope/mcp',
 
   /**
-   * Access-decision hook (identical to the UI/metrics guard). Return true to allow
+   * Access-decision hook. Return true to allow
    * the request. Delegate to your own app auth here, e.g.:
    */
   // authorize: async (ctx) => {

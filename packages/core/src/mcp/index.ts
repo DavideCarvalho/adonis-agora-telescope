@@ -2,6 +2,7 @@
 export const VERSION = '1.0.0-rc.0';
 
 export type {
+  McpCredentials,
   McpToolName,
   ResolvedTelescopeMcpConfig,
   TelescopeMcpConfig,

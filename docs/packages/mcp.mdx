@@ -75,14 +75,14 @@ export default defineConfig({
 | ------------- | ----------------- | ----------------------------------------------------------------------------- |
 | `enabled`     | `true`            | Master switch; `false` registers no routes.                                   |
 | `path`        | `/telescope/mcp`  | URL the JSON-RPC endpoint mounts at (normalized to leading slash, no trailing).|
-| `authorize`   | default policy    | Access-decision hook — the **same** guard as the [dashboard](/docs/telescope/dashboard/auth). |
+| `authorize`   | default policy    | Access-decision hook; replaces the default policy.                            |
 | `credentials` | `{}`              | Built-in token / HTTP Basic gate for the default policy.                       |
 | `tools`       | all six           | Which tools to expose — restrict to hand an agent a narrower, read-only surface.|
 
 <Callout type="info">
-Access reuses the **same** `authorize` + `credentials` guard as the UI / metrics API: allowed
-automatically outside production, and in production only when a `token`/`basic` credential — or
-a custom `authorize` hook — permits it. Because MCP has no transport-level `401`, a denial rides
+Without `authorize`, the endpoint is open outside production, and in production only a request
+presenting a configured credential (`Authorization: Bearer <token>`, `?token=<token>` or HTTP
+Basic) gets in. Because MCP has no transport-level `401`, a denial rides
 inside the JSON-RPC envelope as a `-32001` error (`MCP_UNAUTHORIZED`) where a compliant client
 can read it.
 </Callout>

@@ -13,8 +13,8 @@ export interface GuardResult {
   allowed: boolean;
   /** When denied, the HTTP status the caller should answer with (401 or 403). */
   status?: number;
-  /** When denied, a short message body. */
-  message?: string;
+  /** When denied, the JSON error code: `'unauthenticated'` (`401`) or `'forbidden'` (`403`). */
+  message?: 'unauthenticated' | 'forbidden';
   /** When the hook answered `{ redirectTo }`: where a page navigation is sent (`302`). */
   redirectTo?: string;
 }
@@ -32,17 +32,13 @@ export interface GuardResult {
  * - a bare `false`, or `{ allowed: false }` with no `reason` → `403` (fail closed).
  * - the hook throws → `403` (fail closed — never leaks the dashboard).
  * - `{ redirectTo }` → `401` carrying `redirectTo` (the page guard turns it into a `302`).
- *
- * No request-shape guessing happens here. The built-in credentials gate gets its `401` (no
- * credential presented) vs `403` (credential rejected) split by `resolveConfig` wrapping
- * `defaultAuthorize` into a hook that returns the matching `reason`.
  */
 export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Promise<GuardResult> {
   let result: AuthorizeResult;
   try {
     result = await authorize(ctx);
   } catch {
-    return { allowed: false, status: 403, message: 'Forbidden' };
+    return { allowed: false, status: 403, message: 'forbidden' };
   }
 
   const decision = normalizeConsoleDecision(result);
@@ -51,21 +47,21 @@ export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Pr
     return {
       allowed: false,
       status: 401,
-      message: 'Unauthorized',
+      message: 'unauthenticated',
       redirectTo: decision.redirectTo,
     };
   }
   if (decision.reason === 'unauthenticated') {
-    return { allowed: false, status: 401, message: 'Unauthorized' };
+    return { allowed: false, status: 401, message: 'unauthenticated' };
   }
-  return { allowed: false, status: 403, message: 'Forbidden' };
+  return { allowed: false, status: 403, message: 'forbidden' };
 }
 
 /**
- * Guard `ctx` and, on denial, write the status + message onto the response and
- * return `false`. On success returns `true` and leaves the response untouched for
- * the handler. A `WWW-Authenticate` header is sent on a 401 so a browser can
- * surface a Basic-auth prompt when that scheme is in play.
+ * Guard `ctx` and, on denial, write the status + JSON error onto the response and return `false`:
+ * `403 { error: 'forbidden' }`, `401 { error: 'unauthenticated' }`, or
+ * `401 { error: 'unauthenticated', redirectTo }`. On success returns `true` and leaves the response
+ * untouched for the handler. A `401` carries `WWW-Authenticate: Bearer`.
  *
  * Exception: if `authorize` itself already wrote a redirect (a `location` header — typically
  * `ctx.response.redirect(...)` to the host's own login/access-denied page) before returning `false`,
@@ -80,16 +76,17 @@ export async function enforceGuard(ctx: UiHttpContext, authorize: AuthorizeHook)
   if (ctx.response.getHeader('location')) return false;
   const status = result.status ?? 403;
   ctx.response.status(status);
+  if (status === 401) ctx.response.header('WWW-Authenticate', BEARER_CHALLENGE);
   if (result.redirectTo !== undefined) {
-    ctx.response.send({ error: result.message ?? 'Unauthorized', redirectTo: result.redirectTo });
+    ctx.response.send({ error: 'unauthenticated', redirectTo: result.redirectTo });
     return false;
   }
-  if (status === 401) {
-    ctx.response.header('WWW-Authenticate', 'Basic realm="Telescope", Bearer');
-  }
-  ctx.response.send({ error: result.message ?? 'Forbidden' });
+  ctx.response.send({ error: result.message ?? 'forbidden' });
   return false;
 }
+
+/** The `WWW-Authenticate` challenge a `401` carries (what `authorizeByToken` accepts). */
+const BEARER_CHALLENGE = 'Bearer realm="Telescope"';
 
 /** What {@link enforcePageGuard} needs to serve (or delegate) the access-denied page. */
 export interface PageGuardOptions {
@@ -101,23 +98,13 @@ export interface PageGuardOptions {
   accessDenied?: AccessDeniedOption<UiHttpContext> | null;
   /** The request's CSP nonce, applied to the page's inline `<style>`. */
   nonce?: string;
-  /**
-   * Send the `WWW-Authenticate: Basic …` challenge on a `401`. Default `true` (what the JSON guard
-   * always did). Browsers answer that header with a native username/password prompt, which only
-   * makes sense when the built-in `basic` credentials are configured — for a host gating on its own
-   * `authorize` hook the prompt is noise over the page, so the SPA provider passes `false` then.
-   */
-  challenge?: boolean;
 }
 
 /**
  * {@link enforceGuard} for a PAGE navigation — the `@adonis-agora/telescope-ui` SPA shell and its
  * assets. Same decision ({@link runGuard}), same statuses, same "a redirect the hook wrote wins"
  * rule; what differs is the body: a browser gets the built-in access-denied page (or the host's
- * `accessDenied` customisation of it) instead of the `{ error }` JSON the API answers with. The
- * `WWW-Authenticate` challenge still rides on a `401` unless `challenge: false`, so the built-in
- * `basic` credentials keep prompting natively in a browser — the page is what shows if the prompt
- * is dismissed.
+ * `accessDenied` customisation of it) instead of the `{ error }` JSON the API answers with.
  */
 export async function enforcePageGuard(
   ctx: UiHttpContext,
@@ -147,9 +134,6 @@ export async function enforcePageGuard(
   if (html === null) return false;
 
   ctx.response.status(status);
-  if (status === 401 && options.challenge !== false) {
-    ctx.response.header('WWW-Authenticate', 'Basic realm="Telescope", Bearer');
-  }
   ctx.response.header('content-type', 'text/html; charset=utf-8');
   ctx.response.header('cache-control', 'no-store, must-revalidate');
   ctx.response.send(html);

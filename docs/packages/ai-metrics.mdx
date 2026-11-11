@@ -160,7 +160,7 @@ export default defineConfig({
 
 - The route is registered by the `ui_provider`, next to the JSON API, and runs the **same
   guard**: the `authorize` hook, plus the `dashboardAuth` session when configured. Configure your
-  scraper the way you call the API, e.g. a bearer token your `authorize` hook accepts.
+  scraper the way you call the API, e.g. with a bearer token and `authorize: authorizeByToken({ token })`.
 - Counters are cumulative since process start; each process (pod) is its own target.
 - `maxSeriesPerMetric` caps distinct label sets per metric (default 2000). Past the cap, new
   combinations are dropped and counted in `agora_ai_metrics_dropped_series_total{metric}`.

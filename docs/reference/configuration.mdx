@@ -122,8 +122,7 @@ import { defineConfig } from '@adonis-agora/telescope/ui'
 export default defineConfig({
   enabled: true,
   path: '/telescope',
-  // authorize: (ctx) => ctx.auth.user?.isAdmin === true,
-  // credentials: { token: env.get('TELESCOPE_UI_TOKEN') },
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
 })
 ```
 
@@ -131,18 +130,14 @@ export default defineConfig({
 | ------------- | ------------------------------------- | -------------- | ----------------------------------------------------------- |
 | `enabled`     | `boolean`                             | `true`         | Master switch. `false` registers no routes.                 |
 | `path`        | `string`                              | `/telescope`   | URL prefix (normalized: leading slash, no trailing slash).  |
-| `authorize`   | `ConsoleAuthorize` — a function `(ctx) => result`, an authorizer class, or `() => import(...)` of one; `result` is `boolean \| { allowed, reason? } \| { redirectTo }` | default policy | Who may open the console. Allow outside prod, deny in prod unless a credential matches. A bare `false` is a `403`; `{ allowed: false, reason: 'unauthenticated' }` is a `401`; `{ redirectTo }` sends a browser there — see [Dashboard auth](/docs/telescope/dashboard/auth#delegate-to-your-apps-auth). |
-| `credentials` | `{ token?, basic? }`                  | `{}`           | Built-in token / HTTP Basic gate (ignored when `authorize` is set). |
+| `authorize`   | `ConsoleAuthorize` — a function `(ctx) => result`, an authorizer class, or `() => import(...)` of one; `result` is `boolean \| { allowed, reason? } \| { redirectTo }` | open outside production, `403` in production | Who may open the console (shell and API). `authorizeByToken({ token })` gives `Authorization: Bearer` access. A bare `false` is a `403`; `{ allowed: false, reason: 'unauthenticated' }` is a `401`; `{ redirectTo }` sends a browser there — see [Dashboard auth](/docs/telescope/dashboard/auth#delegate-to-your-apps-auth). |
 | `dashboardAuth` | `{ secret, ttl?, login }`           | _unset_        | Built-in [session login screen](/docs/telescope/dashboard/auth#built-in-login-screen) (fails closed at boot without `secret`/`login`). |
 | `replay`      | `{ enabled?, port?, timeoutMs? }`     | _disabled_     | Request replay from the dashboard — off by default (a captured `POST`/`DELETE` re-runs). |
 | `cpuProfiling`| `{ armEnabled? }`                     | _disabled_     | Whether the console may ARM a [CPU capture](/docs/telescope/packages/cpu-profiling#arming-a-capture). Reading captured profiles is never gated by this. |
 | `queueActions`| `{ enabled? }`                        | _disabled_     | Whether the [queue console](/docs/telescope/packages/watchers#live-queue-manager) may retry or enqueue jobs. Reading it is never gated by this. |
 | `dashboard`   | `{ enabled?, path? }`                 | `enabled`      | Toggles / re-mounts the [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui) SPA. |
 
-`credentials.token` allows `Authorization: Bearer <token>` or `?token=<token>`;
-`credentials.basic` is `{ username, password }`. See [Dashboard auth](/docs/telescope/dashboard/auth).
-
-**Env:** `TELESCOPE_UI_TOKEN`, `TELESCOPE_UI_PASSWORD` (your names — sourced via `env.get`).
+See [Dashboard auth](/docs/telescope/dashboard/auth).
 
 ## Alerts — `config/telescope_alerts.ts`
 
@@ -229,8 +224,8 @@ export default defineConfig({
 | ------------- | ----------------- | ---------------- | ---------------------------------------------------------------- |
 | `enabled`     | `boolean`         | `true`           | Master switch. `false` registers no routes.                      |
 | `path`        | `string`          | `/telescope/mcp` | URL the JSON-RPC endpoint mounts at.                             |
-| `authorize`   | `AuthorizeHook`   | default policy   | Same guard as the UI/metrics API.                                |
-| `credentials` | `{ token?, basic? }` | `{}`          | Built-in gate for the default policy.                            |
+| `authorize`   | `AuthorizeHook`   | default policy   | Who may call the endpoint; replaces the default policy.          |
+| `credentials` | `{ token?, basic? }` | `{}`          | Default policy: open outside production; in production, a matching `Authorization: Bearer`, `?token=` or HTTP Basic credential. |
 | `tools`       | `McpToolName[]`   | all six          | Which tools to expose. See [`@adonis-agora/telescope/mcp`](/docs/telescope/packages/mcp). |
 
 ## CPU profiling — `config/telescope_cpu_profiling.ts`

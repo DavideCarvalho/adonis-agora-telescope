@@ -67,7 +67,7 @@ import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
   path: '/telescope',
-  credentials: { token: process.env.TELESCOPE_UI_TOKEN },
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
   dashboard: {
     enabled: true,
     // path: '/__telescope',   // serve the SPA from a different prefix than the API

@@ -152,7 +152,7 @@ import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
   path: '/telescope',
-  credentials: { token: process.env.TELESCOPE_UI_TOKEN },
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
   dashboard: {
     enabled: true,
     // path: '/__telescope',   // override the SPA mount (defaults to `path` above)

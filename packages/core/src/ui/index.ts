@@ -39,11 +39,14 @@ export {
   sanitizeReturnTo,
 } from './auth.js';
 export type {
+  AuthorizeByTokenOptions,
   ConsoleAuthorize,
   ConsoleAuthorizeResult,
   ConsoleAuthorizer,
   ConsoleAuthorizerClass,
 } from './console_authorize.js';
+// — the console access contract —
+export { authorizeByToken } from './console_authorize.js';
 // — dashboard auth —
 export {
   clearSessionCookie,
@@ -59,11 +62,16 @@ export type {
   AuthorizeResult,
   ReplayConfig,
   ResolvedTelescopeUiConfig,
+  ResolveUiConfigOptions,
   TelescopeUiConfig,
-  UiCredentials,
 } from './define_config.js';
 // — config —
-export { defaultAuthorize, defineConfig, normalizePath, resolveConfig } from './define_config.js';
+export {
+  defineConfig,
+  MISSING_AUTHORIZE_WARNING,
+  normalizePath,
+  resolveConfig,
+} from './define_config.js';
 export type { PagedTableData, TablePagination } from './ext_table.js';
 // — paged extension-dashboard tables —
 export { fillLinkHref, tablePagination } from './ext_table.js';
