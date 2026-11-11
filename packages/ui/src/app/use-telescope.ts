@@ -42,10 +42,12 @@ export interface AsyncState<T> {
 export function useTelescopeQuery<T>(
   key: readonly unknown[],
   run: () => Promise<T>,
+  options: { enabled?: boolean } = {},
 ): AsyncState<T> {
   const query = useQuery({
     queryKey: key,
     queryFn: run,
+    enabled: options.enabled ?? true,
     // The console is a live read surface: a revisit should show current data, not a
     // cached snapshot of what was true when the tab was last open.
     staleTime: 0,
@@ -200,9 +202,22 @@ export function useArmProfile() {
 
 // ── live queue manager ───────────────────────────────────────────────────
 
+/**
+ * The live queue list, asked for only when the server has a queue manager. `/meta` says whether
+ * one is configured; until it answers the query waits, and when it says no the list is `null`
+ * without a request — calling `/queues/live` anyway would log a 404 in the browser console on
+ * every overview load of an app that never set one up. A `/meta` without the flag (or a failed
+ * one) still asks, and the client turns that 404 into `null`.
+ */
 export function useLiveQueues() {
   const client = useTelescopeClient();
-  return useTelescopeQuery(['live-queues'], () => client.liveQueues());
+  const meta = useMeta();
+  const configured = meta.loading ? undefined : (meta.data?.queueManager?.enabled ?? true);
+  return useTelescopeQuery(
+    ['live-queues', configured],
+    () => (configured === false ? Promise.resolve(null) : client.liveQueues()),
+    { enabled: configured !== undefined },
+  );
 }
 
 export function useQueueJob(queue: string | null, id: string | null) {

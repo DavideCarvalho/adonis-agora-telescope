@@ -90,4 +90,40 @@ describe('Overview — containers', () => {
     await waitFor(() => expect(screen.getByText('Slow routes')).toBeTruthy());
     expect(pulse).toHaveBeenCalledTimes(1);
   });
+
+  it('não chama /queues/live quando o servidor diz que não há queue manager', async () => {
+    const liveQueues = vi.fn().mockResolvedValue({ queues: [] });
+    const meta = vi.fn().mockResolvedValue({
+      entryTypes: [],
+      dashboards: [],
+      queueManager: { enabled: false },
+    });
+    renderOverview(
+      client({
+        liveQueues: liveQueues as unknown as TelescopeClient['liveQueues'],
+        meta: meta as unknown as TelescopeClient['meta'],
+      }),
+    );
+
+    await waitFor(() => expect(screen.getByText('Failed jobs')).toBeTruthy());
+    await waitFor(() => expect(meta).toHaveBeenCalled());
+    expect(liveQueues).not.toHaveBeenCalled();
+  });
+
+  it('chama /queues/live quando o queue manager está configurado', async () => {
+    const liveQueues = vi.fn().mockResolvedValue({ queues: [] });
+    const meta = vi.fn().mockResolvedValue({
+      entryTypes: [],
+      dashboards: [],
+      queueManager: { enabled: true },
+    });
+    renderOverview(
+      client({
+        liveQueues: liveQueues as unknown as TelescopeClient['liveQueues'],
+        meta: meta as unknown as TelescopeClient['meta'],
+      }),
+    );
+
+    await waitFor(() => expect(liveQueues).toHaveBeenCalled());
+  });
 });
