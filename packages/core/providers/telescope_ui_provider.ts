@@ -67,8 +67,9 @@ export default class TelescopeUiProvider {
   async boot() {
     const config = this.resolve();
     if (!config.enabled) return;
-    // Without `authorize`, production denies every console request: say so once, at boot.
-    if (!config.authorizeConfigured && this.app.inProduction === true) {
+    // Without `authorize` the console is open outside production and denies every request in
+    // production: say so once, at boot, in every environment.
+    if (!config.authorizeConfigured) {
       await this.warn(MISSING_AUTHORIZE_WARNING);
     }
 

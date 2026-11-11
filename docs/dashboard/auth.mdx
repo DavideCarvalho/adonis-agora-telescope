@@ -17,8 +17,9 @@ guard** first; this page is how that guard works and how to wire it to your need
 With no `authorize` configured:
 
 - **Outside production** → **open**. The dev dashboard just works.
-- **In production** → every page and API request gets **`403`**, and this warning is logged
-  once at boot:
+- **In production** → every page and API request gets **`403`**.
+
+Either way, this warning is logged once at boot:
 
 ```txt
 [@adonis-agora/telescope] console has no `authorize` configured: it is open outside production and denies every request in production. Set `authorize` in config/telescope_ui.ts.

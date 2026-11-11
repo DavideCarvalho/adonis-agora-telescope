@@ -15,7 +15,7 @@ export default defineConfig({
 })
 ```
 
-**Breaking: the default without `authorize`.** The console is open outside production (`app.inProduction === false`); in production every page and API request gets `403`, and one warning is logged at boot:
+**Breaking: the default without `authorize`.** The console is open outside production (`app.inProduction === false`); in production every page and API request gets `403`. In every environment, one warning is logged at boot:
 `[@adonis-agora/telescope] console has no \`authorize\` configured: it is open outside production and denies every request in production. Set \`authorize\` in config/telescope_ui.ts.`
 
 **Breaking: denial bodies.** The API answers `403 { error: 'forbidden' }`, `401 { error: 'unauthenticated' }`, and `401 { error: 'unauthenticated', redirectTo }` for `{ redirectTo }`. Pages keep the access-denied page; a `401` no longer sends a `WWW-Authenticate: Basic` challenge (the `challenge` page-guard option is gone).

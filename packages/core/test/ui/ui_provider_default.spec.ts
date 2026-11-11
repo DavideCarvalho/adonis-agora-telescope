@@ -36,11 +36,16 @@ describe('telescope_ui provider: authorize omitted', () => {
     );
   });
 
-  it('stays quiet outside production and when authorize is set', async () => {
+  it('logs the same warning outside production too', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const dev = fakeApp(false, {});
     await new TelescopeUiProvider(dev.app).boot();
-    expect(dev.warn).not.toHaveBeenCalled();
+    expect(dev.warn).toHaveBeenCalledTimes(1);
+    expect(dev.warn).toHaveBeenCalledWith(MISSING_AUTHORIZE_WARNING);
+  });
+
+  it('stays quiet when authorize is set or the console is off', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const configured = fakeApp(true, { authorize: () => true });
     await new TelescopeUiProvider(configured.app).boot();
