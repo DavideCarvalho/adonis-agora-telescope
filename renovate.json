@@ -16,7 +16,6 @@
       "description": "Build and release stay pinned to Node 24 (`.nvmrc` and every `actions/setup-node` `node-version`); CI tests 24 and 26 through its own matrix. Renovate must not propose moving the pinned toolchain to the next Node major.",
       "matchManagers": ["nvm", "github-actions"],
       "matchDepNames": ["node"],
-      "matchDatasources": ["node-version"],
       "matchUpdateTypes": ["major"],
       "enabled": false
     },
