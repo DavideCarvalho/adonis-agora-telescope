@@ -159,7 +159,7 @@ export default defineConfig({
 ```
 
 - The route is registered by the `ui_provider`, next to the JSON API, and runs the **same
-  guard**: the `authorize` hook, plus the `dashboardAuth` session when configured. Configure your
+  guard**: the `authorize` hook. Configure your
   scraper the way you call the API, e.g. with a bearer token and `authorize: authorizeByToken({ token })`.
 - Counters are cumulative since process start; each process (pod) is its own target.
 - `maxSeriesPerMetric` caps distinct label sets per metric (default 2000). Past the cap, new

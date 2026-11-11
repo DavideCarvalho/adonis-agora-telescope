@@ -154,7 +154,105 @@ boot until you set `authorize`.
 The JSON errors are now lowercase codes: `{ "error": "forbidden" }` (`403`) and
 `{ "error": "unauthenticated" }` (`401`, with `redirectTo` when `authorize` returned one).
 
-`config/telescope_mcp.ts` keeps its own `credentials` option; it is unchanged.
+## Console access: `dashboardAuth` is removed
+
+The console no longer has its own login. `dashboardAuth` (the login page, the
+`<path>/login` and `<path>/logout` routes, the `telescope_dashboard_session` cookie and the
+`login` hook) is gone, along with its exports (`resolveDashboardAuth`, `performLogin`,
+`readSession`, `decideDashboardAuth`, `enforceDashboardAuth`, `sanitizeReturnTo`,
+`renderLoginPage`, `signSessionCookie`, `verifySessionCookie`, `SESSION_COOKIE_NAME` and the
+session cookie helpers) and its types. People sign in through your app; `authorize` decides
+who gets in and can send anonymous visitors to your login page. Remove
+`TELESCOPE_DASHBOARD_SECRET` from `start/env.ts` and `.env`.
+
+Before:
+
+```ts title="config/telescope_ui.ts"
+import env from '#start/env'
+import User from '#models/user'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: () => true,
+  dashboardAuth: {
+    secret: env.get('TELESCOPE_DASHBOARD_SECRET'),
+    async login(email, password) {
+      const user = await User.verifyCredentials(email, password)
+      return user.isAdmin ? { id: String(user.id), name: user.fullName } : null
+    },
+  },
+})
+```
+
+After:
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: async (ctx) => {
+    if (!(await ctx.auth.check())) return { redirectTo: '/login' }
+    return ctx.auth.user?.isAdmin === true
+  },
+})
+```
+
+When the console's own API calls get a `401`, the SPA follows the `redirectTo` it carries, or
+reloads the page so the server answers it. The access-denied page only shows a "Sign in"
+button when you point it at your login page with `accessDenied: { loginHref: '/login' }`.
+
+## MCP access: `credentials` is replaced by `authorize`
+
+`config/telescope_mcp.ts` no longer takes `credentials: { token, basic }`, and the endpoint no
+longer reads `?token=` or HTTP Basic. `authorize` takes the same forms as the console's; MCP
+clients use `authorizeByToken`, which reads only `Authorization: Bearer <token>`. The
+`McpCredentials` type is gone.
+
+Without `authorize`, the endpoint is open outside production and answers `403` to every
+request in production, and logs a warning at boot naming `config/telescope_mcp.ts`.
+
+A denial is now a plain JSON response, `403 { "error": "forbidden" }` or
+`401 { "error": "unauthenticated" }`, instead of a `200` carrying a JSON-RPC `-32001` error.
+
+Before:
+
+```ts title="config/telescope_mcp.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/mcp'
+
+export default defineConfig({
+  credentials: { token: env.get('TELESCOPE_MCP_TOKEN') },
+})
+```
+
+After:
+
+```ts title="config/telescope_mcp.ts"
+import env from '#start/env'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/mcp'
+
+export default defineConfig({
+  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
+})
+```
+
+`authorizeByToken` throws when the token is empty or missing, so declare it as required, or
+only set `authorize` when it is present:
+
+```ts title="start/env.ts"
+export default await Env.create(new URL('../', import.meta.url), {
+  TELESCOPE_MCP_TOKEN: Env.schema.string(),
+})
+```
+
+Clients that put the token in the URL must send the header instead:
+
+```sh
+# Before
+curl -X POST 'https://app.example.com/telescope/mcp?token=s3cr3t' ...
+# After
+curl -X POST -H 'Authorization: Bearer s3cr3t' https://app.example.com/telescope/mcp ...
+```
 
 ## `storage.memory({ limit })` is now `maxEntries`
 

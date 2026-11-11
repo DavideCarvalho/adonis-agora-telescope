@@ -2,13 +2,27 @@
 export const VERSION = '1.0.0-rc.0';
 
 export type {
-  McpCredentials,
+  AuthorizeByTokenOptions,
+  ConsoleAuthorize,
+  ConsoleAuthorizeResult,
+  ConsoleAuthorizer,
+  ConsoleAuthorizerClass,
+} from '../ui/console_authorize.js';
+// — the access contract (shared with the console) —
+export { authorizeByToken } from '../ui/console_authorize.js';
+export type {
   McpToolName,
   ResolvedTelescopeMcpConfig,
+  ResolveMcpConfigOptions,
   TelescopeMcpConfig,
 } from './define_config.js';
 // — config —
-export { defineConfig, MCP_TOOL_NAMES, resolveConfig } from './define_config.js';
+export {
+  defineConfig,
+  MCP_TOOL_NAMES,
+  MISSING_MCP_AUTHORIZE_WARNING,
+  resolveConfig,
+} from './define_config.js';
 export type {
   DiagnoseExceptionHook,
   JsonRpcRequest,

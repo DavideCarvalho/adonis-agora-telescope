@@ -170,74 +170,12 @@ export default defineConfig({
 The same helper works across every `@adonis-agora` console, so one RBAC gate reads the
 same everywhere.
 
-## Built-in login screen
+## Signing in
 
-For a shared, human-facing dashboard in an app without a login of its own, a token is awkward —
-you want a real login form and a session. The optional **`dashboardAuth`** block adds exactly
-that: a server-rendered login page gated by a signed session cookie, without touching the bundled
-SPA.
-
-```ts title="config/telescope_ui.ts"
-import env from '#start/env'
-import User from '#models/user'
-import hash from '@adonisjs/core/services/hash'
-import { defineConfig } from '@adonis-agora/telescope/ui'
-
-export default defineConfig({
-  dashboardAuth: {
-    secret: env.get('TELESCOPE_DASHBOARD_SECRET'),   // HMAC-SHA256 signing key (32+ bytes)
-    ttl: '8h',
-    async login(username, password) {
-      const user = await User.findBy('email', username)
-      if (!user || !(await hash.verify(user.password, password))) return null
-      if (!user.isAdmin) return null
-      return { id: String(user.id), name: user.fullName }   // the session user, or null to deny
-    },
-  },
-})
-```
-
-| Key      | Default | Description                                                                    |
-| -------- | ------- | ----------------------------------------------------------------------------- |
-| `secret` | —       | **Required.** HMAC-SHA256 key that signs the session cookie. Missing/empty → boot error. |
-| `ttl`    | `'8h'`  | Cookie lifetime as a duration string (`'30m'`, `'8h'`, `'7d'`).               |
-| `login`  | —       | **Required.** Validates the submitted username/password; return the session user, or `null` to deny. May be `async`. |
-
-When configured, the provider mounts three routes and stamps a session guard on the dashboard:
-
-| Route                   | Serves                                                                    | Guarded |
-| ----------------------- | ------------------------------------------------------------------------ | ------- |
-| `GET <path>/login`      | The server-rendered login page (a static route, so it takes precedence). | No      |
-| `POST <path>/login`     | Runs the `login` hook; on success mints the signed session cookie.       | No      |
-| `GET <path>/logout`     | Clears the session cookie, then redirects to the login page.             | No      |
-
-Those three sit **outside** both guards, in every environment — they have to, or you could
-never reach the page that mints a session, and the `authorize` policy would deny you before
-you ever saw a login form. They are the login surface itself, so treat them accordingly: the
-page renders no server-supplied text (the `returnTo` and `error` values are read client-side
-from the query string, never echoed into the HTML), every credential failure answers a uniform
-`401` so the endpoint cannot be used to enumerate users, and the `POST` does nothing but run
-your `login` hook. What they never expose is recorded data — every entry, trace, metric and
-stream still sits behind both guards.
-
-<Callout type="info">
-`dashboardAuth` is **additive** and composes **with** `authorize` — both must pass. An
-unauthenticated **page** navigation is redirected (`302`) to the login page; an unauthenticated
-**API** request gets a plain `401`. The signed cookie (`telescope_dashboard_session`) is minted
-**only** by your `login` hook. Omit `dashboardAuth` entirely and the dashboard behaves exactly as
-before — no login/logout routes, no session guard.
-</Callout>
-
-<Callout type="warn">
-It **fails closed at boot**: a configured-but-missing `secret` or `login` throws at startup rather
-than shipping an un-mintable gate. A `login` hook that throws is treated as a denial (logged once,
-never surfaced), every credential failure returns a **uniform** `401` (no user-enumeration), and
-the post-login `returnTo` is validated against open redirects (same-origin, root-relative only).
-The page itself is a plain HTML form that works without JavaScript — a form submit is answered
-with a redirect (to `returnTo`, or back to the form with the error shown) — and its inline script
-and style carry `@adonisjs/shield`'s request nonce, so a `script-src 'self' @nonce` policy keeps
-the page working.
-</Callout>
+The console has no login of its own: people sign in through your app. To send an anonymous
+visitor to your login page, return `{ redirectTo }` from `authorize` (see
+[Redirecting instead of answering JSON](#redirecting-instead-of-answering-json)), or point the
+access-denied page's "Sign in" button at it with `accessDenied.loginHref`.
 
 ## Guard behaviour
 
@@ -272,9 +210,7 @@ The `reason` only matters on a denial (`allowed: false`):
 The guard runs on every route that serves recorded data — every `/api/*` endpoint (including
 the SSE stream, the metrics rollups and the extension surface) and the
 `@adonis-agora/telescope-ui` SPA routes. You cannot accidentally leave the JSON API open while
-gating the page. The one exception is the `dashboardAuth` login surface described above
-(`GET`/`POST <path>/login` and `GET <path>/logout`), which is unguarded by necessity and only
-exists when you configure `dashboardAuth`.
+gating the page.
 </Callout>
 
 ### Redirecting instead of answering JSON
@@ -300,8 +236,8 @@ returns `false`, the guard leaves that redirect alone instead of writing its own
 The `{ "error": ... }` JSON above is what the **API** answers with — the console's own `fetch`
 calls expect it. A refused **page** navigation (the `@adonis-agora/telescope-ui` shell or its
 assets) gets a real page instead: a dark card in the console's visual language showing the
-status, a sentence explaining the refusal, a "Back to app" link and, when `dashboardAuth` is
-configured, a "Sign in" button. The statuses are the same as the table above. It carries no inline script, so a nonce'd `script-src`
+status, a sentence explaining the refusal, a "Back to app" link and, when you set
+`accessDenied.loginHref`, a "Sign in" button pointing at your app's login page. The statuses are the same as the table above. It carries no inline script, so a nonce'd `script-src`
 CSP cannot break it (its one inline `<style>` picks up `@adonisjs/shield`'s request nonce).
 
 Tweak it with `accessDenied` — every field optional:
@@ -314,7 +250,7 @@ export default defineConfig({
     message: 'Peça ao admin para liberar o console de observabilidade.',
     homeHref: '/admin',              // "Back to app"; default "/", `false` hides it
     homeLabel: 'Voltar',
-    loginHref: '/entrar',            // default: the built-in login page when one exists
+    loginHref: '/entrar',            // your app's login page; default: no "Sign in" button
     loginLabel: 'Entrar',
     accent: '#f59e0b',               // any CSS colour; default: the console's magenta
   },

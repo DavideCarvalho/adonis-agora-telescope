@@ -43,6 +43,24 @@ export class TelescopeApiError extends Error {
 
 type FetchLike = typeof fetch;
 
+/** The `redirectTo` a `401` body carries when the console's `authorize` asked for a redirect. */
+function readRedirectTo(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const target = (body as { redirectTo?: unknown }).redirectTo;
+  return typeof target === 'string' && target !== '' ? target : undefined;
+}
+
+/**
+ * On a `401`, go where `authorize` asked (`redirectTo`), else reload the page so the server
+ * answers the navigation itself (its access-denied page, or its own redirect).
+ */
+function followUnauthenticated(body: unknown): void {
+  if (typeof window === 'undefined') return;
+  const target = readRedirectTo(body);
+  if (target !== undefined) window.location.assign(target);
+  else window.location.reload();
+}
+
 export interface TelescopeClientOptions {
   /** API base (e.g. `/telescope/api`). Defaults to the injected/derived base for the current page. */
   baseUrl?: string;
@@ -93,6 +111,10 @@ export class TelescopeClient {
       headers: { accept: 'application/json' },
       credentials: 'same-origin',
     });
+    if (response.status === 401) {
+      followUnauthenticated(await response.json().catch(() => null));
+      throw new TelescopeApiError('Not signed in; redirecting.', 401);
+    }
     if (!response.ok) {
       throw new TelescopeApiError(`GET ${path} failed (${response.status})`, response.status);
     }
@@ -142,6 +164,10 @@ export class TelescopeClient {
     const json = (await response.json().catch(() => null)) as
       | (Partial<Envelope<T>> & { error?: string })
       | null;
+    if (response.status === 401) {
+      followUnauthenticated(json);
+      throw new TelescopeApiError('Not signed in; redirecting.', 401);
+    }
     if (!response.ok) {
       throw new TelescopeApiError(
         json?.error ?? `POST ${path} failed (${response.status})`,
@@ -408,6 +434,7 @@ export class TelescopeClient {
       const body = (await response.json().catch(() => null)) as
         | (Partial<Envelope<{ id: string | null }>> & { error?: string })
         | null;
+      if (response.status === 401) followUnauthenticated(body);
       if (!response.ok) {
         return { ok: false, message: body?.error ?? `enqueue failed (${response.status})` };
       }

@@ -28,6 +28,12 @@ export default defineConfig({
 
 It may return `true`/`false`, `{ allowed, reason? }` or `{ redirectTo: '/login' }` (a page navigation is redirected there with `302`). A thrown error is a `403`. `authorizeByToken`, `ConsoleAuthorize`, `ConsoleAuthorizer`, `ConsoleAuthorizerClass` and `ConsoleAuthorizeResult` are exported from `@adonis-agora/telescope/ui`. `authorizeByRoles(...)` keeps working as it is.
 
-`config/telescope_mcp.ts` keeps its own `credentials` gate, unchanged. See the 1.0 migration guide for before/after.
+**Breaking: `dashboardAuth` is removed.** The console has no login of its own: the login page, the `<path>/login` / `<path>/logout` routes, the signed session cookie, the `login` hook (and its "dashboardAuth login hook threw" warning) are gone, with no alias. So are the exports `resolveDashboardAuth`, `performLogin`, `readSession`, `decideDashboardAuth`, `enforceDashboardAuth`, `sanitizeReturnTo`, `renderLoginPage`, `signSessionCookie`, `verifySessionCookie`, `readSessionCookie`, `writeSessionCookie`, `clearSessionCookie`, `SESSION_COOKIE_NAME`, the `DashboardAuthOptions` / `ResolvedDashboardAuth` / `DashboardSession` / `LoginHook` types, `PageGuardOptions.loginHref` and the access-denied page's `session-required` reason. `TELESCOPE_DASHBOARD_SECRET` is no longer read. People sign in through the app; `authorize` can return `{ redirectTo: '/login' }`, and `accessDenied.loginHref` points the access-denied page's "Sign in" button at the app's login.
 
-`@adonis-agora/telescope-ui` serves its pages behind the same `authorize`, so the SPA follows the same default and denial handling.
+**Breaking: the MCP endpoint uses `authorize`.** `config/telescope_mcp.ts` no longer takes `credentials` (`{ token, basic }`), `?token=` or HTTP Basic, and the `McpCredentials` type is gone. `authorize` takes the same `ConsoleAuthorize` forms as the console; MCP clients use `authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') })`, now also exported from `@adonis-agora/telescope/mcp`. Without `authorize` the endpoint is open outside production and answers `403` in production, with one boot warning in every environment:
+`[@adonis-agora/telescope] console has no \`authorize\` configured: it is open outside production and denies every request in production. Set \`authorize\` in config/telescope_mcp.ts.`
+A denial is a JSON response, `403 { error: 'forbidden' }` or `401 { error: 'unauthenticated' }`, instead of a `200` with a JSON-RPC `-32001` error. `resolveConfig` takes `{ inProduction }` as a second argument.
+
+See the 1.0 migration guide for before/after.
+
+`@adonis-agora/telescope-ui` serves its pages behind the same `authorize`, so the SPA follows the same default and denial handling. When an API call gets a `401`, the SPA follows the `redirectTo` it carries, or reloads the page so the server answers the navigation.

@@ -1,10 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import {
   type AuthorizeHook,
-  enforceDashboardAuth,
   enforcePageGuard,
   type PageGuardOptions,
-  type ResolvedDashboardAuth,
   resolveConfig as resolveUiConfig,
   type TelescopeUiConfig,
   type UiHttpContext,
@@ -70,17 +68,9 @@ export default class TelescopeUiDashboardProvider {
     const mount = mountPathFor(path);
     const apiBase = apiBaseFor(path);
     const guard = uiConfig.authorize;
-    const auth = uiConfig.dashboardAuth;
-    // The built-in login page is registered by the core `telescope_ui` provider under the resolved
-    // `telescope_ui.path`; a page navigation with no valid session redirects there.
-    const loginBase = uiConfig.path;
     // What a refused browser sees (the core guard's JSON is for the API). `basePath` is where THIS
-    // SPA lives, which may differ from `loginBase` when `dashboard.path` overrides the mount.
-    const denial: PageGuardOptions = {
-      basePath: path,
-      ...(auth !== null ? { loginHref: `${loginBase}/login` } : {}),
-      accessDenied: uiConfig.accessDenied,
-    };
+    // SPA lives, which may differ from `telescope_ui.path` when `dashboard.path` overrides the mount.
+    const denial: PageGuardOptions = { basePath: path, accessDenied: uiConfig.accessDenied };
 
     // Resolve the router from the container — NOT the `@adonisjs/core/services/router` façade,
     // whose default export is populated only inside `app.booted()` (which runs AFTER every
@@ -94,7 +84,7 @@ export default class TelescopeUiDashboardProvider {
     // relative `./assets/*` URLs to absolute `<mount>/assets/*`, so they resolve regardless of the
     // trailing slash — no redirect, no collision.
     router.get(mount, async (ctx) => {
-      if (!(await this.gate(ctx, guard, auth, loginBase, denial))) return;
+      if (!(await this.gate(ctx, guard, denial))) return;
       await this.sendIndex(ctx, mount, apiBase);
     });
 
@@ -102,7 +92,7 @@ export default class TelescopeUiDashboardProvider {
     // client-rendered console still boots on a deep link. The static `<mount>/api/*` routes the core
     // provider registers take precedence over this wildcard in the router.
     router.get(`${mount}/*`, async (ctx) => {
-      if (!(await this.gate(ctx, guard, auth, loginBase, denial))) return;
+      if (!(await this.gate(ctx, guard, denial))) return;
       const segments = safeAssetSegments(ctx.params['*']);
       if (segments === null) {
         return ctx.response.status(400).json({ error: 'bad asset path' });
@@ -112,24 +102,18 @@ export default class TelescopeUiDashboardProvider {
   }
 
   /**
-   * Run the composed dashboard guard, mirroring the JSON API routes: the `authorize` hook FIRST
-   * (answering a refused BROWSER with the access-denied page rather than the API's JSON), then —
-   * only when `dashboardAuth` is configured — the signed-session guard in `page` mode (a page
-   * navigation with no valid session is redirected `302` to the login page). Returns `true` to
-   * proceed; on denial the guard has already written the response and this returns `false`.
+   * Run `authorize` for a page navigation, mirroring the JSON API routes: a refused BROWSER gets
+   * the access-denied page (or a `302` to `redirectTo`) rather than the API's JSON. Returns `true`
+   * to proceed; on denial the guard has already written the response and this returns `false`.
    */
   private async gate(
     ctx: HttpContext,
     guard: AuthorizeHook,
-    auth: ResolvedDashboardAuth | null,
-    loginBase: string,
     denial: PageGuardOptions,
   ): Promise<boolean> {
     const nonce = cspNonce(ctx);
     const options: PageGuardOptions = nonce !== undefined ? { ...denial, nonce } : denial;
-    if (!(await enforcePageGuard(ctx as unknown as UiHttpContext, guard, options))) return false;
-    if (auth === null) return true;
-    return enforceDashboardAuth(ctx, auth, 'page', loginBase);
+    return enforcePageGuard(ctx as unknown as UiHttpContext, guard, options);
   }
 
   /**

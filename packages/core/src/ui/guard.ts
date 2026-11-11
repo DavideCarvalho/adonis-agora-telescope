@@ -92,8 +92,6 @@ const BEARER_CHALLENGE = 'Bearer realm="Telescope"';
 export interface PageGuardOptions {
   /** The console's mount (`/telescope`) — reported to a custom renderer as `basePath`. */
   basePath: string;
-  /** The built-in login page (`<path>/login`), present only when `dashboardAuth` is configured. */
-  loginHref?: string;
   /** The host's `telescope_ui.accessDenied` option — tweak the built-in page, or render it. */
   accessDenied?: AccessDeniedOption<UiHttpContext> | null;
   /** The request's CSP nonce, applied to the page's inline `<style>`. */
@@ -127,7 +125,6 @@ export async function enforcePageGuard(
     status,
     reason: status === 401 ? 'unauthenticated' : 'forbidden',
     basePath: options.basePath,
-    ...(options.loginHref !== undefined ? { loginHref: options.loginHref } : {}),
     ...(options.nonce !== undefined ? { nonce: options.nonce } : {}),
   };
   const html = await resolveAccessDeniedPage(info, options.accessDenied, ctx, answered);

@@ -39,26 +39,6 @@ export default defineConfig({
   // },
 
   /**
-   * Built-in login screen. When present, the provider mounts a server-rendered
-   * login page plus its submit and logout routes, and stamps a session guard on the
-   * dashboard: an unauthenticated page navigation is redirected to the login page
-   * and an unauthenticated API request gets a 401. The signed session cookie is
-   * minted only by your own login hook.
-   *
-   * This is ADDITIVE and composes WITH authorize (both must pass). Omit it entirely
-   * to keep the dashboard's default behavior. A missing secret or login hook fails
-   * closed at boot.
-   */
-  // dashboardAuth: {
-  //   secret: env.get('TELESCOPE_DASHBOARD_SECRET'),
-  //   ttl: '8h',
-  //   login: async (username, password) => {
-  //     const user = await User.verifyCredentials(username, password)
-  //     return user.isAdmin ? { id: String(user.id), name: user.fullName } : null
-  //   },
-  // },
-
-  /**
    * Request REPLAY: re-issue a captured request from the dashboard against the
    * LOCAL server. DISABLED BY DEFAULT because it re-runs a real request that may
    * MUTATE state (a captured POST/DELETE runs again). It only ever targets

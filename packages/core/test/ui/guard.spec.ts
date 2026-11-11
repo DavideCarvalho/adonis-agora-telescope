@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveConfig as resolveMcpConfig } from '../../src/mcp/define_config.js';
+import { authorizeByToken } from '../../src/mcp/index.js';
 import { type AuthorizeDecision, resolveConfig } from '../../src/ui/define_config.js';
 import { enforceGuard, enforcePageGuard, runGuard } from '../../src/ui/guard.js';
 import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
@@ -267,10 +268,14 @@ describe('enforcePageGuard (a BROWSER is refused with a page, not JSON)', () => 
     expect(res.body).toContain('<h1>Access denied</h1>');
   });
 
-  it('offers the built-in login page when dashboardAuth exists', async () => {
+  it("points Sign in at the app's own login page from accessDenied.loginHref", async () => {
     const { ctx: c, res } = ctx();
-    await enforcePageGuard(c, () => false, { ...options, loginHref: '/telescope/login' });
-    expect(res.body).toContain('href="/telescope/login"');
+    await enforcePageGuard(c, () => ({ allowed: false, reason: 'unauthenticated' }), {
+      ...options,
+      accessDenied: { loginHref: '/login' },
+    });
+    expect(res.body).toContain('href="/login"');
+    expect(res.body).not.toContain('/telescope/login');
   });
 
   it('honours the accessDenied options object', async () => {
@@ -334,45 +339,60 @@ describe('enforcePageGuard (a BROWSER is refused with a page, not JSON)', () => 
   });
 });
 
-describe('the MCP endpoint keeps its own token / basic credentials', () => {
-  const ORIGINAL = process.env.NODE_ENV;
-  beforeEach(() => {
-    process.env.NODE_ENV = 'production';
-  });
-  afterEach(() => {
-    process.env.NODE_ENV = ORIGINAL;
+describe('the MCP endpoint uses the console authorize contract', () => {
+  it('is open outside production and 403s every request in production when omitted', async () => {
+    const dev = resolveMcpConfig({}, { inProduction: false });
+    expect(dev.authorizeConfigured).toBe(false);
+    expect(await runGuard(ctx().ctx, dev.authorize)).toEqual({ allowed: true });
+
+    const prod = resolveMcpConfig({}, { inProduction: true });
+    const { ctx: c, res } = ctx();
+    expect(await enforceGuard(c, prod.authorize)).toBe(false);
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'forbidden' });
   });
 
-  it('401 without a credential, 403 with a wrong one, allowed with the right one', async () => {
-    const { authorize } = resolveMcpConfig({ credentials: { token: 'secret' } });
-    expect(await runGuard(ctx().ctx, authorize)).toMatchObject({ allowed: false, status: 401 });
+  it('authorizeByToken: 401 JSON without the Bearer token, allowed with it, no ?token=', async () => {
+    const { authorize, authorizeConfigured } = resolveMcpConfig(
+      { authorize: authorizeByToken({ token: 'secret' }) },
+      { inProduction: true },
+    );
+    expect(authorizeConfigured).toBe(true);
+
+    const missing = ctx();
+    expect(await enforceGuard(missing.ctx, authorize)).toBe(false);
+    expect(missing.res.statusCode).toBe(401);
+    expect(missing.res.body).toEqual({ error: 'unauthenticated' });
+
     expect(await runGuard(ctx({}, { authorization: 'Bearer nope' }).ctx, authorize)).toMatchObject({
       allowed: false,
-      status: 403,
+      status: 401,
+    });
+    expect(await runGuard(ctx({ token: 'secret' }).ctx, authorize)).toMatchObject({
+      allowed: false,
+    });
+    const basic = `Basic ${Buffer.from('admin:secret').toString('base64')}`;
+    expect(await runGuard(ctx({}, { authorization: basic }).ctx, authorize)).toMatchObject({
+      allowed: false,
     });
     expect(await runGuard(ctx({}, { authorization: 'Bearer secret' }).ctx, authorize)).toEqual({
       allowed: true,
     });
-    expect(await runGuard(ctx({ token: 'secret' }).ctx, authorize)).toEqual({ allowed: true });
   });
 
-  it('accepts HTTP Basic', async () => {
-    const { authorize } = resolveMcpConfig({
-      credentials: { basic: { username: 'admin', password: 'pw' } },
-    });
-    const good = `Basic ${Buffer.from('admin:pw').toString('base64')}`;
-    const bad = `Basic ${Buffer.from('admin:wrong').toString('base64')}`;
-    expect(await runGuard(ctx({}, { authorization: good }).ctx, authorize)).toEqual({
-      allowed: true,
-    });
-    expect(await runGuard(ctx({}, { authorization: bad }).ctx, authorize)).toMatchObject({
-      status: 403,
-    });
+  it('a custom authorize returning false is a 403 JSON', async () => {
+    const { authorize } = resolveMcpConfig({ authorize: () => false }, { inProduction: false });
+    const { ctx: c, res } = ctx();
+    expect(await enforceGuard(c, authorize)).toBe(false);
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'forbidden' });
   });
 
-  it('is open outside production', async () => {
-    process.env.NODE_ENV = 'development';
-    const { authorize } = resolveMcpConfig();
-    expect(await runGuard(ctx().ctx, authorize)).toEqual({ allowed: true });
+  it('drops the removed credentials option', () => {
+    const config = resolveMcpConfig({}, { inProduction: false }) as unknown as Record<
+      string,
+      unknown
+    >;
+    expect('credentials' in config).toBe(false);
   });
 });

@@ -58,7 +58,7 @@ mount root and serves the console that consumes these routes.
 
 On boot the provider reads `config/telescope_ui.ts` and registers routes under the configured
 prefix on your app's router: the JSON API under `<path>/api/*`, the SSE stream at
-`<path>/api/stream`, and — when you configure `dashboardAuth` — the login and logout routes.
+`<path>/api/stream`.
 Everything that serves recorded data runs the `authorize` guard first. It reads the same live
 store the watchers write to, so the API always reflects what was just captured.
 
@@ -192,7 +192,6 @@ export default defineConfig({
 | `enabled`     | `true`         | Master switch; `false` registers no routes.                    |
 | `path`        | `/telescope`   | URL prefix (normalized to leading slash, no trailing slash).   |
 | `authorize`   | open outside production, `403` in production | Who may open the console — [Dashboard auth](/docs/telescope/dashboard/auth). |
-| `dashboardAuth` | unset        | Built-in login page + signed session cookie — [Dashboard auth](/docs/telescope/dashboard/auth#built-in-login-screen). |
 | `replay`      | `{ enabled: false }` | Request-replay gate — see [Request replay](#request-replay).      |
 | `cpuProfiling` | `{ armEnabled: false }` | Gate for `POST <path>/api/profiles/arm` — see [CPU profiling](/docs/telescope/packages/cpu-profiling#arming-a-capture). |
 | `queueActions` | `{ enabled: false }` | Gate for the queue console's `retry`/`enqueue` mutations — see [Live Queue Manager](/docs/telescope/packages/watchers#live-queue-manager). |
@@ -282,20 +281,6 @@ interface UiResponse {
 `authorize` hook already redirected before it writes a `403` body — see [Redirecting instead of
 answering JSON](/docs/telescope/dashboard/auth#redirecting-instead-of-answering-json). An adapter
 that omits it will not type-check.
-
-Everything the built-in login flow needs is exported too, if you want to mount that surface by
-hand rather than letting the provider register it:
-
-| Export | What it does |
-| ------ | ------------ |
-| `resolveDashboardAuth(options)` | Validates and resolves a `dashboardAuth` block; `null` when unconfigured, throws when configured but unusable. |
-| `performLogin(auth, body, basePath)` | Runs the whole login decision with no HTTP types — returns `ok` (with the cookie value and where to go next), `bad-request`, or `unauthorized`. |
-| `readSession(auth, cookieValue)` | Verifies a session cookie, or `null`. |
-| `decideDashboardAuth(auth, cookieValue, mode, requestUrl)` | The guard decision itself: allow, redirect, or unauthorized. |
-| `enforceDashboardAuth(ctx, auth, mode, basePath)` | The AdonisJS-flavoured wrapper that also writes the `302` or the `401`. |
-| `sanitizeReturnTo(candidate, fallback)` | The open-redirect guard on the post-login destination — only same-origin, root-relative paths survive. |
-| `renderLoginPage(basePath)` | The server-rendered login HTML. |
-| `SESSION_COOKIE_NAME` | `'telescope_dashboard_session'`. |
 
 ## Peer dependencies
 

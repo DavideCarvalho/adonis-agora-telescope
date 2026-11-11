@@ -103,7 +103,7 @@ async function renderAll(appRoot) {
  *
  * Without this the gate is nearly worthless here: across the seven config stubs there are 28 lines of
  * live code and 101 commented config lines, so ~78% of the surface these stubs document —
- * `storage.lucid`, `redact.perType`, the `sampling` rules, every alert rule shape, `dashboardAuth`,
+ * `storage.lucid`, `redact.perType`, the `sampling` rules, every alert rule shape, the MCP `authorize`,
  * `requestCapture`, `queueManager` — would drift out of the published types with the gate still
  * green. The commented block IS the documentation; it has to compile.
  *
@@ -201,8 +201,7 @@ try {
    * The env module `node ace configure` leaves in a real app, carrying every var the stubs read.
    *
    * Optionality is modelled the way a consumer would actually declare it, and that is load-bearing:
-   * a var feeding a REQUIRED field (`channels[].url`,
-   * `dashboardAuth.secret`) must be `Env.schema.string()`, because `string | undefined` does not
+   * a var feeding a REQUIRED field (`channels[].url`) must be `Env.schema.string()`, because `string | undefined` does not
    * satisfy `string`. A var feeding an optional field stays `.optional()` — which is exactly what
    * the AI stub's own comment instructs, so this also pins that `apiKey` accepts what that
    * declaration produces. Get this wrong in either direction and the gate reports a drift that is
@@ -217,7 +216,6 @@ try {
       "export default await Env.create(new URL('../', import.meta.url), {",
       '  ANTHROPIC_API_KEY: Env.schema.string.optional(),',
       '  TELESCOPE_MCP_TOKEN: Env.schema.string.optional(),',
-      '  TELESCOPE_DASHBOARD_SECRET: Env.schema.string(),',
       '  TELESCOPE_SLACK_WEBHOOK: Env.schema.string(),',
       '  TELESCOPE_ALERT_WEBHOOK: Env.schema.string(),',
       '})',

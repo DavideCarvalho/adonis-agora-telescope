@@ -3,6 +3,7 @@ import type { ExceptionEntryContent } from '../src/ai/diagnoser.js';
 import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js';
 import type { Entry } from '../src/entry.js';
 import {
+  MISSING_MCP_AUTHORIZE_WARNING,
   type ResolvedTelescopeMcpConfig,
   resolveConfig,
   type TelescopeMcpConfig,
@@ -14,7 +15,7 @@ import { MetricsService } from '../src/metrics/metrics_service.js';
 import { getTelescopeRuntime } from '../src/registry.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
-import { runGuard } from '../src/ui/guard.js';
+import { enforceGuard } from '../src/ui/guard.js';
 import type { UiHttpContext } from '../src/ui/http.js';
 
 /**
@@ -25,10 +26,10 @@ import type { UiHttpContext } from '../src/ui/http.js';
  * registers a JSON-RPC endpoint under the configured path via the AdonisJS router:
  *
  * - `POST <path>` — the MCP JSON-RPC surface (`initialize` / `tools/list` /
- *   `tools/call`). The route is a thin transport: it runs the SAME auth guard as the
- *   dashboard, then hands the parsed body + the `allowed` flag to a plain, testable
- *   {@link TelescopeMcpServer}. A denial rides inside the JSON-RPC envelope (`-32001`)
- *   because MCP has no transport-level 401.
+ *   `tools/call`). The route is a thin transport: it runs `authorize` (the same contract and
+ *   guard as the console), then hands the parsed body to a plain, testable
+ *   {@link TelescopeMcpServer}. A denial is JSON: `403 { error: 'forbidden' }` or
+ *   `401 { error: 'unauthenticated' }`.
  * - `GET <path>` — 405: this stateless server has no server→client stream.
  * - `DELETE <path>` — 200 no-op: it holds no session to terminate.
  *
@@ -41,12 +42,28 @@ export default class TelescopeMcpProvider {
   private resolve(): ResolvedTelescopeMcpConfig {
     return resolveConfig(
       this.app.config.get<TelescopeMcpConfig | undefined>('telescope_mcp', undefined),
+      { inProduction: this.app.inProduction === true },
     );
+  }
+
+  /** Log a warning through the app logger when one is bound, else the console. Never throws. */
+  private async warn(message: string): Promise<void> {
+    try {
+      const logger = await this.app.container.make('logger');
+      logger.warn(message);
+    } catch {
+      console.warn(message);
+    }
   }
 
   async boot() {
     const config = this.resolve();
     if (!config.enabled) return;
+    // Without `authorize` the endpoint is open outside production and denies every request in
+    // production: say so once, at boot, in every environment.
+    if (!config.authorizeConfigured) {
+      await this.warn(MISSING_MCP_AUTHORIZE_WARNING);
+    }
 
     let store: TelescopeStore | null;
     try {
@@ -103,13 +120,13 @@ export default class TelescopeMcpProvider {
     const router = await this.app.container.make('router');
     const guard = config.authorize;
 
-    // JSON-RPC surface. The transport is thin: guard → hand `body` + `allowed` to the
-    // server. A `null` result is a notification (no id) → 202 with no body.
+    // JSON-RPC surface. The transport is thin: guard (a denial is written as JSON) → hand
+    // `body` to the server. A `null` result is a notification (no id) → 202 with no body.
     router
       .post(config.path, async (ctx: McpContext) => {
-        const { allowed } = await runGuard(ctx, guard);
+        if (!(await enforceGuard(ctx, guard))) return;
         const body = (ctx.request.body?.() ?? {}) as Record<string, unknown>;
-        const result = await server.handle(body, allowed);
+        const result = await server.handle(body, true);
         if (result === null) {
           ctx.response.status(202);
           return ctx.response.send('');
@@ -122,6 +139,7 @@ export default class TelescopeMcpProvider {
     // notifications; this stateless server has none, so 405 (per the spec).
     router
       .get(config.path, async (ctx: McpContext) => {
+        if (!(await enforceGuard(ctx, guard))) return;
         ctx.response.status(405);
         return ctx.response.send({ error: 'MCP server is stateless; GET is not supported.' });
       })
@@ -129,7 +147,10 @@ export default class TelescopeMcpProvider {
 
     // DELETE terminates a session; this stateless server holds none, so 200 (no-op).
     router
-      .delete(config.path, async (ctx: McpContext) => ctx.response.status(200).send({ ok: true }))
+      .delete(config.path, async (ctx: McpContext) => {
+        if (!(await enforceGuard(ctx, guard))) return;
+        return ctx.response.status(200).send({ ok: true });
+      })
       .as('telescope_mcp.delete');
   }
 }

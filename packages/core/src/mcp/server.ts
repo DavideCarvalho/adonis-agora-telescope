@@ -179,8 +179,8 @@ export class TelescopeMcpServer {
   /**
    * Handle one JSON-RPC request. `authorized` is the outcome of the transport's
    * auth guard: when `false`, every method is refused with a JSON-RPC `-32001`
-   * error (MCP has no transport-level 401, so the denial rides inside the RPC
-   * envelope where a compliant client can read it). Notifications (no `id`) resolve
+   * error. (The AdonisJS provider answers a denial with a `401`/`403` JSON before
+   * calling this, so it always passes `true`.) Notifications (no `id`) resolve
    * to `null` — the caller answers `202` with no body.
    */
   async handle(body: JsonRpcRequest, authorized: boolean): Promise<unknown> {

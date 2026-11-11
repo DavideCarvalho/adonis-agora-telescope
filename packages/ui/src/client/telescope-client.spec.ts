@@ -251,3 +251,47 @@ describe('TelescopeClient', () => {
     expect(calls[0]).toBe('/telescope/api/schedules/live');
   });
 });
+
+describe('TelescopeClient on a 401', () => {
+  function stubLocation() {
+    const location = { assign: vi.fn(), reload: vi.fn() };
+    vi.stubGlobal('window', { location });
+    return location;
+  }
+
+  it('follows the redirectTo that authorize asked for', async () => {
+    const location = stubLocation();
+    try {
+      const { fetch } = stubFetch({ error: 'unauthenticated', redirectTo: '/login' }, false, 401);
+      await expect(client(fetch).listEntries()).rejects.toBeInstanceOf(TelescopeApiError);
+      expect(location.assign).toHaveBeenCalledWith('/login');
+      expect(location.reload).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reloads the page when the 401 carries no redirectTo', async () => {
+    const location = stubLocation();
+    try {
+      const { fetch } = stubFetch({ error: 'unauthenticated' }, false, 401);
+      await expect(client(fetch).diagnoseException('e1')).resolves.toMatchObject({ ok: false });
+      expect(location.reload).toHaveBeenCalledTimes(1);
+      expect(location.assign).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('leaves the page alone on a 403', async () => {
+    const location = stubLocation();
+    try {
+      const { fetch } = stubFetch({ error: 'forbidden' }, false, 403);
+      await expect(client(fetch).listEntries()).rejects.toMatchObject({ status: 403 });
+      expect(location.assign).not.toHaveBeenCalled();
+      expect(location.reload).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

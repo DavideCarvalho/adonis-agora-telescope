@@ -160,7 +160,6 @@ export default defineConfig({
 | `enabled`     | `true`         | Master switch. `false` registers no routes — the dashboard does not exist.  |
 | `path`        | `/telescope`   | URL prefix. Normalized to a leading slash, no trailing slash.               |
 | `authorize`   | open outside production, `403` in production | Who may open the console. See [Dashboard auth](/docs/telescope/dashboard/auth). |
-| `dashboardAuth` | unset        | Built-in login page + signed session cookie. See [Dashboard auth](/docs/telescope/dashboard/auth#built-in-login-screen). |
 | `replay`      | `{ enabled: false }` | Gate for request replay.                                              |
 | `cpuProfiling` | `{ armEnabled: false }` | Gate for arming a CPU capture from the console.                  |
 | `queueActions` | `{ enabled: false }` | Gate for the queue console's retry / enqueue actions.               |

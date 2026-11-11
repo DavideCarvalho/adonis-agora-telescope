@@ -61,12 +61,12 @@ exist until the core is running.
 
 ```ts title="config/telescope_mcp.ts"
 import env from '#start/env'
-import { defineConfig } from '@adonis-agora/telescope/mcp'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/mcp'
 
 export default defineConfig({
   enabled: true,
   path: '/telescope/mcp',
-  credentials: { token: env.get('TELESCOPE_MCP_TOKEN') },
+  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
   // tools: ['list_entries', 'get_trace', 'get_health'],   // hand an agent a narrower surface
 })
 ```
@@ -75,17 +75,39 @@ export default defineConfig({
 | ------------- | ----------------- | ----------------------------------------------------------------------------- |
 | `enabled`     | `true`            | Master switch; `false` registers no routes.                                   |
 | `path`        | `/telescope/mcp`  | URL the JSON-RPC endpoint mounts at (normalized to leading slash, no trailing).|
-| `authorize`   | default policy    | Access-decision hook; replaces the default policy.                            |
-| `credentials` | `{}`              | Built-in token / HTTP Basic gate for the default policy.                       |
+| `authorize`   | open outside production, `403` in production | Who may call the endpoint. Same contract as the console's [`authorize`](/docs/telescope/dashboard/auth). |
 | `tools`       | all six           | Which tools to expose — restrict to hand an agent a narrower, read-only surface.|
 
-<Callout type="info">
-Without `authorize`, the endpoint is open outside production, and in production only a request
-presenting a configured credential (`Authorization: Bearer <token>`, `?token=<token>` or HTTP
-Basic) gets in. Because MCP has no transport-level `401`, a denial rides
-inside the JSON-RPC envelope as a `-32001` error (`MCP_UNAUTHORIZED`) where a compliant client
-can read it.
-</Callout>
+## Access
+
+`authorize` takes the same forms and returns the same answers as the console's
+[`authorize`](/docs/telescope/dashboard/auth): a function, an authorizer class, or a lazy
+import of one. MCP clients send a Bearer token, so `authorizeByToken` is the usual choice:
+it allows `Authorization: Bearer <token>` and answers `401` to anything else (no `?token=`, no
+HTTP Basic). An empty or missing token throws when the config loads.
+
+Without `authorize`, the endpoint is open outside production and answers `403` to every
+request in production. Either way this warning is logged once at boot:
+
+```txt
+[@adonis-agora/telescope] console has no `authorize` configured: it is open outside production and denies every request in production. Set `authorize` in config/telescope_mcp.ts.
+```
+
+A denial is plain JSON: `403 { "error": "forbidden" }` or `401 { "error": "unauthenticated" }`.
+
+Point your MCP client at the endpoint with the token as a header:
+
+```json title=".mcp.json"
+{
+  "mcpServers": {
+    "telescope": {
+      "type": "http",
+      "url": "https://your-app.example.com/telescope/mcp",
+      "headers": { "Authorization": "Bearer ${TELESCOPE_MCP_TOKEN}" }
+    }
+  }
+}
+```
 
 ## The tools
 
@@ -110,8 +132,7 @@ rather than failing — mirroring the default-open dashboard posture.
 
 ## The transport
 
-One path, three verbs. Every call runs the same auth guard as the dashboard before anything
-else:
+One path, three verbs. Every call runs `authorize` before anything else:
 
 | Method                              | Behaviour                                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------ |
@@ -119,8 +140,8 @@ else:
 | `GET <path>`                        | `405` — the streamable-HTTP server→client stream is unsupported (this server is stateless). |
 | `DELETE <path>`                     | `200` no-op — there is no session to terminate.                          |
 
-Point your agent's MCP client at `https://your-app.example.com/telescope/mcp` (adding the
-token as the guard expects). The server advertises protocol revision `2025-06-18`, and
+Point your agent's MCP client at `https://your-app.example.com/telescope/mcp` with the
+`Authorization: Bearer` header shown above. The server advertises protocol revision `2025-06-18`, and
 identifies itself as `adonis-telescope` at the installed package version.
 
 ## Notable exports
@@ -133,3 +154,6 @@ identifies itself as `adonis-telescope` at the installed package version.
 - Error codes `MCP_UNAUTHORIZED` (`-32001`), `MCP_METHOD_NOT_FOUND` (`-32601`),
   `MCP_INTERNAL_ERROR` (`-32603`).
 - `defineConfig`, `resolveConfig`; types `TelescopeMcpConfig`, `ResolvedTelescopeMcpConfig`.
+- `authorizeByToken`; types `ConsoleAuthorize`, `ConsoleAuthorizer`, `ConsoleAuthorizerClass`,
+  `ConsoleAuthorizeResult`, `AuthorizeByTokenOptions` (the same ones `@adonis-agora/telescope/ui`
+  exports).

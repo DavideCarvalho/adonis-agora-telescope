@@ -3,13 +3,13 @@ name: telescope-access-mcp
 description: >-
   Dashboard access control and the MCP endpoint in @adonis-agora/telescope —
   config/telescope_ui.ts authorize (function, class or lazy import),
-  authorizeByToken({ token }) for Bearer access, dashboardAuth { secret, ttl, login }
-  login screen, the default (open outside production, 403 in production with a boot
+  authorizeByToken({ token }) for Bearer access, { redirectTo } to the app's own
+  login, the default (open outside production, 403 in production with a boot
   warning), 401-vs-403 guard semantics, redirect-wins behaviour,
   replay/queueActions/cpuProfiling.armEnabled mutation gates, and
-  config/telescope_mcp.ts JSON-RPC tools with their own token/basic credentials. Use for
+  config/telescope_mcp.ts JSON-RPC tools behind the same authorize contract. Use for
   "lock down the dashboard", "dashboard open in production", "401 on /telescope",
-  "login wall", "expose telescope to Claude Code", "replay returns 403".
+  "send to login", "expose telescope to Claude Code", "replay returns 403".
 license: MIT
 metadata:
   type: core
@@ -27,8 +27,9 @@ sources:
 Every route serving recorded data runs an `authorize` guard first — every
 `<path>/api/*` endpoint, the SSE stream, metrics and the SPA routes. Without
 `authorize` the console is **open outside production and answers `403` to every
-request in production**, logging one warning at boot. The MCP subpath has its own
-`credentials` gate.
+request in production**, logging one warning at boot. The console has no login of
+its own: people sign in through the app. The MCP subpath takes the same `authorize`
+contract in `config/telescope_mcp.ts`.
 
 ## Setup
 
@@ -78,41 +79,7 @@ Guard outcomes: a bare `false` (or `{ allowed: false }` with no `reason`) → `4
 
 Source: `docs/dashboard/auth.mdx` (Delegate to your app's auth, Guard behaviour).
 
-### Pattern 2 — a real login wall with dashboardAuth
-
-For shared human access: a server-rendered login page plus a signed session cookie.
-It composes WITH `authorize` (both must pass). Missing `secret` or `login` throws at
-boot rather than shipping an un-mintable gate.
-
-```ts
-// config/telescope_ui.ts
-import env from '#start/env'
-import User from '#models/user'
-import hash from '@adonisjs/core/services/hash'
-import { defineConfig } from '@adonis-agora/telescope/ui'
-
-export default defineConfig({
-  dashboardAuth: {
-    secret: env.get('TELESCOPE_DASHBOARD_SECRET'),   // HMAC-SHA256 key, 32+ bytes — required
-    ttl: '8h',
-    async login(username, password) {
-      const user = await User.findBy('email', username)
-      if (!user || !(await hash.verify(user.password, password))) return null
-      if (!user.isAdmin) return null
-      return { id: String(user.id), name: user.fullName }   // session user, or null to deny
-    },
-  },
-})
-```
-
-This mounts unguarded-by-necessity `GET/POST <path>/login` and `GET <path>/logout`
-routes (they mint/clear the session only — no recorded data sits behind them).
-An unauthenticated page navigation gets a `302` to the login; an unauthenticated API
-call gets a plain `401`.
-
-Source: `docs/dashboard/auth.mdx` (Built-in login screen).
-
-### Pattern 3 — redirect instead of answering JSON
+### Pattern 2 — send anonymous visitors to the app's login
 
 Return `{ redirectTo }`: a page navigation gets a `302` there, an API call gets
 `401 { error: 'unauthenticated', redirectTo }`.
@@ -126,21 +93,22 @@ authorize: (ctx) => {
 
 A redirect the hook writes itself also still wins: if it calls
 `ctx.response.redirect(...)` and returns `false`, the guard leaves that redirect
-alone instead of overwriting it with a `403` body.
+alone instead of overwriting it with a `403` body. When the SPA's own API calls get a
+`401`, it follows `redirectTo` (or reloads the page).
 
 Source: `docs/dashboard/auth.mdx` (Redirecting instead of answering JSON).
 
-### Pattern 4 — expose the store to coding agents over MCP
+### Pattern 3 — expose the store to coding agents over MCP
 
 ```ts
 // config/telescope_mcp.ts
 import env from '#start/env'
-import { defineConfig } from '@adonis-agora/telescope/mcp'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/mcp'
 
 export default defineConfig({
   enabled: true,
   path: '/telescope/mcp',
-  credentials: { token: env.get('TELESCOPE_MCP_TOKEN') },   // MCP's own token/basic gate
+  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
   // tools: ['list_entries', 'get_trace', 'get_health'],    // hand agents a narrower surface
 })
 ```
@@ -152,11 +120,14 @@ claude mcp add --transport http telescope https://your-app.example.com/telescope
 
 Six read tools ship: `list_entries`, `get_entry`, `get_trace`, `get_waterfall`,
 `get_health`, `diagnose_exception`. Redaction and sampling are never bypassed — an
-agent sees exactly what the dashboard sees.
+agent sees exactly what the dashboard sees. Without `authorize` the endpoint is open
+outside production and `403` in production (boot warning names
+`config/telescope_mcp.ts`); denials are JSON `403 { error: 'forbidden' }` /
+`401 { error: 'unauthenticated' }`.
 
 Source: `docs/packages/mcp.mdx`.
 
-### Pattern 5 — gate the dangerous mutations
+### Pattern 4 — gate the dangerous mutations
 
 Replay, CPU-arm and queue retry/enqueue are each disabled by default and answer
 `403` until their ui-config gate is flipped — even when the underlying feature is
@@ -210,48 +181,41 @@ defineConfig({ authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }) 
 Mechanism: `credentials` is a type error now and is ignored at runtime, so the production console falls back to
 the default `403`. Source: `docs/reference/migrating-to-1-0.mdx`.
 
-### HIGH Exposing MCP in production without a token credential
+### HIGH Keeping the removed `credentials` option on telescope_mcp
 
 ```ts
-// Wrong — relies on the dev-open default; prod denials surface as opaque JSON-RPC errors.
-defineConfig({ enabled: true, path: '/telescope/mcp' })
+// Wrong — 1.0 removed credentials { token, basic } and ?token= from the MCP endpoint.
+defineConfig({ path: '/telescope/mcp', credentials: { token: env.get('TELESCOPE_MCP_TOKEN') } })
 ```
 
 ```ts
-// Correct — a token/basic credential for production.
+// Correct — the same authorize contract as the console, Bearer header only.
 defineConfig({
   path: '/telescope/mcp',
-  credentials: { token: env.get('TELESCOPE_MCP_TOKEN') },
+  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
 })
 ```
 
-Mechanism: MCP has no transport-level 401 — denial rides inside the JSON-RPC
-envelope as `-32001` (`MCP_UNAUTHORIZED`), which compliant clients just report as a
-failed call.
-Source: `docs/packages/mcp.mdx` (guard info callout).
+Mechanism: `credentials` is a type error now and is ignored at runtime, so the
+production endpoint falls back to the default `403`.
+Source: `docs/reference/migrating-to-1-0.mdx`.
 
-### MEDIUM Configuring dashboardAuth without secret or login
+### HIGH Keeping the removed `dashboardAuth` login screen
 
 ```ts
-// Wrong — both keys are required; this throws at boot.
-defineConfig({ dashboardAuth: { secret: env.get('TELESCOPE_DASHBOARD_SECRET') } })
-defineConfig({ dashboardAuth: { login: verifyCreds } })
+// Wrong — 1.0 removed dashboardAuth, its login/logout routes and session cookie.
+defineConfig({ dashboardAuth: { secret: env.get('TELESCOPE_DASHBOARD_SECRET'), login } })
 ```
 
 ```ts
-// Correct — non-empty secret AND a login hook.
+// Correct — sign in through the app; authorize sends anonymous visitors there.
 defineConfig({
-  dashboardAuth: {
-    secret: env.get('TELESCOPE_DASHBOARD_SECRET'),
-    ttl: '8h',
-    login: verifyCreds,
-  },
+  authorize: (ctx) => (ctx.auth.user ? ctx.auth.user.isAdmin === true : { redirectTo: '/login' }),
 })
 ```
 
-Mechanism: the cookie can never be minted without a signing key and a validator, so
-the config fails closed at startup rather than shipping an un-loginable wall.
-Source: `docs/dashboard/auth.mdx` (Built-in login screen table + warn callout).
+Mechanism: `<path>/login` no longer exists; the console only asks `authorize`.
+Source: `docs/reference/migrating-to-1-0.mdx`.
 
 See also: `telescope-ui-dashboard/SKILL.md` — the SPA behind these gates;
 `telescope-alerts-ai/SKILL.md` — the diagnose route this guard covers.
