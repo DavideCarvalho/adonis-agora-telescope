@@ -131,7 +131,7 @@ Presentation helpers ship from the same subpath, so custom UIs render identicall
 
 ```ts
 import {
-  ENTRY_TYPES,             // the twelve built-in entry types
+  ENTRY_TYPES,             // the thirteen built-in entry types
   formatDuration,          // '4.2ms', '1m 3s'
   formatPercent,           // 0.0473 → '4.7%'
   formatRelative,          // '12s ago'
@@ -142,7 +142,7 @@ formatDuration(1240)       // '1.24s'
 formatPercent(0.0473)      // '4.7%'
 formatRelative(iso)        // '12s ago'
 ENTRY_TYPES                // ['request','query','exception','client_exception','job',
-                           //  'mail','cache','redis','event','log','http-client','diagnostic']
+                           //  'mail','cache','redis','event','log','http-client','diagnostic','span']
 ```
 
 `Entry['type']` is a plain string, so custom watchers/extensions can record types
