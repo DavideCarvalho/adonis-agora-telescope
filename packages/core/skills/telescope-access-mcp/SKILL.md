@@ -57,25 +57,28 @@ Source: `docs/dashboard/auth.mdx` (Built-in credentials).
 ### Pattern 1 — delegate to your app's auth
 
 When you set `authorize`, the built-in `credentials` gate is ignored — your hook IS
-the whole policy. It receives your **real** `HttpContext` through a framework-light
-declared type, so narrow it to reach `auth`/`session` at runtime.
+the whole policy. It takes the access contract every `@adonis-agora` console shares,
+in three forms: a function typed with the real `HttpContext`, an authorizer class
+built through the container so `@inject()` works, or a lazy import of that class
+(imported once).
 
 ```ts
 // config/telescope_ui.ts
 export default defineConfig({
-  async authorize(ctx) {
-    const { auth } = ctx as unknown as {
-      auth: { check(): Promise<boolean>; user?: { role?: string } }
-    }
-    await auth.check()
-    return auth.user?.role === 'admin'
-  },
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
 })
+
+// ...or a class: authorize: ConsoleAccess
+// ...or lazy: authorize: () => import('#policies/console_access')
 ```
+
+`ConsoleAuthorize`, `ConsoleAuthorizer`, `ConsoleAuthorizerClass` and
+`ConsoleAuthorizeResult` are exported from `@adonis-agora/telescope/ui`.
 
 Guard outcomes for a custom hook: a bare `false` (or `{ allowed: false }` with no
 `reason`) → `403` (fail-closed); `{ allowed: false, reason: 'unauthenticated' }` → `401`
-(+ `WWW-Authenticate`); `reason: 'forbidden'` → `403`; a throwing hook → `403`. Only
+(+ `WWW-Authenticate`); `reason: 'forbidden'` → `403`; `{ redirectTo: '/login' }` →
+page `302` there, API `401 { error, redirectTo }`; a throwing hook → `403`. Only
 the BUILT-IN credentials gate (no custom `authorize`, or `authorize: defaultAuthorize(...)`,
 in both `telescope_ui` and `telescope_mcp` configs) splits by request shape:
 no credential presented → `401`, rejected credential → `403`.
@@ -118,17 +121,19 @@ Source: `docs/dashboard/auth.mdx` (Built-in login screen).
 
 ### Pattern 3 — redirect instead of answering JSON
 
-If the hook sets a `location` header and then returns `false`, the guard leaves the
-redirect alone instead of overwriting it with a `403` body.
+Return `{ redirectTo }`: a page navigation gets a `302` there, an API call gets
+`401 { error, redirectTo }`.
 
 ```ts
 authorize: (ctx) => {
-  const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
-  if (auth.user?.isAdmin === true) return true
-  ctx.response.redirect('/login?next=/telescope')
-  return false   // redirect wins only when the hook returns false
+  if (ctx.auth.user?.isAdmin === true) return true
+  return { redirectTo: '/login?next=/telescope' }
 }
 ```
+
+A redirect the hook writes itself also still wins: if it calls
+`ctx.response.redirect(...)` and returns `false`, the guard leaves that redirect
+alone instead of overwriting it with a `403` body.
 
 Source: `docs/dashboard/auth.mdx` (Redirecting instead of answering JSON).
 
@@ -217,25 +222,24 @@ Mechanism: the docs state the built-in `credentials` gate is ignored whenever
 composes with `authorize`).
 Source: `docs/dashboard/auth.mdx` (Delegate to your app's auth).
 
-### MEDIUM Reaching for ctx.auth without narrowing the context
+### MEDIUM Casting ctx to reach auth
 
 ```ts
-// Wrong — does not type-check: the declared parameter is a minimal HTTP slice.
-authorize: (ctx) => ctx.auth.user?.isAdmin === true
-```
-
-```ts
-// Correct — narrow to the slice you rely on; the REAL HttpContext passes through.
+// Wrong — unnecessary cast: the function form is typed with the real HttpContext.
 authorize: (ctx) => {
   const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
   return auth.user?.isAdmin === true
 }
 ```
 
-Mechanism: the guard's declared shape is framework-light (`request.qs()`,
-`request.header()`, `response`) so any server can satisfy it; `auth`/`session`
-exist at runtime only after narrowing.
-Source: `docs/dashboard/auth.mdx` (narrowing info callout).
+```ts
+// Correct — ctx.auth is right there; no narrowing needed.
+authorize: (ctx) => ctx.auth.user?.isAdmin === true
+```
+
+Mechanism: the function form takes the real AdonisJS `HttpContext`, so `auth`/`session`
+are available directly; the guard still passes that same context through at runtime.
+Source: `docs/dashboard/auth.mdx` (Delegate to your app's auth).
 
 ### HIGH Exposing MCP in production without a token credential
 
