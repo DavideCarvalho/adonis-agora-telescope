@@ -4,7 +4,7 @@ import { TelescopeApiError, TelescopeClient } from './telescope-client.js';
 /** A `fetch` stub that records the requested URL and returns `body` wrapped in a JSON Response. */
 function stubFetch(body: unknown, ok = true, status = 200) {
   const calls: string[] = [];
-  const fetch = vi.fn(async (url: string) => {
+  const fetch = vi.fn(async (url: string, _init?: RequestInit) => {
     calls.push(url);
     return {
       ok,
@@ -162,13 +162,30 @@ describe('TelescopeClient', () => {
     expect(calls[0]).toBe('/telescope/api/profiles/p1');
   });
 
-  it('arms a capture and unwraps pendingManual', async () => {
+  it('arms a capture with count and label in the JSON body, and unwraps pendingManual', async () => {
     const { fetch, calls } = stubFetch({ data: { pendingManual: 2 } });
     const outcome = await client(fetch).armProfile(2, 'GET /x');
     expect(outcome).toEqual({ ok: true, pendingManual: 2 });
-    expect(calls[0]).toContain('/telescope/api/profiles/arm?');
-    expect(calls[0]).toContain('count=2');
-    expect(calls[0]).toContain('label=GET');
+    // The arm route reads `count`/`label` from the request body, not the query string.
+    expect(calls[0]).toBe('/telescope/api/profiles/arm');
+    const init = vi.mocked(fetch).mock.calls[0]?.[1];
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toMatchObject({ 'content-type': 'application/json' });
+    expect(JSON.parse(String(init?.body))).toEqual({ count: 2, label: 'GET /x' });
+  });
+
+  it('arms a capture without a label', async () => {
+    const { fetch } = stubFetch({ data: { pendingManual: 1 } });
+    await client(fetch).armProfile(1);
+    const init = vi.mocked(fetch).mock.calls[0]?.[1];
+    expect(JSON.parse(String(init?.body))).toEqual({ count: 1 });
+  });
+
+  it('sends no body on a URL-only mutation', async () => {
+    const { fetch } = stubFetch({ data: { status: 200 } });
+    await client(fetch).replayRequest('e1');
+    const init = vi.mocked(fetch).mock.calls[0]?.[1];
+    expect(init?.body).toBeUndefined();
   });
 
   it('normalizes an arm failure to { ok: false, message }', async () => {

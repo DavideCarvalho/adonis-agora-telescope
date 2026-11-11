@@ -118,28 +118,37 @@ export class TelescopeClient {
   }
 
   /**
-   * POST with no request body (every mutation route this client calls — diagnose, replay — takes
-   * its parameters from the URL/query string, mirroring the routes themselves). Reads the JSON body
-   * even on failure so a `{ error }` message can be surfaced instead of a generic status line.
+   * POST, with an optional JSON request body for routes that read their parameters from it (arming
+   * a CPU capture). Routes that take theirs from the URL (diagnose, replay, retry) pass `query` and
+   * no body. Reads the JSON response even on failure so a `{ error }` message can be surfaced
+   * instead of a generic status line.
    */
-  private async post<T>(path: string, query: Record<string, string> = {}): Promise<T> {
+  private async post<T>(
+    path: string,
+    query: Record<string, string> = {},
+    body?: Record<string, unknown>,
+  ): Promise<T> {
     const search = new URLSearchParams(query).toString();
     const url = `${this.base}${path}${search ? `?${search}` : ''}`;
     const response = await this.doFetch(url, {
       method: 'POST',
-      headers: { accept: 'application/json' },
+      headers:
+        body === undefined
+          ? { accept: 'application/json' }
+          : { accept: 'application/json', 'content-type': 'application/json' },
       credentials: 'same-origin',
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    const body = (await response.json().catch(() => null)) as
+    const json = (await response.json().catch(() => null)) as
       | (Partial<Envelope<T>> & { error?: string })
       | null;
     if (!response.ok) {
       throw new TelescopeApiError(
-        body?.error ?? `POST ${path} failed (${response.status})`,
+        json?.error ?? `POST ${path} failed (${response.status})`,
         response.status,
       );
     }
-    return (body as Envelope<T>).data;
+    return (json as Envelope<T>).data;
   }
 
   // ── entries ──────────────────────────────────────────────────────────────
@@ -337,7 +346,11 @@ export class TelescopeClient {
    *  throws on a "disabled"/bad-input 4xx — resolves `{ ok: false, message }` instead. */
   async armProfile(count: number, label?: string): Promise<ArmOutcome> {
     try {
-      const result = await this.post<ArmProfileResult>('/profiles/arm', toQuery({ count, label }));
+      const result = await this.post<ArmProfileResult>(
+        '/profiles/arm',
+        {},
+        label !== undefined ? { count, label } : { count },
+      );
       return { ok: true, ...result };
     } catch (err) {
       if (err instanceof TelescopeApiError) return { ok: false, message: err.message };

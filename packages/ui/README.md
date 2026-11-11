@@ -61,7 +61,7 @@ Tailwind + a vendored shadcn-style component layer on [Base UI](https://base-ui.
 on the **Aviary** design tokens shared across the Agora ecosystem's consoles — same neutrals/status
 hues as `@dudousxd/nestjs-telescope-ui` (this dashboard's NestJS sibling), same magenta `--accent`,
 so the two Telescope dashboards match pixel-for-pixel regardless of host framework. Dark-mode-first
-with a `.light`-class override (persisted to `localStorage`), responsive. Still dependency-light where
-it counts: hand-rolled SVG sparklines and a CSS waterfall (a dense, grid-based timeline that loses
-legibility as pure utilities), a tiny `useAsync` instead of a query library, and native `EventSource`
-for the live tail — no react-router, no charting library, no table library.
+with a `.light`-class override (persisted to `localStorage`), responsive. Data loading goes through
+TanStack Query (`@tanstack/react-query`) and tables through TanStack Table. Everything else is
+hand-rolled: SVG sparklines, a CSS waterfall (a dense, grid-based timeline that loses legibility as
+pure utilities), and native `EventSource` for the live tail — no react-router, no charting library.
