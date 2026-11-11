@@ -137,9 +137,8 @@ paths so they resolve either way.
 `<mount>` defaults to `config('telescope_ui').path` (`/telescope`), so the SPA and the JSON API
 share a prefix and the SPA's `<path>/api/*` calls line up. The core provider's static API routes
 take precedence over this wildcard, so the API always wins. Both routes run the same `authorize`
-guard as the API, plus the [`dashboardAuth`](/docs/telescope/dashboard/auth#built-in-login-screen)
-session guard when configured — a page navigation with no valid session is redirected to the login
-page rather than answered with JSON.
+guard as the API, but a refused page navigation gets the access-denied page (or a `302` when
+`authorize` returns `{ redirectTo }`) rather than JSON.
 
 ## Configuration
 
@@ -152,7 +151,7 @@ import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
   path: '/telescope',
-  credentials: { token: process.env.TELESCOPE_UI_TOKEN },
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
   dashboard: {
     enabled: true,
     // path: '/__telescope',   // override the SPA mount (defaults to `path` above)

@@ -6,10 +6,9 @@
 import { defineConfig } from '@adonis-agora/telescope/ui'
 
 /**
- * Configuration for '@adonis-agora/telescope/ui'. By default the dashboard mounts at
- * /telescope and is reachable automatically outside production. In production it is
- * denied unless you set a token / basic credential below, or supply your own
- * authorize hook delegating to your app's auth.
+ * Configuration for '@adonis-agora/telescope/ui'. The dashboard mounts at /telescope.
+ * Without authorize it is open outside production and answers 403 to every request
+ * in production, so set authorize before you deploy.
  */
 export default defineConfig({
   /**
@@ -23,46 +22,20 @@ export default defineConfig({
   // path: '/telescope',
 
   /**
-   * Access-decision hook. Return true to allow the request, false to reject it
-   * (the guard answers 401 when no credential was presented, 403 when one was and
-   * was rejected). Delegate to your own app auth here, e.g.:
+   * Who may open the console. Return true to allow the request, false to reject it
+   * (403), { allowed: false, reason: 'unauthenticated' } for a 401, or
+   * { redirectTo: '/login' } to send a browser to your login page. Delegate to your
+   * own app auth here, with a function, an authorizer class (authorize: ConsoleAccess),
+   * or a lazy import of one (authorize: () => import('#policies/console_access')).
+   * For machine access with 'Authorization: Bearer <token>', import authorizeByToken
+   * from '@adonis-agora/telescope/ui' and use
+   * authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }).
    */
   // authorize: async (ctx) => {
-  //   // The provider passes your real HttpContext through at runtime; the declared
-  //   // parameter is a framework-light slice, so narrow it to reach your own auth.
+  //   // ctx.auth comes from @adonisjs/auth; with it installed this is just
+  //   // ctx.auth.user?.isAdmin === true.
   //   const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
   //   return auth.user?.isAdmin === true
-  // },
-
-  /**
-   * Built-in credentials for the default policy (ignored when authorize is set).
-   * Gate a production dashboard without writing a hook:
-   *  - token: allow 'Authorization: Bearer <token>' or '?token=<token>'
-   *  - basic: allow HTTP Basic auth
-   */
-  // credentials: {
-  //   token: env.get('TELESCOPE_UI_TOKEN'),
-  //   basic: { username: 'admin', password: env.get('TELESCOPE_UI_PASSWORD') },
-  // },
-
-  /**
-   * Built-in login screen. When present, the provider mounts a server-rendered
-   * login page plus its submit and logout routes, and stamps a session guard on the
-   * dashboard: an unauthenticated page navigation is redirected to the login page
-   * and an unauthenticated API request gets a 401. The signed session cookie is
-   * minted only by your own login hook.
-   *
-   * This is ADDITIVE and composes WITH authorize (both must pass). Omit it entirely
-   * to keep the dashboard's default behavior. A missing secret or login hook fails
-   * closed at boot.
-   */
-  // dashboardAuth: {
-  //   secret: env.get('TELESCOPE_DASHBOARD_SECRET'),
-  //   ttl: '8h',
-  //   login: async (username, password) => {
-  //     const user = await User.verifyCredentials(username, password)
-  //     return user.isAdmin ? { id: String(user.id), name: user.fullName } : null
-  //   },
   // },
 
   /**

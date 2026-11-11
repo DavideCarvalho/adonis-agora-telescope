@@ -1,8 +1,9 @@
 {{{
   exports({ to: app.configPath('telescope_mcp.ts') })
 }}}
-/** Uncomment alongside any example below that reads env.get(...). */
+/** Uncomment alongside the authorizeByToken example below. */
 // import env from '#start/env'
+// import { authorizeByToken } from '@adonis-agora/telescope/mcp'
 import { defineConfig } from '@adonis-agora/telescope/mcp'
 
 /**
@@ -10,10 +11,9 @@ import { defineConfig } from '@adonis-agora/telescope/mcp'
  * a coding agent (Claude Code, Cursor, …) over the Model Context Protocol as a
  * JSON-RPC endpoint at 'POST /telescope/mcp'.
  *
- * Access reuses the SAME guard as the dashboard: allowed automatically outside
- * production, and in production only when a token / basic credential — or a custom
- * authorize hook — permits it. A denial is returned as a JSON-RPC -32001 error
- * (MCP has no transport-level 401).
+ * Without authorize it is open outside production and answers 403 to every request
+ * in production, so set authorize before you deploy. A denial is JSON:
+ * 403 { error: 'forbidden' } or 401 { error: 'unauthenticated' }.
  */
 export default defineConfig({
   /**
@@ -27,24 +27,11 @@ export default defineConfig({
   // path: '/telescope/mcp',
 
   /**
-   * Access-decision hook (identical to the UI/metrics guard). Return true to allow
-   * the request. Delegate to your own app auth here, e.g.:
+   * Who may call the endpoint: the same authorize contract as the console. MCP
+   * clients send 'Authorization: Bearer <token>', so import authorizeByToken from
+   * '@adonis-agora/telescope/mcp' and use:
    */
-  // authorize: async (ctx) => {
-  //   // The provider passes your real HttpContext through at runtime; the declared
-  //   // parameter is a framework-light slice, so narrow it to reach your own auth.
-  //   const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
-  //   return auth.user?.isAdmin === true
-  // },
-
-  /**
-   * Built-in credentials for the default policy (ignored when authorize is set):
-   *  - token: allow 'Authorization: Bearer <token>' or '?token=<token>'
-   *  - basic: allow HTTP Basic auth
-   */
-  // credentials: {
-  //   token: env.get('TELESCOPE_MCP_TOKEN'),
-  // },
+  // authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
 
   /**
    * Which tools to expose. Omit for all six ('list_entries', 'get_entry',

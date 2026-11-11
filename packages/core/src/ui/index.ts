@@ -23,39 +23,32 @@ export type {
 // — JSON API —
 export { buildQuery, TelescopeApi, toSummary } from './api.js';
 export type {
-  DashboardAuthDecision,
-  DashboardAuthOptions,
-  LoginHook,
-  LoginOutcome,
-  ResolvedDashboardAuth,
-} from './auth.js';
-// — built-in `dashboardAuth` login screen (optional; opt-in via `config/telescope_ui.ts`) —
-export {
-  decideDashboardAuth,
-  performLogin,
-  readSession,
-  resolveDashboardAuth,
-  SESSION_COOKIE_NAME,
-  sanitizeReturnTo,
-} from './auth.js';
-// — dashboard auth —
-export {
-  clearSessionCookie,
-  enforceDashboardAuth,
-  readSessionCookie,
-  writeSessionCookie,
-} from './dashboard_auth.js';
+  AuthorizeByTokenOptions,
+  ConsoleAuthorize,
+  ConsoleAuthorizeResult,
+  ConsoleAuthorizer,
+  ConsoleAuthorizerClass,
+} from './console_authorize.js';
+// — the console access contract —
+export { authorizeByToken } from './console_authorize.js';
 export type {
   AccessDeniedOption,
   AccessDeniedRenderer,
+  AuthorizeDecision,
   AuthorizeHook,
+  AuthorizeResult,
   ReplayConfig,
   ResolvedTelescopeUiConfig,
+  ResolveUiConfigOptions,
   TelescopeUiConfig,
-  UiCredentials,
 } from './define_config.js';
 // — config —
-export { defaultAuthorize, defineConfig, normalizePath, resolveConfig } from './define_config.js';
+export {
+  defineConfig,
+  MISSING_AUTHORIZE_WARNING,
+  normalizePath,
+  resolveConfig,
+} from './define_config.js';
 export type { PagedTableData, TablePagination } from './ext_table.js';
 // — paged extension-dashboard tables —
 export { fillLinkHref, tablePagination } from './ext_table.js';
@@ -71,7 +64,6 @@ export {
   RecordingResponse,
   RecordingSink,
 } from './http.js';
-export { renderLoginPage } from './login_page.js';
 export type { ArmProfileBody } from './profiles_api.js';
 
 // — CPU profiling JSON API (optional feature: @adonis-agora/telescope/cpu_profiling) —
@@ -91,13 +83,3 @@ export {
 export type { LiveScheduledTask } from './schedules_api.js';
 // — live schedules JSON API (registry: `registerSchedule()`) —
 export { SchedulesApi } from './schedules_api.js';
-export type {
-  DashboardSession,
-  DashboardSessionUser,
-  SignOptions,
-  VerifyOptions,
-} from './session_cookie.js';
-export {
-  signSessionCookie,
-  verifySessionCookie,
-} from './session_cookie.js';

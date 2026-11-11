@@ -1,10 +1,5 @@
-import {
-  type AuthorizeHook,
-  defaultAuthorize,
-  normalizePath,
-  type UiCredentials,
-  withCredentialStatus,
-} from '../ui/define_config.js';
+import { type ConsoleAuthorize, resolveConsoleAuthorize } from '../ui/console_authorize.js';
+import { type AuthorizeHook, normalizePath } from '../ui/define_config.js';
 
 /** The tools the MCP server can expose, in catalogue order. */
 export const MCP_TOOL_NAMES = [
@@ -23,11 +18,10 @@ export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
  * mounted at `path` (default `/telescope/mcp`) that lets a coding agent query the
  * captured telemetry over the Model Context Protocol.
  *
- * Access reuses the SAME guard as the dashboard/metrics API (`AuthorizeHook` +
- * `UiCredentials`): allowed automatically outside production, and in production only
- * when a `token`/`basic` credential — or a custom `authorize` hook — permits it. A
- * denial is surfaced as a JSON-RPC `-32001` error (MCP has no transport 401) so a
- * compliant client can read it.
+ * Access: `authorize`, the same {@link ConsoleAuthorize} contract as the console. MCP clients
+ * send a Bearer token, so the usual choice is `authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') })`.
+ * When omitted, the endpoint is open outside production and answers `403` in production.
+ * A denial is JSON: `403 { error: 'forbidden' }` or `401 { error: 'unauthenticated' }`.
  */
 export interface TelescopeMcpConfig {
   /** Master switch. When `false`, the provider registers no routes at all. Default `true`. */
@@ -35,13 +29,14 @@ export interface TelescopeMcpConfig {
   /** URL the JSON-RPC endpoint mounts at. Default `/telescope/mcp`. */
   path?: string;
   /**
-   * The access-decision hook, identical to the UI/metrics guard. When omitted the
-   * default policy is used: allow outside production, otherwise require a configured
-   * {@link UiCredentials}. Delegate to your own app auth here.
+   * Who may call the endpoint, in any {@link ConsoleAuthorize} form (a function, an authorizer
+   * class, or a lazy import of one). For MCP clients sending `Authorization: Bearer <token>`:
+   * `authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') })`.
+   *
+   * When omitted, the endpoint is open outside production and answers `403` to every request in
+   * production (with one warning at boot).
    */
-  authorize?: AuthorizeHook;
-  /** Built-in credentials for the default policy (ignored when `authorize` is set). */
-  credentials?: UiCredentials;
+  authorize?: ConsoleAuthorize;
   /**
    * Which tools to expose. Omit for all six. Restrict this to hand an agent a
    * narrower surface (e.g. read-only `['list_entries', 'get_trace', 'get_health']`).
@@ -55,7 +50,8 @@ export interface ResolvedTelescopeMcpConfig {
   /** Always a leading-slash, no-trailing-slash path, e.g. `/telescope/mcp`. */
   path: string;
   authorize: AuthorizeHook;
-  credentials: UiCredentials;
+  /** Whether the host configured `authorize` (when not, the production default denies everything). */
+  authorizeConfigured: boolean;
   /** The enabled tool set. */
   tools: ReadonlySet<McpToolName>;
 }
@@ -73,15 +69,40 @@ export function defineConfig(config: TelescopeMcpConfig): TelescopeMcpConfig {
   return config;
 }
 
+/** Whether the current process is running in production (used when the caller does not say). */
+function isProduction(): boolean {
+  return process.env.NODE_ENV === 'production';
+}
+
+/** Options for {@link resolveConfig}. */
+export interface ResolveMcpConfigOptions {
+  /** Whether the app runs in production (`app.inProduction`). Defaults to `NODE_ENV === 'production'`. */
+  inProduction?: boolean;
+}
+
+/**
+ * The warning logged once at boot when `authorize` is omitted.
+ *
+ * @internal Used by the MCP provider.
+ */
+export const MISSING_MCP_AUTHORIZE_WARNING =
+  '[@adonis-agora/telescope] console has no `authorize` configured: it is open outside production and denies every request in production. Set `authorize` in config/telescope_mcp.ts.';
+
 /** Apply defaults to a (possibly partial) config. */
-export function resolveConfig(config: TelescopeMcpConfig = {}): ResolvedTelescopeMcpConfig {
-  const credentials = config.credentials ?? {};
+export function resolveConfig(
+  config: TelescopeMcpConfig = {},
+  options: ResolveMcpConfigOptions = {},
+): ResolvedTelescopeMcpConfig {
+  const inProduction = options.inProduction ?? isProduction();
   const tools = config.tools !== undefined ? config.tools : MCP_TOOL_NAMES;
   return {
     enabled: config.enabled ?? true,
     path: normalizePath(config.path ?? '/telescope/mcp'),
-    authorize: withCredentialStatus(config.authorize ?? defaultAuthorize(credentials)),
-    credentials,
+    authorize:
+      config.authorize === undefined
+        ? () => !inProduction
+        : resolveConsoleAuthorize(config.authorize),
+    authorizeConfigured: config.authorize !== undefined,
     tools: new Set<McpToolName>(tools),
   };
 }

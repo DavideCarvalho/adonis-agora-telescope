@@ -1,4 +1,3 @@
-import type { HttpContext } from '@adonisjs/core/http';
 import type { ApplicationService } from '@adonisjs/core/types';
 import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js';
 import type { ExtensionContext } from '../src/extension/types.js';
@@ -7,13 +6,8 @@ import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { TelescopeApi } from '../src/ui/api.js';
-import { performLogin, sanitizeReturnTo } from '../src/ui/auth.js';
 import {
-  clearSessionCookie,
-  enforceDashboardAuth,
-  writeSessionCookie,
-} from '../src/ui/dashboard_auth.js';
-import {
+  MISSING_AUTHORIZE_WARNING,
   type ResolvedTelescopeUiConfig,
   resolveConfig,
   type TelescopeUiConfig,
@@ -22,7 +16,6 @@ import { DiagnosisApi } from '../src/ui/diagnosis_api.js';
 import { ExtensionApi } from '../src/ui/extension_api.js';
 import { enforceGuard } from '../src/ui/guard.js';
 import type { SseSink, UiHttpContext } from '../src/ui/http.js';
-import { renderLoginPage } from '../src/ui/login_page.js';
 import { ProfilesApi } from '../src/ui/profiles_api.js';
 import { QueueManagerApi } from '../src/ui/queue_manager_api.js';
 import { SchedulesApi } from '../src/ui/schedules_api.js';
@@ -43,18 +36,31 @@ import { SchedulesApi } from '../src/ui/schedules_api.js';
 export default class TelescopeUiProvider {
   constructor(protected app: ApplicationService) {}
 
-  /** Warn once so a throwing `login` hook doesn't spam the logs on every failed attempt. */
-  private warnedOnHookThrow = false;
+  /** Log a warning through the app logger when one is bound, else the console. Never throws. */
+  private async warn(message: string): Promise<void> {
+    try {
+      const logger = await this.app.container.make('logger');
+      logger.warn(message);
+    } catch {
+      console.warn(message);
+    }
+  }
 
   private resolve(): ResolvedTelescopeUiConfig {
     return resolveConfig(
       this.app.config.get<TelescopeUiConfig | undefined>('telescope_ui', undefined),
+      { inProduction: this.app.inProduction === true },
     );
   }
 
   async boot() {
     const config = this.resolve();
     if (!config.enabled) return;
+    // Without `authorize` the console is open outside production and denies every request in
+    // production: say so once, at boot, in every environment.
+    if (!config.authorizeConfigured) {
+      await this.warn(MISSING_AUTHORIZE_WARNING);
+    }
 
     let store: TelescopeStore | null;
     try {
@@ -129,100 +135,9 @@ export default class TelescopeUiProvider {
 
     const router = await this.app.container.make('router');
     const guard = config.authorize;
-    const auth = config.dashboardAuth;
 
-    // Composed guard: the existing `authorize` hook FIRST (writes 401/403 on denial), then — only
-    // when `dashboardAuth` is configured — the signed-session guard (a missing/invalid session on an
-    // API request is a plain 401). When `dashboardAuth` is omitted `auth` is null, so this is exactly
-    // `enforceGuard` and behavior is byte-for-byte unchanged.
-    const gate = async (ctx: UiHttpContext): Promise<boolean> => {
-      if (!(await enforceGuard(ctx, guard))) return false;
-      if (auth === null) return true;
-      return enforceDashboardAuth(ctx as unknown as HttpContext, auth, 'api', config.path);
-    };
-
-    // Built-in `dashboardAuth` login screen (opt-in). Registered ONLY when configured, so omitting
-    // `dashboardAuth` leaves route registration byte-for-byte as it was. These endpoints are public
-    // (behind NEITHER guard): they MINT/clear the session the guard checks for, and the login page
-    // must stay reachable while unauthenticated — including in production, where the default
-    // `authorize` hook would otherwise deny it.
-    if (auth !== null) {
-      const loginPath = `${config.path}/login`;
-      const logoutPath = `${config.path}/logout`;
-
-      // `GET <path>/login` → the server-rendered login page. A static route, so it takes precedence
-      // over the SPA's `<path>/*` wildcard in the AdonisJS router. `returnTo`/`error` are read
-      // client-side from the query (never server-echoed), so the body is a static template.
-      router
-        .get(loginPath, async (ctx: HttpContext) => {
-          ctx.response.header('content-type', 'text/html; charset=utf-8');
-          ctx.response.header('cache-control', 'no-store, must-revalidate');
-          const qs = ctx.request.qs();
-          const nonce = cspNonce(ctx);
-          return ctx.response.send(
-            renderLoginPage(config.path, {
-              ...(nonce !== undefined ? { nonce } : {}),
-              error: qs.error !== undefined,
-              returnTo: qs.returnTo,
-            }),
-          );
-        })
-        .as('telescope_ui.login.page');
-
-      // `POST <path>/login` → verify credentials via the host `login` hook and mint the cookie.
-      // Uniform `401` on ANY failure (unknown user, wrong password, or a throwing hook) so there is
-      // no user-enumeration; a throwing hook is warn-logged once, never surfaced to the client.
-      // Two callers: the page's own `fetch` (JSON in, JSON out) and, with JavaScript off or its
-      // inline script dropped by a CSP, the same page as a classic form post (form-encoded in, a
-      // redirect out: to `returnTo` on success, back to the login page with `?error` on failure).
-      router
-        .post(loginPath, async (ctx: HttpContext) => {
-          const body = ctx.request.body();
-          const outcome = await performLogin(auth, body, config.path);
-          const form = isFormPost(ctx);
-          const backToLogin = () =>
-            ctx.response
-              .redirect()
-              .withQs({
-                error: '1',
-                returnTo: sanitizeReturnTo(
-                  (body as { returnTo?: unknown } | null)?.returnTo,
-                  config.path,
-                ),
-              })
-              .toPath(loginPath);
-          if (outcome.kind === 'bad-request') {
-            if (form) return backToLogin();
-            return ctx.response.status(400).json({ error: outcome.message });
-          }
-          if (outcome.kind === 'unauthorized') {
-            if (outcome.hookError !== undefined && !this.warnedOnHookThrow) {
-              this.warnedOnHookThrow = true;
-              const message =
-                outcome.hookError instanceof Error
-                  ? outcome.hookError.message
-                  : String(outcome.hookError);
-              const logger = await this.app.container.make('logger');
-              logger.warn(`dashboardAuth login hook threw; treating as denial. ${message}`);
-            }
-            if (form) return backToLogin();
-            return ctx.response.status(401).json({ error: outcome.message });
-          }
-          writeSessionCookie(ctx, auth, outcome.cookieValue);
-          if (form) return ctx.response.redirect().toPath(outcome.redirectTo);
-          return ctx.response.status(200).json({ redirectTo: outcome.redirectTo });
-        })
-        .as('telescope_ui.login.submit');
-
-      // `GET <path>/logout` → clear the cookie and redirect back to the login page. A plain GET
-      // (idempotent, only ever destroys the caller's own session) so a simple `<a href>` works.
-      router
-        .get(logoutPath, async (ctx: HttpContext) => {
-          clearSessionCookie(ctx);
-          return ctx.response.redirect().toPath(loginPath);
-        })
-        .as('telescope_ui.logout');
-    }
+    // The one gate every API route runs: `authorize` writes the 401/403 JSON on denial.
+    const gate = (ctx: UiHttpContext): Promise<boolean> => enforceGuard(ctx, guard);
 
     // Dashboard page: served by the `@adonis-agora/telescope-ui` SPA provider (it mounts the built
     // Vite app at the prefix root, behind this same `authorize` guard). This provider owns only the
@@ -417,8 +332,7 @@ export default class TelescopeUiProvider {
 
     // Prometheus scrape of the AI-usage / agent-run metrics (`agora_ai_*`, `agora_agent_*`).
     // Opt-in (core `prometheus.enabled`) and behind the same gate as the JSON API: a scraper
-    // authenticates the way any API client does (the `authorize` hook, or `dashboardAuth`'s
-    // session). A static route, so it wins over the SPA's `<path>/*` wildcard. The registry is
+    // authenticates the way any API client does (`authorize`, e.g. `authorizeByToken`). A static route, so it wins over the SPA's `<path>/*` wildcard. The registry is
     // read per request from the runtime slot the core provider fills at boot.
     if (coreConfig.prometheus.enabled) {
       router
@@ -545,27 +459,6 @@ interface StreamContext extends UiHttpContext {
 
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-/**
- * The request's CSP nonce when the host runs `@adonisjs/shield` with `@nonce` in its policy (shield
- * exposes it as `response.nonce`). Read structurally: this package neither depends on shield nor
- * cares which middleware minted the nonce — only that the login page's inline `<script>`/`<style>`
- * carry it, so the policy keeps them instead of silently dropping them.
- */
-function cspNonce(ctx: HttpContext): string | undefined {
-  const nonce = (ctx.response as unknown as { nonce?: unknown }).nonce;
-  return typeof nonce === 'string' && nonce !== '' ? nonce : undefined;
-}
-
-/**
- * Whether a login `POST` came from a classic HTML form submit (form-encoded — JavaScript off, or
- * the page's inline script dropped by a CSP) rather than the page's own JSON `fetch`. Decides
- * whether the reply is a redirect (a browser navigating) or JSON (a script awaiting it).
- */
-function isFormPost(ctx: HttpContext): boolean {
-  const type = ctx.request.header('content-type') ?? '';
-  return type.includes('application/x-www-form-urlencoded') || type.includes('multipart/form-data');
 }
 
 /**

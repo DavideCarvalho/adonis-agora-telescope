@@ -244,7 +244,7 @@ export interface TelescopeConfig {
   /**
    * Prometheus scrape endpoint for the AI-usage and agent-run metrics (`agora_ai_*`,
    * `agora_agent_*`): `GET <telescope_ui path>/metrics` in the text exposition format, served by
-   * the `ui_provider` behind the same `authorize` / `dashboardAuth` guard as the JSON API. OFF by
+   * the `ui_provider` behind the same `authorize` guard as the JSON API. OFF by
    * default. Lets Prometheus (and so Grafana) read the metrics without an OTel Collector.
    */
   prometheus?: PrometheusConfig;

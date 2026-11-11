@@ -48,8 +48,8 @@ providers: [
 ```
 
 Open `http://localhost:3333/telescope`. It is reachable automatically outside
-production; in production it is denied until you set a credential or an `authorize`
-hook in `config/telescope_ui.ts` (see the `telescope-access-mcp` skill).
+production; in production it answers `403` to every request until you set `authorize`
+in `config/telescope_ui.ts` (see the `telescope-access-mcp` skill).
 
 Source: `docs/packages/telescope-ui.mdx` (Install),
 `docs/getting-started.mdx` (Step 6).
@@ -67,7 +67,7 @@ import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
   path: '/telescope',
-  credentials: { token: process.env.TELESCOPE_UI_TOKEN },
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
   dashboard: {
     enabled: true,
     // path: '/__telescope',   // serve the SPA from a different prefix than the API

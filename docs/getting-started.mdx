@@ -234,8 +234,8 @@ npm i @adonis-agora/telescope-ui             # the React dashboard SPA
 
 Then register `@adonis-agora/telescope-ui/telescope_ui_dashboard_provider` **after** the core
 `ui_provider` in `adonisrc.ts`. With both providers registered, the dashboard mounts at
-`/telescope` and is reachable automatically **outside production**. In production it is denied
-unless you set a credential or supply an `authorize` hook. See [Dashboard auth](/docs/telescope/dashboard/auth).
+`/telescope` and is reachable automatically **outside production**. In production it answers `403`
+to every request until you set `authorize`. See [Dashboard auth](/docs/telescope/dashboard/auth).
 
 ---
 

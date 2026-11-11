@@ -1,7 +1,7 @@
 ---
 title: Dashboard auth
 icon: KeyRound
-description: How the Telescope dashboard is gated — the default allow-in-dev / deny-in-prod policy, the built-in token and HTTP Basic credentials, delegating to your own app auth with an authorize hook, and the 401-vs-403 fail-closed guard behaviour.
+description: How the Telescope dashboard is gated — the default open-in-dev / 403-in-production policy, delegating to your own app auth with an authorize function, class or lazy import, token access with authorizeByToken, and the 401-vs-403 guard behaviour.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
@@ -14,128 +14,140 @@ guard** first; this page is how that guard works and how to wire it to your need
 
 ## The default policy
 
-Out of the box, with no `authorize` and no `credentials` configured:
+With no `authorize` configured:
 
-- **Outside production** (`NODE_ENV !== 'production'`) → **allowed**. The dev dashboard
-  just works.
-- **In production** → **denied**, unless the request presents a configured credential.
+- **Outside production** → **open**. The dev dashboard just works.
+- **In production** → every page and API request gets **`403`**.
 
-So a fresh install is usable locally and closed in production until you make a deliberate
-choice. The policy lives in `defaultAuthorize` and is what you get when you set neither a
-hook nor credentials.
+Either way, this warning is logged once at boot:
 
-<Callout type="warn">
-"Deny in production" is the *default*, not a guarantee you can skip configuring. If you
-mount the dashboard in production, set a `token`/`basic` credential **or** an `authorize`
-hook. Never rely on an obscure `path` alone.
-</Callout>
+```txt
+[@adonis-agora/telescope] console has no `authorize` configured: it is open outside production and denies every request in production. Set `authorize` in config/telescope_ui.ts.
+```
 
-## Built-in credentials
+"Production" is the app's `app.inProduction` (`NODE_ENV=production`). There is no other
+switch: to open the console in production, set `authorize`.
 
-The simplest production gate: set a credential and the default policy lets matching
-requests through (and still denies everything else in production).
+## Delegate to your app's auth
 
-<Tabs items={['Bearer token', 'HTTP Basic']}>
-<Tab value="Bearer token">
+For real apps, gate the dashboard on your existing session and roles with `authorize`. It
+receives the request's `HttpContext`, so `ctx.auth`, `ctx.session` and the rest are right
+there. `authorize` is the whole policy, in every environment.
+
+It takes the same three forms as every `@adonis-agora` console, so one authorizer can guard
+all of them.
+
+<Tabs items={['Function', 'Class', 'Lazy import']}>
+<Tab value="Function">
 
 ```ts title="config/telescope_ui.ts"
-import env from '#start/env'
 import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
-  credentials: { token: env.get('TELESCOPE_UI_TOKEN') },
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
 })
 ```
 
-A request is allowed when it carries `Authorization: Bearer <token>` **or**
-`?token=<token>` matching the configured value. The compare is constant-time-ish so it
-doesn't trivially leak the secret's length.
-
-```sh
-curl -H 'Authorization: Bearer s3cr3t' http://app.example.com/telescope/api/entries
-# or, for opening the page in a browser:
-open 'http://app.example.com/telescope?token=s3cr3t'
-```
-
-<Callout type="info">
-`/telescope` only serves a page when `@adonis-agora/telescope-ui` is installed and its
-provider is registered; otherwise this prefix exposes just `<path>/api/*`, and only the
-`curl` form above applies.
-</Callout>
-
-</Tab>
-<Tab value="HTTP Basic">
+Sync or async:
 
 ```ts title="config/telescope_ui.ts"
-import env from '#start/env'
-import { defineConfig } from '@adonis-agora/telescope/ui'
-
 export default defineConfig({
-  credentials: {
-    basic: { username: 'admin', password: env.get('TELESCOPE_UI_PASSWORD') },
+  async authorize(ctx) {
+    await ctx.auth.check()
+    return ctx.auth.user?.role === 'admin'
   },
 })
 ```
 
-A request is allowed when it presents `Authorization: Basic <base64(user:pass)>` matching
-the configured pair. A browser surfaces a native login prompt on the `401` (the guard
-sends a `WWW-Authenticate` header).
+</Tab>
+<Tab value="Class">
+
+Put the authorizer in its own file. It is built through the container, so `@inject()`
+works:
+
+```ts title="app/policies/console_access.ts"
+import { inject } from '@adonisjs/core'
+import type { HttpContext } from '@adonisjs/core/http'
+import type { ConsoleAuthorizer } from '@adonis-agora/telescope/ui'
+import AuditService from '#services/audit_service'
+
+@inject()
+export default class ConsoleAccess implements ConsoleAuthorizer {
+  constructor(private audit: AuditService) {}
+
+  async authorize(ctx: HttpContext) {
+    const user = ctx.auth.user
+    if (!user) return { redirectTo: '/login?next=/telescope' }
+    await this.audit.record('telescope.open', user)
+    return user.isAdmin === true
+  }
+}
+```
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@adonis-agora/telescope/ui'
+import ConsoleAccess from '#policies/console_access'
+
+export default defineConfig({
+  authorize: ConsoleAccess,
+})
+```
+
+</Tab>
+<Tab value="Lazy import">
+
+The same class, loaded on the first console request instead of when the config file is
+read:
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: () => import('#policies/console_access'),
+})
+```
 
 </Tab>
 </Tabs>
 
-You can set both `token` and `basic` — either matching one allows the request.
+Whichever form you use, `authorize` answers with one of:
 
-## Delegate to your app's auth
+| Return                                              | Page navigation              | API call         |
+| --------------------------------------------------- | ---------------------------- | ---------------- |
+| `true` / `{ allowed: true }`                        | allowed                      | allowed          |
+| `false` / `{ allowed: false }`                      | `403` page                   | `403` JSON       |
+| `{ allowed: false, reason: 'unauthenticated' }`     | `401` page                   | `401` JSON       |
+| `{ redirectTo: '/login' }`                          | `302` to that path           | `401` JSON with `redirectTo` |
+| throws                                              | `403` page                   | `403` JSON       |
 
-For real apps, gate the dashboard on your existing session/roles. Supply an `authorize`
-hook — it receives the (framework-light) HTTP context, so it can read headers, a session,
-or an injected user. Sync or async. When you set `authorize`, the built-in `credentials`
-gate is ignored (your hook is the whole policy).
+### Token access with `authorizeByToken`
+
+For scripts and machines that have no session, `authorizeByToken` allows a request whose
+`Authorization` header is `Bearer <token>` and answers `401` to anything else:
 
 ```ts title="config/telescope_ui.ts"
-import { defineConfig } from '@adonis-agora/telescope/ui'
+import env from '#start/env'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
-  authorize: (ctx) => {
-    const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
-    return auth.user?.isAdmin === true
-  },
+  authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }),
 })
 ```
 
-The narrowing is the price of the guard being framework-light. The hook's declared parameter is a
-minimal `{ request, response }` shape, but the provider passes your **real** `HttpContext` straight
-through — so `auth`, `session` and the rest are genuinely there at runtime, and you name the slice
-you rely on to reach them.
-
-```ts
-// Async — resolve a user and check a role.
-export default defineConfig({
-  async authorize(ctx) {
-    const { auth } = ctx as unknown as {
-      auth: { check(): Promise<boolean>; user?: { role?: string } }
-    }
-    await auth.check()
-    return auth.user?.role === 'admin'
-  },
-})
+```sh
+curl -H "Authorization: Bearer $CONSOLE_TOKEN" https://app.example.com/telescope/api/entries
 ```
 
-<Callout type="info">
-The guard takes a deliberately minimal HTTP context (`request.qs()`, `request.header()`,
-and a `response`), and a real AdonisJS `HttpContext` satisfies it structurally — so the
-real `ctx` is passed straight through and your hook really can reach `auth`, `session` and
-the rest at runtime. They are not on the *declared* type, though, so narrow `ctx` to the
-slice you need (as above) rather than reaching for them directly.
-</Callout>
+Only the header is read: a `?token=` query string or any other header is refused. An empty or
+missing `token` throws when the config loads, so a deploy without the secret fails at boot
+instead of running with an unusable gate. Every `@adonis-agora` console exports the same
+helper.
 
 ### Role-based gate via `@adonis-agora/authz`
 
 If you use `@adonis-agora/authz` for RBAC (roles live in `user_roles`, or come from the
-token claim), the `authorizeByRoles` helper removes the narrowing entirely — same
-semantics as the `requireRole` middleware, in the `(ctx) => boolean` shape the dashboard
-expects:
+token claim), the `authorizeByRoles` helper is a ready-made `authorize` with the same
+semantics as the `requireRole` middleware:
 
 ```ts title="config/telescope_ui.ts"
 import { defineConfig } from '@adonis-agora/telescope/ui'
@@ -147,116 +159,23 @@ export default defineConfig({
 ```
 
 - The user comes from `ctx.auth.getUser()` (authkit) or `ctx.auth.user` (any guard), so it
-  works with or without authkit — including a plain AdonisJS **session cookie**, a
-  completely ordinary auth pattern that has nothing to do with this library's own
-  `credentials.token`/`credentials.basic` gate.
+  works with or without authkit, including a plain AdonisJS **session cookie**.
 - `effectiveRoles` includes global token claims **and** app-level DB roles; `roles` is
   any-of (passes when the user holds at least one).
-- No authenticated user → `false` (the guard answers `403`, or honors a redirect you
-  write — see below for getting a `401` instead).
-- It accepts any context shape (the dashboards type `authorize` differently), reading
-  `ctx.auth` structurally and never touching AdonisJS internals.
+- No authenticated user → `401`; signed in without the role → `403`.
+- Pass `loginPath` to send an anonymous page navigation to your login page instead
+  (`authorizeByRoles({ roles: ['ADMIN'], loginPath: '/auth/login' })`); API calls keep
+  getting JSON.
 
-The same helper works across every `@adonis-agora` dashboard — telescope, durable, media
-and agent — so one RBAC gate config reads the same everywhere.
+The same helper works across every `@adonis-agora` console, so one RBAC gate reads the
+same everywhere.
 
-<Callout type="warn">
-Composed as-is, a hook returning a bare `boolean` denies BOTH a genuinely-anonymous request
-and an authenticated-but-wrong-role request with `false`, and a bare `false` from a custom
-hook is always a `403` (fail closed — the guard cannot see a session cookie, so it does not
-guess). To send an anonymous visitor a `401` ("Sign in required") instead, return the
-enriched `AuthorizeDecision` (`{ allowed, reason }`) form and tell the guard which denial
-this is:
+## Signing in
 
-```ts title="config/telescope_ui.ts"
-import { defineConfig } from '@adonis-agora/telescope/ui'
-import { authorizeByRoles } from '@adonis-agora/authz'
-
-const requireAdmin = authorizeByRoles({ roles: ['ADMIN'] })
-
-export default defineConfig({
-  authorize: async (ctx) => {
-    if (await requireAdmin(ctx)) return true
-    // authorizeByRoles said no — was anybody signed in at all?
-    const { auth } = ctx as unknown as { auth: { user?: unknown } }
-    return { allowed: false, reason: auth.user !== undefined ? 'forbidden' : 'unauthenticated' }
-  },
-})
-```
-
-Now a signed-in user missing the `ADMIN` role gets `403`, and an anonymous visitor gets
-`401` — see [Guard behaviour](#guard-behaviour) below for exactly how
-the guard uses `reason`.
-</Callout>
-
-## Built-in login screen
-
-For a shared, human-facing dashboard, the `authorize` hook and static credentials are awkward —
-you want a real login form and a session. The optional **`dashboardAuth`** block adds exactly
-that: a server-rendered login page gated by a signed session cookie, without touching the bundled
-SPA.
-
-```ts title="config/telescope_ui.ts"
-import env from '#start/env'
-import User from '#models/user'
-import hash from '@adonisjs/core/services/hash'
-import { defineConfig } from '@adonis-agora/telescope/ui'
-
-export default defineConfig({
-  dashboardAuth: {
-    secret: env.get('TELESCOPE_DASHBOARD_SECRET'),   // HMAC-SHA256 signing key (32+ bytes)
-    ttl: '8h',
-    async login(username, password) {
-      const user = await User.findBy('email', username)
-      if (!user || !(await hash.verify(user.password, password))) return null
-      if (!user.isAdmin) return null
-      return { id: String(user.id), name: user.fullName }   // the session user, or null to deny
-    },
-  },
-})
-```
-
-| Key      | Default | Description                                                                    |
-| -------- | ------- | ----------------------------------------------------------------------------- |
-| `secret` | —       | **Required.** HMAC-SHA256 key that signs the session cookie. Missing/empty → boot error. |
-| `ttl`    | `'8h'`  | Cookie lifetime as a duration string (`'30m'`, `'8h'`, `'7d'`).               |
-| `login`  | —       | **Required.** Validates the submitted username/password; return the session user, or `null` to deny. May be `async`. |
-
-When configured, the provider mounts three routes and stamps a session guard on the dashboard:
-
-| Route                   | Serves                                                                    | Guarded |
-| ----------------------- | ------------------------------------------------------------------------ | ------- |
-| `GET <path>/login`      | The server-rendered login page (a static route, so it takes precedence). | No      |
-| `POST <path>/login`     | Runs the `login` hook; on success mints the signed session cookie.       | No      |
-| `GET <path>/logout`     | Clears the session cookie, then redirects to the login page.             | No      |
-
-Those three sit **outside** both guards, in every environment — they have to, or you could
-never reach the page that mints a session, and the `authorize` policy would deny you before
-you ever saw a login form. They are the login surface itself, so treat them accordingly: the
-page renders no server-supplied text (the `returnTo` and `error` values are read client-side
-from the query string, never echoed into the HTML), every credential failure answers a uniform
-`401` so the endpoint cannot be used to enumerate users, and the `POST` does nothing but run
-your `login` hook. What they never expose is recorded data — every entry, trace, metric and
-stream still sits behind both guards.
-
-<Callout type="info">
-`dashboardAuth` is **additive** and composes **with** `authorize` — both must pass. An
-unauthenticated **page** navigation is redirected (`302`) to the login page; an unauthenticated
-**API** request gets a plain `401`. The signed cookie (`telescope_dashboard_session`) is minted
-**only** by your `login` hook. Omit `dashboardAuth` entirely and the dashboard behaves exactly as
-before — no login/logout routes, no session guard.
-</Callout>
-
-<Callout type="warn">
-It **fails closed at boot**: a configured-but-missing `secret` or `login` throws at startup rather
-than shipping an un-mintable gate. A `login` hook that throws is treated as a denial (logged once,
-never surfaced), every credential failure returns a **uniform** `401` (no user-enumeration), and
-the post-login `returnTo` is validated against open redirects (same-origin, root-relative only).
-The page itself is a plain HTML form that works without JavaScript — a form submit is answered
-with a redirect (to `returnTo`, or back to the form with the error shown) — and its inline script
-and style carry `@adonisjs/shield`'s request nonce, so a `script-src 'self' @nonce` policy keeps
-the page working.
-</Callout>
+The console has no login of its own: people sign in through your app. To send an anonymous
+visitor to your login page, return `{ redirectTo }` from `authorize` (see
+[Redirecting instead of answering JSON](#redirecting-instead-of-answering-json)), or point the
+access-denied page's "Sign in" button at it with `accessDenied.loginHref`.
 
 ## Guard behaviour
 
@@ -267,83 +186,58 @@ payments, agent, authz):
 | Outcome                                                     | Status | Meaning                                            |
 | ---------------------------------------------------------- | ------ | -------------------------------------------------- |
 | `authorize` returned `true` (or `{ allowed: true }`)       | —      | Request proceeds to the handler.                   |
-| Denied with `reason: 'unauthenticated'`                    | `401`  | "Authenticate" — sends `WWW-Authenticate` so a browser prompts. |
-| Denied with `reason: 'forbidden'`                          | `403`  | "Forbidden" — signed in, but not allowed.           |
+| Denied with `reason: 'unauthenticated'`                    | `401`  | `{ "error": "unauthenticated" }` — please sign in. |
+| Denied with `reason: 'forbidden'`                          | `403`  | `{ "error": "forbidden" }` — signed in, but not allowed. |
 | Denied with a bare `false`, or `{ allowed: false }` with no `reason` | `403` | Fail-closed "Forbidden" — whatever the request looked like. |
 | `authorize` **threw**                                      | `403`  | Fail-closed — a buggy hook never accidentally opens the door. |
+| Answered `{ redirectTo }`                                   | `302` / `401` | A page navigation is redirected there; an API call gets `401 { "error": "unauthenticated", "redirectTo" }`. |
 | Denied, but the hook already set a `location` header       | —      | The hook's redirect stands; the guard writes no status and no body. |
 
 ### Bare `boolean` vs the enriched `{ allowed, reason }` return
 
-An `authorize` hook may return a plain `boolean` (as every example above does) **or** an
-object, `{ allowed: boolean, reason?: 'unauthenticated' | 'forbidden' }`.
+`authorize` may return a plain `boolean` **or** an object,
+`{ allowed: boolean, reason?: 'unauthenticated' | 'forbidden' }` (or `{ redirectTo }`, above).
 
 The `reason` only matters on a denial (`allowed: false`):
 
-- `reason: 'unauthenticated'` → `401` (with `WWW-Authenticate`), regardless of what the
-  request looked like.
+- `reason: 'unauthenticated'` → `401`, regardless of what the request looked like.
 - `reason: 'forbidden'` → `403`.
 - `reason` omitted, or a bare `false` → `403`. The guard does not try to guess from the
-  request whether anybody is signed in — a custom hook that wants the "please sign in"
-  answer says so with `reason: 'unauthenticated'`.
-
-The one place the request shape still matters is the **built-in** gate — the default policy
-plus `credentials.token`/`credentials.basic`, used when you configure no `authorize` (or pass
-`authorize: defaultAuthorize(...)`). There "no credential in the request" and "not
-authenticated" are the same fact, so it answers `401` (+ `WWW-Authenticate`, so a browser
-prompts) when the request presented no `Authorization` header and no `?token=`, and `403`
-when a credential was presented but rejected. The exported `defaultAuthorize(...)` itself
-still returns a plain `boolean`, so composing it inside your own hook is safe.
-
-<Callout type="info">
-**Changed in this release:** a custom hook returning a bare `false` used to fall back to that
-request-shape heuristic too, so a session-authenticated user without the right role (no
-`Authorization` header) got `401 — Sign in required`. It is now a `403`. If you relied on
-the `401`, return `{ allowed: false, reason: 'unauthenticated' }`.
-</Callout>
+  request whether anybody is signed in — a hook that wants the "please sign in" answer says
+  so with `reason: 'unauthenticated'`.
 
 <Callout type="warn">
 The guard runs on every route that serves recorded data — every `/api/*` endpoint (including
 the SSE stream, the metrics rollups and the extension surface) and the
 `@adonis-agora/telescope-ui` SPA routes. You cannot accidentally leave the JSON API open while
-gating the page. The one exception is the `dashboardAuth` login surface described above
-(`GET`/`POST <path>/login` and `GET <path>/logout`), which is unguarded by necessity and only
-exists when you configure `dashboardAuth`.
+gating the page.
 </Callout>
 
 ### Redirecting instead of answering JSON
 
-If your `authorize` hook redirects — sets a `location` header, typically via
-`ctx.response.redirect(...)` — and then returns `false`, the guard leaves that redirect alone
-instead of overwriting it with a `403` JSON body. That is the hook for sending an
-unauthenticated visitor to your own product's login page rather than a bare
-`{ "error": "Forbidden" }`:
+To send a visitor to your own login page instead of the access-denied page, return
+`{ redirectTo }`. A page navigation gets a `302` there; the console's own API calls keep
+getting JSON (`401`), so the SPA never receives your login page's HTML:
 
-```ts
-// config/telescope_ui.ts
+```ts title="config/telescope_ui.ts"
 export default defineConfig({
   authorize: (ctx) => {
-    const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
-    if (auth.user?.isAdmin === true) return true
-    ctx.response.redirect('/login?next=/telescope')
-    return false
+    if (!ctx.auth.user) return { redirectTo: '/login?next=/telescope' }
+    return ctx.auth.user.isAdmin === true
   },
 })
 ```
 
-The redirect wins only when the hook returns `false`; returning `true` proceeds to the handler
-as usual, redirect or not.
+A redirect you write yourself also wins: if `authorize` calls `ctx.response.redirect(...)` and
+returns `false`, the guard leaves that redirect alone instead of writing its own `403`.
 
 ### The access-denied page
 
 The `{ "error": ... }` JSON above is what the **API** answers with — the console's own `fetch`
 calls expect it. A refused **page** navigation (the `@adonis-agora/telescope-ui` shell or its
 assets) gets a real page instead: a dark card in the console's visual language showing the
-status, a sentence explaining the refusal, a "Back to app" link and, when `dashboardAuth` is
-configured, a "Sign in" button. The statuses are the same as the table above; the
-`WWW-Authenticate` challenge rides on the page's `401` only when `credentials.basic` is
-configured (so the native browser prompt appears exactly when it can be answered — the page is
-what a dismissed prompt reveals), and is left off for a host gating on its own `authorize`. It carries no inline script, so a nonce'd `script-src`
+status, a sentence explaining the refusal, a "Back to app" link and, when you set
+`accessDenied.loginHref`, a "Sign in" button pointing at your app's login page. The statuses are the same as the table above. It carries no inline script, so a nonce'd `script-src`
 CSP cannot break it (its one inline `<style>` picks up `@adonisjs/shield`'s request nonce).
 
 Tweak it with `accessDenied` — every field optional:
@@ -356,7 +250,7 @@ export default defineConfig({
     message: 'Peça ao admin para liberar o console de observabilidade.',
     homeHref: '/admin',              // "Back to app"; default "/", `false` hides it
     homeLabel: 'Voltar',
-    loginHref: '/entrar',            // default: the built-in login page when one exists
+    loginHref: '/entrar',            // your app's login page; default: no "Sign in" button
     loginLabel: 'Entrar',
     accent: '#f59e0b',               // any CSS colour; default: the console's magenta
   },
@@ -384,12 +278,9 @@ An `authorize` hook that already wrote a redirect still wins, with or without `a
 
 ## Security notes
 
-- **Always gate production.** The default denies it, but a credential or hook is required
-  to actually use it there.
-- **Source secrets from the environment.** Use `env.get(...)` for tokens/passwords; never
-  hardcode them in `config/telescope_ui.ts`.
-- **`?token=` is convenient but leaky.** It can land in logs and browser history. Prefer
-  the `Authorization` header for anything but a quick manual open, and rotate the token if
-  it leaks.
+- **Set `authorize` before you deploy.** Without it the production console answers `403` to
+  everyone, you included.
+- **Source secrets from the environment.** Read the `authorizeByToken` token with
+  `env.get(...)`; never hardcode it in `config/telescope_ui.ts`.
 - **Obscure paths are defense in depth, not auth.** Changing `path` to `/__telescope`
   raises the bar for a drive-by scan; it does not replace the guard.

@@ -151,11 +151,7 @@ import { defineConfig } from '@adonis-agora/telescope/ui'
 export default defineConfig({
   enabled: true,           // false → register no routes at all
   path: '/telescope',      // API at <path>/api/*; the telescope-ui SPA mounts the page at the root
-  // authorize: (ctx) => {
-  //   const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
-  //   return auth.user?.isAdmin === true
-  // },
-  // credentials: { token: env.get('TELESCOPE_UI_TOKEN') },
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
 })
 ```
 
@@ -163,9 +159,7 @@ export default defineConfig({
 | ------------- | -------------- | --------------------------------------------------------------------------- |
 | `enabled`     | `true`         | Master switch. `false` registers no routes — the dashboard does not exist.  |
 | `path`        | `/telescope`   | URL prefix. Normalized to a leading slash, no trailing slash.               |
-| `authorize`   | default policy | Access-decision hook. See [Dashboard auth](/docs/telescope/dashboard/auth). |
-| `credentials` | `{}`           | Built-in token / basic gate for the default policy.                         |
-| `dashboardAuth` | unset        | Built-in login page + signed session cookie. See [Dashboard auth](/docs/telescope/dashboard/auth#built-in-login-screen). |
+| `authorize`   | open outside production, `403` in production | Who may open the console. See [Dashboard auth](/docs/telescope/dashboard/auth). |
 | `replay`      | `{ enabled: false }` | Gate for request replay.                                              |
 | `cpuProfiling` | `{ armEnabled: false }` | Gate for arming a CPU capture from the console.                  |
 | `queueActions` | `{ enabled: false }` | Gate for the queue console's retry / enqueue actions.               |
@@ -177,9 +171,9 @@ is **not** a substitute for the `authorize` guard — covered next.
 
 ## Gating the dashboard
 
-By default the console is open outside production and denied in production unless you
-configure a credential or an `authorize` hook. The whole gate — token, HTTP Basic, a
-delegate-to-your-app-auth hook, and the 401-vs-403 behaviour — has its own page:
+Without `authorize` the console is open outside production and answers `403` to every request
+in production. Setting `authorize` — your app's auth, a role check, or
+`authorizeByToken({ token })` — and the 401-vs-403 behaviour have their own page:
 
 > See **[Dashboard auth](/docs/telescope/dashboard/auth)**.
 
