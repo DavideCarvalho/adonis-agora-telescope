@@ -773,8 +773,6 @@ export interface AiCoverage {
   usageEvents: number;
   runEvents: number;
   agentEvents: number;
-  /** Agent events exist but none is `usage.recorded`: the agent lib predates it. */
-  legacyAgentLib: boolean;
   runsWithoutTimings: number;
 }
 

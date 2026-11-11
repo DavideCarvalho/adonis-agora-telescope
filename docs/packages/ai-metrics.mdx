@@ -45,9 +45,7 @@ instead of showing an empty, reassuring "$0".
 - **Unpriced calls**: usage rows that carried no cost, grouped by feature, model and provider,
   with their tokens, audio seconds and characters, so you can see what is missing a price.
 
-The screen distinguishes "nothing happened" from "not measured": when the window holds agent
-events but no `usage.recorded`, it says the app's agent lib predates 0.93.0; runs without a
-timing breakdown are counted and flagged the same way.
+Runs recorded without a timing breakdown are counted and flagged.
 
 `GET <path>/api/metrics/ai` accepts `?windowMs=` (default 24h), `?buckets=` (spend chart,
 default 24), `?top=` (rows per breakdown, default 10) and `?runs=` (runs table, default 50). It

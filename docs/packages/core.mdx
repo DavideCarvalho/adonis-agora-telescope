@@ -138,7 +138,7 @@ export default defineConfig({
   enabled: true,
   store: 'memory',
   stores: {
-    memory: storage.memory({ limit: 1000 }),
+    memory: storage.memory({ maxEntries: 1000 }),
     // lucid: storage.lucid({ connection: 'pg' }),
   },
   watchers: ['request', 'diagnostics'],

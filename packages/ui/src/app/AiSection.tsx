@@ -112,19 +112,7 @@ function AiBody({
 }
 
 /** Why the spend side is empty, worded for the case at hand. */
-export function NoUsage({ coverage }: { coverage: AiCoverage }) {
-  if (coverage.legacyAgentLib) {
-    return (
-      <div className="rounded-md border border-dashed border-line px-3 py-4 text-[13px] text-muted-foreground">
-        <span className="text-warn">Not measured.</span> This app publishes agent events (
-        {formatCount(coverage.agentEvents)} in this window) but no{' '}
-        <code className="text-foreground">agent:usage.recorded</code>, so there is no spend to show
-        — which is not the same as spending nothing. The event ships with{' '}
-        <code className="text-foreground">@adonis-agora/agent</code> 0.93.0; upgrade it to see cost
-        by feature, model and payer here.
-      </div>
-    );
-  }
+export function NoUsage() {
   return (
     <Empty>
       No <code>agent:usage.recorded</code> events in this window. They are published by{' '}
@@ -139,7 +127,7 @@ function SpendPanel({ spend, coverage }: { spend: AiSpend; coverage: AiCoverage 
     return (
       <Panel>
         <SectionTitle title="Spend" />
-        <NoUsage coverage={coverage} />
+        <NoUsage />
       </Panel>
     );
   }
@@ -642,7 +630,7 @@ function UnpricedPanel({ rows, coverage }: { rows: AiUnpricedRow[]; coverage: Ai
     <Panel>
       <SectionTitle title="Unpriced calls" hint="usage rows that carried no cost" />
       {coverage.usageEvents === 0 ? (
-        <NoUsage coverage={coverage} />
+        <NoUsage />
       ) : rows.length === 0 ? (
         <Empty>Every call in this window carried a cost.</Empty>
       ) : (

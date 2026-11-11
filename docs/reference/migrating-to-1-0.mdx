@@ -1,0 +1,179 @@
+---
+title: Migrating to 1.0
+icon: CircleArrowUp
+description: Move an app from @adonis-agora/telescope 0.x to 1.0 and @adonis-agora/telescope-ui 2.x to 3.0 — the new version ranges, Node.js 24, and the few options that were removed.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+
+Most apps only change two version ranges. Your providers, middleware, dashboard routes and the
+rest of `config/telescope*.ts` stay as they are. The sections below cover the options that were
+removed.
+
+<Callout type="info">
+While 1.0 is in release candidate, install it with the `rc` tag:
+`pnpm add @adonis-agora/telescope@rc @adonis-agora/telescope-ui@rc`.
+</Callout>
+
+## Update the version ranges
+
+A `0.x` range does not match `1.0.0`, and a `2.x` range does not match `3.0.0`, so a plain
+update keeps you on the old lines. Change the ranges in `package.json`.
+
+Before:
+
+```json title="package.json"
+{
+  "dependencies": {
+    "@adonis-agora/telescope": "^0.27.1",
+    "@adonis-agora/telescope-ui": "^2.1.0"
+  }
+}
+```
+
+After:
+
+```json title="package.json"
+{
+  "dependencies": {
+    "@adonis-agora/telescope": "^1.0.0",
+    "@adonis-agora/telescope-ui": "^3.0.0"
+  }
+}
+```
+
+Then install:
+
+<Tabs items={['npm', 'pnpm', 'yarn']}>
+  <Tab value="npm">
+
+```sh
+npm install
+```
+
+</Tab>
+  <Tab value="pnpm">
+
+```sh
+pnpm install
+```
+
+</Tab>
+  <Tab value="yarn">
+
+```sh
+yarn install
+```
+
+</Tab>
+</Tabs>
+
+## Run on Node.js 24 or newer
+
+Both packages declare `"engines": { "node": ">=24" }`.
+
+Before:
+
+```txt title=".nvmrc"
+22
+```
+
+After:
+
+```txt title=".nvmrc"
+24
+```
+
+Use the same version in your Dockerfile, CI and hosting settings.
+
+## `storage.memory({ limit })` is now `maxEntries`
+
+The memory driver takes its cap as `maxEntries`, the same name `InMemoryTelescopeStore` uses.
+The value and the default (1000) are unchanged.
+
+Before:
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  store: 'memory',
+  stores: {
+    memory: storage.memory({ limit: 5000 }),
+  },
+})
+```
+
+After:
+
+```ts title="config/telescope.ts"
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  store: 'memory',
+  stores: {
+    memory: storage.memory({ maxEntries: 5000 }),
+  },
+})
+```
+
+## The dashboard reads its API base from the page only
+
+The dashboard takes its API base from the config block the provider writes into the page, or
+falls back to `<mount>/api`. It no longer reads a `window.__TELESCOPE_DASHBOARD_BASE__` global.
+If you embed the client yourself, pass the base to it.
+
+Before:
+
+```ts title="resources/js/telescope.ts"
+import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
+
+window.__TELESCOPE_DASHBOARD_BASE__ = '/admin/telescope/api'
+const telescope = new TelescopeClient()
+```
+
+After:
+
+```ts title="resources/js/telescope.ts"
+import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
+
+const telescope = new TelescopeClient({ baseUrl: '/admin/telescope/api' })
+```
+
+## `coverage.legacyAgentLib` is gone from the AI summary
+
+The AI summary (`GET <path>/api/metrics/ai`, `TelescopeClient#ai()`, and the `AiCoverage` type)
+no longer has a `legacyAgentLib` flag. It marked apps running an `@adonis-agora/agent` release
+older than 0.93.0. Read `usageEvents` instead: zero means no `usage.recorded` events in the
+window.
+
+Before:
+
+```ts title="app/controllers/ai_report_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
+
+export default class AiReportController {
+  async show({ response }: HttpContext) {
+    const ai = await new TelescopeClient({ baseUrl: 'http://localhost:3333/telescope/api' }).ai()
+    if (ai.coverage.legacyAgentLib) return response.ok({ status: 'agent too old' })
+    return response.ok({ spend: ai.spend.totalUsd })
+  }
+}
+```
+
+After:
+
+```ts title="app/controllers/ai_report_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
+
+export default class AiReportController {
+  async show({ response }: HttpContext) {
+    const ai = await new TelescopeClient({ baseUrl: 'http://localhost:3333/telescope/api' }).ai()
+    if (ai.coverage.usageEvents === 0) return response.ok({ status: 'no usage recorded' })
+    return response.ok({ spend: ai.spend.totalUsd })
+  }
+}
+```

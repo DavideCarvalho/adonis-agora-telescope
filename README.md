@@ -131,7 +131,7 @@ export default defineConfig({
   enabled: true,                          // master switch
   store: 'memory',                        // which driver in `stores` is active
   stores: {
-    memory: storage.memory({ limit: 1000 }),   // bounded in-process ring buffer
+    memory: storage.memory({ maxEntries: 1000 }),   // bounded in-process ring buffer
     // lucid: storage.lucid({ connection: 'pg' }), // persistent SQL store
   },
   watchers: ['request', 'diagnostics'],   // omit one to disable it
@@ -144,7 +144,7 @@ Storage is a **config-driven driver**, built with the `storage` factory and sele
 by `store`. Three drivers ship in the box:
 
 - **`memory`** — `InMemoryTelescopeStore`, a bounded ring buffer (great for dev/tests,
-  lost on restart). `storage.memory({ limit })`.
+  lost on restart). `storage.memory({ maxEntries })`.
 - **`lucid`** — `LucidTelescopeStore`, a persistent, SQL-backed store on
   [`@adonisjs/lucid`](https://lucid.adonisjs.com) (sqlite / Postgres / MySQL), so
   entries survive restarts. `storage.lucid({ connection })`. `@adonisjs/lucid` is an

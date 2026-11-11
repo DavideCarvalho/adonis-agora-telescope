@@ -387,18 +387,8 @@ describe('summarizeAiUsage', () => {
     expect(summary.coverage).toMatchObject({
       usageEvents: 3,
       runEvents: 3,
-      legacyAgentLib: false,
       runsWithoutTimings: 1,
     });
-  });
-
-  it('flags an agent lib that predates usage.recorded', () => {
-    const legacy = summarizeAiUsage(
-      [diagnostic('run.started', { runId: 'r' }, 5), diagnostic('run.finished', { runId: 'r' }, 4)],
-      { windowStart: start, windowEnd: end },
-    );
-    expect(legacy.coverage.legacyAgentLib).toBe(true);
-    expect(legacy.coverage.usageEvents).toBe(0);
   });
 });
 
@@ -423,20 +413,7 @@ describe('MetricsService.getAi', () => {
     const ai = await new MetricsService(store).getAi({ windowMs: 3_600_000 });
     expect(ai.spend.totalUsd).toBeCloseTo(0.012);
     expect(ai.runs).toHaveLength(1);
-    expect(ai.coverage.legacyAgentLib).toBe(false);
     expect(ai.truncated).toBe(false);
-  });
-
-  it('probes for other agent events when there is no usage', async () => {
-    const store = new InMemoryTelescopeStore();
-    await store.record({
-      type: 'diagnostic',
-      familyHash: 'agent:run.started',
-      tags: ['lib:agent', 'event:run.started'],
-      content: { lib: 'agent', event: 'run.started', payload: { runId: 'r' } },
-    });
-    const ai = await new MetricsService(store).getAi({ windowMs: 3_600_000 });
-    expect(ai.coverage).toMatchObject({ agentEvents: 1, usageEvents: 0, legacyAgentLib: true });
   });
 
   it('rejects a bad window', async () => {

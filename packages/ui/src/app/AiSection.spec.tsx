@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type { AiRunRow, AiUsageSummary } from '../client/types.js';
@@ -94,7 +94,6 @@ function summary(over: Partial<AiUsageSummary> = {}): AiUsageSummary {
       usageEvents: 3,
       runEvents: 1,
       agentEvents: 4,
-      legacyAgentLib: false,
       runsWithoutTimings: 0,
     },
     truncated: false,
@@ -132,25 +131,6 @@ describe('AiSection', () => {
     expect(screen.getByText(/search_articles/)).toBeTruthy();
     fireEvent.click(screen.getByText('Open trace waterfall'));
     expect(onOpenTrace).toHaveBeenCalledWith('trace-1');
-  });
-
-  it('says the agent lib is too old when agent events carry no usage', async () => {
-    renderAi(
-      summary({
-        spend: { ...summary().spend, calls: 0, totalUsd: 0, byFeature: [], buckets: [] },
-        unpriced: [],
-        coverage: {
-          usageEvents: 0,
-          runEvents: 1,
-          agentEvents: 5,
-          legacyAgentLib: true,
-          runsWithoutTimings: 1,
-        },
-      }),
-    );
-    await waitFor(() => expect(screen.getAllByText(/Not measured\./).length).toBeGreaterThan(0));
-    expect(screen.getAllByText(/0\.93\.0/).length).toBeGreaterThan(0);
-    expect(screen.queryByText('Total cost')).toBeNull();
   });
 });
 

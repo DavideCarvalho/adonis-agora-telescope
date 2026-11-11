@@ -31,9 +31,10 @@ jobs:
 
       - run: pnpm build
 
-  # The test suite runs on every Node line the packages support (`engines.node: ">=24"`): the
-  # lines Node maintains that AdonisJS 7 supports, the 24 LTS and the current 26. Lint, typecheck and build above stay on the
-  # single pinned version — they do not depend on the runtime, so the matrix only multiplies this.
+      - run: pnpm check:package
+
+  # The test suite runs on Node 24 and 26 (`engines.node: ">=24"`). Lint, typecheck and build above
+  # stay on the pinned Node 24: they do not depend on the runtime, so the matrix only multiplies this.
   test:
     runs-on: ubuntu-latest
     strategy:

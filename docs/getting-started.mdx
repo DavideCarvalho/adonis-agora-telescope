@@ -91,7 +91,7 @@ export default defineConfig({
   enabled: true,                          // master switch
   store: 'memory',                        // which driver in `stores` is active
   stores: {
-    memory: storage.memory({ limit: 1000 }),   // bounded in-process ring buffer
+    memory: storage.memory({ maxEntries: 1000 }),   // bounded in-process ring buffer
   },
   watchers: ['request', 'diagnostics'],   // omit one to disable it
 })

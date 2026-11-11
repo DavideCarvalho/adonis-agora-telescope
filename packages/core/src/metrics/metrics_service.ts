@@ -272,9 +272,7 @@ export class MetricsService {
    * entries the generic watcher records for `agora:agent:*`.
    *
    * One indexed read per event (`familyHash` is `agent:<event>`), so a busy app's other
-   * diagnostics never crowd the agent events out of the scan budget. When the window has no
-   * `usage.recorded` at all, a small probe of any `lib:agent` entry tells the screen whether the
-   * app runs an agent lib that predates that event, or simply did nothing AI-related.
+   * diagnostics never crowd the agent events out of the scan budget.
    */
   async getAi(query: AiQuery): Promise<AiUsageSummary & { truncated: boolean }> {
     if (!Number.isFinite(query.windowMs) || query.windowMs <= 0) {
@@ -292,17 +290,6 @@ export class MetricsService {
       ),
     );
     const entries = reads.flatMap((read) => read.entries);
-    const usageRead = reads[0];
-    if (usageRead !== undefined && usageRead.entries.length === 0) {
-      const seen = new Set(entries.map((entry) => entry.id));
-      const probe = await this.store.list({
-        type: EntryType.Diagnostic,
-        tag: 'lib:agent',
-        after: windowStart,
-        size: 50,
-      });
-      for (const entry of probe) if (!seen.has(entry.id)) entries.push(entry);
-    }
     const summary = summarizeAiUsage(entries, {
       windowStart,
       windowEnd,

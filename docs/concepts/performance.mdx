@@ -77,16 +77,16 @@ write that the query never waits on.
 
 ## Bounded memory
 
-The `memory` driver is a **ring buffer with a hard cap** (`storage.memory({ limit })`,
+The `memory` driver is a **ring buffer with a hard cap** (`storage.memory({ maxEntries })`,
 default 1000). Past the cap, the oldest entries are evicted on every `record`, so the
 buffer's memory footprint is bounded no matter how long the process runs or how hard
 it's hammered:
 
 ```text
-heap ≈ limit × avg(entry size)
+heap ≈ maxEntries × avg(entry size)
 ```
 
-Raise `limit` for more history, lower it to shrink the footprint. There is no
+Raise `maxEntries` for more history, lower it to shrink the footprint. There is no
 unbounded growth mode.
 
 The AI diagnoser and the alerts tracker are similarly bounded: the
