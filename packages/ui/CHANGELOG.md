@@ -1,5 +1,13 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.1
+
+### Patch Changes
+
+- [#284](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/284) [`6030370`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/60303709e27787e3268905d55141a3dcabfe2e08) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fix arming a CPU capture from the dashboard: `TelescopeClient#armProfile(count, label)` now sends `count` and `label` in the JSON request body, which is where the arm route reads them. Before, they went in the query string and every arm captured one request with no label.
+  
+  The overview no longer requests `<path>/api/queues/live` when `/meta` reports no queue manager, so an app without the `queue-manager` watcher stops logging a 404 on every overview load.
+
 ## 3.0.0-rc.0
 
 ### Major Changes
