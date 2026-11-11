@@ -38,6 +38,12 @@ export {
   SESSION_COOKIE_NAME,
   sanitizeReturnTo,
 } from './auth.js';
+export type {
+  ConsoleAuthorize,
+  ConsoleAuthorizeResult,
+  ConsoleAuthorizer,
+  ConsoleAuthorizerClass,
+} from './console_authorize.js';
 // — dashboard auth —
 export {
   clearSessionCookie,
@@ -48,7 +54,9 @@ export {
 export type {
   AccessDeniedOption,
   AccessDeniedRenderer,
+  AuthorizeDecision,
   AuthorizeHook,
+  AuthorizeResult,
   ReplayConfig,
   ResolvedTelescopeUiConfig,
   TelescopeUiConfig,

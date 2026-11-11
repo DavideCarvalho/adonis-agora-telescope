@@ -23,13 +23,15 @@ export default defineConfig({
   // path: '/telescope',
 
   /**
-   * Access-decision hook. Return true to allow the request, false to reject it
-   * (the guard answers 401 when no credential was presented, 403 when one was and
-   * was rejected). Delegate to your own app auth here, e.g.:
+   * Who may open the console. Return true to allow the request, false to reject it
+   * (403), { allowed: false, reason: 'unauthenticated' } for a 401, or
+   * { redirectTo: '/login' } to send a browser to your login page. Delegate to your
+   * own app auth here, with a function, an authorizer class (authorize: ConsoleAccess),
+   * or a lazy import of one (authorize: () => import('#policies/console_access')):
    */
   // authorize: async (ctx) => {
-  //   // The provider passes your real HttpContext through at runtime; the declared
-  //   // parameter is a framework-light slice, so narrow it to reach your own auth.
+  //   // ctx.auth comes from @adonisjs/auth; with it installed this is just
+  //   // ctx.auth.user?.isAdmin === true.
   //   const { auth } = ctx as unknown as { auth: { user?: { isAdmin?: boolean } } }
   //   return auth.user?.isAdmin === true
   // },

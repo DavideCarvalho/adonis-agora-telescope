@@ -222,7 +222,7 @@ describe('resolveConfig', () => {
     process.env.NODE_ENV = 'production';
     const resolved = resolveConfig({ authorize: () => true });
     const { ctx: c } = ctx();
-    expect(await resolved.authorize(c)).toBe(true);
+    expect(await resolved.authorize(c)).toEqual({ allowed: true });
   });
 
   it('defaults enabled to true', () => {

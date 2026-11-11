@@ -3,6 +3,7 @@ import {
   type AccessDeniedOption,
   resolveAccessDeniedPage,
 } from './access_denied_page.js';
+import { normalizeConsoleDecision } from './console_authorize.js';
 import type { AuthorizeHook, AuthorizeResult } from './define_config.js';
 import type { UiHttpContext } from './http.js';
 
@@ -14,6 +15,8 @@ export interface GuardResult {
   status?: number;
   /** When denied, a short message body. */
   message?: string;
+  /** When the hook answered `{ redirectTo }`: where a page navigation is sent (`302`). */
+  redirectTo?: string;
 }
 
 /**
@@ -28,6 +31,7 @@ export interface GuardResult {
  * - `reason: 'forbidden'` → `403`.
  * - a bare `false`, or `{ allowed: false }` with no `reason` → `403` (fail closed).
  * - the hook throws → `403` (fail closed — never leaks the dashboard).
+ * - `{ redirectTo }` → `401` carrying `redirectTo` (the page guard turns it into a `302`).
  *
  * No request-shape guessing happens here. The built-in credentials gate gets its `401` (no
  * credential presented) vs `403` (credential rejected) split by `resolveConfig` wrapping
@@ -41,11 +45,19 @@ export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Pr
     return { allowed: false, status: 403, message: 'Forbidden' };
   }
 
-  const allowed = typeof result === 'boolean' ? result : result.allowed;
-  if (allowed) return { allowed: true };
-
-  const reason = typeof result === 'boolean' ? undefined : result.reason;
-  if (reason === 'unauthenticated') return { allowed: false, status: 401, message: 'Unauthorized' };
+  const decision = normalizeConsoleDecision(result);
+  if (decision.allowed) return { allowed: true };
+  if (decision.redirectTo !== undefined) {
+    return {
+      allowed: false,
+      status: 401,
+      message: 'Unauthorized',
+      redirectTo: decision.redirectTo,
+    };
+  }
+  if (decision.reason === 'unauthenticated') {
+    return { allowed: false, status: 401, message: 'Unauthorized' };
+  }
   return { allowed: false, status: 403, message: 'Forbidden' };
 }
 
@@ -68,6 +80,10 @@ export async function enforceGuard(ctx: UiHttpContext, authorize: AuthorizeHook)
   if (ctx.response.getHeader('location')) return false;
   const status = result.status ?? 403;
   ctx.response.status(status);
+  if (result.redirectTo !== undefined) {
+    ctx.response.send({ error: result.message ?? 'Unauthorized', redirectTo: result.redirectTo });
+    return false;
+  }
   if (status === 401) {
     ctx.response.header('WWW-Authenticate', 'Basic realm="Telescope", Bearer');
   }
@@ -112,6 +128,12 @@ export async function enforcePageGuard(
   if (result.allowed) return true;
   const answered = () => responseAnswered(ctx);
   if (answered()) return false;
+  if (result.redirectTo !== undefined) {
+    ctx.response.status(302);
+    ctx.response.header('location', result.redirectTo);
+    ctx.response.send('');
+    return false;
+  }
 
   const status = result.status === 401 ? 401 : 403;
   const info: AccessDeniedInfo = {

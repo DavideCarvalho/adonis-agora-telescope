@@ -8,6 +8,12 @@ import {
   type ResolvedDashboardAuth,
   resolveDashboardAuth,
 } from './auth.js';
+import {
+  type ConsoleAuthorize,
+  type ConsoleAuthorizeResult,
+  normalizeConsoleDecision,
+  resolveConsoleAuthorize,
+} from './console_authorize.js';
 import type { UiHttpContext } from './http.js';
 
 /**
@@ -47,8 +53,11 @@ export interface AuthorizeDecision {
   reason?: 'unauthenticated' | 'forbidden';
 }
 
-/** What an {@link AuthorizeHook} may return: either form, sync or async. */
-export type AuthorizeResult = boolean | AuthorizeDecision;
+/**
+ * What an {@link AuthorizeHook} may return, sync or async: a {@link ConsoleAuthorizeResult}
+ * (`boolean`, `{ allowed, reason? }`, `{ redirectTo }`) or an {@link AuthorizeDecision}.
+ */
+export type AuthorizeResult = ConsoleAuthorizeResult | AuthorizeDecision;
 
 /**
  * The decision hook gating the dashboard + JSON API. Return `true` to allow the
@@ -114,11 +123,14 @@ export interface TelescopeUiConfig {
    */
   recordOwnRequests?: boolean;
   /**
-   * The access-decision hook. When omitted, the default policy is used: allow when
+   * Who may open the console. When omitted, the default policy is used: allow when
    * not in production, otherwise require a configured {@link UiCredentials}. Provide
-   * this to delegate to your own app auth (e.g. `ctx.auth.user?.isAdmin === true`).
+   * this to delegate to your own app auth, in any {@link ConsoleAuthorize} form:
+   * - a function: `(ctx) => ctx.auth.user?.isAdmin === true`;
+   * - a {@link ConsoleAuthorizer} class (built through the container, so `@inject()` works);
+   * - a lazy import of such a class: `() => import('#policies/console_access')`.
    */
-  authorize?: AuthorizeHook;
+  authorize?: ConsoleAuthorize;
   /**
    * Built-in credentials for the default policy (ignored when a custom `authorize`
    * is supplied). Lets you gate a production dashboard without writing a hook.
@@ -334,11 +346,26 @@ function presentedCredential(ctx: UiHttpContext): boolean {
 export function withCredentialStatus(authorize: AuthorizeHook): AuthorizeHook {
   if (!defaultHooks.has(authorize)) return authorize;
   return async (ctx) => {
-    const result = await authorize(ctx);
-    const allowed = typeof result === 'boolean' ? result : result.allowed;
-    if (allowed) return true;
+    if (normalizeConsoleDecision(await authorize(ctx)).allowed) return true;
     return { allowed: false, reason: presentedCredential(ctx) ? 'forbidden' : 'unauthenticated' };
   };
+}
+
+/**
+ * Resolve the configured `authorize` (any {@link ConsoleAuthorize} form) into the guard's hook.
+ * A {@link defaultAuthorize} hook passed explicitly keeps its credential-aware `401`/`403` split.
+ *
+ * @internal Used by `resolveConfig`.
+ */
+function resolveUiAuthorize(
+  authorize: ConsoleAuthorize | undefined,
+  credentials: UiCredentials,
+): AuthorizeHook {
+  if (authorize === undefined) return withCredentialStatus(defaultAuthorize(credentials));
+  if (defaultHooks.has(authorize as AuthorizeHook)) {
+    return withCredentialStatus(authorize as AuthorizeHook);
+  }
+  return resolveConsoleAuthorize(authorize);
 }
 
 /** Apply defaults to a (possibly partial) config. */
@@ -348,7 +375,7 @@ export function resolveConfig(config: TelescopeUiConfig = {}): ResolvedTelescope
     enabled: config.enabled ?? true,
     path: normalizePath(config.path ?? '/telescope'),
     recordOwnRequests: config.recordOwnRequests ?? false,
-    authorize: withCredentialStatus(config.authorize ?? defaultAuthorize(credentials)),
+    authorize: resolveUiAuthorize(config.authorize, credentials),
     credentials,
     // Validate + resolve now so a misconfigured secret/login fails closed at boot, not on the first
     // login attempt. `null` when `dashboardAuth` is omitted (behavior unchanged).
