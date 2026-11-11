@@ -1,5 +1,4 @@
 import type { Counter, Histogram } from '@opentelemetry/api';
-import type { ResolvedOtelMetricsConfig } from '../define_config.js';
 import type { AgentObservation } from './agent_events.js';
 import {
   AGENT_METRIC_BUCKETS_MS,
@@ -10,15 +9,12 @@ import {
 import { subscribeAgentObservations } from './subscribe.js';
 
 /**
- * The OTLP METRICS signal: the AI-usage and agent-run instruments of {@link AGENT_METRICS}, pushed
- * over OTLP/HTTP by a periodic reader.
+ * The AI-usage and agent-run instruments of {@link AGENT_METRICS}, recorded on the app's
+ * GLOBAL meter provider — the one `@adonisjs/otel` builds from `config/otel.ts`, which decides
+ * where (and whether) metrics are exported.
  *
- * Loaded ONLY through the dynamic `import()` in `telescope_provider.ts`, and only when
- * `otel.metrics.enabled` is `true`; the `@opentelemetry/*` metrics packages are imported lazily
- * inside {@link loadOtelMetricsSdk}, so a host that never opts in never needs them installed.
- *
- * Like the traces/logs bridge it owns a PRIVATE `MeterProvider` and never calls
- * `metrics.setGlobalMeterProvider`, so it cannot clash with a host's own OTel setup.
+ * Loaded only through the dynamic `import()` in `telescope_provider.ts`, once an OpenTelemetry
+ * SDK is registered and `otel.metrics` is not `false`.
  *
  * Fed from the `agora:agent:*` diagnostics channels directly (see `subscribe.ts`), not from stored
  * entries: sampling, retention and the overload guard never change a count.
@@ -30,71 +26,29 @@ import { subscribeAgentObservations } from './subscribe.js';
  * dashboard serves both.
  */
 
-/** The meter-provider surface this exporter uses. */
-export interface MeterProviderLike {
-  getMeter(name: string): {
-    createCounter(name: string, options?: { description?: string; unit?: string }): Counter;
-    createHistogram(
-      name: string,
-      options?: {
-        description?: string;
-        unit?: string;
-        advice?: { explicitBucketBoundaries?: number[] };
-      },
-    ): Histogram;
-  };
-  forceFlush(): Promise<void>;
-  shutdown(): Promise<void>;
+/** The meter surface this exporter uses. */
+export interface MeterLike {
+  createCounter(name: string, options?: { description?: string; unit?: string }): Counter;
+  createHistogram(
+    name: string,
+    options?: {
+      description?: string;
+      unit?: string;
+      advice?: { explicitBucketBoundaries?: number[] };
+    },
+  ): Histogram;
 }
 
-/** Builds the provider from the resolved config. Injectable for tests. */
-export type MeterProviderFactory = (
-  config: ResolvedOtelMetricsConfig,
-) => Promise<MeterProviderLike>;
-
-/** Import the OTel metrics SDK and build a provider exporting to `config.url`. */
-export const loadOtelMetricsSdk: MeterProviderFactory = async (config) => {
-  const [sdk, exporterPkg, resources] = await Promise.all([
-    import('@opentelemetry/sdk-metrics'),
-    import('@opentelemetry/exporter-metrics-otlp-http'),
-    import('@opentelemetry/resources'),
-  ]);
-  const exporter = new exporterPkg.OTLPMetricExporter({
-    url: config.url,
-    headers: config.headers,
-    timeoutMillis: config.timeoutMs,
-  });
-  const reader = new sdk.PeriodicExportingMetricReader({
-    exporter,
-    exportIntervalMillis: config.exportIntervalMs,
-    exportTimeoutMillis: Math.min(config.timeoutMs, config.exportIntervalMs),
-  });
-  return new sdk.MeterProvider({
-    resource: resources.resourceFromAttributes({ 'service.name': config.serviceName }),
-    readers: [reader],
-  });
-};
-
-/** A running OTLP metrics export; stop it with {@link OtelMetricsExporter.shutdown}. */
+/** Metrics being recorded; stop with {@link OtelMetricsExporter.shutdown}. */
 export interface OtelMetricsExporter {
   /** Record one observation (exposed for tests and for hosts that read the events themselves). */
   observe(observation: AgentObservation): void;
-  /** Push whatever is pending now. */
-  flush(): Promise<void>;
-  /** Unsubscribe, flush the tail and shut the provider down. */
-  shutdown(): Promise<void>;
+  /** Unsubscribe from the agent channels. The app's SDK flushes what was recorded. */
+  shutdown(): void;
 }
 
-/**
- * Build the provider and its instruments, then subscribe to the agent channels. Rejects when the
- * OTel packages cannot be loaded; the provider logs that and leaves metrics export off.
- */
-export async function createOtelMetricsExporter(
-  config: ResolvedOtelMetricsConfig,
-  factory: MeterProviderFactory = loadOtelMetricsSdk,
-): Promise<OtelMetricsExporter> {
-  const provider = await factory(config);
-  const meter = provider.getMeter('@adonis-agora/telescope');
+/** Create the instruments on `meter`, then subscribe to the agent channels. */
+export function createOtelMetricsExporter(meter: MeterLike): OtelMetricsExporter {
   const instruments = new Map<AgentMetricKey, Counter | Histogram>();
   for (const key of Object.keys(AGENT_METRICS) as AgentMetricKey[]) {
     const def = AGENT_METRICS[key];
@@ -126,10 +80,8 @@ export async function createOtelMetricsExporter(
 
   return {
     observe,
-    flush: () => provider.forceFlush(),
-    async shutdown() {
+    shutdown() {
       unsubscribe();
-      await provider.shutdown().catch(() => undefined);
     },
   };
 }

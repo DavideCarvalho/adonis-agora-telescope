@@ -13,3 +13,4 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@aws-sdk/client-s3@3.1154.0'
   - hyparquet-writer@0.17.0
+  - '@adonisjs/otel@2.0.0'

@@ -49,6 +49,13 @@ export const EntryType = {
    * this is a real V8 sampling-profiler capture.
    */
   CpuProfile: 'cpu_profile',
+  /**
+   * A span the app's OpenTelemetry instrumentation produced (a pg query, a DNS lookup, an
+   * event listener, a custom span), ingested by `telescopeSpanProcessor()` from
+   * `@adonis-agora/telescope/otel` so it shows in the trace waterfall next to telescope's
+   * own entries.
+   */
+  Span: 'span',
 } as const;
 
 export type BuiltinEntryType = (typeof EntryType)[keyof typeof EntryType];

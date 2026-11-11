@@ -1,4 +1,5 @@
 import diagnostics_channel, { type Channel } from 'node:diagnostics_channel';
+import { resolveProducerTraceId } from './context_accessor.js';
 import {
   type DiagnosticEvent,
   getDiagnosticsRegistry,
@@ -178,7 +179,7 @@ function reportDiagnosticFailure(err: unknown): void {
 
 /** Map a {@link DiagnosticEvent} envelope to a Telescope {@link RecordInput}. */
 export function buildDiagnosticEntry(msg: DiagnosticEvent): RecordInput<DiagnosticEntryContent> {
-  const traceId = msg.traceId ?? null;
+  const traceId = resolveProducerTraceId(msg.traceId ?? null);
   const durationMs = msg.durationMs ?? null;
   const content: DiagnosticEntryContent = {
     // Tolerate envelopes from emitters that predate schema versioning.

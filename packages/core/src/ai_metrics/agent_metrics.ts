@@ -2,7 +2,7 @@ import type { AgentObservation, RunObservation, UsageObservation } from './agent
 
 /**
  * The AI-usage and agent-run metrics, as ONE table both exporters read: the dependency-free
- * Prometheus registry below and the OTLP exporter in `otel_metrics_exporter.ts`. Names are
+ * Prometheus registry below and the OTel instruments in `otel_metrics_exporter.ts`. Names are
  * stable API — dashboards are built on them.
  *
  * Units live in the NAME (`_usd`, `_ms`, `_seconds`), and the OTLP instruments are created with an

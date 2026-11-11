@@ -251,16 +251,111 @@ function baseAttributes(entry: Entry, lib: string, event: string): AttributeMap 
   };
 }
 
+/** Longest string attribute value emitted; longer values are cut (stack traces, SQL, bodies). */
+const MAX_ATTRIBUTE_LENGTH = 4096;
+
+function clip(value: AttributeValue): AttributeValue {
+  return typeof value === 'string' && value.length > MAX_ATTRIBUTE_LENGTH
+    ? `${value.slice(0, MAX_ATTRIBUTE_LENGTH)}…`
+    : value;
+}
+
 /**
- * Map one recorded {@link Entry} to a span or log export input, or `null` when it
- * has no interpretable `{ lib, event }` shape (only `diagnostic`-shaped content —
- * `lib`/`event` strings — is currently mapped; entries of other configured
- * `entryTypes` degrade to `null`, i.e. skipped, until they get their own mapping).
+ * The span name / log body for a non-diagnostic entry: `telescope.<type>`, plus the
+ * entry's `name` (a job class, a scheduled task, a profile label) when it has one. Kept
+ * low-cardinality on purpose: urls, SQL and messages go into attributes, never the name.
+ */
+function genericName(entry: Entry, content: Record<string, unknown>): string {
+  const base = `telescope.${entry.type}`;
+  return typeof content.name === 'string' && entry.type !== 'exception' && content.name !== ''
+    ? `${base} ${content.name}`
+    : base;
+}
+
+/** Attributes shared by every non-diagnostic entry. */
+function genericAttributes(entry: Entry, content: Record<string, unknown>): AttributeMap {
+  const attrs: AttributeMap = {
+    'telescope.entry_id': entry.id,
+    'telescope.entry_type': entry.type,
+    'telescope.origin': entry.origin,
+  };
+  if (entry.familyHash !== null) attrs['telescope.family_hash'] = entry.familyHash;
+  if (entry.tags.length > 0) attrs['telescope.tags'] = [...entry.tags];
+  for (const [key, value] of Object.entries(content)) {
+    if (key === 'traceId') continue;
+    if (isAttributeValue(value)) attrs[`telescope.content.${key}`] = clip(value);
+  }
+  return attrs;
+}
+
+/**
+ * Map an entry that is not a diagnostics event (`job`, `exception`, `mail`, `cache`, …).
+ * Same rule as diagnostics: a duration makes it a span, otherwise it is a log record.
+ * An `exception` / `client_exception` also gets the OTel `exception.*` attributes.
+ */
+function mapGenericEntry(entry: Entry, content: Record<string, unknown>): MappedEntry {
+  const name = genericName(entry, content);
+  const traceId = isValidW3cTraceId(entry.traceId) ? entry.traceId : null;
+  const attributes = genericAttributes(entry, content);
+  const exception = entry.type === 'exception' || entry.type === 'client_exception';
+  if (exception) {
+    if (typeof content.name === 'string') attributes['exception.type'] = content.name;
+    if (typeof content.message === 'string')
+      attributes['exception.message'] = clip(content.message);
+    if (typeof content.stack === 'string') attributes['exception.stacktrace'] = clip(content.stack);
+  }
+  const errored =
+    exception || isErrorEntry({ type: entry.type, content: entry.content, tags: entry.tags });
+  const endTimeMs = entry.createdAt.getTime();
+
+  if (typeof entry.durationMs === 'number' && entry.durationMs >= 0) {
+    const message = typeof content.error === 'string' ? content.error : undefined;
+    return {
+      kind: 'span',
+      span: {
+        name,
+        startTimeMs: endTimeMs - entry.durationMs,
+        endTimeMs,
+        attributes,
+        status: errored ? 'ERROR' : 'OK',
+        ...(errored ? { errorMessage: message ?? `${name} failed` } : {}),
+        traceId,
+      },
+    };
+  }
+
+  const severity = explicitSeverity(entry) ?? (errored ? 'ERROR' : 'INFO');
+  const body = exception
+    ? `${String(content.name ?? 'Error')}: ${String(content.message ?? '')}`
+    : typeof content.message === 'string'
+      ? content.message
+      : typeof content.msg === 'string'
+        ? content.msg
+        : name;
+  return {
+    kind: 'log',
+    log: {
+      body: body.length > MAX_ATTRIBUTE_LENGTH ? `${body.slice(0, MAX_ATTRIBUTE_LENGTH)}…` : body,
+      timestampMs: endTimeMs,
+      severityNumber: SEVERITY_NUMBER[severity],
+      severityText: severity,
+      attributes,
+      traceId,
+    },
+  };
+}
+
+/**
+ * Map one recorded {@link Entry} to a span or log export input. A diagnostics event
+ * (`lib`/`event` strings in its content) maps to `agora.<lib>.<event>`; any other entry
+ * with object content maps to `telescope.<type>` (see {@link mapGenericEntry}). `null`
+ * for content that is not an object.
  */
 export function mapEntryToOtel(entry: Entry): MappedEntry {
   const content = asDiagnosticLike(entry.content);
-  if (content === null || typeof content.lib !== 'string' || typeof content.event !== 'string') {
-    return null;
+  if (content === null) return null;
+  if (typeof content.lib !== 'string' || typeof content.event !== 'string') {
+    return mapGenericEntry(entry, entry.content as Record<string, unknown>);
   }
   const { lib, event } = content;
   const name = `agora.${lib}.${event}`;

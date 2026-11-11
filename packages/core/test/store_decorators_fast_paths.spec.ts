@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MetricsService } from '../src/metrics/metrics_service.js';
-import type { OtelExporter } from '../src/otel/otel_exporter.js';
-import { OtelExportingTelescopeStore } from '../src/otel/otel_exporting_store.js';
+import type { OtelEmitter } from '../src/otel/global_emitter.js';
+import { OtelEmittingTelescopeStore } from '../src/otel/otel_emitting_store.js';
 import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
 import { SamplingTelescopeStore } from '../src/sampling/sampling_store.js';
 import { TelescopeService } from '../src/service.js';
@@ -10,13 +10,18 @@ import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import { EntryEvents } from '../src/stream/entry_events.js';
 import { StreamingTelescopeStore } from '../src/stream/streaming_store.js';
 
-const exporter = { exportSpan: () => {}, exportLog: () => {} } as unknown as OtelExporter;
+const emitter = {
+  capture: () => ({}),
+  emitSpan: () => {},
+  emitLog: () => {},
+  annotateActiveSpan: () => {},
+} as unknown as OtelEmitter;
 
 const DECORATORS: Array<[string, (inner: TelescopeStore) => TelescopeStore]> = [
   ['redacting', (inner) => new RedactingTelescopeStore(inner)],
   ['sampling', (inner) => new SamplingTelescopeStore(inner, {})],
   ['streaming', (inner) => new StreamingTelescopeStore(inner, new EntryEvents())],
-  ['otel', (inner) => new OtelExportingTelescopeStore(inner, exporter, ['request'])],
+  ['otel', (inner) => new OtelEmittingTelescopeStore(inner, emitter, ['query'])],
 ];
 
 const OPTIONAL = ['listTraceIds', 'countByBucket', 'countFamilies', 'countTags'] as const;

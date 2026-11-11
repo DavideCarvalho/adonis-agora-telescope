@@ -182,7 +182,6 @@ ingestion, redaction + tail-sampling + live-stream decorators) plus the
 Still planned, not built (see [`DESIGN.md`](./DESIGN.md) for rationale):
 
 - More ORM/queue watchers: bullmq / mikro-orm / typeorm / prisma / sqs.
-- OTel export.
 
 ## The Agora ecosystem
 

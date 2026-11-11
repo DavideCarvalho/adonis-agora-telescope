@@ -5,7 +5,7 @@ import { AgentMetricsRegistry, agentMetricPoints } from '../../src/ai_metrics/ag
 import { summarizeAiUsage } from '../../src/ai_metrics/ai_usage.js';
 import {
   createOtelMetricsExporter,
-  type MeterProviderLike,
+  type MeterLike,
 } from '../../src/ai_metrics/otel_metrics_exporter.js';
 import { subscribeAgentObservations } from '../../src/ai_metrics/subscribe.js';
 import { resolveConfig } from '../../src/define_config.js';
@@ -424,44 +424,20 @@ describe('MetricsService.getAi', () => {
 });
 
 describe('config', () => {
-  it('keeps metrics and Prometheus off by default', () => {
+  it('keeps Prometheus off and OTel metrics on by default', () => {
     const config = resolveConfig({});
     expect(config.prometheus.enabled).toBe(false);
-    expect(config.otel.metrics).toMatchObject({
-      enabled: false,
-      url: 'http://localhost:4318/v1/metrics',
-    });
+    expect(config.otel.metrics).toBe(true);
   });
 
-  it('lets metrics use their own endpoint without the traces headers', () => {
-    const config = resolveConfig({
-      otel: {
-        enabled: true,
-        endpoint: 'https://us.i.posthog.com/i',
-        headers: { Authorization: 'Bearer secret' },
-        metrics: { enabled: true, endpoint: 'http://localhost:4318/' },
-      },
-    });
-    expect(config.otel.metrics.url).toBe('http://localhost:4318/v1/metrics');
-    expect(config.otel.metrics.headers).toEqual({});
-  });
-
-  it('reuses the traces endpoint and headers when metrics name none', () => {
-    const config = resolveConfig({
-      otel: {
-        endpoint: 'http://collector:4318',
-        headers: { 'x-k': 'v' },
-        metrics: { enabled: true },
-      },
-    });
-    expect(config.otel.metrics.url).toBe('http://collector:4318/v1/metrics');
-    expect(config.otel.metrics.headers).toEqual({ 'x-k': 'v' });
-    expect(config.otel.enabled).toBe(false);
+  it('turns OTel metrics off with otel.metrics false or otel false', () => {
+    expect(resolveConfig({ otel: { metrics: false } }).otel.metrics).toBe(false);
+    expect(resolveConfig({ otel: false }).otel.metrics).toBe(false);
   });
 });
 
 describe('createOtelMetricsExporter', () => {
-  it('creates unit-less instruments and feeds them from the agent channels', async () => {
+  it('creates unit-less instruments and feeds them from the agent channels', () => {
     const calls: {
       kind: string;
       name: string;
@@ -469,34 +445,22 @@ describe('createOtelMetricsExporter', () => {
       unit?: string | undefined;
       attrs?: unknown;
     }[] = [];
-    let flushed = 0;
-    let shut = 0;
-    const provider: MeterProviderLike = {
-      getMeter: () => ({
-        createCounter: (name, options) => {
-          calls.push({ kind: 'create', name, unit: options?.unit });
-          return {
-            add: (value: number, attrs?: unknown) =>
-              calls.push({ kind: 'add', name, value, attrs }),
-          } as never;
-        },
-        createHistogram: (name, options) => {
-          calls.push({ kind: 'create', name, unit: options?.unit });
-          return {
-            record: (value: number, attrs?: unknown) =>
-              calls.push({ kind: 'record', name, value, attrs }),
-          } as never;
-        },
-      }),
-      forceFlush: async () => {
-        flushed += 1;
+    const meter: MeterLike = {
+      createCounter: (name, options) => {
+        calls.push({ kind: 'create', name, unit: options?.unit });
+        return {
+          add: (value: number, attrs?: unknown) => calls.push({ kind: 'add', name, value, attrs }),
+        } as never;
       },
-      shutdown: async () => {
-        shut += 1;
+      createHistogram: (name, options) => {
+        calls.push({ kind: 'create', name, unit: options?.unit });
+        return {
+          record: (value: number, attrs?: unknown) =>
+            calls.push({ kind: 'record', name, value, attrs }),
+        } as never;
       },
     };
-    const config = resolveConfig({ otel: { metrics: { enabled: true } } }).otel.metrics;
-    const exporter = await createOtelMetricsExporter(config, async () => provider);
+    const exporter = createOtelMetricsExporter(meter);
 
     expect(calls.filter((c) => c.kind === 'create').map((c) => c.name)).toEqual([
       'agora_ai_cost_usd',
@@ -518,29 +482,32 @@ describe('createOtelMetricsExporter', () => {
       expect.objectContaining({ kind: 'add', name: 'agora_ai_cost_usd', value: 0.012 }),
     );
 
-    await exporter.flush();
-    await exporter.shutdown();
+    exporter.shutdown();
     const before = calls.length;
     diagnostics_channel
       .channel('agora:agent:usage.recorded')
       .publish({ lib: 'agent', event: 'usage.recorded', payload: usagePayload() });
     expect(calls.length).toBe(before);
-    expect(flushed).toBe(1);
-    expect(shut).toBe(1);
   });
-});
 
-describe('loadOtelMetricsSdk', () => {
-  it('builds a real MeterProvider from the optional peers', async () => {
-    const { loadOtelMetricsSdk } = await import('../../src/ai_metrics/otel_metrics_exporter.js');
-    const config = resolveConfig({
-      otel: {
-        metrics: { enabled: true, endpoint: 'http://127.0.0.1:9', exportIntervalMs: 60_000 },
-      },
-    }).otel.metrics;
-    const provider = await loadOtelMetricsSdk(config);
-    const counter = provider.getMeter('test').createCounter('agora_test', { unit: '' });
-    counter.add(1, { feature: 'x' });
+  it('records on a real meter from the OTel metrics SDK', async () => {
+    const sdk = await import('@opentelemetry/sdk-metrics');
+    const exporter = new sdk.InMemoryMetricExporter(sdk.AggregationTemporality.CUMULATIVE);
+    const reader = new sdk.PeriodicExportingMetricReader({
+      exporter,
+      exportIntervalMillis: 60_000,
+    });
+    const provider = new sdk.MeterProvider({ readers: [reader] });
+    const running = createOtelMetricsExporter(provider.getMeter('@adonis-agora/telescope'));
+    diagnostics_channel
+      .channel('agora:agent:usage.recorded')
+      .publish({ lib: 'agent', event: 'usage.recorded', payload: usagePayload() });
+    await reader.forceFlush();
+    const names = exporter
+      .getMetrics()
+      .flatMap((m) => m.scopeMetrics.flatMap((s) => s.metrics.map((x) => x.descriptor.name)));
+    expect(names).toContain('agora_ai_cost_usd');
+    running.shutdown();
     await provider.shutdown();
   });
 });

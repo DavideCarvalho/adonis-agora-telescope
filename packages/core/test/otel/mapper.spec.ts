@@ -207,23 +207,77 @@ describe('mapEntryToOtel — log mapping (no duration)', () => {
   });
 });
 
-describe('mapEntryToOtel — uninterpretable entries', () => {
-  it('returns null for content with no lib/event strings', () => {
-    const entry: Entry = {
+describe('mapEntryToOtel — other entry types', () => {
+  function entryOf(overrides: Partial<Entry>): Entry {
+    return {
       id: 'e1',
-      type: 'request',
-      familyHash: null,
-      content: { method: 'GET', url: '/x' },
-      tags: [],
+      type: 'job',
+      familyHash: 'jobs:SendEmail',
+      content: {},
+      tags: ['queue:default'],
       sequence: 1,
-      durationMs: 12,
-      origin: 'http',
-      traceId: null,
-      createdAt: new Date(),
+      durationMs: null,
+      origin: 'queue',
+      traceId: 'a'.repeat(32),
+      createdAt: new Date(1_000_000),
+      ...overrides,
     };
-    expect(mapEntryToOtel(entry)).toBeNull();
+  }
+
+  it('maps a timed entry to a telescope.<type> span named after the entry', () => {
+    const mapped = mapEntryToOtel(
+      entryOf({ durationMs: 40, content: { name: 'SendEmail', queue: 'default', attempts: 1 } }),
+    );
+    if (mapped?.kind !== 'span') throw new Error('expected span');
+    expect(mapped.span.name).toBe('telescope.job SendEmail');
+    expect(mapped.span.startTimeMs).toBe(1_000_000 - 40);
+    expect(mapped.span.traceId).toBe('a'.repeat(32));
+    expect(mapped.span.attributes).toMatchObject({
+      'telescope.entry_id': 'e1',
+      'telescope.entry_type': 'job',
+      'telescope.family_hash': 'jobs:SendEmail',
+      'telescope.tags': ['queue:default'],
+      'telescope.content.queue': 'default',
+      'telescope.content.attempts': 1,
+    });
+    expect(mapped.span.status).toBe('OK');
   });
 
+  it('marks a failed timed entry as an ERROR span', () => {
+    const mapped = mapEntryToOtel(
+      entryOf({ durationMs: 5, tags: ['failed'], content: { name: 'X', error: 'boom' } }),
+    );
+    if (mapped?.kind !== 'span') throw new Error('expected span');
+    expect(mapped.span.status).toBe('ERROR');
+    expect(mapped.span.errorMessage).toBe('boom');
+  });
+
+  it('maps an exception to an ERROR log with the OTel exception attributes', () => {
+    const mapped = mapEntryToOtel(
+      entryOf({
+        type: 'exception',
+        content: { name: 'TypeError', message: 'x is undefined', stack: 'at y', traceId: 't' },
+      }),
+    );
+    if (mapped?.kind !== 'log') throw new Error('expected log');
+    expect(mapped.log.body).toBe('TypeError: x is undefined');
+    expect(mapped.log.severityText).toBe('ERROR');
+    expect(mapped.log.attributes).toMatchObject({
+      'exception.type': 'TypeError',
+      'exception.message': 'x is undefined',
+      'exception.stacktrace': 'at y',
+    });
+    expect(mapped.log.attributes['telescope.content.traceId']).toBeUndefined();
+  });
+
+  it('cuts long string attributes', () => {
+    const mapped = mapEntryToOtel(entryOf({ type: 'mail', content: { html: 'x'.repeat(10_000) } }));
+    if (mapped?.kind !== 'log') throw new Error('expected log');
+    expect(String(mapped.log.attributes['telescope.content.html']).length).toBeLessThan(4200);
+  });
+});
+
+describe('mapEntryToOtel — uninterpretable entries', () => {
   it('returns null for non-object content (e.g. a primitive)', () => {
     const entry: Entry = {
       id: 'e2',

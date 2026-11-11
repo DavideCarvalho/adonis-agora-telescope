@@ -1,7 +1,7 @@
 ---
 title: Migrating to 1.0
 icon: CircleArrowUp
-description: Move an app from @adonis-agora/telescope 0.x to 1.0 and @adonis-agora/telescope-ui 2.x to 3.0 — the new version ranges, Node.js 24, console access, and the few options that were removed.
+description: Move an app from @adonis-agora/telescope 0.x to 1.0 and @adonis-agora/telescope-ui 2.x to 3.0 — the new version ranges, Node.js 24, console access, OpenTelemetry export through @adonisjs/otel, and the few options that were removed.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout'
@@ -253,6 +253,88 @@ curl -X POST 'https://app.example.com/telescope/mcp?token=s3cr3t' ...
 # After
 curl -X POST -H 'Authorization: Bearer s3cr3t' https://app.example.com/telescope/mcp ...
 ```
+
+## OpenTelemetry export moves to `config/otel.ts`
+
+Telescope no longer has an exporter of its own. When the app runs
+[`@adonisjs/otel`](/docs/telescope/packages/otel), Telescope sends its entries and AI metrics
+through the destinations in `config/otel.ts`, in the same traces as the app's spans. The
+endpoint, headers, paths and service name in `config/telescope.ts` are gone, and so is the
+`otel.metrics` endpoint block. Boot fails with a message pointing here while any of them is set.
+
+Before:
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@adonis-agora/telescope'
+import env from '#start/env'
+
+const posthogKey = env.get('POSTHOG_API_KEY')
+
+export default defineConfig({
+  otel: {
+    enabled: Boolean(posthogKey),
+    endpoint: 'https://us.i.posthog.com',
+    tracesPath: '/i/v1/traces',
+    logsPath: '/i/v1/logs',
+    headers: { Authorization: `Bearer ${posthogKey}` },
+    serviceName: 'my-app',
+    entryTypes: ['diagnostic', 'exception', 'job'],
+  },
+})
+```
+
+After, install `@adonisjs/otel`:
+
+```sh
+node ace add @adonisjs/otel
+```
+
+move the endpoint and headers to `config/otel.ts`:
+
+```ts title="config/otel.ts"
+import { defineConfig, destinations } from '@adonisjs/otel'
+import { telescopeSpanProcessor } from '@adonis-agora/telescope/otel'
+import env from '#start/env'
+
+const posthogKey = env.get('POSTHOG_API_KEY')
+
+export default defineConfig({
+  serviceName: 'my-app',
+  spanProcessors: [telescopeSpanProcessor()],
+  destinations: posthogKey
+    ? {
+        posthog: destinations.otlp({
+          endpoint: 'https://us.i.posthog.com/i',
+          signals: ['traces', 'logs'],
+          headers: { Authorization: `Bearer ${posthogKey}` },
+        }),
+      }
+    : undefined,
+})
+```
+
+and keep only the entry types in `config/telescope.ts`, or drop the block to use the default
+list:
+
+```ts title="config/telescope.ts"
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  otel: {
+    entryTypes: ['diagnostic', 'exception', 'job'],
+  },
+})
+```
+
+`request`, `query`, `redis`, `http-client` and `log` entries are no longer worth listing:
+`@adonisjs/otel` traces HTTP, knex, redis, `fetch` and the logger itself, and listing them sends
+each of those operations twice. `telescopeSpanProcessor()` is optional; it brings the app's
+OpenTelemetry spans into the Telescope trace view.
+
+You can uninstall the OpenTelemetry packages Telescope used to need, unless the app uses them
+directly: `@opentelemetry/sdk-trace`, `@opentelemetry/sdk-trace-base`, `@opentelemetry/sdk-logs`,
+`@opentelemetry/sdk-metrics`, `@opentelemetry/resources` and the three
+`@opentelemetry/exporter-*-otlp-http` packages.
 
 ## `storage.memory({ limit })` is now `maxEntries`
 

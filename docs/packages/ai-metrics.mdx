@@ -1,7 +1,7 @@
 ---
 title: "AI spend & agent runs"
 icon: Sparkles
-description: An AI screen in the dashboard (spend by feature, model and payer; agent runs with queue / model / tools timings; unpriced calls) plus agora_ai_* / agora_agent_* metrics for Grafana, over OTLP or a Prometheus scrape endpoint.
+description: An AI screen in the dashboard (spend by feature, model and payer; agent runs with queue / model / tools timings; unpriced calls) plus agora_ai_* / agora_agent_* metrics for Grafana, through @adonisjs/otel or a Prometheus scrape endpoint.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout'
@@ -56,7 +56,7 @@ crowd agent events out of the scan; `truncated: true` means a slice hit the scan
 
 Nine instruments, fed **directly from the `agora:agent:*` channels**, not from stored entries: a
 count never depends on sampling, retention, the overload guard or whether the `diagnostics`
-watcher is on. Both outputs below (OTLP and the Prometheus scrape) read the same table, so they
+watcher is on. Both outputs below (OpenTelemetry and the Prometheus scrape) read the same table, so they
 expose the same series.
 
 | Metric (as Prometheus shows it) | Type | Unit | Attributes |
@@ -87,62 +87,45 @@ expose the same series.
   append `_milliseconds` and diverge from the scrape endpoint. With it empty, both paths produce
   exactly the names above.
 
-### OTLP (push)
+### OpenTelemetry (push)
 
-The metrics signal joins the [OTel export](/docs/telescope/packages/otel), opt-in and
-independent of traces/logs. Install the metrics peers (they are optional and only imported when
-this is on):
+When the app runs [`@adonisjs/otel`](/docs/telescope/packages/otel), Telescope records these
+metrics on the app's meter. They go wherever `config/otel.ts` sends metrics; there is nothing to
+configure in Telescope.
 
-```sh
-npm i @opentelemetry/api @opentelemetry/sdk-metrics \
-  @opentelemetry/exporter-metrics-otlp-http @opentelemetry/resources
-```
+```ts title="config/otel.ts"
+import { defineConfig, destinations } from '@adonisjs/otel'
+import env from '#start/env'
 
-```ts title="config/telescope.ts"
 export default defineConfig({
-  otel: {
-    serviceName: 'my-app',
-    metrics: {
-      enabled: true,
-      endpoint: 'http://localhost:4318', // default: otel.endpoint
-      // path: '/v1/metrics',            // default
-      // headers: {},                    // default: otel.headers, or {} when endpoint is overridden
-      // exportIntervalMs: 60_000,       // default
-    },
+  destinations: {
+    grafana: destinations.otlp({
+      endpoint: env.get('OTEL_METRICS_ENDPOINT', 'http://localhost:4318'),
+      signals: ['metrics'],
+    }),
   },
 })
 ```
 
-| Option | Default | |
-|---|---|---|
-| `otel.metrics.enabled` | `false` | Push metrics. Independent of `otel.enabled` (traces and logs). |
-| `otel.metrics.endpoint` | `otel.endpoint` | Base URL of the OTLP/HTTP receiver for metrics. |
-| `otel.metrics.path` | `'/v1/metrics'` | Appended to the endpoint. |
-| `otel.metrics.headers` | `otel.headers` when `endpoint` is not overridden, else `{}` | A traces backend's token is never sent to a different metrics host. |
-| `otel.metrics.exportIntervalMs` | `60000` | Periodic reader interval. |
-
-`otel.serviceName` and `otel.timeoutMs` apply to metrics too. Like the traces/logs bridge, the
-exporter owns a private `MeterProvider` and never registers a global one, so it coexists with an
-app's own OTel SDK (e.g. `@adonisjs/otel`). Missing peers log an error at boot and leave metrics
-off; they never crash the app.
+To keep them out of OpenTelemetry, set `otel: { metrics: false }` in `config/telescope.ts`.
 
 #### Metrics to one place, traces and logs to another
 
-Each signal can point at its own endpoint. A typical case: traces and logs go to a hosted
-backend that does not ingest OTLP metrics (PostHog, for example), while metrics go to a
-Collector or a local Grafana:
+Give each destination its own `signals`. A typical case: traces and logs go to a hosted backend
+that does not ingest OTLP metrics (PostHog, for example), while metrics go to a Collector or a
+local Grafana:
 
-```ts title="config/telescope.ts"
-otel: {
-  enabled: true,                              // traces + logs
-  endpoint: 'https://us.i.posthog.com',       // traces/logs backend
-  tracesPath: '/i/v1/traces',
-  logsPath: '/i/v1/logs',
-  headers: { Authorization: `Bearer ${env.get('POSTHOG_KEY')}` },
-  metrics: {
-    enabled: true,
-    endpoint: env.get('OTEL_METRICS_ENDPOINT', 'http://localhost:4318'), // own host, own (empty) headers
-  },
+```ts title="config/otel.ts"
+destinations: {
+  posthog: destinations.otlp({
+    endpoint: 'https://us.i.posthog.com/i',
+    signals: ['traces', 'logs'],
+    headers: { Authorization: `Bearer ${env.get('POSTHOG_API_KEY')}` },
+  }),
+  grafana: destinations.otlp({
+    endpoint: env.get('OTEL_METRICS_ENDPOINT', 'http://localhost:4318'),
+    signals: ['metrics'],
+  }),
 },
 ```
 
@@ -197,10 +180,10 @@ container:
 docker run --rm -p 3000:3000 -p 4317:4317 -p 4318:4318 grafana/otel-lgtm
 ```
 
-Point `otel.metrics.endpoint` at `http://localhost:4318` (the default), run some agent turns,
-open Grafana at `http://localhost:3000` and import the dashboard JSON above. Metrics arrive under
-the names in the table; with the default 60s export interval, give it a minute (or set
-`exportIntervalMs: 5000` while trying it).
+Send metrics to `http://localhost:4318` from `config/otel.ts`, run some agent turns, open Grafana
+at `http://localhost:3000` and import the dashboard JSON above. Metrics arrive under the names in
+the table; with the default 60s export interval, give it a minute (or set
+`metricExportIntervalMillis: 5000` on the destination while trying it).
 
 ## Notable exports
 
@@ -208,4 +191,4 @@ From `@adonis-agora/telescope`: `AGENT_METRICS`, `AGENT_METRIC_BUCKETS_MS`,
 `AgentMetricsRegistry`, `agentMetricPoints`, `subscribeAgentObservations`, `readUsage`,
 `readRun`, `readAgentEvent`, `agentEventOfEntry`, `summarizeAiUsage` and their types
 (`AiUsageSummary`, `AiRunRow`, `UsageObservation`, `RunObservation`, …), plus
-`OtelMetricsConfig` and `PrometheusConfig`.
+`PrometheusConfig`.

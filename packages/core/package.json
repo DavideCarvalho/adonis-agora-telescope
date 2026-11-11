@@ -142,18 +142,11 @@
     "@adonisjs/core": "^7.3.0",
     "@adonisjs/lucid": "^22.4.0",
     "@adonisjs/mail": "^10.2.0",
+    "@adonisjs/otel": "^2.0.0",
     "@anthropic-ai/sdk": ">=0.32.0 <2.0.0",
     "@aws-sdk/client-s3": "^3.400.0",
     "@duckdb/node-api": ">=1.5.6-r.1 <2.0.0",
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/exporter-logs-otlp-http": ">=0.200.0 <1.0.0",
-    "@opentelemetry/exporter-metrics-otlp-http": ">=0.200.0 <1.0.0",
-    "@opentelemetry/exporter-trace-otlp-http": ">=0.200.0 <1.0.0",
-    "@opentelemetry/resources": "^2.0.0 || ^3.0.0",
-    "@opentelemetry/sdk-logs": ">=0.220.0 <1.0.0 || ^3.0.0",
-    "@opentelemetry/sdk-metrics": "^2.0.0 || ^3.0.0",
-    "@opentelemetry/sdk-trace": "^2.9.0 || ^3.0.0",
-    "@opentelemetry/sdk-trace-base": "^2.0.0",
+    "@opentelemetry/api": "^1.10.0",
     "cron-parser": "^4.0.0 || ^5.0.0",
     "hyparquet": "^1.31.0",
     "hyparquet-compressors": "^1.1.0",
@@ -175,24 +168,6 @@
     "@opentelemetry/api": {
       "optional": true
     },
-    "@opentelemetry/exporter-logs-otlp-http": {
-      "optional": true
-    },
-    "@opentelemetry/exporter-trace-otlp-http": {
-      "optional": true
-    },
-    "@opentelemetry/resources": {
-      "optional": true
-    },
-    "@opentelemetry/sdk-logs": {
-      "optional": true
-    },
-    "@opentelemetry/sdk-trace": {
-      "optional": true
-    },
-    "@opentelemetry/sdk-trace-base": {
-      "optional": true
-    },
     "cron-parser": {
       "optional": true
     },
@@ -211,10 +186,7 @@
     "hyparquet-writer": {
       "optional": true
     },
-    "@opentelemetry/exporter-metrics-otlp-http": {
-      "optional": true
-    },
-    "@opentelemetry/sdk-metrics": {
+    "@adonisjs/otel": {
       "optional": true
     }
   },
@@ -226,14 +198,10 @@
     "@aws-sdk/client-s3": "3.1164.0",
     "@duckdb/node-api": "1.5.6-r.2",
     "@opentelemetry/api": "1.10.0",
-    "@opentelemetry/exporter-logs-otlp-http": "0.301.0",
-    "@opentelemetry/exporter-metrics-otlp-http": "0.301.0",
-    "@opentelemetry/exporter-trace-otlp-http": "0.301.0",
-    "@opentelemetry/resources": "3.1.0",
+    "@opentelemetry/context-async-hooks": "3.1.0",
     "@opentelemetry/sdk-logs": "3.1.0",
     "@opentelemetry/sdk-metrics": "3.1.0",
     "@opentelemetry/sdk-trace": "3.1.0",
-    "@opentelemetry/sdk-trace-base": "2.12.0",
     "@tanstack/intent": "0.5.6",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "26.6.6",

@@ -33,9 +33,57 @@ export function getContextAccessor(): ContextAccessor | undefined {
   return (globalThis as Record<symbol, unknown>)[CONTEXT_ACCESSOR] as ContextAccessor | undefined;
 }
 
-/** The active trace id from `@adonis-agora/context`, or `null` when unavailable. */
+const OTEL_TRACE_READER = Symbol.for('@agora/telescope:otel-trace-reader');
+
+/** Reads the trace id of the active OpenTelemetry span, or `undefined` outside one. */
+export type OtelTraceIdReader = () => string | undefined;
+
+/**
+ * Install (or clear, with `null`) the reader for the active OpenTelemetry trace id. The
+ * provider installs one when the app runs `@adonisjs/otel`, so every entry carries the
+ * same trace id as the app's spans.
+ */
+export function setOtelTraceIdReader(reader: OtelTraceIdReader | null): void {
+  (globalThis as Record<symbol, unknown>)[OTEL_TRACE_READER] = reader ?? undefined;
+}
+
+/** The active OpenTelemetry trace id, or `undefined` when OTel is off or no span is active. */
+export function currentOtelTraceId(): string | undefined {
+  const reader = (globalThis as Record<symbol, unknown>)[OTEL_TRACE_READER] as
+    | OtelTraceIdReader
+    | undefined;
+  if (reader === undefined) return undefined;
+  try {
+    return reader();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The active trace id: the OpenTelemetry one when a span is active (the app runs
+ * `@adonisjs/otel`), else the `@adonis-agora/context` one, else `null`.
+ */
 export function currentTraceId(): string | null {
-  return getContextAccessor()?.traceId() ?? null;
+  return currentOtelTraceId() ?? getContextAccessor()?.traceId() ?? null;
+}
+
+/**
+ * Map a trace id a producer resolved from `@adonis-agora/context` to the one telescope
+ * records. When `id` is the CURRENT context's trace id (the producer ran in this very
+ * async context) and an OpenTelemetry span is active, the OTel trace id wins, so the
+ * entry lands in the same trace as the app's spans. Any other id (a message delivered
+ * from another process, say) is kept as is.
+ */
+export function resolveProducerTraceId(id: string | null): string | null {
+  if (id === null) return null;
+  const otel = currentOtelTraceId();
+  if (otel === undefined) return id;
+  try {
+    return getContextAccessor()?.traceId() === id ? otel : id;
+  } catch {
+    return id;
+  }
 }
 
 /**
