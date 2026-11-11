@@ -276,8 +276,7 @@ export interface OtelConfig {
    * Entry types emitted, after redaction and sampling: a span when the entry has a duration,
    * a log record otherwise. Default {@link DEFAULT_OTEL_ENTRY_TYPES}. Add a type the app's
    * instrumentation does not already trace (e.g. `'query'` with the knex instrumentation off);
-   * adding one it does trace duplicates it. `request` entries are never emitted as spans: the
-   * HTTP span gets a `telescope.entry_id` attribute instead.
+   * adding one it does trace duplicates it.
    */
   entryTypes?: string[];
   /** Record the AI-usage and agent-run metrics on the app's meter provider. Default `true`. */

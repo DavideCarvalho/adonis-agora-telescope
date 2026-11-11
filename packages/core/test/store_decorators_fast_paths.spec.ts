@@ -14,7 +14,6 @@ const emitter = {
   capture: () => ({}),
   emitSpan: () => {},
   emitLog: () => {},
-  annotateActiveSpan: () => {},
 } as unknown as OtelEmitter;
 
 const DECORATORS: Array<[string, (inner: TelescopeStore) => TelescopeStore]> = [

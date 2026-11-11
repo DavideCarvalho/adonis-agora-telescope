@@ -16,7 +16,7 @@ import { safeRecord } from '../watchers/record.js';
  * ## No duplicates
  *
  * Where a telescope watcher records the same operation with richer data (request bodies,
- * SQL bindings and N+1 detection, redis commands, outgoing fetch calls), the watcher stays the
+ * SQL bindings and N+1 detection, redis commands, outgoing fetch calls, emitter events), the watcher stays the
  * source and the OTel span is skipped, together with the driver spans under it (the pg query
  * under a knex query). When that watcher is off, the span comes through instead, so nothing
  * goes missing. Spans telescope itself emits are skipped too.
@@ -127,6 +127,7 @@ const COVERED: ReadonlyArray<{ scope: string; watcher: string; kind?: number; le
   { scope: '@opentelemetry/instrumentation-ioredis', watcher: 'redis', leaf: true },
   { scope: '@opentelemetry/instrumentation-redis', watcher: 'redis', leaf: true },
   { scope: '@opentelemetry/instrumentation-undici', watcher: 'http-client', leaf: true },
+  { scope: '@adonisjs/instrumentation-events', watcher: 'events', leaf: false },
 ];
 
 const MAX_EVENTS = 16;

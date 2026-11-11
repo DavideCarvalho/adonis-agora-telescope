@@ -22,9 +22,24 @@ const storage: AsyncLocalStorage<true> =
   new AsyncLocalStorage<true>();
 globalSlot[SELF_SCOPE_KEY] = storage;
 
+const WRAPPER_KEY = Symbol.for('@agora/telescope:self-scope-wrapper');
+
+/** Wraps telescope's own work in an extra scope (see {@link setTelescopeWorkWrapper}). */
+export type TelescopeWorkWrapper = <T>(fn: () => T) => T;
+
+/**
+ * Install (or clear, with `null`) an extra wrapper around telescope's own work. The provider
+ * installs one when the app runs OpenTelemetry, so the queries telescope makes to store its
+ * entries are not traced and exported as app spans.
+ */
+export function setTelescopeWorkWrapper(wrapper: TelescopeWorkWrapper | null): void {
+  globalSlot[WRAPPER_KEY] = wrapper ?? undefined;
+}
+
 /** Run `fn` as telescope's own work: nothing it causes is recorded. */
 export function runAsTelescopeWork<T>(fn: () => T): T {
-  return storage.run(true, fn);
+  const wrapper = globalSlot[WRAPPER_KEY] as TelescopeWorkWrapper | undefined;
+  return storage.run(true, wrapper === undefined ? fn : () => wrapper(fn));
 }
 
 /** Whether the caller is inside {@link runAsTelescopeWork}. */

@@ -142,6 +142,17 @@ describe('telescopeSpanProcessor', () => {
     ]);
   });
 
+  it('skips the events span while the events watcher is on, keeps the work under it', async () => {
+    boot(['events']);
+    inSpan('@adonisjs/instrumentation-events', 'event.dispatch user:registered', () => {
+      inSpan('@opentelemetry/instrumentation-pg', 'pg.query', () => undefined);
+    });
+    await settle();
+    expect((await entriesOfType('span')).map((e) => (e.content as { name: string }).name)).toEqual([
+      'pg.query',
+    ]);
+  });
+
   it('skips the HTTP server span when the request watcher is on, keeps its children', async () => {
     boot(['request']);
     inSpan(
@@ -228,6 +239,7 @@ describe('trace id alignment', () => {
 describe('emitting through the global providers', () => {
   function emittingStore(entryTypes = resolveConfig({}).otel.entryTypes) {
     boot(['request', 'query']);
+    setOtelTraceIdReader(readActiveOtelTraceId);
     return new OtelEmittingTelescopeStore(store, createGlobalOtelEmitter(), entryTypes);
   }
 
@@ -274,21 +286,21 @@ describe('emitting through the global providers', () => {
     expect(record?.spanContext?.traceId).toBe(traceId);
   });
 
-  it('annotates the HTTP span with the request entry instead of emitting another span', async () => {
+  it('adds no second span for a request entry: the HTTP span already is one', async () => {
     const emitting = emittingStore();
-    let entryId = '';
-    tracerOf('@opentelemetry/instrumentation-http').startActiveSpan(
+    const traceId = await tracerOf('@opentelemetry/instrumentation-http').startActiveSpan(
       'GET /users',
       { kind: 1 },
       async (span) => {
-        entryId = (await emitting.record({ type: 'request', content: { method: 'GET' } })).id;
+        const entry = await emitting.record({ type: 'request', content: { method: 'GET' } });
         span.end();
+        expect(entry.traceId).toBe(span.spanContext().traceId);
+        return span.spanContext().traceId;
       },
     );
-    await settle();
     const finished = spans.getFinishedSpans();
     expect(finished.map((s) => s.name)).toEqual(['GET /users']);
-    expect(finished[0]?.attributes['telescope.entry_id']).toBe(entryId);
+    expect(finished[0]?.spanContext().traceId).toBe(traceId);
   });
 
   it('leaves the types OTel already traces out by default', async () => {
@@ -344,6 +356,23 @@ describe('TelescopeProvider wiring', () => {
     expect(emitted[0]?.spanContext().traceId).toBe(traceId);
     await provider.shutdown();
     expect(currentTraceId()).toBeNull();
+  });
+
+  it("keeps telescope's own storage queries out of the app's traces", async () => {
+    const provider = new TelescopeProvider(fakeApp(base));
+    await provider.boot();
+    runAsTelescopeWork(() => {
+      const span = tracerOf('@opentelemetry/instrumentation-knex').startSpan('insert entries');
+      expect(span.isRecording()).toBe(false);
+      span.end();
+    });
+    expect(spans.getFinishedSpans()).toEqual([]);
+    await provider.shutdown();
+    runAsTelescopeWork(() => {
+      const after = tracerOf('app').startSpan('after shutdown');
+      expect(after.isRecording()).toBe(true);
+      after.end();
+    });
   });
 
   it('keeps trace ids aligned but emits nothing with otel: false', async () => {

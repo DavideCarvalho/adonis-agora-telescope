@@ -1,6 +1,7 @@
 import {
   type Context,
   context,
+  createContextKey,
   isSpanContextValid,
   logs,
   metrics,
@@ -39,8 +40,6 @@ export interface OtelEmitter {
   capture(): Context;
   emitSpan(input: SpanExportInput, captured: Context): void;
   emitLog(input: LogExportInput, captured: Context): void;
-  /** Add attributes to the span active in `captured`, while it is still recording. */
-  annotateActiveSpan(captured: Context, attributes: Record<string, string>): void;
 }
 
 /** Pick the parent context for an entry whose trace id is `traceId`. */
@@ -90,12 +89,19 @@ export function createGlobalOtelEmitter(): OtelEmitter {
         context: parentFor(input.traceId, captured),
       });
     },
-
-    annotateActiveSpan(captured, attributes) {
-      const span = trace.getSpan(captured);
-      if (span?.isRecording()) span.setAttributes(attributes);
-    },
   };
+}
+
+/**
+ * The context key OpenTelemetry instrumentations read to skip tracing (`suppressTracing` in
+ * `@opentelemetry/core`). `createContextKey` is `Symbol.for(description)`, so this is the same
+ * key without depending on `@opentelemetry/core`.
+ */
+const SUPPRESS_TRACING_KEY = createContextKey('OpenTelemetry SDK Context Key SUPPRESS_TRACING');
+
+/** Run `fn` with tracing suppressed, so telescope's own storage queries make no spans. */
+export function withoutTracing<T>(fn: () => T): T {
+  return context.with(context.active().setValue(SUPPRESS_TRACING_KEY, true), fn);
 }
 
 /** Reads the trace id of the active span, for telescope's own entries. */

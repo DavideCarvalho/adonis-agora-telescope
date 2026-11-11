@@ -119,6 +119,7 @@ its own entry, which has more detail, and skips the OpenTelemetry span:
 | `query` | the knex span, and the driver span under it | bindings, N+1 detection, slow-query ranking |
 | `redis` | the ioredis span | the command, in the redis panel |
 | `http-client` | the undici (`fetch`) span | request and response, in the HTTP client panel |
+| `events` | the `@adonisjs/otel` events span (`event.dispatch …`) | the event payload, in the events panel |
 
 When one of those watchers is off, its OpenTelemetry spans come through instead, so nothing is
 missing from the trace.
@@ -166,8 +167,8 @@ By default Telescope sends the entry types OpenTelemetry does not already trace:
 ```
 
 `request`, `query`, `redis`, `http-client` and `log` are left out because `@adonisjs/otel` traces
-HTTP, knex, redis, `fetch` and the logger on its own. A `request` entry adds
-`telescope.entry_id` to the HTTP span instead of creating a second one.
+HTTP, knex, redis, `fetch` and the logger on its own. A request entry shares the trace id of
+its HTTP span, so the two are one search apart.
 
 The [AI-usage and agent-run metrics](/docs/telescope/packages/ai-metrics) are recorded on the
 app's meter, so they go wherever `config/otel.ts` sends metrics.

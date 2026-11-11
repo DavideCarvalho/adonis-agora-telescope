@@ -32,6 +32,7 @@ import {
   setTelescopeRuntime,
 } from '../src/registry.js';
 import { SamplingTelescopeStore } from '../src/sampling/sampling_store.js';
+import { setTelescopeWorkWrapper } from '../src/self_scope.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
@@ -241,6 +242,8 @@ export default class TelescopeProvider {
    *
    * - every entry takes the trace id of the active OTel span, so telescope entries and the
    *   app's spans share one trace;
+   * - telescope's own storage work runs with tracing suppressed, so its INSERTs and reads are
+   *   not exported as app spans;
    * - unless `otel: false`, the store is wrapped with the emitting decorator, AFTER redaction
    *   and sampling (like streaming), so only what the local store kept is emitted.
    *
@@ -254,6 +257,7 @@ export default class TelescopeProvider {
     try {
       const otel = await import('../src/otel/global_emitter.js');
       setOtelTraceIdReader(otel.readActiveOtelTraceId);
+      setTelescopeWorkWrapper(otel.withoutTracing);
       this.otelReaderInstalled = true;
       if (!config.otel.enabled) return store;
       const { OtelEmittingTelescopeStore } = await import('../src/otel/otel_emitting_store.js');
@@ -328,7 +332,10 @@ export default class TelescopeProvider {
     this.logsWatcher = null;
     this.entryEvents?.clear();
     this.entryEvents = null;
-    if (this.otelReaderInstalled) setOtelTraceIdReader(null);
+    if (this.otelReaderInstalled) {
+      setOtelTraceIdReader(null);
+      setTelescopeWorkWrapper(null);
+    }
     this.otelReaderInstalled = false;
     this.unsubscribePrometheus?.();
     this.unsubscribePrometheus = null;

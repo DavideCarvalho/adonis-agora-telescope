@@ -19,10 +19,6 @@ const NEVER_EMITTED = new Set(['span']);
  * The caller's OTel context is captured synchronously, before the store write is awaited, so
  * the emitted span is a child of the span that was active when the entry was recorded (the
  * request, the job) — one trace, no duplicate root.
- *
- * A `request` entry is never emitted as a span of its own: the HTTP instrumentation already
- * has one for that request, active while telescope records it. That span gets the entry id
- * instead (`telescope.entry_id`), which links it back to the entry in the dashboard.
  */
 export class OtelEmittingTelescopeStore implements TelescopeStore {
   private readonly entryTypes: ReadonlySet<string>;
@@ -37,19 +33,11 @@ export class OtelEmittingTelescopeStore implements TelescopeStore {
   }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
-    const wanted = this.entryTypes.has(input.type) || input.type === 'request';
-    const captured = wanted ? this.emitter.capture() : null;
+    const captured = this.entryTypes.has(input.type) ? this.emitter.capture() : null;
     const entry = await this.inner.record(input);
     if (captured === null || entry.sequence < 0 || getTelescopeRuntime().paused) return entry;
     try {
-      if (this.entryTypes.has(entry.type) && entry.type !== 'request') {
-        this.emit(entry as Entry, captured);
-      } else if (entry.type === 'request') {
-        this.emitter.annotateActiveSpan(captured, {
-          'telescope.entry_id': entry.id,
-          'telescope.entry_type': entry.type,
-        });
-      }
+      this.emit(entry as Entry, captured);
     } catch (err) {
       console.error('@adonis-agora/telescope: OTel emit failed for one entry:', err);
     }
