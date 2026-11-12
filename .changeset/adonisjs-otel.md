@@ -5,7 +5,7 @@
 
 Telescope works with `@adonisjs/otel` 2 in both directions, and no longer exports on its own.
 
-**OpenTelemetry spans in the trace view.** Add `telescopeSpanProcessor()` from `@adonis-agora/telescope/otel` to `spanProcessors` in `config/otel.ts`. The spans the app's instrumentation records (pg, outgoing http, DNS, events, `@span()` methods) are stored as `span` entries and show in the trace waterfall next to Telescope's own entries. Where a Telescope watcher already records the same operation with more detail (`request`, `query`, `redis`, `http-client`, `events`), the OpenTelemetry span is skipped, along with the driver spans under it; with that watcher off, the span comes through instead. Sampling, retention, redaction and the overload guard apply, plus a per-trace cap (`maxSpansPerTrace`, default 200).
+**OpenTelemetry spans in the trace view.** Add `telescopeSpanProcessor()` from `@adonis-agora/telescope/otel` to `spanProcessors` in `config/otel.ts`. The spans the app's instrumentation records (pg, outgoing http, DNS, events, `@span()` methods) are stored as `span` entries and show in the trace waterfall next to Telescope's own entries. Where a Telescope watcher already records the same operation with more detail (`request`, `query`, `redis`, `events`, and each `fetch` made through `instrumentFetch`), the OpenTelemetry span is skipped, along with the driver spans under it; with that watcher off, the span comes through instead. Telescope's own storage queries run with tracing suppressed, so they never show up as app spans. Sampling, retention, redaction and the overload guard apply, plus a per-trace cap (`maxSpansPerTrace`, default 200).
 
 ```ts
 // config/otel.ts

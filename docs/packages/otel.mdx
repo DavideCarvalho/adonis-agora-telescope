@@ -59,7 +59,8 @@ export default defineConfig({
 
 ### Sending to PostHog
 
-PostHog ingests OTLP traces and logs with your project token:
+PostHog ingests OTLP traces and logs with your project token. Keep a local collector as the
+fallback, so development without the token still exports somewhere:
 
 ```ts title="config/otel.ts"
 import { defineConfig, destinations } from '@adonisjs/otel'
@@ -79,17 +80,29 @@ export default defineConfig({
           headers: { Authorization: `Bearer ${posthogToken}` },
         }),
       }
-    : undefined,
+    : { collector: destinations.otlp({ endpoint: 'http://localhost:4318' }) },
 })
 ```
+
+With `spanProcessors` set, the `OTEL_EXPORTER_OTLP_*` variables alone do not add an exporter:
+declare every destination in `destinations`.
 
 `signals` leaves out `metrics`: PostHog does not ingest OTLP metrics. Send them to another
 destination if you want [AI metrics](/docs/telescope/packages/ai-metrics) in Grafana.
 
 ### Web and worker as separate services
 
-`service.name` comes from `serviceName`. Give the queue worker its own so you can filter the two
-apart:
+`node ace add @adonisjs/otel` loads `otel.ts` from `bin/server.ts` only. A queue worker started
+through `bin/console.ts` (`node ace queue:work`, a durable worker) needs the same first import,
+otherwise OpenTelemetry never starts in that process:
+
+```ts title="bin/console.ts"
+import '../otel.js'
+import 'reflect-metadata'
+// ...
+```
+
+Then give the worker its own `service.name` so you can filter the two apart:
 
 ```ts title="config/otel.ts"
 const isQueueWorker = process.env.PROCESS_ROLE === 'worker'
@@ -107,8 +120,25 @@ or `process.argv`, not from the container.
 
 Open a trace in the dashboard. Next to Telescope's own entries (the request, its queries, the
 exception), the waterfall shows the spans OpenTelemetry recorded during that request as **OTel
-span** entries: a `pg` query run outside Lucid, a DNS lookup, an outgoing `http` call made with
-axios, an event listener, a method you decorated with `@span()`.
+span** entries: an outgoing `http` call made with axios, a `fetch`, a method you decorated with
+`@span()`, a `pg` query run outside Lucid.
+
+`@adonisjs/otel` turns some instrumentations off by default (`pg`, `mysql`, `mysql2`, `dns`,
+`net`, `socket.io`), and its events and container instrumentations are opt-in. Turn on the ones
+you want in `config/otel.ts`:
+
+```ts title="config/otel.ts"
+import { EventsInstrumentation } from '@adonisjs/otel/instrumentations/events'
+
+export default defineConfig({
+  instrumentations: {
+    '@opentelemetry/instrumentation-pg': { enabled: true },
+    '@opentelemetry/instrumentation-dns': { enabled: true },
+    '@adonisjs/instrumentation-events': new EventsInstrumentation(),
+  },
+  // ...
+})
+```
 
 Telescope and OpenTelemetry already record some of the same things. For those, Telescope keeps
 its own entry, which has more detail, and skips the OpenTelemetry span:
@@ -116,10 +146,16 @@ its own entry, which has more detail, and skips the OpenTelemetry span:
 | Telescope watcher | OpenTelemetry span skipped | What the Telescope entry adds |
 | --- | --- | --- |
 | `request` | the HTTP server span | headers, bodies, user, route |
-| `query` | the knex span, and the driver span under it | bindings, N+1 detection, slow-query ranking |
-| `redis` | the ioredis span | the command, in the redis panel |
-| `http-client` | the undici (`fetch`) span | request and response, in the HTTP client panel |
+| `query` | every knex span, and the driver span under it | bindings, N+1 detection, slow-query ranking |
+| `redis` | every ioredis span | the command, in the redis panel |
+| `http-client` | the undici span of each call made through `instrumentFetch` | request and response, in the HTTP client panel |
 | `events` | the `@adonisjs/otel` events span (`event.dispatch …`) | the event payload, in the events panel |
+
+The `query` and `redis` rows skip by instrumentation, not per operation. A query on a connection
+listed in `ignoreConnections`, a knex query that does not go through Lucid, or a redis command
+the redis watcher ignores (`ignoreCommands`, `ignoreKeys`, a `sampleRate` below 1) is then in
+neither place. Turn the watcher off if you rely on those filters and want the OpenTelemetry span
+instead. A `fetch` you did not wrap with `instrumentFetch` always comes through as an OTel span.
 
 When one of those watchers is off, its OpenTelemetry spans come through instead, so nothing is
 missing from the trace.
@@ -196,6 +232,7 @@ To send nothing at all, set `otel: false`. Entries still take the OpenTelemetry 
 
 <Callout type="info">
 To turn OpenTelemetry off in an environment, use `@adonisjs/otel`'s own switch:
-`OTEL_SDK_DISABLED=true`, or `enabled: false` in `config/otel.ts`. Telescope keeps recording
-locally.
+`OTEL_SDK_DISABLED=true` set in the process environment (the shell, the container, the
+deployment), or `enabled: false` in `config/otel.ts`. A value in `.env` is read too late to stop
+the SDK. Telescope keeps recording locally either way.
 </Callout>

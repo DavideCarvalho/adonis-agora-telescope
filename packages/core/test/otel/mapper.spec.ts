@@ -243,6 +243,11 @@ describe('mapEntryToOtel — other entry types', () => {
     expect(mapped.span.status).toBe('OK');
   });
 
+  it('reads a duration nested in the payload, like diagnostics', () => {
+    const mapped = mapEntryToOtel(entryOf({ content: { name: 'X', payload: { durationMs: 9 } } }));
+    expect(mapped?.kind).toBe('span');
+  });
+
   it('marks a failed timed entry as an ERROR span', () => {
     const mapped = mapEntryToOtel(
       entryOf({ durationMs: 5, tags: ['failed'], content: { name: 'X', error: 'boom' } }),

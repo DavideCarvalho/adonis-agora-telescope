@@ -31,6 +31,7 @@ import {
 } from '../../src/registry.js';
 import { runAsTelescopeWork } from '../../src/self_scope.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
+import { HttpClientWatcher } from '../../src/watchers/http_client_watcher.js';
 
 // One OpenTelemetry pipeline for the whole file, the way `@adonisjs/otel` sets it up: the
 // telescope processor next to an exporter that stands in for the app's destinations.
@@ -151,6 +152,41 @@ describe('telescopeSpanProcessor', () => {
     expect((await entriesOfType('span')).map((e) => (e.content as { name: string }).name)).toEqual([
       'pg.query',
     ]);
+  });
+
+  it('skips the undici span of a call made through instrumentFetch, keeps a plain fetch', async () => {
+    boot(['http-client']);
+    const undici = tracerOf('@opentelemetry/instrumentation-undici');
+    // What the undici instrumentation does inside the wrapped fetch.
+    const tracked = new HttpClientWatcher().instrumentFetch(async () => {
+      undici.startSpan('GET tracked').end();
+      return new Response('ok');
+    });
+    await tracked('https://api.example.com/tracked');
+    undici.startSpan('GET plain').end();
+    await settle();
+    expect((await entriesOfType('span')).map((e) => (e.content as { name: string }).name)).toEqual([
+      'GET plain',
+    ]);
+    expect(await entriesOfType('http-client')).toHaveLength(1);
+  });
+
+  it('detects a metrics-only SDK', () => {
+    const slot = (globalThis as Record<symbol, unknown>)[
+      Symbol.for('opentelemetry.js.api.1')
+    ] as Record<string, unknown>;
+    const saved = { trace: slot.trace, logs: slot.logs, metrics: slot.metrics };
+    try {
+      delete slot.trace;
+      delete slot.logs;
+      slot.metrics = {};
+      expect(isGlobalOtelRegistered()).toBe(true);
+      delete slot.metrics;
+      expect(isGlobalOtelRegistered()).toBe(false);
+    } finally {
+      Object.assign(slot, saved);
+      if (saved.metrics === undefined) delete slot.metrics;
+    }
   });
 
   it('skips the HTTP server span when the request watcher is on, keeps its children', async () => {
@@ -401,6 +437,7 @@ describe('TelescopeProvider wiring', () => {
 describe('without an OpenTelemetry SDK', () => {
   it('records locally, with the store left unwrapped', async () => {
     trace.disable();
+    logs.disable();
     try {
       expect(isGlobalOtelRegistered()).toBe(false);
       const spy = vi.spyOn(console, 'error');
@@ -424,6 +461,7 @@ describe('without an OpenTelemetry SDK', () => {
       await provider.shutdown();
     } finally {
       trace.setGlobalTracerProvider(tracerProvider);
+      logs.setGlobalLoggerProvider(loggerProvider);
     }
   });
 });

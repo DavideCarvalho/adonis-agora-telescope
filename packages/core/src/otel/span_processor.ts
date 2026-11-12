@@ -2,6 +2,7 @@ import { EntryType, type RecordInput } from '../entry.js';
 import { getTelescopeRuntime } from '../registry.js';
 import { isTelescopeWork } from '../self_scope.js';
 import { safeRecord } from '../watchers/record.js';
+import { isCoveredByTelescope } from './covered_scope.js';
 
 /**
  * `telescopeSpanProcessor()`: brings the spans the app's OpenTelemetry instrumentation
@@ -16,7 +17,7 @@ import { safeRecord } from '../watchers/record.js';
  * ## No duplicates
  *
  * Where a telescope watcher records the same operation with richer data (request bodies,
- * SQL bindings and N+1 detection, redis commands, outgoing fetch calls, emitter events), the watcher stays the
+ * SQL bindings and N+1 detection, redis commands, `instrumentFetch` calls, emitter events), the watcher stays the
  * source and the OTel span is skipped, together with the driver spans under it (the pg query
  * under a knex query). When that watcher is off, the span comes through instead, so nothing
  * goes missing. Spans telescope itself emits are skipped too.
@@ -111,7 +112,8 @@ const STATUS_NAMES = ['unset', 'ok', 'error'] as const;
 const TELESCOPE_SCOPE = '@adonis-agora/telescope';
 
 /**
- * Instrumentations a telescope watcher already covers, by scope name. `kind` narrows the match
+ * Instrumentations a telescope watcher already covers, by scope name. (Outgoing `fetch` is
+ * matched per call instead: see {@link isCoveredByTelescope}.) `kind` narrows the match
  * (the http instrumentation makes both server and client spans; only the server side is the
  * `request` watcher's). `leaf` marks operations whose child spans are driver internals (the pg
  * query under a knex query, the socket under a redis command): those are skipped with them.
@@ -126,10 +128,10 @@ const COVERED: ReadonlyArray<{ scope: string; watcher: string; kind?: number; le
   { scope: '@opentelemetry/instrumentation-knex', watcher: 'query', leaf: true },
   { scope: '@opentelemetry/instrumentation-ioredis', watcher: 'redis', leaf: true },
   { scope: '@opentelemetry/instrumentation-redis', watcher: 'redis', leaf: true },
-  { scope: '@opentelemetry/instrumentation-undici', watcher: 'http-client', leaf: true },
   { scope: '@adonisjs/instrumentation-events', watcher: 'events', leaf: false },
 ];
 
+const UNDICI_SCOPE = '@opentelemetry/instrumentation-undici';
 const MAX_EVENTS = 16;
 /** How many traces / span ids the processor remembers at once (oldest forgotten first). */
 const MAX_TRACKED = 4096;
@@ -309,6 +311,11 @@ export function telescopeSpanProcessor(
           return;
         }
         if (coveredBy(span)?.leaf === true) {
+          skippedSpans.add(spanId);
+          return;
+        }
+        // A `fetch` made through telescope's `instrumentFetch`: the http-client entry has it.
+        if (scopeOf(span) === UNDICI_SCOPE && isCoveredByTelescope()) {
           skippedSpans.add(spanId);
           return;
         }

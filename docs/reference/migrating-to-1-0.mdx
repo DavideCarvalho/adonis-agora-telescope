@@ -309,7 +309,7 @@ export default defineConfig({
           headers: { Authorization: `Bearer ${posthogKey}` },
         }),
       }
-    : undefined,
+    : { collector: destinations.otlp({ endpoint: 'http://localhost:4318' }) },
 })
 ```
 

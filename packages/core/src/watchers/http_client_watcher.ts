@@ -1,5 +1,6 @@
 import { currentTraceId } from '../context_accessor.js';
 import { EntryType, type RecordInput } from '../entry.js';
+import { runCoveredByTelescope } from '../otel/covered_scope.js';
 import { normalizeHttpTarget } from './normalize_http_target.js';
 import { safeRecord } from './record.js';
 
@@ -252,7 +253,8 @@ export class HttpClientWatcher {
       const startedAt = watcher.clock.now();
       const requestBytes = watcher.captureBodies ? requestByteLength(init) : null;
       try {
-        const response = await fetchImpl(input, init);
+        // Marked so `telescopeSpanProcessor()` skips the OTel span of this very call.
+        const response = await runCoveredByTelescope(() => fetchImpl(input, init));
         watcher.record({
           method,
           url,

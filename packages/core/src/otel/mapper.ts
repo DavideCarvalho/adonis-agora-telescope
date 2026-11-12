@@ -308,13 +308,14 @@ function mapGenericEntry(entry: Entry, content: Record<string, unknown>): Mapped
     exception || isErrorEntry({ type: entry.type, content: entry.content, tags: entry.tags });
   const endTimeMs = entry.createdAt.getTime();
 
-  if (typeof entry.durationMs === 'number' && entry.durationMs >= 0) {
+  const durationMs = resolveDurationMs(entry);
+  if (durationMs !== null) {
     const message = typeof content.error === 'string' ? content.error : undefined;
     return {
       kind: 'span',
       span: {
         name,
-        startTimeMs: endTimeMs - entry.durationMs,
+        startTimeMs: endTimeMs - durationMs,
         endTimeMs,
         attributes,
         status: errored ? 'ERROR' : 'OK',
