@@ -78,3 +78,87 @@ describe('ExtensionApi.data', () => {
     expect((ctx.response.body as { error: string }).error).toContain('kaboom');
   });
 });
+
+describe('ExtensionApi.action', () => {
+  function actionSetup() {
+    const store = new InMemoryTelescopeStore();
+    const ctx: ExtensionContext = {
+      store,
+      container: { make: async () => undefined as never },
+      config: resolveConfig({}),
+    };
+    const seen: Array<{ input: Record<string, unknown>; caller: string }> = [];
+    const ext: TelescopeExtension = {
+      name: 'resilience',
+      actions: () => [
+        {
+          name: 'resilience.reset-circuit',
+          run: async (input, actionCtx) => {
+            seen.push({ input, caller: actionCtx.caller.id });
+            return { status: 'closed' };
+          },
+        },
+        {
+          name: 'resilience.boom',
+          run: async () => {
+            throw new Error('store down');
+          },
+        },
+      ],
+    };
+    const other: TelescopeExtension = { name: 'payments' };
+    const audit: unknown[] = [];
+    const api = new ExtensionApi(new ExtensionRegistry([ext, other], ctx), ctx, (r) => {
+      audit.push(r);
+    });
+    return { api, seen, audit };
+  }
+
+  const http = () => ({ request: makeRequest('POST'), response: new RecordingResponse() });
+
+  it('runs a confirmed action, passes input + caller, and audits it', async () => {
+    const { api, seen, audit } = actionSetup();
+    const ctx = http();
+    await api.action(
+      ctx,
+      'resilience',
+      'resilience.reset-circuit',
+      { confirmed: true, input: { key: 'stripe' } },
+      { id: 'user:1' },
+    );
+    expect(ctx.response.statusCode).toBe(200);
+    expect(ctx.response.body).toEqual({ data: { status: 'closed' } });
+    expect(seen).toEqual([{ input: { key: 'stripe' }, caller: 'user:1' }]);
+    expect(audit).toMatchObject([
+      { ext: 'resilience', action: 'resilience.reset-circuit', caller: 'user:1', ok: true },
+    ]);
+  });
+
+  it('refuses without confirmed: true (400) and runs nothing', async () => {
+    const { api, seen, audit } = actionSetup();
+    const ctx = http();
+    await api.action(ctx, 'resilience', 'resilience.reset-circuit', { input: {} }, { id: 'x' });
+    expect(ctx.response.statusCode).toBe(400);
+    expect(seen).toEqual([]);
+    expect(audit).toEqual([]);
+  });
+
+  it('404s an unknown action or one addressed under another extension', async () => {
+    const { api } = actionSetup();
+    const a = http();
+    await api.action(a, 'resilience', 'resilience.nope', { confirmed: true }, { id: 'x' });
+    expect(a.response.statusCode).toBe(404);
+    const b = http();
+    await api.action(b, 'payments', 'resilience.reset-circuit', { confirmed: true }, { id: 'x' });
+    expect(b.response.statusCode).toBe(404);
+  });
+
+  it('a throwing action answers 500 with its message and is audited as failed', async () => {
+    const { api, audit } = actionSetup();
+    const ctx = http();
+    await api.action(ctx, 'resilience', 'resilience.boom', { confirmed: true }, { id: 'x' });
+    expect(ctx.response.statusCode).toBe(500);
+    expect(ctx.response.body).toEqual({ error: 'store down' });
+    expect(audit).toMatchObject([{ ok: false, error: 'store down' }]);
+  });
+});

@@ -108,12 +108,23 @@ dashboards: () => [
 
 ## 5. Register it
 
-The host adds the factory to `config/telescope.ts`. The provider runs every hook once at
-boot and publishes the registry; the UI serves the page and its providers.
+Push the factory's result into the `'agora.telescope.extensions'` binding from your library's
+provider. Apps that install both packages get the page with no config change:
+
+```ts title="providers/durable_provider.ts"
+register() {
+  const key = 'agora.telescope.extensions'
+  if (!this.app.container.hasBinding(key)) this.app.container.bindValue(key, [])
+  this.app.container.make(key).then((list) => (list as unknown[]).push(durableTelescopeExtension()))
+}
+```
+
+An app can also list it in `config/telescope.ts` (to pass options); the configured one wins
+over the one your provider pushed:
 
 ```ts title="config/telescope.ts"
 import { defineConfig } from '@adonis-agora/telescope'
-import { durableTelescopeExtension } from '@adonis-agora/durable-telescope'
+import { durableTelescopeExtension } from '@adonis-agora/durable/telescope'
 
 export default defineConfig({
   extensions: [durableTelescopeExtension()],

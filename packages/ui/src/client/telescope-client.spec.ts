@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { TelescopeApiError, TelescopeClient } from './telescope-client.js';
+import { TelescopeApiError, TelescopeClient, xsrfHeader } from './telescope-client.js';
 
 /** A `fetch` stub that records the requested URL and returns `body` wrapped in a JSON Response. */
 function stubFetch(body: unknown, ok = true, status = 200) {
@@ -293,5 +293,25 @@ describe('TelescopeClient on a 401', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('extAction + xsrf', () => {
+  it('reads the XSRF-TOKEN cookie into a header', () => {
+    expect(xsrfHeader('a=1; XSRF-TOKEN=abc%3D; b=2')).toEqual({ 'x-xsrf-token': 'abc=' });
+    expect(xsrfHeader('a=1')).toEqual({});
+  });
+
+  it('POSTs { confirmed: true, input } to the action route', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ data: { ok: 1 } }), { status: 200 }));
+    const client = new TelescopeClient({ baseUrl: '/telescope/api', fetch });
+    const out = await client.extAction('resilience', 'resilience.reset-circuit', { key: 'k' });
+    expect(out).toEqual({ ok: true, data: { ok: 1 } });
+    const [url, init] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/telescope/api/ext/resilience/actions/resilience.reset-circuit');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ confirmed: true, input: { key: 'k' } });
   });
 });

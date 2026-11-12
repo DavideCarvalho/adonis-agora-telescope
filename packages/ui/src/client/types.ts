@@ -380,10 +380,24 @@ export interface LinkSpec {
   external?: boolean;
 }
 
+/** A button in a table cell that runs an extension action on that row, after a confirmation. */
+export interface ColumnAction {
+  action: string;
+  label: string;
+  /** Confirmation text, `{key}` placeholders filled from the row. */
+  confirm: string;
+  /** JSON body values, each a `{key}` template filled from the row. */
+  input?: Record<string, string>;
+  /** Only on rows whose `key` column is one of `in`. */
+  when?: { key: string; in: ReadonlyArray<string | number | boolean> };
+  destructive?: boolean;
+}
+
 export interface PanelColumn {
   key: string;
   label: string;
   link?: LinkSpec;
+  action?: ColumnAction;
 }
 
 export type Panel =

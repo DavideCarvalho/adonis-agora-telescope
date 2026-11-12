@@ -12,6 +12,7 @@ import type {
   TimeseriesPanelData,
   TopNPanelData,
 } from '../client/types.js';
+import { ColumnActionButton } from './ColumnActionButton.js';
 import { Badge } from './primitives/badge.js';
 import { Button } from './primitives/button.js';
 import { cn } from './primitives/cn.js';
@@ -367,7 +368,16 @@ function TablePanel({
                     <TableRow key={i}>
                       {panel.columns.map((col) => (
                         <TableCell key={col.key} className="mono">
-                          {renderCell(row, col, onOpenTrace)}
+                          {col.action ? (
+                            <ColumnActionButton
+                              ext={ext}
+                              action={col.action}
+                              row={row}
+                              onDone={state.reload}
+                            />
+                          ) : (
+                            renderCell(row, col, onOpenTrace)
+                          )}
                         </TableCell>
                       ))}
                     </TableRow>

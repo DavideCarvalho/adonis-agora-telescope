@@ -14,6 +14,11 @@ import {
   type TelescopeConfig,
 } from '../src/define_config.js';
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
+import {
+  ensureTelescopeExtensionsBinding,
+  mergeExtensions,
+  readBoundExtensions,
+} from '../src/extension/binding.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import type { ExtensionContext } from '../src/extension/types.js';
 import { isGlobalOtelRegistered } from '../src/otel/detect.js';
@@ -70,6 +75,10 @@ export default class TelescopeProvider {
   constructor(protected app: ApplicationService) {}
 
   register() {
+    // Libraries push their telescope extension into `'agora.telescope.extensions'` from their own
+    // `register()`; whoever runs first creates it. It is read once, at boot.
+    ensureTelescopeExtensionsBinding(this.app.container);
+
     // The store is built asynchronously at boot (a driver may lazily import its peer
     // dep). Bind the service to resolve against the active store; `boot()` runs before
     // any request, so the store is always set by the time a controller resolves it.
@@ -134,7 +143,7 @@ export default class TelescopeProvider {
 
     // Build the extension registry from `config.extensions` and publish it so the UI can serve each
     // extension's dashboards + data providers. A collision (duplicate id/name) throws here, at boot.
-    setTelescopeExtensionRegistry(this.buildExtensionRegistry(config, store));
+    setTelescopeExtensionRegistry(await this.buildExtensionRegistry(config, store));
 
     // Protective infrastructure. The pruner runs only when a `prune` block was
     // supplied; the overload guard is on by default (unref'd 1s sampler) and pauses
@@ -307,18 +316,39 @@ export default class TelescopeProvider {
     }
   }
 
-  /** Construct the extension registry, giving each extension a context over the store + container. */
-  private buildExtensionRegistry(
+  /**
+   * Construct the extension registry, giving each extension a context over the store + container.
+   * Extensions come from `config.extensions` plus whatever libraries pushed into the
+   * `'agora.telescope.extensions'` binding; a configured extension wins over a bound one with the
+   * same `name`.
+   */
+  private async buildExtensionRegistry(
     config: ResolvedTelescopeConfig,
     store: TelescopeStore,
-  ): ExtensionRegistry | null {
-    if (config.extensions.length === 0) return null;
+  ): Promise<ExtensionRegistry | null> {
+    const bound = await readBoundExtensions(this.app.container);
+    const extensions = mergeExtensions(config.extensions, bound, (name) => {
+      void this.debug(
+        `[@adonis-agora/telescope] extension "${name}" is listed in config/telescope.ts and also registered by its library; using the configured one.`,
+      );
+    });
+    if (extensions.length === 0) return null;
     const ctx: ExtensionContext = {
       store,
       container: { make: (token) => this.app.container.make(token as never) },
       config,
     };
-    return new ExtensionRegistry(config.extensions, ctx);
+    return new ExtensionRegistry(extensions, ctx);
+  }
+
+  /** Log at debug through the app logger when one is bound. Never throws. */
+  private async debug(message: string): Promise<void> {
+    try {
+      const logger = (await this.app.container.make('logger')) as { debug(msg: string): void };
+      logger.debug(message);
+    } catch {
+      // No logger: nothing to say.
+    }
   }
 
   async shutdown() {

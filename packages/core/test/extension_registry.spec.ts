@@ -168,3 +168,20 @@ describe('ExtensionRegistry.collectSchedules', () => {
     expect(await registry.collectSchedules()).toEqual([]);
   });
 });
+
+describe('extension actions', () => {
+  it('collects actions and rejects a duplicate name across extensions', () => {
+    const a: TelescopeExtension = {
+      name: 'a',
+      actions: () => [{ name: 'shared.reset', run: async () => null }],
+    };
+    const b: TelescopeExtension = {
+      name: 'b',
+      actions: () => [{ name: 'shared.reset', run: async () => null }],
+    };
+    const registry = new ExtensionRegistry([a], ctx());
+    expect(registry.actionOwner('shared.reset')).toBe('a');
+    expect(registry.findAction('shared.reset')).toBeDefined();
+    expect(() => new ExtensionRegistry([a, b], ctx())).toThrow(/contributed by both "a" and "b"/);
+  });
+});

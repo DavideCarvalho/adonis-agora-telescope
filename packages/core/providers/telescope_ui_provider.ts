@@ -6,6 +6,7 @@ import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { TelescopeApi } from '../src/ui/api.js';
+import { callerOf } from '../src/ui/caller.js';
 import {
   MISSING_AUTHORIZE_WARNING,
   type ResolvedTelescopeUiConfig,
@@ -13,7 +14,7 @@ import {
   type TelescopeUiConfig,
 } from '../src/ui/define_config.js';
 import { DiagnosisApi } from '../src/ui/diagnosis_api.js';
-import { ExtensionApi } from '../src/ui/extension_api.js';
+import { type ExtensionActionAudit, ExtensionApi } from '../src/ui/extension_api.js';
 import { enforceGuard } from '../src/ui/guard.js';
 import type { SseSink, UiHttpContext } from '../src/ui/http.js';
 import { ProfilesApi } from '../src/ui/profiles_api.js';
@@ -51,6 +52,52 @@ export default class TelescopeUiProvider {
       this.app.config.get<TelescopeUiConfig | undefined>('telescope_ui', undefined),
       { inProduction: this.app.inProduction === true },
     );
+  }
+
+  /**
+   * Audit one extension action: an `info` log line, plus a `diagnostic` entry tagged
+   * `lib:telescope`, `event:extension-action` so it shows up in telescope itself.
+   */
+  private async auditAction(store: TelescopeStore, record: ExtensionActionAudit): Promise<void> {
+    const input = JSON.stringify(record.input);
+    const line = {
+      telescopeAction: `${record.ext}/${record.action}`,
+      caller: record.caller,
+      ok: record.ok,
+      ms: record.ms,
+      input: input.length > 1024 ? `${input.slice(0, 1024)}…` : input,
+      ...(record.error !== undefined ? { error: record.error } : {}),
+    };
+    try {
+      const logger = (await this.app.container.make('logger')) as {
+        info(obj: unknown, msg?: string): void;
+      };
+      logger.info(line, '[@adonis-agora/telescope] extension action');
+    } catch {
+      // No logger: the entry below is the record.
+    }
+    await store.record({
+      type: 'diagnostic',
+      content: {
+        v: 1,
+        lib: 'telescope',
+        event: 'extension-action',
+        ts: Date.now(),
+        traceId: null,
+        payload: record,
+        durationMs: record.ms,
+      },
+      tags: [
+        'lib:telescope',
+        'event:extension-action',
+        `ext:${record.ext}`,
+        `action:${record.action}`,
+        `caller:${record.caller}`,
+        record.ok ? 'status:ok' : 'status:error',
+      ],
+      familyHash: 'telescope:extension-action',
+      durationMs: record.ms,
+    });
   }
 
   async boot() {
@@ -392,11 +439,15 @@ export default class TelescopeUiProvider {
     // Extension SDK surface (only when at least one extension contributed a registry at boot).
     const registry = getTelescopeRuntime().registry;
     const extApi = registry
-      ? new ExtensionApi(registry, {
-          store,
-          container: { make: (token) => this.app.container.make(token as never) },
-          config: resolveTelescopeConfig(this.app.config.get('telescope', {})),
-        } satisfies ExtensionContext)
+      ? new ExtensionApi(
+          registry,
+          {
+            store,
+            container: { make: (token) => this.app.container.make(token as never) },
+            config: resolveTelescopeConfig(this.app.config.get('telescope', {})),
+          } satisfies ExtensionContext,
+          (record) => this.auditAction(store, record),
+        )
       : null;
 
     if (registry) {
@@ -406,6 +457,21 @@ export default class TelescopeUiProvider {
           return extApi?.data(ctx, String(ctx.params.ext), String(ctx.params.provider));
         })
         .as('telescope_ui.ext_data');
+
+      // Extension actions (a write): behind the same `authorize`, refused without an explicit
+      // `confirmed: true`, audited.
+      router
+        .post(`${apiBase}/ext/:ext/actions/:action`, async (ctx: GuardedContext) => {
+          if (!(await gate(ctx))) return;
+          return extApi?.action(
+            ctx,
+            String(ctx.params.ext),
+            String(ctx.params.action),
+            bodyOf(ctx),
+            callerOf(ctx),
+          );
+        })
+        .as('telescope_ui.ext_action');
     }
 
     // `GET <path>/api/meta` — always registered (unlike the extension-only routes above), because
