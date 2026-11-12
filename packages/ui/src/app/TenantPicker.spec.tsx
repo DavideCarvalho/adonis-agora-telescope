@@ -37,9 +37,7 @@ describe('tenant selection in the URL', () => {
     await client.listEntries({ type: 'request' });
     expect(String(fetch.mock.calls[0]?.[0])).toContain('tenant=acme');
     expect(client.streamUrl()).toBe('/telescope/api/stream?tenant=acme');
-    expect(new TelescopeClient({ baseUrl: '/t/api', fetch }).streamUrl()).toBe(
-      '/t/api/stream',
-    );
+    expect(new TelescopeClient({ baseUrl: '/t/api', fetch }).streamUrl()).toBe('/t/api/stream');
   });
 });
 

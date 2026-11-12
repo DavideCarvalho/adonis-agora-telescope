@@ -122,10 +122,7 @@ function TenantMenu({ scope, current }: { scope: TenantScope; current: string | 
         </span>
       </button>
       {open && (
-        <div
-          className="absolute right-0 top-full z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-line bg-panel-2 text-[13px]"
-          onKeyDown={onKeyDown}
-        >
+        <div className="absolute right-0 top-full z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-line bg-panel-2 text-[13px]">
           <input
             ref={inputRef}
             type="text"
@@ -135,6 +132,7 @@ function TenantMenu({ scope, current }: { scope: TenantScope; current: string | 
             aria-label="Search organizations"
             {...(options[active] ? { 'aria-activedescendant': `${listId}-${active}` } : {})}
             placeholder="Search organizations…"
+            onKeyDown={onKeyDown}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
