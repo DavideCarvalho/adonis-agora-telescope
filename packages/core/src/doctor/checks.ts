@@ -266,7 +266,7 @@ export async function checkDbSchema(store: SchemaInspectable): Promise<AgoraDoct
       {
         status: 'error',
         message: `The database schema "${found.schema}" does not exist (or this connection cannot see it).`,
-        fix: `Run the telescope migration, or create it: CREATE SCHEMA "${found.schema}" (MySQL: CREATE DATABASE).`,
+        fix: `Run the telescope migration, or create it: CREATE SCHEMA "${found.schema}" on Postgres, CREATE DATABASE \`${found.schema}\` on MySQL.`,
         docs,
       },
     ];

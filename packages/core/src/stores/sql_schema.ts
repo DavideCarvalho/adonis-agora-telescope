@@ -49,6 +49,11 @@ export function validateSchema(
       `${PKG}: ${where} sets \`schema: "${schema}"\`, but the connection is ${dialect}, which has no schemas. Remove \`schema\` or use a Postgres or MySQL connection.`,
     );
   }
+  if (dialect !== undefined && !isMysqlDialect(dialect) && !isPostgresDialect(dialect)) {
+    throw new Error(
+      `${PKG}: ${where} sets \`schema: "${schema}"\`, but \`schema\` is supported on Postgres and MySQL only; the connection is ${dialect}.`,
+    );
+  }
   return schema;
 }
 
@@ -127,7 +132,11 @@ export async function ensureSchema(
   runDdl: (statement: string) => Promise<void>,
 ): Promise<void> {
   const mysql = isMysqlDialect(dialect);
-  if (!mysql && !isPostgresDialect(dialect)) return;
+  if (!mysql && !isPostgresDialect(dialect)) {
+    throw new Error(
+      `${PKG}: cannot create the schema "${schema}": \`schema\` is supported on Postgres and MySQL only, and the connection's dialect is ${dialect ?? 'unknown'}.`,
+    );
+  }
   if (await schemaExists(db, schema)) return;
   const statement = mysql
     ? `CREATE DATABASE IF NOT EXISTS ${quoteIdentifier(schema, dialect)}`

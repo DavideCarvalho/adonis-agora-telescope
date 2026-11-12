@@ -57,6 +57,22 @@ describe('the lucid store `schema` option', () => {
     },
   );
 
+  it.each(['mssql', 'oracledb'])(
+    'fails at boot on %s, which telescope has no schema support for',
+    (dialect) => {
+      expect(() => new LucidTelescopeStore(fakeClient(dialect), { schema: 'telescope' })).toThrow(
+        /supported on Postgres and MySQL only/,
+      );
+    },
+  );
+
+  it('fails creating a schema when the dialect cannot be read', async () => {
+    const { dialect: _dialect, ...unknown } = fakeClient('postgres');
+    await expect(createTelescopeTable(unknown, { schema: 'telescope' })).rejects.toThrow(
+      /dialect is unknown/,
+    );
+  });
+
   it('accepts a 63-character name with digits, _ and $', () => {
     const schema = `a_1$${'x'.repeat(59)}`;
     expect(new LucidTelescopeStore(fakeClient('postgres'), { schema }).schema).toBe(schema);
