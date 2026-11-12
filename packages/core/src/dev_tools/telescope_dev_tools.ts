@@ -160,7 +160,10 @@ export async function registerTelescopeDevTools(
   try {
     if (!container.hasBinding(DEV_TOOLS_BINDING)) return false;
     const hub = (await container.make(DEV_TOOLS_BINDING)) as DevToolsHub | undefined;
-    if (hub === undefined || hub === null || typeof hub.register !== 'function') return false;
+    if (hub === undefined || hub === null || typeof hub.register !== 'function') {
+      onSkip(`'${DEV_TOOLS_BINDING}' is bound to something that is not a dev tools hub`);
+      return false;
+    }
     if (hub.version !== 1) {
       onSkip(`dev tools hub version ${String(hub.version)} is not supported`);
       return false;

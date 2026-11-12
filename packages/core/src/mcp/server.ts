@@ -132,9 +132,13 @@ export interface McpToolArgs {
 
 type ToolArgs = McpToolArgs;
 
-/** A "not found" style answer: the tool ran, there is nothing to show. */
+const NOTICE: unique symbol = Symbol('telescope.mcp.notice');
+
+/** A "nothing to show" answer: the tool ran, there is nothing to show. */
 export interface McpToolNotice {
   notice: string;
+  /** Brand: only `notice()` builds one, so no tool payload is mistaken for it. */
+  readonly [NOTICE]: true;
 }
 
 /** Optional AI diagnosis hook — resolves the diagnosis markdown, or `null` when AI is off. */
@@ -272,13 +276,17 @@ export class TelescopeMcpServer {
       ...(typeof args.sinceMinutes === 'number'
         ? { after: new Date(Date.now() - args.sinceMinutes * 60_000) }
         : {}),
-      // One extra row tells whether a next page exists.
-      page: 1,
-      size: page * size + 1,
+      page,
+      size,
     };
-    const all = await this.service.list(query);
-    const slice = all.slice((page - 1) * size, page * size);
-    return { items: slice.map(slim), next: all.length > page * size ? page + 1 : null };
+    const entries = await this.service.list(query);
+    // The first row AFTER this page says whether a next one exists (the offset is derived from
+    // `(page - 1) * size`, so that row is `{ page: page * size + 1, size: 1 }`). Only a full page
+    // can have a successor.
+    const hasMore =
+      entries.length === size &&
+      (await this.service.list({ ...query, page: page * size + 1, size: 1 })).length > 0;
+    return { items: entries.map(slim), next: hasMore ? page + 1 : null };
   }
 
   /**
@@ -346,16 +354,11 @@ export class TelescopeMcpServer {
 }
 
 function notice(text: string): McpToolNotice {
-  return { notice: text };
+  return { notice: text, [NOTICE]: true };
 }
 
 function isNotice(value: unknown): value is McpToolNotice {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    Object.keys(value).length === 1 &&
-    typeof (value as { notice?: unknown }).notice === 'string'
-  );
+  return typeof value === 'object' && value !== null && NOTICE in value;
 }
 
 function json(value: unknown): string {

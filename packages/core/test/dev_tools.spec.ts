@@ -58,7 +58,9 @@ describe('telescope dev tools', () => {
     for (const tool of tools) {
       expect(tool.name).toMatch(TOOL_NAME);
       expect(tool.kind).toBe('read');
-      expect(Object.keys(tool.input).every((k) => ['type', 'properties', 'required'].includes(k)));
+      expect(
+        Object.keys(tool.input).every((k) => ['type', 'properties', 'required'].includes(k)),
+      ).toBe(true);
       for (const property of Object.values(tool.input.properties)) {
         for (const key of Object.keys(property)) expect(PROPERTY_KEYS.has(key)).toBe(true);
       }
@@ -98,7 +100,9 @@ describe('telescope dev tools', () => {
     };
     const trace = (await tools[2]?.run({ traceId: 't1' }, call)) as { entries: unknown[] };
     expect(trace.entries).toHaveLength(1);
-    expect(await tools[1]?.run({ id: 'nope' }, call)).toEqual({
+    const missing = await tools[1]?.run({ id: 'nope' }, call);
+    // What the agent receives: the JSON of the notice.
+    expect(JSON.parse(JSON.stringify(missing))).toEqual({
       notice: 'Entry not found (it may have been pruned).',
     });
   });
@@ -149,6 +153,13 @@ describe('registerTelescopeDevTools', () => {
     const server = buildTelescopeMcpServer(new InMemoryTelescopeStore(), resolveConfig({}));
     const none = { hasBinding: () => false, make: async () => undefined };
     expect(await registerTelescopeDevTools(none, server, () => true)).toBe(false);
+
+    const onMalformed = vi.fn();
+    const malformed = { hasBinding: () => true, make: async () => ({}) };
+    expect(await registerTelescopeDevTools(malformed, server, () => true, onMalformed)).toBe(false);
+    expect(onMalformed).toHaveBeenCalledWith(
+      "'agora.devTools' is bound to something that is not a dev tools hub",
+    );
 
     const onSkip = vi.fn();
     expect(await registerTelescopeDevTools(hub(2), server, () => true, onSkip)).toBe(false);
