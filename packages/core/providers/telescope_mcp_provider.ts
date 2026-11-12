@@ -30,8 +30,8 @@ import type { UiHttpContext } from '../src/ui/http.js';
  * - `GET <path>` — 405: this stateless server has no server→client stream.
  * - `DELETE <path>` — 200 no-op: it holds no session to terminate.
  *
- * Failures degrade safely: a disabled config or a missing store registers no routes
- * (warn-logged), so the endpoint simply does not exist rather than crashing the host.
+ * Failures degrade safely: a missing store registers no routes (warn-logged), so the
+ * endpoint simply does not exist rather than crashing the host.
  */
 export default class TelescopeMcpProvider {
   constructor(protected app: ApplicationService) {}

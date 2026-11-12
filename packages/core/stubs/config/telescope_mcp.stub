@@ -19,7 +19,7 @@ import { defineConfig } from '@adonis-agora/telescope/mcp'
  */
 export default defineConfig({
   /**
-   * Mounts the endpoint. Defaults to false (no routes); set to false to turn it off.
+   * Mounts the endpoint. Defaults to false (no routes); omit it or set it to false to turn it off.
    */
   enabled: true,
 
