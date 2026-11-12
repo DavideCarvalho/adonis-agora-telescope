@@ -1,0 +1,69 @@
+---
+title: Health check
+icon: Stethoscope
+description: Run node ace agora:doctor to check Telescope's configuration (console access, CSRF, OpenTelemetry, retention) together with every other installed @adonis-agora lib.
+---
+
+`node ace agora:doctor` checks the configuration of every installed `@adonis-agora` lib in one
+run. `node ace telescope:doctor` runs Telescope's checks only. Both take the same flags.
+
+```sh
+node ace agora:doctor
+```
+
+```
+@adonis-agora doctor · production · 3 libs · 14 checks
+
+telescope 1.0.0
+  ✔ Console access in production
+  ! MCP endpoint passes CSRF
+    Shield's CSRF check rejects POST /telescope/mcp: the MCP endpoint cannot be reached.
+    fix: Add '/telescope/mcp' to csrf.exceptRoutes in config/shield.ts.
+  ✖ OpenTelemetry packages line up
+    OpenTelemetry SDK 2 and SDK 3 are mixed: …
+```
+
+`node ace configure @adonis-agora/telescope` registers the command. On an app configured before,
+add the commands barrel to `adonisrc.ts` yourself:
+
+```ts title="adonisrc.ts"
+commands: [
+  () => import('@adonis-agora/telescope/commands'),
+],
+```
+
+## Flags
+
+| Flag | Effect |
+| --- | --- |
+| `--json` | Print one JSON object (`{ version, env, summary, libs, results }`) to stdout. |
+| `--lib=telescope,durable` | Only these libs. |
+| `--only=telescope.otel` | One check, by id. |
+| `--deep` | Also run checks that touch the database, Redis or the network. |
+| `--strict` | Fail on warnings too. |
+| `--verbose` | Show skipped checks and every message. |
+| `--no-boot` | Check the config without booting the providers, when boot itself fails. |
+
+Exit codes: `0` when nothing is an error, `1` when something is (or a warning, with `--strict`),
+`2` when the doctor itself cannot run.
+
+In CI, fail the build on anything the doctor flags:
+
+```yaml title=".github/workflows/ci.yml"
+- run: NODE_ENV=production node ace agora:doctor --json --strict
+```
+
+## Telescope's checks
+
+| Id | Checks | Status |
+| --- | --- | --- |
+| `telescope.console-gate` | `config/telescope_ui.ts` sets `authorize` | warn here, error in production |
+| `telescope.mcp-gate` | `config/telescope_mcp.ts` sets `authorize` | warn here, error in production |
+| `telescope.mcp-csrf` | shield's CSRF lets `POST /telescope/mcp` through (`csrf.exceptRoutes`) | warn |
+| `telescope.client-errors-csrf` | the same for client error ingestion, when it is on | warn |
+| `telescope.otel` | OpenTelemetry SDK 2 and SDK 3 packages are not mixed (`@adonisjs/otel` 2 uses SDK 3); one copy of `@opentelemetry/api` | error / warn |
+| `telescope.retention` | a database store has `prune` set in production | warn |
+| `telescope.peers` | every peer dependency is installed and in range | error |
+| `telescope.agora-siblings` | the other `@adonis-agora` libs are on the same release line | warn |
+
+Check ids stay the same for every 1.x release, so you can use them in `--only` and in CI allowlists.

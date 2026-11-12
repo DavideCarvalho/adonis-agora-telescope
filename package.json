@@ -16,6 +16,7 @@
   "scripts": {
     "build": "turbo run build",
     "check:package": "node scripts/check-package.mjs",
+    "check:agora-doctor": "node scripts/check-agora-doctor.mjs packages/core",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
     "typecheck": "turbo run typecheck",

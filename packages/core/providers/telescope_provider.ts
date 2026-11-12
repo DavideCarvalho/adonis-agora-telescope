@@ -14,6 +14,8 @@ import {
   type TelescopeConfig,
 } from '../src/define_config.js';
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
+import { registerDoctorChecks } from '../src/doctor/agora_doctor.js';
+import { telescopeDoctorChecks } from '../src/doctor/checks.js';
 import {
   ensureTelescopeExtensionsBinding,
   mergeExtensions,
@@ -89,6 +91,9 @@ export default class TelescopeProvider {
   }
 
   async boot() {
+    // `node ace agora:doctor` reads these after boot. Registered here rather than in `register()`,
+    // which AdonisJS does not await; before the `enabled` check so a disabled telescope is checked too.
+    await registerDoctorChecks(this.app.container, telescopeDoctorChecks).catch(() => {});
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
     const sampled = this.applySampling(
       this.applyRedaction(await this.buildStore(config), config),

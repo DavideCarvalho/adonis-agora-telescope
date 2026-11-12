@@ -65,6 +65,8 @@ export async function configure(command: Configure) {
   // — core —
   await codemods.updateRcFile((rcFile) => {
     rcFile.addProvider('@adonis-agora/telescope/telescope_provider');
+    // `node ace agora:doctor` / `telescope:doctor`.
+    rcFile.addCommand('@adonis-agora/telescope/commands');
   });
 
   await codemods.registerMiddleware('server', [

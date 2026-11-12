@@ -6,6 +6,13 @@
     "incremental": false,
     "tsBuildInfoFile": null
   },
-  "include": ["src/**/*.ts", "providers/**/*.ts", "configure.ts", "stubs/main.ts", "test/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "providers/**/*.ts",
+    "commands/**/*.ts",
+    "configure.ts",
+    "stubs/main.ts",
+    "test/**/*.ts"
+  ],
   "exclude": ["dist/**"]
 }
