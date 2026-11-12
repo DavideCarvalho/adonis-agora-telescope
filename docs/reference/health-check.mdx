@@ -20,7 +20,7 @@ telescope 1.0.0
     Shield's CSRF check rejects POST /telescope/mcp: the MCP endpoint cannot be reached.
     fix: Add '/telescope/mcp' to csrf.exceptRoutes in config/shield.ts.
   ✖ OpenTelemetry packages line up
-    OpenTelemetry SDK 2 and SDK 3 are mixed: …
+    OpenTelemetry SDK lines are mixed: SDK 2 (…) next to SDK 3 (…).
 ```
 
 `node ace configure @adonis-agora/telescope` registers the command. On an app configured before,
@@ -61,7 +61,7 @@ In CI, fail the build on anything the doctor flags:
 | `telescope.mcp-gate` | `config/telescope_mcp.ts` sets `authorize` | warn here, error in production |
 | `telescope.mcp-csrf` | shield's CSRF lets `POST /telescope/mcp` through (`csrf.exceptRoutes`) | warn |
 | `telescope.client-errors-csrf` | the same for client error ingestion, when it is on | warn |
-| `telescope.otel` | OpenTelemetry SDK 2 and SDK 3 packages are not mixed (`@adonisjs/otel` 2 uses SDK 3); one copy of `@opentelemetry/api` | error / warn |
+| `telescope.otel` | OpenTelemetry SDK packages are all on one line (stable `N.x` and experimental `0.Nxx` are the same line, so `core@3.1.1` and `sdk-node@0.301.1` are both SDK 3; `@adonisjs/otel` 2 uses SDK 3); one copy of `@opentelemetry/api` | error / warn |
 | `telescope.retention` | a database store has `prune` set in production | warn |
 | `telescope.peers` | every peer dependency is installed and in range | error |
 | `telescope.agora-siblings` | the other `@adonis-agora` libs are on the same release line | warn |

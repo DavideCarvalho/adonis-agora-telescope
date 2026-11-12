@@ -150,6 +150,53 @@ describe('telescope doctor checks', () => {
     ).toEqual([{ status: 'skip', message: 'OpenTelemetry is not installed.' }]);
   });
 
+  it('OTel: sdkLine maps the experimental 0.Nxx train to the stable N.x line (real versions)', () => {
+    // Real pairs from the npm metadata: sdk-node@0.57.2 → core 1.30.1, 0.200.0 → 2.0.0,
+    // 0.208.0 → 2.2.0, 0.300.0 → 3.0.0, 0.301.1 → 3.1.1.
+    expect(sdkLine('@opentelemetry/sdk-node', '0.57.2')).toBe(1);
+    expect(sdkLine('@opentelemetry/core', '1.30.1')).toBe(1);
+    expect(sdkLine('@opentelemetry/sdk-node', '0.200.0')).toBe(2);
+    expect(sdkLine('@opentelemetry/sdk-node', '0.208.0')).toBe(2);
+    expect(sdkLine('@opentelemetry/core', '2.2.0')).toBe(2);
+    expect(sdkLine('@opentelemetry/sdk-node', '0.300.0')).toBe(3);
+    expect(sdkLine('@opentelemetry/sdk-node', '0.301.1')).toBe(3);
+    expect(sdkLine('@opentelemetry/core', '3.1.1')).toBe(3);
+    expect(sdkLine('@opentelemetry/sdk-logs', '0.301.0-rc.1')).toBe(3);
+    // Future lines follow the same rule.
+    expect(sdkLine('@opentelemetry/sdk-node', '0.400.0')).toBe(4);
+    expect(sdkLine('@opentelemetry/core', '4.0.0')).toBe(4);
+    expect(sdkLine('some-other-pkg', '0.301.1')).toBeNull();
+    expect(sdkLine('@opentelemetry/core', 'workspace:*')).toBeNull();
+  });
+
+  it('OTel: @adonisjs/otel 2 with sdk-node 0.301.1 and core 3.1.1 is consistent', () => {
+    const results = checkOtel({
+      adonisOtel: '2.0.0',
+      sdk: [
+        { name: '@opentelemetry/sdk-node', version: '0.301.1', from: '@adonisjs/otel' },
+        { name: '@opentelemetry/sdk-logs', version: '0.301.0', from: '@adonisjs/otel' },
+        { name: '@opentelemetry/core', version: '3.1.1', from: 'app' },
+      ],
+      apiFromApp: '/a',
+      apiFromTelescope: '/a',
+    });
+    expect(results).toEqual([{ status: 'ok', message: 'OpenTelemetry is consistent (SDK 3).' }]);
+
+    const mixed = checkOtel({
+      adonisOtel: '2.0.0',
+      sdk: [
+        { name: '@opentelemetry/sdk-node', version: '0.301.1', from: '@adonisjs/otel' },
+        { name: '@opentelemetry/sdk-logs', version: '0.208.0', from: 'app' },
+      ],
+      apiFromApp: '/a',
+      apiFromTelescope: '/a',
+    });
+    expect(mixed.map((r) => r.status)).toEqual(['error']);
+    expect(mixed[0]?.message).toBe(
+      'OpenTelemetry SDK lines are mixed: SDK 2 (@opentelemetry/sdk-logs@0.208.0 (app)) next to SDK 3 (@opentelemetry/sdk-node@0.301.1 (@adonisjs/otel)).',
+    );
+  });
+
   it('OTel install is read from the app root and from @adonisjs/otel', async () => {
     const app = await fixtureApp({
       '@adonisjs/otel': { version: '2.0.0' },
