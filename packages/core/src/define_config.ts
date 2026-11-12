@@ -11,6 +11,11 @@ import type { RequestCaptureOptions, RequestEnrichment } from './request_watcher
 import { resolveSampling, type SamplingConfig } from './sampling/sampling.js';
 import type { TelescopeStore } from './store.js';
 import { type StoreProvider, storage } from './stores/factory.js';
+import {
+  type ResolvedTelescopeTenancy,
+  resolveTenancy,
+  type TelescopeTenancyConfig,
+} from './tenancy.js';
 import type { LogLevel, LogsWatcherOptions } from './watchers/logs_watcher.js';
 
 /** Default retention age for the pruner when `prune.after` is omitted. */
@@ -148,6 +153,14 @@ export interface TelescopeConfig {
    * entry types, dashboard pages, and the data providers those pages bind to. Default none.
    */
   extensions?: TelescopeExtension[];
+
+  /**
+   * Tag entries with the active tenant (organization) and scope the console by it. `'inherit'`
+   * (default) follows `tenancy.enabled` in `config/context.ts`; `false` keeps telescope untagged.
+   * Entries get `tenant:<id>` (one tag per level of a nested tenant), `tenant:*` inside
+   * `Context.allTenants()`.
+   */
+  tenancy?: TelescopeTenancyConfig;
 
   /**
    * Sensitive-data redaction applied to every entry's content before persistence.
@@ -389,6 +402,8 @@ export interface ResolvedTelescopeConfig {
   /** Host enrichment hook for request entries, or `null` when unset (default). */
   requestEnrichment: RequestEnrichment | null;
   extensions: TelescopeExtension[];
+  /** Resolved tenancy (see {@link TelescopeConfig.tenancy}). */
+  tenancy: ResolvedTelescopeTenancy;
   redact: { enabled: boolean; keys: string[]; perType: Record<string, RedactBounds> };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
   sampling: SamplingConfig;
@@ -480,6 +495,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     requestCapture: config.requestCapture ?? null,
     requestEnrichment: config.requestEnrichment ?? null,
     extensions: config.extensions ?? [],
+    tenancy: resolveTenancy(config.tenancy),
     redact: {
       enabled: config.redact?.enabled ?? true,
       keys: config.redact?.keys ?? [],

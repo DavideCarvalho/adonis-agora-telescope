@@ -150,6 +150,9 @@ export function matchesQuery(entry: Entry, query: EntryQuery): boolean {
   if (query.before !== undefined && !(entry.createdAt < query.before)) return false;
   if (query.after !== undefined && !(entry.createdAt > query.after)) return false;
   if (query.tag !== undefined && !entry.tags.includes(query.tag)) return false;
+  if (query.anyTags !== undefined && !entry.tags.some((tag) => query.anyTags?.includes(tag))) {
+    return false;
+  }
   if (query.search !== undefined) {
     const needle = query.search.toLowerCase();
     if (!entry.tags.some((tag) => tag.toLowerCase().includes(needle))) {

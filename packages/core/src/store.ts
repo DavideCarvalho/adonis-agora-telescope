@@ -9,6 +9,11 @@ export interface EntryQuery {
   type?: string;
   /** Only entries carrying this exact tag (e.g. `lib:billing`). */
   tag?: string;
+  /**
+   * Only entries carrying AT LEAST ONE of these exact tags (an OR, unlike `tag`). An empty list
+   * matches nothing. Used to scope a console to some tenants (`tenant:<id>` tags).
+   */
+  anyTags?: string[];
   /** Only entries with this grouping key. */
   familyHash?: string;
   /** Only entries recorded under this trace id. */

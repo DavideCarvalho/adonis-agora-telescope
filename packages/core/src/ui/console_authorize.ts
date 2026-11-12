@@ -11,7 +11,14 @@ import type { UiHttpContext } from './http.js';
  */
 export type ConsoleAuthorizeResult =
   | boolean
-  | { allowed: true }
+  | {
+      allowed: true;
+      /**
+       * With tenancy on: the tenants (organizations) this viewer may see. `'*'` is every tenant,
+       * plus entries recorded with none. Omitted: the viewer's own active tenant.
+       */
+      tenants?: '*' | string[];
+    }
   | { allowed: false; reason?: 'unauthenticated' | 'forbidden' }
   | { redirectTo: string };
 
@@ -37,7 +44,7 @@ export type ConsoleAuthorize =
 
 /** The single shape {@link resolveConsoleAuthorize} answers with. */
 export type NormalizedDecision =
-  | { allowed: true }
+  | { allowed: true; tenants?: '*' | string[] }
   | { allowed: false; reason: 'unauthenticated' | 'forbidden'; redirectTo?: string };
 
 /** Whether `value` is a {@link ConsoleAuthorizer} class (a constructor with `authorize` on its prototype). */
@@ -69,7 +76,19 @@ export function normalizeConsoleDecision(result: unknown): NormalizedDecision {
     if (typeof r.redirectTo === 'string') {
       return { allowed: false, reason: 'unauthenticated', redirectTo: r.redirectTo };
     }
-    if (r.allowed === true) return { allowed: true };
+    if (r.allowed === true) {
+      const tenants = (result as { tenants?: unknown }).tenants;
+      if (tenants === '*') return { allowed: true, tenants: '*' };
+      if (Array.isArray(tenants)) {
+        return {
+          allowed: true,
+          tenants: tenants
+            .filter((t) => typeof t === 'string' || typeof t === 'number')
+            .map(String),
+        };
+      }
+      return { allowed: true };
+    }
     if (r.reason === 'unauthenticated') return { allowed: false, reason: 'unauthenticated' };
   }
   return { allowed: false, reason: 'forbidden' };
@@ -114,6 +133,11 @@ export function resolveConsoleAuthorize(
 export interface AuthorizeByTokenOptions {
   /** The shared secret callers send as `Authorization: Bearer <token>`. */
   token: string | undefined;
+  /**
+   * With tenancy on: the organizations a token holder may see (`'*'` = all). A token carries no
+   * signed-in organization, so without this it sees none.
+   */
+  tenants?: '*' | string[];
 }
 
 function digest(value: string): Buffer {
@@ -136,10 +160,12 @@ export function authorizeByToken(options: AuthorizeByTokenOptions): ConsoleAutho
     throw new Error('authorizeByToken: `token` must be a non-empty string');
   }
   const expected = digest(token);
+  const allowed: ConsoleAuthorizeResult =
+    options.tenants !== undefined ? { allowed: true, tenants: options.tenants } : { allowed: true };
   return (ctx: HttpContext): ConsoleAuthorizeResult => {
     const header = ctx.request.header('authorization');
     const match = typeof header === 'string' ? /^Bearer\s+(.+)$/i.exec(header.trim()) : null;
-    if (match?.[1] && timingSafeEqual(digest(match[1].trim()), expected)) return { allowed: true };
+    if (match?.[1] && timingSafeEqual(digest(match[1].trim()), expected)) return allowed;
     return { allowed: false, reason: 'unauthenticated' };
   };
 }

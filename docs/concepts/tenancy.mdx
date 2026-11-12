@@ -1,0 +1,94 @@
+---
+title: Organizations
+icon: Building2
+description: With tenancy on, Telescope tags every entry with the active organization and each console viewer sees only the organizations its authorize grants.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+When your app turns tenancy on in `config/context.ts` (`@adonis-agora/context`), Telescope follows
+with nothing else to configure:
+
+- every entry recorded during a request gets the organization's tag, `tenant:<id>` (one tag per
+  level of a nested tenant, e.g. a clinic and its unit); work run inside `Context.allTenants()` is
+  tagged `tenant:*`;
+- the console, the JSON API, the live tail, `/telescope/mcp` and the dev MCP tools show each viewer
+  only the organizations it may see. Counts, exception groups and Pulse are computed from those
+  entries only, never across organizations.
+
+```ts title="config/context.ts"
+import { defineConfig } from '@adonis-agora/context'
+
+export default defineConfig({
+  tenancy: { enabled: true, kinds: ['organization'] },
+})
+```
+
+## Who sees what
+
+Your console `authorize` decides. By default a viewer sees its own active organization (for
+authkit apps, the organization selected in the session):
+
+```ts title="config/telescope_ui.ts"
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  // Signed-in admins of their organization see that organization's entries.
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
+})
+```
+
+Return `tenants` to grant more: a list of organization ids, or `'*'` for every organization plus
+the entries recorded with none (your own operators):
+
+```ts title="app/policies/telescope_access.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import type { ConsoleAuthorizer } from '@adonis-agora/telescope/ui'
+
+export default class TelescopeAccess implements ConsoleAuthorizer {
+  async authorize(ctx: HttpContext) {
+    const user = ctx.auth.user
+    if (!user) return { redirectTo: '/login' }
+    if (user.isStaff) return { allowed: true, tenants: '*' as const }
+    if (user.isAdmin) return { allowed: true }
+    return false
+  }
+}
+```
+
+A token has no organization of its own, so give token holders their scope explicitly:
+
+```ts title="config/telescope_mcp.ts"
+import env from '#start/env'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/mcp'
+
+export default defineConfig({
+  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN'), tenants: '*' }),
+})
+```
+
+## The organization picker
+
+The console header shows an **Organization** control: a fixed chip when the viewer sees one
+organization, a searchable picker when it sees several (or all, with **All organizations** first).
+The choice lives in the URL (`?tenant=<id>`), so links keep it. With all organizations in view, the
+entries table gets an **Organization** column. A viewer with no organization sees a prompt to choose
+one instead of data.
+
+Labels come from the viewer's own organization (its slug) and from `tenancy.label` in
+`config/context.ts` for the others; without a label the id is shown.
+
+<Callout type="info">
+A viewer limited to some organizations cannot run actions that reach all of them: arming a CPU
+capture, queue retries and enqueues, extension actions and the Prometheus scrape answer `403`.
+</Callout>
+
+## Options
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  tenancy: 'inherit', // default: follow config/context.ts
+  // tenancy: false,  // never tag or scope
+  // tenancy: { kinds: ['organization'], tag: 'org' }, // only these kinds; tags read org:<id>
+})
+```

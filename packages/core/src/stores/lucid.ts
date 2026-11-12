@@ -477,6 +477,16 @@ export class LucidTelescopeStore implements TelescopeStore {
           `%${likeEscape(JSON.stringify(query.tag))}%`,
         ]);
       }
+      if (query.anyTags !== undefined) {
+        // At least one of these tags: an OR of the same quoted-token match as `tag`.
+        if (query.anyTags.length === 0) return [];
+        const clauses = query.anyTags.map(() => `?? LIKE ? ESCAPE '!'`).join(' OR ');
+        const bindings = query.anyTags.flatMap((tag) => [
+          'tags',
+          `%${likeEscape(JSON.stringify(tag))}%`,
+        ]);
+        builder = builder.whereRaw(`(${clauses})`, bindings);
+      }
       if (query.search !== undefined) {
         const needle = `%${likeEscape(query.search.toLowerCase())}%`;
         builder = builder.whereRaw(`(LOWER(??) LIKE ? ESCAPE '!' OR LOWER(??) LIKE ? ESCAPE '!')`, [

@@ -1,3 +1,4 @@
+import type { Entry } from '../entry.js';
 import { type EntrySummary, toSummary } from '../ui/api.js';
 import { formatSseFrame, formatSseHeartbeat, type SseSink } from '../ui/http.js';
 import type { EntryEvents } from './entry_events.js';
@@ -13,6 +14,8 @@ export interface StreamOptions {
    * Default {@link DEFAULT_HEARTBEAT_MS}.
    */
   heartbeatMs?: number;
+  /** Only stream the entries this answers `true` for (a console limited to some organizations). */
+  filter?: (entry: Entry) => boolean;
   /**
    * Injectable timer pair so tests can drive the heartbeat deterministically (no
    * real timers / flake). Defaults to the global `setInterval`/`clearInterval`.
@@ -57,7 +60,9 @@ export function streamEntries(
   // Open the stream: a comment line flushes headers and confirms the connection.
   sink.write(': connected\n\n');
 
+  const filter = options.filter;
   const unsubscribe = events.subscribe((entry) => {
+    if (filter !== undefined && !filter(entry)) return;
     const summary: EntrySummary = toSummary(entry);
     sink.write(formatSseFrame(summary, 'entry'));
   });

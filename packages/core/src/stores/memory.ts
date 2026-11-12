@@ -78,6 +78,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     const search = query.search?.toLowerCase();
     const traceIds = query.traceIds === undefined ? null : new Set(query.traceIds);
     const results: Entry[] = [];
+    const anyTags = query.anyTags !== undefined ? new Set(query.anyTags) : null;
     const size = query.size !== undefined && query.size > 0 ? Math.floor(query.size) : undefined;
     // `page` is 1-based: the rows to skip are `(page - 1) * size`. The skip is counted
     // over MATCHES, so it must be consumed after the filters and before the page is
@@ -86,6 +87,7 @@ export class InMemoryTelescopeStore implements TelescopeStore {
     for (const entry of this.newestFirst()) {
       if (query.type !== undefined && entry.type !== query.type) continue;
       if (query.tag !== undefined && !entry.tags.includes(query.tag)) continue;
+      if (anyTags !== null && !entry.tags.some((tag) => anyTags.has(tag))) continue;
       if (query.familyHash !== undefined && entry.familyHash !== query.familyHash) continue;
       if (query.traceId !== undefined && entry.traceId !== query.traceId) continue;
       if (traceIds !== null && (entry.traceId === null || !traceIds.has(entry.traceId))) continue;

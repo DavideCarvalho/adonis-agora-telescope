@@ -101,6 +101,16 @@ describe('LucidTelescopeStore', () => {
     expect(await store.list({ tag: 'lib:billing' })).toHaveLength(1);
   });
 
+  it('anyTags matches entries carrying at least one of the exact tags', async () => {
+    await store.record({ type: 'x', content: {}, tags: ['tenant:acme'] });
+    await store.record({ type: 'x', content: {}, tags: ['tenant:acme-2'] });
+    await store.record({ type: 'x', content: {}, tags: ['tenant:globex', 'lib:x'] });
+    await store.record({ type: 'x', content: {}, tags: [] });
+    expect(await store.list({ anyTags: ['tenant:acme'] })).toHaveLength(1);
+    expect(await store.list({ anyTags: ['tenant:acme', 'tenant:globex'] })).toHaveLength(2);
+    expect(await store.list({ anyTags: [] })).toHaveLength(0);
+  });
+
   it('search matches content and tags case-insensitively', async () => {
     await store.record({ type: 'request', content: { url: '/Users/42' }, tags: [] });
     await store.record({ type: 'request', content: { url: '/health' }, tags: ['status:500'] });

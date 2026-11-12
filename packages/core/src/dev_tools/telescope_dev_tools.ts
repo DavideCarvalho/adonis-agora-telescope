@@ -1,6 +1,6 @@
 import type { TelescopeMcpServer } from '../mcp/server.js';
 import type { AuthorizeHook } from '../ui/define_config.js';
-import { runGuard } from '../ui/guard.js';
+import { type GuardResult, runGuard } from '../ui/guard.js';
 import type { UiHttpContext } from '../ui/http.js';
 import {
   DEV_TOOLS_BINDING,
@@ -22,7 +22,10 @@ const LIMIT = {
  * prefixed `telescope_`, answered by the same {@link TelescopeMcpServer} over stored (already
  * redacted) entries.
  */
-export function telescopeDevTools(server: TelescopeMcpServer): DevTool[] {
+export function telescopeDevTools(
+  server: TelescopeMcpServer | ((ctx: unknown) => TelescopeMcpServer),
+): DevTool[] {
+  const serverOf = typeof server === 'function' ? server : () => server;
   return [
     {
       name: 'telescope_list_entries',
@@ -49,7 +52,7 @@ export function telescopeDevTools(server: TelescopeMcpServer): DevTool[] {
         },
       },
       run: async (input, call) =>
-        server.listEntries({
+        serverOf(call.ctx).listEntries({
           ...input,
           limit: Math.min(numberOr(input.limit, 20), call.limits.maxRows),
         }),
@@ -64,7 +67,7 @@ export function telescopeDevTools(server: TelescopeMcpServer): DevTool[] {
         properties: { id: { type: 'string', description: 'Entry id' } },
         required: ['id'],
       },
-      run: async (input) => server.call('get_entry', input),
+      run: async (input, call) => serverOf(call.ctx).call('get_entry', input),
     },
     {
       name: 'telescope_get_trace',
@@ -76,7 +79,7 @@ export function telescopeDevTools(server: TelescopeMcpServer): DevTool[] {
         properties: { traceId: { type: 'string', description: 'Trace id' } },
         required: ['traceId'],
       },
-      run: async (input) => server.call('get_trace', input),
+      run: async (input, call) => serverOf(call.ctx).call('get_trace', input),
     },
     {
       name: 'telescope_get_waterfall',
@@ -88,7 +91,7 @@ export function telescopeDevTools(server: TelescopeMcpServer): DevTool[] {
         properties: { traceId: { type: 'string', description: 'Trace id' } },
         required: ['traceId'],
       },
-      run: async (input) => server.call('get_waterfall', input),
+      run: async (input, call) => serverOf(call.ctx).call('get_waterfall', input),
     },
     {
       name: 'telescope_get_health',
@@ -105,7 +108,7 @@ export function telescopeDevTools(server: TelescopeMcpServer): DevTool[] {
           },
         },
       },
-      run: async (input) => server.call('get_health', input),
+      run: async (input, call) => serverOf(call.ctx).call('get_health', input),
     },
     {
       name: 'telescope_diagnose_exception',
@@ -117,10 +120,18 @@ export function telescopeDevTools(server: TelescopeMcpServer): DevTool[] {
         properties: { id: { type: 'string', description: 'Exception entry id' } },
         required: ['id'],
       },
-      available: () => server.canDiagnose(),
-      run: async (input) => server.call('diagnose_exception', input),
+      available: () => serverOf(undefined).canDiagnose(),
+      run: async (input, call) => serverOf(call.ctx).call('diagnose_exception', input),
     },
   ];
+}
+
+/** The allowed decision of each MCP request, so its tools read the organizations it granted. */
+const decisions = new WeakMap<object, GuardResult>();
+
+/** The decision the gate took for `ctx` (`{ allowed: true }` when the gate did not run). */
+export function devToolsDecisionOf(ctx: unknown): Pick<GuardResult, 'tenants'> {
+  return (typeof ctx === 'object' && ctx !== null ? decisions.get(ctx) : undefined) ?? {};
 }
 
 /** Map telescope's console gate onto the dev-tools decision. Never throws. */
@@ -128,7 +139,10 @@ export function devToolsGate(authorize: AuthorizeHook): DevToolsLib['authorize']
   return async (ctx): Promise<DevToolsDecision> => {
     try {
       const result = await runGuard(ctx as UiHttpContext, authorize);
-      if (result.allowed) return { allowed: true };
+      if (result.allowed) {
+        if (typeof ctx === 'object' && ctx !== null) decisions.set(ctx, result);
+        return { allowed: true };
+      }
       return {
         allowed: false,
         reason: result.message === 'unauthenticated' ? 'unauthenticated' : 'forbidden',
@@ -153,7 +167,7 @@ export interface DevToolsContainerLike {
  */
 export async function registerTelescopeDevTools(
   container: DevToolsContainerLike,
-  server: TelescopeMcpServer,
+  server: TelescopeMcpServer | ((ctx: unknown) => TelescopeMcpServer),
   authorize: AuthorizeHook,
   onSkip: (reason: string) => void = () => {},
 ): Promise<boolean> {

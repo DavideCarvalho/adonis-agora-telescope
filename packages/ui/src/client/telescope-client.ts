@@ -25,6 +25,7 @@ import type {
   StatsOverview,
   StatsResult,
   TelescopeMeta,
+  TenantScope,
   TimeseriesReport,
   TraceSummary,
   Waterfall,
@@ -61,6 +62,16 @@ function followUnauthenticated(body: unknown): void {
   else window.location.reload();
 }
 
+/**
+ * The organization the console shows (`?tenant=<id>` in the page URL; `*` or absent = every
+ * organization the viewer may see). Sent on every API call so the server narrows to it.
+ */
+export function selectedTenant(search?: string): string | undefined {
+  const source = search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const value = new URLSearchParams(source).get('tenant');
+  return value === null || value === '' || value === '*' ? undefined : value;
+}
+
 export interface TelescopeClientOptions {
   /** API base (e.g. `/telescope/api`). Defaults to the injected/derived base for the current page. */
   baseUrl?: string;
@@ -68,6 +79,8 @@ export interface TelescopeClientOptions {
   fetch?: FetchLike;
   /** Default page size for list feeds; the server clamps to 500. Defaults to 50. */
   size?: number;
+  /** The organization to show (`?tenant=`). Defaults to the page URL's `tenant` parameter. */
+  tenant?: string;
 }
 
 /**
@@ -110,20 +123,28 @@ export class TelescopeClient {
   private readonly base: string;
   private readonly doFetch: FetchLike;
   private readonly size: number;
+  private readonly tenant: string | undefined;
 
   constructor(options: TelescopeClientOptions = {}) {
     this.base = (options.baseUrl ?? resolveApiBase()).replace(/\/+$/, '');
     this.doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.size = options.size ?? 50;
+    this.tenant = options.tenant ?? selectedTenant();
+  }
+
+  /** `query` plus the selected organization, when there is one. */
+  private withTenant(query: Record<string, string>): Record<string, string> {
+    return this.tenant === undefined ? query : { ...query, tenant: this.tenant };
   }
 
   /** The absolute URL of the SSE live-stream route, for `new EventSource(url)`. */
   streamUrl(): string {
-    return `${this.base}/stream`;
+    const search = new URLSearchParams(this.withTenant({})).toString();
+    return `${this.base}/stream${search ? `?${search}` : ''}`;
   }
 
   private async get<T>(path: string, query: Record<string, string> = {}): Promise<T> {
-    const search = new URLSearchParams(query).toString();
+    const search = new URLSearchParams(this.withTenant(query)).toString();
     const url = `${this.base}${path}${search ? `?${search}` : ''}`;
     const response = await this.doFetch(url, {
       method: 'GET',
@@ -169,7 +190,7 @@ export class TelescopeClient {
     query: Record<string, string> = {},
     body?: Record<string, unknown>,
   ): Promise<T> {
-    const search = new URLSearchParams(query).toString();
+    const search = new URLSearchParams(this.withTenant(query)).toString();
     const url = `${this.base}${path}${search ? `?${search}` : ''}`;
     const response = await this.doFetch(url, {
       method: 'POST',
@@ -465,7 +486,8 @@ export class TelescopeClient {
   /** Enqueue a new job onto `queue`. Never throws on a "disabled"/unsupported 4xx/501. */
   async enqueueJob(queue: string, payload: unknown, name?: string): Promise<EnqueueOutcome> {
     try {
-      const url = `${this.base}/queues/live/${encodeURIComponent(queue)}/enqueue`;
+      const search = new URLSearchParams(this.withTenant({})).toString();
+      const url = `${this.base}/queues/live/${encodeURIComponent(queue)}/enqueue${search ? `?${search}` : ''}`;
       const response = await this.doFetch(url, {
         method: 'POST',
         headers: {
@@ -486,6 +508,20 @@ export class TelescopeClient {
       return { ok: true, id: (body as Envelope<{ id: string | null }>).data.id };
     } catch (err) {
       if (err instanceof TelescopeApiError) return { ok: false, message: err.message };
+      throw err;
+    }
+  }
+
+  // ── organizations (tenancy) ─────────────────────────────────────────────
+
+  /** What the organization picker shows. `{ enabled: false }` on a server without tenancy. */
+  async tenants(): Promise<TenantScope> {
+    try {
+      return await this.data<TenantScope>('/tenants');
+    } catch (err) {
+      if (err instanceof TelescopeApiError && err.status === 404) {
+        return { enabled: false, all: true, tenants: [] };
+      }
       throw err;
     }
   }

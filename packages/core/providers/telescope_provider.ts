@@ -45,6 +45,8 @@ import type { TelescopeStore } from '../src/store.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import { EntryEvents } from '../src/stream/entry_events.js';
 import { StreamingTelescopeStore } from '../src/stream/streaming_store.js';
+import { tenancySlot } from '../src/tenancy.js';
+import { TenantTaggingStore } from '../src/tenancy_store.js';
 import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 
 /**
@@ -99,7 +101,13 @@ export default class TelescopeProvider {
       this.applyRedaction(await this.buildStore(config), config),
       config,
     );
-    const store = this.applyStreaming(await this.applyOtel(sampled, config), config);
+    // Outermost: the tenant tags are on the entry before redaction, sampling, OTel and the stream
+    // see it. Only when @adonis-agora/context publishes tenancy and telescope did not opt out.
+    const wrapped = this.applyStreaming(await this.applyOtel(sampled, config), config);
+    const store =
+      config.tenancy.enabled !== false && tenancySlot() !== undefined
+        ? new TenantTaggingStore(wrapped, config.tenancy)
+        : wrapped;
     this.store = store;
 
     if (!config.enabled) {

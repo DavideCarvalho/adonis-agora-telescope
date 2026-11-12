@@ -152,7 +152,9 @@ and pass an instance as `store` — add the optional fast paths (`listTraceIds`,
 `countByBucket`, `countFamilies`, `countTags`) when you can, or decorators and the
 dashboard fall back to a full scan. Two
 responsibilities are easy to miss: `record` must resolve `traceId`/`origin`, and
-`search` needs serialized content text.
+`search` needs serialized content text. A third arrived with tenancy: `list` must
+honour `anyTags` (OR over tags — entries carrying at least one), the filter a
+tenant-scoped console reads through.
 
 ```ts
 import {

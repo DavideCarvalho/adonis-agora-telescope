@@ -816,3 +816,24 @@ export interface AiUsageSummary {
   /** A per-event scan hit its cap: the window is incomplete. */
   truncated: boolean;
 }
+
+// ── organizations (`GET <base>/tenants`) ─────────────────────────────────────
+
+export interface TenantOption {
+  id: string;
+  label: string;
+}
+
+/** The viewer's organization scope, for the picker. */
+export interface TenantScope {
+  /** Tenancy is on (show the picker). */
+  enabled: boolean;
+  /** The tag prefix entries carry (`tenant` → `tenant:<id>`). Absent on older servers. */
+  tag?: string;
+  /** The viewer may see every organization ("All organizations"). */
+  all: boolean;
+  /** The viewer's own organization. */
+  own?: TenantOption;
+  /** The organizations the viewer may pick. */
+  tenants: TenantOption[];
+}

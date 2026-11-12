@@ -1,15 +1,15 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js';
-import { buildTelescopeMcpServer } from '../src/mcp/build_server.js';
 import {
   MISSING_MCP_AUTHORIZE_WARNING,
   type ResolvedTelescopeMcpConfig,
   resolveConfig,
   type TelescopeMcpConfig,
 } from '../src/mcp/define_config.js';
+import { scopedMcpServers } from '../src/mcp/scoped_servers.js';
 import { getTelescopeRuntime } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
-import { enforceGuard } from '../src/ui/guard.js';
+import { enforceGuard, enforceGuardDecision } from '../src/ui/guard.js';
 import type { UiHttpContext } from '../src/ui/http.js';
 
 /**
@@ -77,7 +77,8 @@ export default class TelescopeMcpProvider {
     }
 
     const coreConfig = resolveTelescopeConfig(this.app.config.get('telescope', {}));
-    const server = buildTelescopeMcpServer(store, coreConfig, config.tools);
+    // With tenancy on, each caller reads only the organizations its `authorize` granted.
+    const serverFor = scopedMcpServers(store, coreConfig, config.tools);
 
     const router = await this.app.container.make('router');
     const guard = config.authorize;
@@ -86,9 +87,10 @@ export default class TelescopeMcpProvider {
     // `body` to the server. A `null` result is a notification (no id) → 202 with no body.
     router
       .post(config.path, async (ctx: McpContext) => {
-        if (!(await enforceGuard(ctx, guard))) return;
+        const decision = await enforceGuardDecision(ctx, guard);
+        if (decision === null) return;
         const body = (ctx.request.body?.() ?? {}) as Record<string, unknown>;
-        const result = await server.handle(body, true);
+        const result = await serverFor(decision).handle(body, true);
         if (result === null) {
           ctx.response.status(202);
           return ctx.response.send('');

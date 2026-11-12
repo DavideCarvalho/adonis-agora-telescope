@@ -84,7 +84,10 @@ Source: `docs/packages/telescope-ui.mdx` (Configuration, How it mounts).
 
 `@adonis-agora/telescope-ui/client` ships the typed fetch client the console itself
 uses — no React, no dependencies. Requests are same-origin, inheriting whatever
-session already gates the dashboard.
+session already gates the dashboard. With tenancy on, the header shows an
+Organization picker (`?tenant=<id>`); the client sends it on every call (defaults
+to the page URL, overridable via `new TelescopeClient({ tenant })`) and
+`client.tenants()` describes the viewer's scope.
 
 ```ts
 import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
@@ -123,7 +126,9 @@ new EventSource(client.streamUrl())                     // SSE live tail of new 
 
 Replay/arm/queue gates default to off in `config/telescope_ui.ts`; extension
 actions need no flag — they run behind `authorize` once an extension contributes
-them. The console asks `<path>/api/meta` and renders which config key turns each surface on.
+them. A viewer limited to some organizations still gets `403` on arm, queue
+actions, extension actions and Prometheus even when the gate is on — those reach
+every organization. The console asks `<path>/api/meta` and renders which config key turns each surface on.
 
 Source: `docs/packages/telescope-ui.mdx` (Acting on an entry, Getting around).
 

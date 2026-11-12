@@ -108,6 +108,13 @@ export class DuckDbEngine implements ColdReadEngine {
     if (query.after !== undefined)
       where.add('created_at > epoch_ms(?::BIGINT)', query.after.getTime());
     if (query.tag !== undefined) where.add('contains(tags, ?)', JSON.stringify(query.tag));
+    if (query.anyTags !== undefined) {
+      if (query.anyTags.length === 0) return [];
+      where.add(
+        `(${query.anyTags.map(() => 'contains(tags, ?)').join(' OR ')})`,
+        ...query.anyTags.map((tag) => JSON.stringify(tag)),
+      );
+    }
     if (query.search !== undefined) {
       const needle = query.search.toLowerCase();
       where.add('(contains(lower(content), ?) OR contains(lower(tags), ?))', needle, needle);
