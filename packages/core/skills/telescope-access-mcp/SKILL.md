@@ -6,8 +6,9 @@ description: >-
   authorizeByToken({ token }) for Bearer access, { redirectTo } to the app's own
   login, the default (open outside production, 403 in production with a boot
   warning), 401-vs-403 guard semantics, redirect-wins behaviour,
-  replay/queueActions/cpuProfiling.armEnabled mutation gates, and
-  config/telescope_mcp.ts JSON-RPC tools behind the same authorize contract. Use for
+  replay/queueActions/cpuProfiling.armEnabled mutation gates, Telescope's MCP tools on
+  the Agora dev endpoint /mcp/agora (gated by the console's authorize), and the opt-in
+  standalone config/telescope_mcp.ts endpoint (enabled: true). Use for
   "lock down the dashboard", "dashboard open in production", "401 on /telescope",
   "send to login", "expose telescope to Claude Code", "replay returns 403".
 license: MIT
@@ -28,8 +29,9 @@ Every route serving recorded data runs an `authorize` guard first — every
 `<path>/api/*` endpoint, the SSE stream, metrics and the SPA routes. Without
 `authorize` the console is **open outside production and answers `403` to every
 request in production**, logging one warning at boot. The console has no login of
-its own: people sign in through the app. The MCP subpath takes the same `authorize`
-contract in `config/telescope_mcp.ts`.
+its own: people sign in through the app. Coding agents reach Telescope's MCP tools on
+the Agora dev endpoint `/mcp/agora`, behind the console's `authorize`; the standalone
+`/telescope/mcp` endpoint is opt-in (`enabled: true` in `config/telescope_mcp.ts`).
 
 ## Setup
 
@@ -104,14 +106,25 @@ Source: `docs/dashboard/auth.mdx` (Redirecting instead of answering JSON).
 
 ### Pattern 3 — expose the store to coding agents over MCP
 
+With `@adonis-agora/agent/mcp_provider` in the app, Telescope's tools are on `/mcp/agora` with
+no config: `telescope_list_entries`, `telescope_get_entry`, `telescope_get_trace`,
+`telescope_get_waterfall`, `telescope_get_health`, `telescope_diagnose_exception`. Each call
+runs the console's `authorize` (`config/telescope_ui.ts`); with authkit (`mcp: true`) the
+client signs in through the browser, with `authorizeByToken` it sends that token.
+
+```sh
+claude mcp add --transport http agora http://localhost:3333/mcp/agora
+```
+
+Only for clients that can't do OAuth, opt in to the standalone endpoint:
+
 ```ts
 // config/telescope_mcp.ts
 import env from '#start/env'
 import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/mcp'
 
 export default defineConfig({
-  enabled: true,
-  path: '/telescope/mcp',
+  enabled: true, // off by default: no /telescope/mcp route without it
   authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
   // tools: ['list_entries', 'get_trace', 'get_health'],    // hand agents a narrower surface
 })
@@ -122,10 +135,9 @@ claude mcp add --transport http telescope https://your-app.example.com/telescope
   --header 'Authorization: Bearer <TELESCOPE_MCP_TOKEN>'
 ```
 
-Six read tools ship: `list_entries`, `get_entry`, `get_trace`, `get_waterfall`,
-`get_health`, `diagnose_exception`. Redaction, sampling and tenancy scoping are never bypassed — an
-agent sees exactly what the dashboard sees for its granted organizations. Without `authorize` the endpoint is open
-outside production and `403` in production (boot warning names
+Redaction, sampling and tenancy scoping are never bypassed — an agent sees exactly what
+the dashboard sees for its granted organizations. Without `authorize` the standalone
+endpoint is open outside production and `403` in production (boot warning names
 `config/telescope_mcp.ts`); denials are JSON `403 { error: 'forbidden' }` /
 `401 { error: 'unauthenticated' }`.
 
@@ -187,6 +199,24 @@ defineConfig({ authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }) 
 Mechanism: `credentials` is a type error now and is ignored at runtime, so the production console falls back to
 the default `403`. Source: `docs/reference/migrating-to-1-0.mdx`.
 
+### HIGH Expecting `/telescope/mcp` without `enabled: true`
+
+```ts
+// Wrong — the standalone endpoint is off by default; this mounts no route.
+defineConfig({ authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }) })
+```
+
+```ts
+// Correct — opt in, or point the client at /mcp/agora instead.
+defineConfig({
+  enabled: true,
+  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
+})
+```
+
+Mechanism: `enabled` defaults to `false`; the provider registers no routes and logs nothing.
+Source: `docs/packages/mcp.mdx`.
+
 ### HIGH Keeping the removed `credentials` option on telescope_mcp
 
 ```ts
@@ -197,7 +227,7 @@ defineConfig({ path: '/telescope/mcp', credentials: { token: env.get('TELESCOPE_
 ```ts
 // Correct — the same authorize contract as the console, Bearer header only.
 defineConfig({
-  path: '/telescope/mcp',
+  enabled: true,
   authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
 })
 ```

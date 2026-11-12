@@ -12,6 +12,7 @@ import {
 import {
   checkCsrf,
   checkGate,
+  checkMcpGate,
   checkOtel,
   checkRetention,
   csrfBlocksPath,
@@ -222,6 +223,42 @@ describe('telescope doctor checks', () => {
   });
 });
 
+describe('telescope.mcp-gate', () => {
+  const run = (config: unknown, inProduction: boolean) =>
+    telescopeDoctorChecks
+      .find((c) => c.id === 'telescope.mcp-gate')!
+      .run({
+        inProduction,
+        config: { get: (k: string) => (k === 'telescope_mcp' ? config : undefined) },
+      } as never);
+
+  it('skips, pointing to /mcp/agora, while the standalone endpoint is off (the default)', async () => {
+    for (const config of [undefined, {}, { enabled: false }, { authorize: () => true }]) {
+      const result = await run(config, true);
+      expect(result).toMatchObject({ status: 'skip' });
+      expect((result as { message: string }).message).toContain('/mcp/agora');
+    }
+  });
+
+  it('evaluates the gate once enabled', async () => {
+    expect(checkMcpGate({ enabled: true }, true).status).toBe('error');
+    expect(checkMcpGate({ enabled: true }, false).status).toBe('warn');
+    expect(checkMcpGate({ enabled: true, authorize: () => true }, true).status).toBe('ok');
+  });
+
+  it('mcp-csrf skips while the endpoint is off', async () => {
+    const csrf = telescopeDoctorChecks.find((c) => c.id === 'telescope.mcp-csrf')!;
+    const app = {
+      inProduction: true,
+      config: {
+        get: (k: string) =>
+          k === 'telescope_mcp' ? {} : k === 'shield' ? { csrf: { enabled: true } } : undefined,
+      },
+    } as never;
+    expect(await csrf.run(app)).toMatchObject({ status: 'skip' });
+  });
+});
+
 describe('agora:doctor with telescope', () => {
   it('registers into a shared registry and reports through the runner (exit codes)', async () => {
     const values = new Map<string, unknown>();
@@ -239,7 +276,7 @@ describe('agora:doctor with telescope', () => {
       { '@adonis-agora/telescope': { version: '1.0.0-rc.3' } },
       {
         telescope_ui: {},
-        telescope_mcp: { authorize: () => true },
+        telescope_mcp: { enabled: true, authorize: () => true },
         shield: { csrf: { enabled: true } },
       },
       true,

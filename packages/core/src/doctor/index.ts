@@ -13,6 +13,7 @@ export {
   checkCsrf,
   checkDbSchema,
   checkGate,
+  checkMcpGate,
   checkOtel,
   checkRetention,
   csrfBlocksPath,

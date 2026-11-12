@@ -1,63 +1,57 @@
 ---
 title: "@adonis-agora/telescope/mcp"
 icon: Plug
-description: The Model Context Protocol subpath of @adonis-agora/telescope — a stateless JSON-RPC endpoint that lets a coding agent (Claude Code, Cursor, …) query the app's captured telemetry with six read tools (list entries, get entry, get trace, get waterfall, Pulse health, AI diagnose), behind the same auth guard as the dashboard.
+description: Query Telescope's captured telemetry from a coding agent (Claude Code, Cursor, …) over the Model Context Protocol — through the Agora dev endpoint /mcp/agora, or the opt-in standalone /telescope/mcp endpoint for clients that can't sign in with OAuth.
 ---
 
-import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
-import { Callout } from 'fumadocs-ui/components/callout'
+A coding agent can read what Telescope recorded — requests, queries, exception stacks, trace
+waterfalls, the Pulse health rollup — over the [Model Context Protocol](https://modelcontextprotocol.io),
+and answer *"why is `POST /checkout` slow?"* by listing the slow requests, pulling the trace
+waterfall and reading the queries. It reads the same redacted, sampled entries the dashboard reads.
 
-Telescope already records everything an agent needs to debug production — requests,
-queries, exception stacks, trace waterfalls, the Pulse health rollup. The
-**`@adonis-agora/telescope/mcp`** subpath exposes that store over the
-[Model Context Protocol](https://modelcontextprotocol.io) as a stateless JSON-RPC endpoint,
-so a coding agent can answer *"why is `POST /checkout` slow?"* by listing the slow requests,
-pulling the trace waterfall, and reading the queries — all from the same already-redacted,
-already-sampled entries the dashboard reads.
+## Use it through `/mcp/agora`
 
-## Install
-
-The MCP server ships inside the one `@adonis-agora/telescope` package. Enable it when
-configuring telescope:
-
-<Tabs items={['npm', 'pnpm', 'yarn']}>
-  <Tab value="npm">
+With `@adonis-agora/agent/mcp_provider` in `adonisrc.ts`, the app serves the Agora developer
+endpoint `/mcp/agora`, and Telescope's tools are on it with nothing to configure. Add it to your
+client:
 
 ```sh
-npm i @adonis-agora/telescope
-node ace configure @adonis-agora/telescope   # then pick "MCP" at the prompt
+claude mcp add --transport http agora http://localhost:3333/mcp/agora
 ```
 
-</Tab>
-  <Tab value="pnpm">
+With `@adonis-agora/authkit-server` in the app (and `mcp: true` in `config/authkit.ts`), the client
+opens the login in your browser and you sign in like you do on the console. Each call is then
+checked by the **console's** `authorize` (`config/telescope_ui.ts`), so whoever can open
+`/telescope` can use the tools, and nobody else. When the console uses `authorizeByToken`, send that
+token instead:
 
 ```sh
-pnpm add @adonis-agora/telescope
-node ace configure @adonis-agora/telescope   # then pick "MCP" at the prompt
+claude mcp add --transport http agora http://localhost:3333/mcp/agora \
+  --header "Authorization: Bearer $CONSOLE_TOKEN"
 ```
 
-</Tab>
-  <Tab value="yarn">
+See [Dev tools over MCP](/docs/agent/dev-tools) for the endpoint itself. Turning the console off
+(`telescope_ui.enabled: false`) also takes Telescope's tools off `/mcp/agora`.
 
-```sh
-yarn add @adonis-agora/telescope
-node ace configure @adonis-agora/telescope   # then pick "MCP" at the prompt
-```
+## The tools
 
-</Tab>
-</Tabs>
+| Tool | Args | Returns |
+| --- | --- | --- |
+| `telescope_list_entries` | `type?`, `search?`, `tag?`, `sinceMinutes?`, `limit?`, `page?` | Recent entries, newest first, as `{ items, next }` (default 20, max 100). |
+| `telescope_get_entry` | `id` | One entry plus its trace siblings (the request/job waterfall context). |
+| `telescope_get_trace` | `traceId` | Every entry recorded under one trace id, newest first. |
+| `telescope_get_waterfall` | `traceId` | The span waterfall for a trace (each operation as a start/duration span). |
+| `telescope_get_health` | `sinceMinutes?` (default 60) | The [Pulse](/docs/telescope/packages/pulse) health snapshot over a trailing window. |
+| `telescope_diagnose_exception` | `id` | The [AI diagnosis](/docs/telescope/packages/ai) for an exception entry (probable cause / fix). Listed only when AI diagnosis is configured. |
 
-Selecting **MCP** registers `@adonis-agora/telescope/mcp_provider` and publishes
-`config/telescope_mcp.ts`. On boot it mounts a JSON-RPC endpoint at `path`, reading the same
-live store everything else in Telescope reads — an agent sees exactly what the dashboard sees.
+## Standalone endpoint (opt-in)
 
-<Callout type="warn">
-If `@adonis-agora/telescope` isn't enabled/booted, the store slot is `null` and the provider
-registers **no routes** (warn-logged) rather than crashing — the MCP endpoint simply doesn't
-exist until the core is running.
-</Callout>
+For an MCP client that can't sign in with OAuth and can't reach `/mcp/agora`, Telescope can also
+mount its own endpoint at `/telescope/mcp`, gated by a token of its own. It is off unless
+`config/telescope_mcp.ts` sets `enabled: true`.
 
-## Configuration
+Register `@adonis-agora/telescope/mcp_provider` in `adonisrc.ts` (or pick **Standalone MCP endpoint**
+when running `node ace configure @adonis-agora/telescope`, which also publishes the config file), then:
 
 ```ts title="config/telescope_mcp.ts"
 import env from '#start/env'
@@ -65,37 +59,17 @@ import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/mcp'
 
 export default defineConfig({
   enabled: true,
-  path: '/telescope/mcp',
   authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
   // tools: ['list_entries', 'get_trace', 'get_health'],   // hand an agent a narrower surface
 })
 ```
 
-| Key           | Default           | Description                                                                    |
-| ------------- | ----------------- | ----------------------------------------------------------------------------- |
-| `enabled`     | `true`            | Master switch; `false` registers no routes.                                   |
-| `path`        | `/telescope/mcp`  | URL the JSON-RPC endpoint mounts at (normalized to leading slash, no trailing).|
-| `authorize`   | open outside production, `403` in production | Who may call the endpoint. Same contract as the console's [`authorize`](/docs/telescope/dashboard/auth). |
-| `tools`       | all six           | Which tools to expose — restrict to hand an agent a narrower, read-only surface.|
-
-## Access
-
-`authorize` takes the same forms and returns the same answers as the console's
-[`authorize`](/docs/telescope/dashboard/auth): a function, an authorizer class, or a lazy
-import of one. MCP clients send a Bearer token, so `authorizeByToken` is the usual choice:
-it allows `Authorization: Bearer <token>` and answers `401` to anything else (no `?token=`, no
-HTTP Basic). An empty or missing token throws when the config loads.
-
-Without `authorize`, the endpoint is open outside production and answers `403` to every
-request in production. Either way this warning is logged once at boot:
-
-```txt
-[@adonis-agora/telescope] console has no `authorize` configured: it is open outside production and denies every request in production. Set `authorize` in config/telescope_mcp.ts.
-```
-
-A denial is plain JSON: `403 { "error": "forbidden" }` or `401 { "error": "unauthenticated" }`.
-
-Point your MCP client at the endpoint with the token as a header:
+| Key | Default | Description |
+| --- | --- | --- |
+| `enabled` | `false` | Mounts the endpoint. Off, no route exists. |
+| `path` | `/telescope/mcp` | URL the endpoint mounts at. |
+| `authorize` | open outside production, `403` in production | Who may call the endpoint. Same contract as the console's [`authorize`](/docs/telescope/dashboard/auth). |
+| `tools` | all six | Which tools to expose. |
 
 ```json title=".mcp.json"
 {
@@ -109,65 +83,25 @@ Point your MCP client at the endpoint with the token as a header:
 }
 ```
 
-## The tools
+`authorizeByToken` allows `Authorization: Bearer <token>` and answers `401` to anything else; an
+empty or missing token throws when the config loads. Without `authorize`, the endpoint is open
+outside production, answers `403` to every request in production, and logs this once at boot:
 
-`tools/list` returns the subset `config.tools` enables (all six by default); `tools/call`
-dispatches on `name`. Every tool reads the shared `TelescopeService` / `MetricsService` /
-Pulse APIs — redaction and sampling are never bypassed.
-
-| Tool                  | Args                                                     | Returns                                                                 |
-| --------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `list_entries`        | `type?`, `search?`, `tag?`, `sinceMinutes?`, `limit?`    | Recent entries, newest-first (compact rows; default 20, max 100).      |
-| `get_entry`           | `id`                                                     | One entry plus its trace siblings (the request/job waterfall context). |
-| `get_trace`           | `traceId`                                                | Every entry recorded under one trace id, newest-first.                 |
-| `get_waterfall`       | `traceId`                                                | The span waterfall for a trace (each operation as a start/duration span).|
-| `get_health`          | `sinceMinutes?` (default 60)                             | The [Pulse](/docs/telescope/packages/pulse) health snapshot over a trailing window. |
-| `diagnose_exception`  | `id`                                                     | The [AI diagnosis](/docs/telescope/packages/ai) for an exception entry (probable cause / fix). |
-
-<Callout type="info">
-`diagnose_exception` is backed by the [AI diagnosis coordinator](/docs/telescope/packages/ai#the-diagnosis-coordinator).
-When AI is not configured the tool reports *"AI diagnosis is not configured on this telescope."*
-rather than failing — mirroring the default-open dashboard posture.
-</Callout>
-
-## The transport
-
-One path, three verbs. Every call runs `authorize` before anything else:
-
-| Method                              | Behaviour                                                                 |
-| ----------------------------------- | ------------------------------------------------------------------------ |
-| `POST <path>`                       | The JSON-RPC surface: `initialize`, `ping`, `tools/list`, `tools/call`, and the `notifications/*` no-ops. A notification (no `id`) answers `202` with no body. |
-| `GET <path>`                        | `405` — the streamable-HTTP server→client stream is unsupported (this server is stateless). |
-| `DELETE <path>`                     | `200` no-op — there is no session to terminate.                          |
-
-Point your agent's MCP client at `https://your-app.example.com/telescope/mcp` with the
-`Authorization: Bearer` header shown above. The server advertises protocol revision `2025-06-18`, and
-identifies itself as `adonis-telescope` at the installed package version.
-
-## On the Agora dev endpoint
-
-When the app also runs `@adonis-agora/agent/mcp_provider`, Telescope's tools are served on the
-Agora developer endpoint (`/mcp/agora`) next to the other libraries' tools, with nothing to
-configure. There they are prefixed and gated by the **console's** `authorize`
-(`config/telescope_ui.ts`), not this endpoint's:
-
-| Tool | Same as |
-| --- | --- |
-| `telescope_list_entries` | `list_entries`, plus `page`; returns `{ items, next }` |
-| `telescope_get_entry` | `get_entry` |
-| `telescope_get_trace` | `get_trace` |
-| `telescope_get_waterfall` | `get_waterfall` |
-| `telescope_get_health` | `get_health` |
-| `telescope_diagnose_exception` | `diagnose_exception`; listed only when AI diagnosis is configured |
-
-```sh
-claude mcp add --transport http agora http://localhost:3333/mcp/agora \
-  --header "Authorization: Bearer $CONSOLE_TOKEN"
+```txt
+[@adonis-agora/telescope] console has no `authorize` configured: it is open outside production and denies every request in production. Set `authorize` in config/telescope_mcp.ts.
 ```
 
-The token above works when the console uses `authorizeByToken`. `/telescope/mcp` keeps working on
-its own, so you can run both, either, or neither. Turning the console off
-(`telescope_ui.enabled: false`) also keeps Telescope's tools off the dev endpoint.
+A denial is JSON: `403 { "error": "forbidden" }` or `401 { "error": "unauthenticated" }`. With
+shield's CSRF on, add the path to `csrf.exceptRoutes` in `config/shield.ts`.
+
+The tools here have no `telescope_` prefix (`list_entries`, `get_entry`, `get_trace`,
+`get_waterfall`, `get_health`, `diagnose_exception`) and `list_entries` returns a plain list.
+
+| Method | Behaviour |
+| --- | --- |
+| `POST <path>` | JSON-RPC: `initialize`, `ping`, `tools/list`, `tools/call`, and the `notifications/*` no-ops. A notification (no `id`) answers `202` with no body. |
+| `GET <path>` | `405`: the server is stateless and has no server→client stream. |
+| `DELETE <path>` | `200` no-op: there is no session to end. |
 
 ## Notable exports
 

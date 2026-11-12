@@ -15,7 +15,10 @@ import type { UiHttpContext } from '../src/ui/http.js';
 /**
  * Wires `@adonis-agora/telescope/mcp` into the AdonisJS application.
  *
- * `boot()` reads `config/telescope_mcp.ts`, resolves the live telescope store from
+ * The standalone endpoint is opt-in: unless `config/telescope_mcp.ts` sets `enabled: true`
+ * (a missing file counts as off), `boot()` registers nothing and logs nothing.
+ *
+ * When enabled, `boot()` reads `config/telescope_mcp.ts`, resolves the live telescope store from
  * the core runtime slot (no DI — the same handle the watchers record through), and
  * registers a JSON-RPC endpoint under the configured path via the AdonisJS router:
  *
@@ -27,8 +30,8 @@ import type { UiHttpContext } from '../src/ui/http.js';
  * - `GET <path>` — 405: this stateless server has no server→client stream.
  * - `DELETE <path>` — 200 no-op: it holds no session to terminate.
  *
- * Failures degrade safely: a disabled config or a missing store registers no routes
- * (warn-logged), so the endpoint simply does not exist rather than crashing the host.
+ * Failures degrade safely: a missing store registers no routes (warn-logged), so the
+ * endpoint simply does not exist rather than crashing the host.
  */
 export default class TelescopeMcpProvider {
   constructor(protected app: ApplicationService) {}
@@ -52,6 +55,7 @@ export default class TelescopeMcpProvider {
 
   async boot() {
     const config = this.resolve();
+    // Opt-in: off (the default, incl. no config file) registers no routes and warns about nothing.
     if (!config.enabled) return;
     // Without `authorize` the endpoint is open outside production and denies every request in
     // production: say so once, at boot, in every environment.

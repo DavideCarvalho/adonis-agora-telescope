@@ -37,6 +37,29 @@ export function checkGate(
   };
 }
 
+/**
+ * The `telescope.mcp-gate` check. The standalone `/telescope/mcp` endpoint is opt-in, so its gate
+ * is only evaluated when `config/telescope_mcp.ts` sets `enabled: true`; otherwise it is mounted
+ * nowhere and Telescope's tools are reached through `/mcp/agora`.
+ */
+export function checkMcpGate(
+  config: AnyConfig | undefined,
+  inProduction: boolean,
+): AgoraDoctorResult {
+  if (config?.enabled !== true) {
+    return {
+      status: 'skip',
+      message:
+        "The standalone MCP endpoint is off (opt-in with `enabled: true`): Telescope's tools are served on /mcp/agora, behind the console's authorize.",
+    };
+  }
+  return checkGate(config, inProduction, {
+    name: 'MCP endpoint',
+    file: 'config/telescope_mcp.ts',
+    docs: `${DOCS}/packages/mcp`,
+  });
+}
+
 /** The `csrf` block of `config/shield.ts`, duck-typed. */
 interface ShieldCsrfLike {
   enabled?: boolean;
@@ -343,12 +366,7 @@ export const telescopeDoctorChecks: AgoraDoctorCheck[] = [
     id: 'telescope.mcp-gate',
     lib: 'telescope',
     title: 'MCP endpoint access in production',
-    run: (app) =>
-      checkGate(get(app, 'telescope_mcp'), app.inProduction, {
-        name: 'MCP endpoint',
-        file: 'config/telescope_mcp.ts',
-        docs: `${DOCS}/packages/mcp`,
-      }),
+    run: (app) => checkMcpGate(get(app, 'telescope_mcp'), app.inProduction),
   },
   {
     id: 'telescope.mcp-csrf',
@@ -358,7 +376,7 @@ export const telescopeDoctorChecks: AgoraDoctorCheck[] = [
       const mcp = get(app, 'telescope_mcp');
       return checkCsrf(get(app, 'shield'), {
         path: path(mcp?.path, '/telescope/mcp'),
-        enabled: mcp !== undefined && mcp.enabled !== false,
+        enabled: mcp?.enabled === true,
         name: 'MCP endpoint',
       });
     },

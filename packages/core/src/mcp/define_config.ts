@@ -14,9 +14,10 @@ export const MCP_TOOL_NAMES = [
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
 
 /**
- * The shape of `config/telescope_mcp.ts`. The MCP endpoint is a JSON-RPC transport
+ * The shape of `config/telescope_mcp.ts`. The standalone MCP endpoint is a JSON-RPC transport
  * mounted at `path` (default `/telescope/mcp`) that lets a coding agent query the
- * captured telemetry over the Model Context Protocol.
+ * captured telemetry over the Model Context Protocol. It is opt-in (`enabled: true`): the same
+ * tools are served on the Agora dev endpoint (`/mcp/agora`) without it.
  *
  * Access: `authorize`, the same {@link ConsoleAuthorize} contract as the console. MCP clients
  * send a Bearer token, so the usual choice is `authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') })`.
@@ -24,7 +25,10 @@ export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
  * A denial is JSON: `403 { error: 'forbidden' }` or `401 { error: 'unauthenticated' }`.
  */
 export interface TelescopeMcpConfig {
-  /** Master switch. When `false`, the provider registers no routes at all. Default `true`. */
+  /**
+   * Mounts the standalone endpoint. Default `false`: the provider registers no routes, and
+   * Telescope's tools are reached through the Agora dev endpoint (`/mcp/agora`) instead.
+   */
   enabled?: boolean;
   /** URL the JSON-RPC endpoint mounts at. Default `/telescope/mcp`. */
   path?: string;
@@ -96,7 +100,7 @@ export function resolveConfig(
   const inProduction = options.inProduction ?? isProduction();
   const tools = config.tools !== undefined ? config.tools : MCP_TOOL_NAMES;
   return {
-    enabled: config.enabled ?? true,
+    enabled: config.enabled === true,
     path: normalizePath(config.path ?? '/telescope/mcp'),
     authorize:
       config.authorize === undefined
