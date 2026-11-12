@@ -56,13 +56,18 @@ export function ColumnActionButton({
   const run = async () => {
     setBusy(true);
     setError(null);
-    const outcome = await client.extAction(ext, action.action, actionInput(action, row));
-    setBusy(false);
-    if (outcome.ok) {
-      setOpen(false);
-      onDone();
-    } else {
-      setError(outcome.message);
+    try {
+      const outcome = await client.extAction(ext, action.action, actionInput(action, row));
+      if (outcome.ok) {
+        setOpen(false);
+        onDone();
+      } else {
+        setError(outcome.message);
+      }
+    } catch {
+      setError('The action could not be reached. Check your connection and try again.');
+    } finally {
+      setBusy(false);
     }
   };
 

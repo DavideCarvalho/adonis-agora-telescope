@@ -59,6 +59,18 @@ describe('column actions', () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it('a network failure is shown and the dialog can still be closed', async () => {
+    const extAction = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const { onDone } = renderButton({ extAction }, { key: 'stripe', status: 'open' });
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('could not be reached');
+    expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
   it('renders no button on a row the action does not apply to', () => {
     renderButton({ extAction: vi.fn() }, { key: 'stripe', status: 'closed' });
     expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
