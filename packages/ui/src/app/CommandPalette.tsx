@@ -1,6 +1,13 @@
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  type ConsoleSearchGroup,
+  type ConsoleSearchHit,
+  getJson,
+  parseSearchGroups,
+} from '../client/console_switcher.js';
 import type { DashboardSpec } from '../client/types.js';
 import { ENTRY_TYPES } from '../client/types.js';
+import { ConsoleIcon } from './console-switcher-icons.js';
 import { Button } from './primitives/button.js';
 import { cn } from './primitives/cn.js';
 import { Dialog } from './primitives/dialog.js';
@@ -121,9 +128,54 @@ export function filterActions(actions: PaletteAction[], query: string): PaletteA
   return actions.filter((a) => a.label.toLowerCase().includes(q));
 }
 
+/** `value`, settled for `ms` (the search request waits for typing to pause). */
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return settled;
+}
+
+/**
+ * The global console search for `query` (at least 2 characters), aborted when the query changes.
+ * A failure just shows no hits: the local jumps still work.
+ */
+function useConsoleSearch(
+  endpoint: string | undefined,
+  query: string,
+): { groups: ConsoleSearchGroup[]; isFetching: boolean } {
+  const [state, setState] = useState<{ groups: ConsoleSearchGroup[]; isFetching: boolean }>({
+    groups: [],
+    isFetching: false,
+  });
+  useEffect(() => {
+    if (endpoint === undefined || query.length < 2) {
+      setState({ groups: [], isFetching: false });
+      return;
+    }
+    const controller = new AbortController();
+    setState((current) => ({ groups: current.groups, isFetching: true }));
+    getJson(`${endpoint}?q=${encodeURIComponent(query)}`, controller.signal)
+      .then((body) => setState({ groups: parseSearchGroups(body), isFetching: false }))
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ groups: [], isFetching: false });
+      });
+    return () => controller.abort();
+  }, [endpoint, query]);
+  return state;
+}
+
+/** A palette row: a local jump, or a hit from the global console search. */
+type PaletteRow =
+  | { kind: 'action'; action: PaletteAction }
+  | { kind: 'hit'; group: ConsoleSearchGroup; hit: ConsoleSearchHit };
+
 /**
  * A global `Cmd/Ctrl+K` jump menu: a text filter over every page + entry type + extension
- * dashboard, arrow-key/Enter navigable. Self-contained — owns its own open state, closes on
+ * dashboard, plus (when other Agora consoles are installed) a global search across Telescope's
+ * entries and every console the viewer may open, arrow-key/Enter navigable. Self-contained — owns its own open state, closes on
  * Escape, on activation, or on an outside click of the backdrop.
  *
  * On a Base UI `Dialog` rather than a hand-rolled overlay `<div>`, matching
@@ -132,9 +184,12 @@ export function filterActions(actions: PaletteAction[], query: string): PaletteA
 export function CommandPalette({
   dashboards,
   onNavigate,
+  searchEndpoint,
 }: {
   dashboards: DashboardSpec[];
   onNavigate: (target: PaletteTarget) => void;
+  /** `GET <api>/consoles/search`: when set, typing also searches every console the viewer may open. */
+  searchEndpoint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -161,16 +216,30 @@ export function CommandPalette({
   }, [open]);
 
   const actions = useMemo(() => buildActions(dashboards), [dashboards]);
-  const results = useMemo(() => filterActions(actions, query), [actions, query]);
+  const local = useMemo(() => filterActions(actions, query), [actions, query]);
+  const debounced = useDebounced(query.trim(), 200);
+  const search = useConsoleSearch(open ? searchEndpoint : undefined, debounced);
+  const groups = useMemo(
+    () => (debounced.length >= 2 ? search.groups : []),
+    [debounced, search.groups],
+  );
+  const results = useMemo<PaletteRow[]>(
+    () => [
+      ...local.map((action) => ({ kind: 'action' as const, action })),
+      ...groups.flatMap((group) => group.hits.map((hit) => ({ kind: 'hit' as const, group, hit }))),
+    ],
+    [local, groups],
+  );
 
   useEffect(() => {
     setHighlight((h) => (results.length === 0 ? 0 : Math.min(h, results.length - 1)));
   }, [results.length]);
 
-  const activate = (action: PaletteAction | undefined) => {
-    if (!action) return;
-    onNavigate(action.target);
+  const activate = (row: PaletteRow | undefined) => {
+    if (!row) return;
     setOpen(false);
+    if (row.kind === 'action') onNavigate(row.action.target);
+    else window.location.assign(row.hit.href);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -217,7 +286,7 @@ export function CommandPalette({
           aria-controls={listId}
           aria-autocomplete="list"
           {...(activeId ? { 'aria-activedescendant': activeId } : {})}
-          placeholder="Jump to…"
+          placeholder={searchEndpoint ? 'Jump to… or search every console' : 'Jump to…'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
@@ -228,34 +297,67 @@ export function CommandPalette({
           {results.length === 0 && (
             <li className="px-4 py-3 text-xs text-muted-foreground">No matches.</li>
           )}
-          {results.map((action, i) => (
-            // biome-ignore lint/a11y/useFocusableInteractive: focus stays on the combobox input, see note above.
-            <li
-              key={action.id}
-              id={`${listId}-${i}`}
-              // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: composite ARIA option, see note above.
-              role="option"
-              aria-selected={i === highlight}
-              onMouseEnter={() => setHighlight(i)}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                activate(action);
-              }}
-              className={cn(
-                'flex cursor-pointer items-center gap-2 px-4 py-2 text-sm',
-                i === highlight ? 'bg-panel-2 text-brand' : 'text-foreground',
-              )}
-            >
-              {action.dot && (
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ background: action.dot }}
-                />
-              )}
-              <span className="flex-1">{action.label}</span>
-              <span className="text-xs text-muted-foreground">{action.hint}</span>
-            </li>
-          ))}
+          {results.map((row, i) => {
+            const firstOfGroup =
+              row.kind === 'hit' &&
+              (i === 0 ||
+                results[i - 1]?.kind !== 'hit' ||
+                (results[i - 1] as { group: ConsoleSearchGroup }).group.id !== row.group.id);
+            return (
+              // biome-ignore lint/a11y/useFocusableInteractive: focus stays on the combobox input, see note above.
+              <li
+                key={row.kind === 'action' ? row.action.id : `${row.group.id}:${row.hit.href}`}
+                id={`${listId}-${i}`}
+                // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: composite ARIA option, see note above.
+                role="option"
+                aria-selected={i === highlight}
+                onMouseEnter={() => setHighlight(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  activate(row);
+                }}
+                className={cn(
+                  'flex cursor-pointer items-center gap-2 px-4 py-2 text-sm',
+                  firstOfGroup && 'border-t border-line',
+                  i === highlight ? 'bg-panel-2 text-brand' : 'text-foreground',
+                )}
+              >
+                {row.kind === 'action' ? (
+                  <>
+                    {row.action.dot && (
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ background: row.action.dot }}
+                      />
+                    )}
+                    <span className="flex-1">{row.action.label}</span>
+                    <span className="text-xs text-muted-foreground">{row.action.hint}</span>
+                  </>
+                ) : (
+                  <>
+                    <ConsoleIcon icon={row.group.icon} size={14} />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{row.hit.title}</span>
+                      {row.hit.subtitle && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {row.hit.subtitle}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {row.group.title}
+                    </span>
+                  </>
+                )}
+              </li>
+            );
+          })}
+          {typeof searchEndpoint === 'string' &&
+            debounced.length >= 2 &&
+            search.isFetching &&
+            groups.length === 0 && (
+              <li className="px-4 py-2 text-xs text-muted-foreground">Searching consoles…</li>
+            )}
         </ul>
       </Dialog>
     </>

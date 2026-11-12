@@ -1,14 +1,26 @@
 import { readFile } from 'node:fs/promises';
+import { getTelescopeRuntime } from '@adonis-agora/telescope';
 import {
   type AuthorizeHook,
+  enforceGuard,
   enforcePageGuard,
   type PageGuardOptions,
   resolveConfig as resolveUiConfig,
+  runGuard,
   type TelescopeUiConfig,
   type UiHttpContext,
 } from '@adonis-agora/telescope/ui';
 import type { HttpContext } from '@adonisjs/core/http';
 import type { ApplicationService } from '@adonisjs/core/types';
+import { type SearchableStore, telescopeConsoleSearch } from '../src/server/console_search.js';
+import {
+  type AgoraConsoleDecision,
+  countOtherConsoles,
+  listVisibleConsoles,
+  readAgoraConsoles,
+  registerAgoraConsole,
+  searchConsoles,
+} from '../src/server/console_switcher.js';
 import {
   resolveDashboardConfig,
   type TelescopeDashboardConfig,
@@ -45,6 +57,9 @@ import {
  *
  * Enable/disable and override the mount via the optional `config('telescope_ui').dashboard` block.
  */
+/** Telescope's id in the `'agora.consoles'` registry. */
+const CONSOLE_ID = 'telescope';
+
 export default class TelescopeUiDashboardProvider {
   constructor(protected app: ApplicationService) {}
 
@@ -83,6 +98,31 @@ export default class TelescopeUiDashboardProvider {
     // and registering both throws "Duplicate route". Instead {@link sendIndex} rewrites the shell's
     // relative `./assets/*` URLs to absolute `<mount>/assets/*`, so they resolve regardless of the
     // trailing slash — no redirect, no collision.
+    // The console switcher: telescope joins the shared `'agora.consoles'` registry, and the shell's
+    // brand lists the other consoles this viewer may open (plus a global search across them).
+    await this.registerConsole(mount, guard);
+    router.get(`${apiBase}/consoles`, async (ctx) => {
+      if (!(await enforceGuard(ctx as unknown as UiHttpContext, guard))) return;
+      const body = await listVisibleConsoles(await readAgoraConsoles(this.app), CONSOLE_ID, ctx, {
+        logger: ctx.logger,
+      });
+      ctx.response.header('cache-control', 'private, no-store');
+      return ctx.response.json(body);
+    });
+    router.get(`${apiBase}/consoles/search`, async (ctx) => {
+      if (!(await enforceGuard(ctx as unknown as UiHttpContext, guard))) return;
+      const q = ctx.request.input('q', '');
+      const body = await searchConsoles(
+        await readAgoraConsoles(this.app),
+        CONSOLE_ID,
+        ctx,
+        typeof q === 'string' ? q : '',
+        { logger: ctx.logger },
+      );
+      ctx.response.header('cache-control', 'private, no-store');
+      return ctx.response.json(body);
+    });
+
     router.get(mount, async (ctx) => {
       if (!(await this.gate(ctx, guard, denial))) return;
       await this.sendIndex(ctx, mount, apiBase);
@@ -99,6 +139,62 @@ export default class TelescopeUiDashboardProvider {
       }
       await this.sendAsset(ctx, segments, mount, apiBase);
     });
+  }
+
+  /** Add Telescope to the `'agora.consoles'` registry (never fails the boot). */
+  private async registerConsole(mount: string, guard: AuthorizeHook): Promise<void> {
+    const authorize = async (ctx: HttpContext): Promise<AgoraConsoleDecision> => {
+      try {
+        const result = await runGuard(ctx as unknown as UiHttpContext, guard);
+        if (result.allowed) return { allowed: true };
+        return {
+          allowed: false,
+          reason: result.message ?? 'forbidden',
+          ...(result.redirectTo !== undefined ? { redirectTo: result.redirectTo } : {}),
+        };
+      } catch {
+        return { allowed: false, reason: 'forbidden' };
+      }
+    };
+    try {
+      const logger = await this.app.container.make('logger').catch(() => undefined);
+      await registerAgoraConsole(
+        this.app,
+        {
+          id: CONSOLE_ID,
+          title: 'Telescope',
+          package: '@adonis-agora/telescope',
+          icon: 'telescope',
+          path: mount,
+          order: 20,
+          authorize,
+          search: telescopeConsoleSearch(
+            () => (getTelescopeRuntime().store as SearchableStore | null) ?? null,
+            mount,
+          ),
+        },
+        logger,
+      );
+    } catch (error) {
+      console.warn(
+        `[@adonis-agora/telescope-ui] console switcher unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /** The `switcher` / `search` fields of the shell's data block (no `authorize` runs here). */
+  private async shellConfig(apiBase: string): Promise<Record<string, unknown>> {
+    try {
+      const registry = await readAgoraConsoles(this.app);
+      const others = countOtherConsoles(registry, CONSOLE_ID);
+      if (others === 0) return {};
+      return {
+        switcher: { endpoint: `${apiBase}/consoles`, others },
+        search: { endpoint: `${apiBase}/consoles/search` },
+      };
+    } catch {
+      return {};
+    }
   }
 
   /**
@@ -125,7 +221,8 @@ export default class TelescopeUiDashboardProvider {
     const html = await readFile(new URL('index.html', this.spaDirUrl), 'utf8');
     ctx.response.header('content-type', 'text/html; charset=utf-8');
     ctx.response.header('cache-control', 'no-store, must-revalidate');
-    ctx.response.send(injectApiBase(rewriteRelativeAssets(html, mount), apiBase));
+    const extra = await this.shellConfig(apiBase);
+    ctx.response.send(injectApiBase(rewriteRelativeAssets(html, mount), apiBase, extra));
   }
 
   /** Send the requested built asset, or fall back to the SPA shell when it does not exist. */

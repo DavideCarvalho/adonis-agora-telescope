@@ -1,7 +1,9 @@
 import { Suspense, useEffect, useState } from 'react';
+import { readShellSwitcherConfig } from '../client/console_switcher.js';
 import type { ExtensionEntryType } from '../client/types.js';
 import { ENTRY_TYPES } from '../client/types.js';
 import { CommandPalette, type PaletteTarget } from './CommandPalette.js';
+import { ConsoleSwitcher } from './ConsoleSwitcher.js';
 import { MoonIcon, SunIcon } from './icons.js';
 import { lazySection } from './lazy-section.js';
 import { OverviewSection } from './OverviewSection.js';
@@ -135,6 +137,7 @@ export function App() {
   const [theme, setTheme] = useState<'light' | 'dark' | null>(() => readStoredTheme());
   const { route, navigate } = useHashRoute();
   const meta = useMeta();
+  const [shell] = useState(() => readShellSwitcherConfig());
 
   useEffect(() => {
     const root = document.documentElement;
@@ -176,7 +179,10 @@ export function App() {
     <TooltipProvider>
       <div className="flex min-h-screen bg-background font-mono text-sm text-foreground">
         <aside className="flex w-56 shrink-0 flex-col gap-6 border-r border-line px-3 py-4">
-          <span className="px-3 text-base font-semibold text-brand">Telescope</span>
+          <ConsoleSwitcher
+            brand={<span className="text-base font-semibold text-brand">Telescope</span>}
+            {...(shell.switcher ? { endpoint: shell.switcher.endpoint } : {})}
+          />
           <nav className="flex flex-col gap-1" aria-label="sections">
             {NAV.map((item) => {
               const active = route.name === item.key;
@@ -241,6 +247,7 @@ export function App() {
             <CommandPalette
               dashboards={meta.data?.dashboards ?? []}
               onNavigate={onPaletteNavigate}
+              {...(shell.search ? { searchEndpoint: shell.search.endpoint } : {})}
             />
             <Tooltip label="Toggle light / dark">
               <Button
