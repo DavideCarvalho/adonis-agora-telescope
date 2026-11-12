@@ -10,11 +10,21 @@ import { BaseSchema } from '@adonisjs/lucid/schema'
  * milliseconds (a plain integer) so newest-first ordering and age-based pruning
  * are driver-agnostic integer comparisons across sqlite / Postgres / MySQL.
  */
+/**
+ * The database schema the table lives in: the same value as 'schema' in storage.lucid().
+ * Leave it undefined to use the connection's current schema. On MySQL a schema is a database.
+ */
+const schema: string | undefined = undefined
+
 export default class extends BaseSchema {
   protected tableName = 'telescope_entries'
 
   async up() {
-    this.schema.createTable(this.tableName, (table) => {
+    if (schema) {
+      const create = this.db.dialect.name === 'mysql' ? 'CREATE DATABASE' : 'CREATE SCHEMA'
+      this.schema.raw(this.db.knexRawQuery(create + ' IF NOT EXISTS ??', [schema]).toQuery())
+    }
+    this.builder().createTable(this.tableName, (table) => {
       table.string('id').primary().notNullable()
       table.string('type').notNullable()
       table.string('family_hash').nullable()
@@ -34,6 +44,11 @@ export default class extends BaseSchema {
   }
 
   async down() {
-    this.schema.dropTable(this.tableName)
+    this.builder().dropTable(this.tableName)
+  }
+
+  /** The schema builder, pointed at 'schema' when it is set. */
+  private builder() {
+    return schema ? this.schema.withSchema(schema) : this.schema
   }
 }

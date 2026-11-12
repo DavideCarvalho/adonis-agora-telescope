@@ -300,6 +300,7 @@ export type {
   LucidInsertBuilderLike,
   LucidQueryBuilderLike,
   LucidStoreOptions,
+  SchemaInspection,
   TelescopeColumns,
 } from './stores/lucid.js';
 export {

@@ -11,11 +11,14 @@ export type {
 export { AGORA_DOCTOR_BINDING, registerDoctorChecks } from './agora_doctor.js';
 export {
   checkCsrf,
+  checkDbSchema,
   checkGate,
   checkOtel,
   checkRetention,
   csrfBlocksPath,
+  dbSchemaDoctorCheck,
   type OtelInstall,
+  type SchemaInspectable,
   sdkLine,
 } from './checks.js';
 

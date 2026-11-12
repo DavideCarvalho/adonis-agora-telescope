@@ -64,6 +64,43 @@ export default defineConfig({
 | `tableName`       | `telescope_entries` | Table to read/write (override on a name collision).            |
 | `autoCreateTable` | `false`             | Run the DDL on first use (tests/scripts; prefer a migration).  |
 | `maxEntries`      | _unset_             | Advisory cap for scheduled `prune` trimming (no auto-evict).   |
+| `schema`          | _unset_             | Database schema the tables live in (see below).                 |
+
+### Database schema
+
+Set `schema` to keep telescope's tables out of your app's schema, e.g. in a Postgres schema
+named `telescope` while the app lives in `public`:
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  store: 'lucid',
+  stores: {
+    lucid: storage.lucid({ connection: 'pg', schema: 'telescope' }),
+  },
+})
+```
+
+Every query the store sends names the schema (`"telescope"."telescope_entries"`), so it
+works on any connection, including your default one. With `autoCreateTable`, the store
+creates the schema on first use when it is missing. With the migration, set the same name in
+the migration's `schema` constant (see below); it creates the schema too. If the
+connection's role cannot create it, create it once yourself and grant the role access.
+
+The name must be a plain identifier (letters, digits, `_` and `$`, at most 63 characters).
+Without `schema`, the tables live in the connection's current schema, as before.
+
+<Callout type="warn">
+Don't put the tables in another schema with a Lucid connection that sets `searchPath`.
+Lucid applies it with `SET search_path` on the session, and behind PgBouncer in transaction
+mode that setting leaks to other clients' connections. Use `schema` instead.
+</Callout>
+
+- **MySQL / MariaDB:** a schema is a database. `schema: 'telescope'` stores entries in
+  `` `telescope`.`telescope_entries` ``, and auto-creating runs `CREATE DATABASE IF NOT EXISTS`.
+- **SQLite:** there are no schemas. Setting `schema` on a SQLite connection fails at boot.
+
+`node ace agora:doctor --deep` checks that the schema exists, holds the tables and accepts
+writes from the connection.
 
 ### Schema
 
@@ -80,11 +117,21 @@ The published migration:
 ```ts title="database/migrations/xxxx_create_telescope_entries_table.ts"
 import { BaseSchema } from '@adonisjs/lucid/schema'
 
+/**
+ * The database schema the table lives in: the same value as 'schema' in storage.lucid().
+ * Leave it undefined to use the connection's current schema. On MySQL a schema is a database.
+ */
+const schema: string | undefined = undefined
+
 export default class extends BaseSchema {
   protected tableName = 'telescope_entries'
 
   async up() {
-    this.schema.createTable(this.tableName, (table) => {
+    if (schema) {
+      const create = this.db.dialect.name === 'mysql' ? 'CREATE DATABASE' : 'CREATE SCHEMA'
+      this.schema.raw(this.db.knexRawQuery(create + ' IF NOT EXISTS ??', [schema]).toQuery())
+    }
+    this.builder().createTable(this.tableName, (table) => {
       table.string('id').primary().notNullable()
       table.string('type').notNullable()
       table.string('family_hash').nullable()
@@ -104,7 +151,12 @@ export default class extends BaseSchema {
   }
 
   async down() {
-    this.schema.dropTable(this.tableName)
+    this.builder().dropTable(this.tableName)
+  }
+
+  /** The schema builder, pointed at 'schema' when it is set. */
+  private builder() {
+    return schema ? this.schema.withSchema(schema) : this.schema
   }
 }
 ```
@@ -165,8 +217,9 @@ For tests, scripts, or a hand-wired store instance, the core also exports:
 
 - **`LucidTelescopeStore`** — implements the async `TelescopeStore` contract (`record` /
   `get` / `list` / `count` / `prune` / `clear`).
-- **`createTelescopeTable(db, options?)`** — idempotent DDL helper.
-- **`createTableStatements(tableName?, dialect?)`** — the raw `CREATE TABLE` + index
+- **`createTelescopeTable(db, options?)`** — idempotent DDL helper (`options.tableName`,
+  `options.schema`).
+- **`createTableStatements(tableName?, dialect?, schema?)`** — the raw `CREATE TABLE` + index
   statements. Pass the Lucid dialect name (`'mysql'`) to get backtick-quoted identifiers and
   plain `CREATE INDEX` (MySQL has no `IF NOT EXISTS` for indexes); without it the statements
   use double-quoted identifiers, for sqlite and Postgres.

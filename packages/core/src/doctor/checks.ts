@@ -246,6 +246,71 @@ function path(value: unknown, fallback: string): string {
 const get = (app: ApplicationService, key: string) =>
   app.config.get<AnyConfig | undefined>(key, undefined);
 
+/** The slice of the SQL store `telescope.db-schema` reads. */
+export interface SchemaInspectable {
+  inspectSchema(): Promise<{
+    schema: string;
+    exists: boolean;
+    missingTables: string[];
+    writeError: string | null;
+  } | null>;
+}
+
+/** `telescope.db-schema`: the configured `schema` exists, holds the tables, and takes writes. */
+export async function checkDbSchema(store: SchemaInspectable): Promise<AgoraDoctorResult[]> {
+  const docs = `${DOCS}/packages/storages`;
+  const found = await store.inspectSchema();
+  if (found === null) return [];
+  if (!found.exists) {
+    return [
+      {
+        status: 'error',
+        message: `The database schema "${found.schema}" does not exist (or this connection cannot see it).`,
+        fix: `Run the telescope migration, or create it: CREATE SCHEMA "${found.schema}" on Postgres, CREATE DATABASE \`${found.schema}\` on MySQL.`,
+        docs,
+      },
+    ];
+  }
+  const results: AgoraDoctorResult[] = [];
+  if (found.missingTables.length > 0) {
+    results.push({
+      status: 'error',
+      message: `Missing from schema "${found.schema}": ${found.missingTables.join(', ')}.`,
+      fix: 'Run the telescope migration (node ace migration:run), or set autoCreateTable.',
+      docs,
+    });
+  }
+  if (found.writeError !== null) {
+    results.push({
+      status: 'error',
+      message: `This connection cannot write to schema "${found.schema}": ${found.writeError.split('\n')[0]}`,
+      fix: `Grant the app's role USAGE on the schema and INSERT, SELECT, DELETE on its tables.`,
+      docs,
+    });
+  }
+  if (results.length === 0) {
+    results.push({
+      status: 'ok',
+      message: `Schema "${found.schema}" exists, holds telescope's tables and takes writes.`,
+    });
+  }
+  return results;
+}
+
+/**
+ * The `telescope.db-schema` check, registered at boot only when the SQL store has a `schema`
+ * (so an app without one sees no new line). Deep: it queries the database.
+ */
+export function dbSchemaDoctorCheck(store: SchemaInspectable): AgoraDoctorCheck {
+  return {
+    id: 'telescope.db-schema',
+    lib: 'telescope',
+    title: 'Database schema is ready',
+    cost: 'deep',
+    run: () => checkDbSchema(store),
+  };
+}
+
 /** Every telescope check (`register` + `--no-boot`). Ids are frozen for 1.x. */
 export const telescopeDoctorChecks: AgoraDoctorCheck[] = [
   {
