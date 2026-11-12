@@ -81,7 +81,20 @@ sections:
   [extensions](/docs/telescope/concepts/extensions).
 
 A **Watchers** sub-nav below them jumps straight to Entries filtered to one entry type, and `⌘K`
-(`Ctrl-K`) opens a command palette over everything. The full tour, including what each section
+(`Ctrl-K`) opens a command palette over everything.
+
+### Switching between consoles
+
+When the app runs other Agora consoles (Workflows, Payments, Media, Agents, Identity), the
+**Telescope** brand at the top of the sidebar becomes a menu of the ones the signed-in viewer may
+open, with nothing to configure. Each console decides with its own `authorize`, so a viewer only
+sees the consoles they can actually enter; with none, the brand stays plain. The command palette
+then also searches across them: type an entry id, a trace id or some text to find Telescope
+entries, and the other consoles answer with their own hits (runs, payments, users…).
+
+Your `authorize` runs for the switcher too, each time a console shell loads. An authorizer that
+writes an audit record per call can skip those checks: the request carries
+`ctx.agoraProbe === true` while the switcher asks. The full tour, including what each section
 shows and how the capability-gated views behave, is on the
 [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui#what-it-shows) page.
 
@@ -99,6 +112,8 @@ guard first.
 | `GET <path>/api/stats`                | `{ count, topFamilies, topTags }`. `?limit=` caps each top-N; `?type=` scopes `topFamilies`. |
 | `GET <path>/api/retention`            | The retention posture: whether a pruner is armed, its cutoff and cadence, and which entry types record below 100%. Configuration, not live pruner state. |
 | `GET <path>/api/meta`                 | What this install can do: extension-contributed `entryTypes` and `dashboards`, plus `ai`, `profiling` and `queueManager` enabled flags. Always available. |
+| `GET <path>/api/consoles`             | The other Agora consoles this viewer may open (`{ version, current, consoles: [{ id, title, package?, icon, href }] }`). |
+| `GET <path>/api/consoles/search`      | `?q=` searched across Telescope and every console this viewer may open (`{ version, query, groups: [{ id, title, icon, hits }] }`), 5 hits per console. |
 | `GET <path>/api/stream`               | Server-Sent Events: every newly recorded entry, already redacted and post-sampling. Present unless `stream` is disabled in `config/telescope.ts`. |
 
 Analytics, all windowed and all reading the same stored entries the tables show:
