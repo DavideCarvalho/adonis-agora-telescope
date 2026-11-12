@@ -382,14 +382,23 @@ export interface LinkSpec {
 
 /** A button in a table cell that runs an extension action on that row, after a confirmation. */
 export interface ColumnAction {
-  action: string;
-  label: string;
+  /** The action's name. */
+  name: string;
+  label?: string;
   /** Confirmation text, `{key}` placeholders filled from the row. */
-  confirm: string;
+  confirm?: string;
   /** JSON body values, each a `{key}` template filled from the row. */
   input?: Record<string, string>;
-  /** Only on rows whose `key` column is one of `in`. */
-  when?: { key: string; in: ReadonlyArray<string | number | boolean> };
+  /** Only on rows where each listed field has one of the values. */
+  showWhen?: Record<string, ReadonlyArray<string | number | boolean>>;
+  destructive?: boolean;
+}
+
+/** An extension action as `/meta` describes it. */
+export interface ExtensionActionMeta {
+  name: string;
+  label?: string;
+  confirm?: string;
   destructive?: boolean;
 }
 
@@ -462,6 +471,8 @@ export interface DashboardSpec {
 export interface TelescopeMeta {
   entryTypes: ExtensionEntryType[];
   dashboards: DashboardSpec[];
+  /** The extension actions table columns can trigger. Absent on older servers. */
+  actions?: ExtensionActionMeta[];
   /** Whether `@adonis-agora/telescope/ai` is installed and configured — gates the "Diagnose with AI"
    *  action on exception entries. Absent (treated as disabled) on a server predating this field. */
   ai?: { enabled: boolean };

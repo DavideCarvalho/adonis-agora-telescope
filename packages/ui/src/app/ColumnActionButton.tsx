@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ColumnAction } from '../client/types.js';
+import type { ColumnAction, ExtensionActionMeta } from '../client/types.js';
 import { Button } from './primitives/button.js';
 import { Dialog } from './primitives/dialog.js';
 import { useTelescopeClient } from './use-telescope.js';
@@ -12,11 +12,26 @@ export function fillText(template: string, row: Record<string, unknown>): string
   });
 }
 
-/** Whether the action applies to this row (its `when` filter). */
+/** Whether the action applies to this row (its `showWhen` filter: every field matches). */
 export function actionApplies(action: ColumnAction, row: Record<string, unknown>): boolean {
-  if (!action.when) return true;
-  const value = row[action.when.key];
-  return action.when.in.some((candidate) => candidate === value);
+  if (!action.showWhen) return true;
+  return Object.entries(action.showWhen).every(([field, values]) =>
+    values.some((candidate) => candidate === row[field]),
+  );
+}
+
+/** The column's action with the action-level defaults (label, confirm, destructive) filled in. */
+export function resolveColumnAction(
+  action: ColumnAction,
+  meta: ExtensionActionMeta | undefined,
+): Required<Pick<ColumnAction, 'name' | 'label' | 'confirm' | 'destructive'>> & ColumnAction {
+  const label = action.label ?? meta?.label ?? action.name;
+  return {
+    ...action,
+    label,
+    confirm: action.confirm ?? meta?.confirm ?? `${label}?`,
+    destructive: action.destructive ?? meta?.destructive ?? false,
+  };
 }
 
 /** The JSON input for the action, every `{key}` template filled from the row. */
@@ -37,15 +52,19 @@ export function actionInput(
  */
 export function ColumnActionButton({
   ext,
-  action,
+  action: column,
+  meta,
   row,
   onDone,
 }: {
   ext: string;
   action: ColumnAction;
+  /** The action as `/meta` describes it (its default label, confirm and style). */
+  meta?: ExtensionActionMeta | undefined;
   row: Record<string, unknown>;
   onDone: () => void;
 }) {
+  const action = resolveColumnAction(column, meta);
   const client = useTelescopeClient();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -57,7 +76,7 @@ export function ColumnActionButton({
     setBusy(true);
     setError(null);
     try {
-      const outcome = await client.extAction(ext, action.action, actionInput(action, row));
+      const outcome = await client.extAction(ext, action.name, actionInput(action, row));
       if (outcome.ok) {
         setOpen(false);
         onDone();

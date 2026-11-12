@@ -25,7 +25,7 @@ interface TelescopeExtension {
   entryTypes?(ctx: ExtensionContext): ExtensionEntryType[]  // navigable nav entries
   dashboards?(ctx: ExtensionContext): DashboardSpec[]       // declarative pages
   dataProviders?(ctx: ExtensionContext): DataProvider[]     // server-side queries
-  actions?(ctx: ExtensionContext): DataAction[]             // server-side writes, see Actions
+  actions?(ctx: ExtensionContext): ExtensionAction[]        // server-side writes, see Actions
 }
 ```
 
@@ -231,6 +231,9 @@ a job. Declare the action on the extension and point a column at it:
 actions: () => [
   {
     name: 'resilience.reset-circuit',
+    label: 'Reset',
+    confirm: 'Reset circuit {key}? Calls will go through again.',
+    destructive: true,
     async run(input, ctx) {
       const service = await ctx.container.make(ResilienceService)
       await service.circuit(String(input.key)).reset()
@@ -255,12 +258,9 @@ dashboards: () => [
             key: 'reset',
             label: '',
             action: {
-              action: 'resilience.reset-circuit',
-              label: 'Reset',
-              confirm: 'Reset circuit {key}? Calls will go through again.',
+              name: 'resilience.reset-circuit',
               input: { key: '{key}' },
-              when: { key: 'status', in: ['open', 'half-open'] },
-              destructive: true,
+              showWhen: { status: ['open', 'half-open'] },
             },
           },
         ],
@@ -270,7 +270,9 @@ dashboards: () => [
 ],
 ```
 
-The viewer gets a confirmation dialog first; the table reloads when the action succeeds, and an
+The column's `label`, `confirm` and `destructive` default to the action's; set them on the column
+to override them for one table. `showWhen` lists, per field, the values a row needs for the button
+to show. The viewer gets a confirmation dialog first; the table reloads when the action succeeds, and an
 error thrown by `run` is shown in the dialog. Every call:
 
 - runs behind the console's `authorize`, like every other console request;
@@ -279,7 +281,7 @@ error thrown by `run` is shown in the dialog. Every call:
   `event:extension-action`, `ext:<name>`, `action:<name>` and `caller:<id>` (`user:<id>`,
   `token:<hash>` or `anonymous`).
 
-`run` receives `ctx.caller` too, for your own audit trail. The console sends AdonisJS shield's
+`run` receives `ctx.actor` (the same id) for your own audit trail. The console sends AdonisJS shield's
 `X-XSRF-TOKEN` header when the `XSRF-TOKEN` cookie is enabled, so actions pass CSRF without an
 `exceptRoutes` entry.
 

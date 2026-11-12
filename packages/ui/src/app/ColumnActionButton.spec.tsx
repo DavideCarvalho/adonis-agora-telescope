@@ -2,16 +2,22 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type { ColumnAction } from '../client/types.js';
-import { actionApplies, actionInput, ColumnActionButton, fillText } from './ColumnActionButton.js';
+import {
+  actionApplies,
+  actionInput,
+  ColumnActionButton,
+  fillText,
+  resolveColumnAction,
+} from './ColumnActionButton.js';
 import { TelescopeQueryProvider } from './query-provider.js';
 import { TelescopeClientContext } from './use-telescope.js';
 
 const reset: ColumnAction = {
-  action: 'resilience.reset-circuit',
+  name: 'resilience.reset-circuit',
   label: 'Reset',
   confirm: 'Reset circuit {key}?',
   input: { key: '{key}' },
-  when: { key: 'status', in: ['open', 'half-open'] },
+  showWhen: { status: ['open', 'half-open'] },
   destructive: true,
 };
 
@@ -35,6 +41,23 @@ describe('column actions', () => {
     expect(actionInput(reset, { key: 'stripe' })).toEqual({ key: 'stripe' });
     expect(actionApplies(reset, { status: 'open' })).toBe(true);
     expect(actionApplies(reset, { status: 'closed' })).toBe(false);
+  });
+
+  it('falls back to the action-level label, confirm and style', () => {
+    const bare: ColumnAction = { name: 'resilience.reset-circuit', input: { key: '{key}' } };
+    expect(
+      resolveColumnAction(bare, {
+        name: 'resilience.reset-circuit',
+        label: 'Reset',
+        confirm: 'Reset {key}?',
+        destructive: true,
+      }),
+    ).toMatchObject({ label: 'Reset', confirm: 'Reset {key}?', destructive: true });
+    expect(resolveColumnAction(bare, undefined)).toMatchObject({
+      label: 'resilience.reset-circuit',
+      confirm: 'resilience.reset-circuit?',
+      destructive: false,
+    });
   });
 
   it('asks for confirmation, runs the action, then reloads', async () => {

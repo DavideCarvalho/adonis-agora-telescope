@@ -335,6 +335,8 @@ function TablePanel({
 }) {
   const [page, setPage] = useState(1);
   const size = 25;
+  const meta = useMeta();
+  const actionMeta = (name: string) => meta.data?.actions?.find((a) => a.name === name);
   const query = useMemo(() => {
     const base = asQuery(panel.data.query);
     return panel.paged ? { ...base, page: String(page), size: String(size) } : base;
@@ -372,6 +374,7 @@ function TablePanel({
                             <ColumnActionButton
                               ext={ext}
                               action={col.action}
+                              meta={actionMeta(col.action.name)}
                               row={row}
                               onDone={state.reload}
                             />

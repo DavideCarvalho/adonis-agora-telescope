@@ -41,7 +41,7 @@ export interface TelescopeExtension {
    * runs behind the console's `authorize`, needs an explicit confirmation from the viewer, and is
    * audited (one log line plus a `diagnostic` entry tagged `event:extension-action`).
    */
-  actions?(ctx: ExtensionContext): DataAction[];
+  actions?(ctx: ExtensionContext): ExtensionAction[];
 }
 
 /** Who triggered an extension action, for audit trails. Never a token value. */
@@ -54,16 +54,22 @@ export interface ExtensionActionCaller {
 export interface ExtensionActionContext extends ExtensionContext {
   /** Who asked. */
   readonly caller: ExtensionActionCaller;
+  /** The same as `caller.id`, for audit fields named after the actor. */
+  readonly actor: string;
   /** The console request's HTTP context (the AdonisJS `HttpContext` at runtime). */
   readonly http: unknown;
 }
 
 /** A named server-side action, triggered from a table column (see {@link ColumnAction}). */
-export interface DataAction {
-  /** Stable name referenced by {@link ColumnAction.action}, e.g. `'resilience.reset-circuit'`. */
+export interface ExtensionAction {
+  /** Stable name referenced by {@link ColumnAction.name}, e.g. `'resilience.reset-circuit'`. */
   name: string;
-  /** Agent/operator-facing description, shown in the confirmation dialog. */
-  description?: string;
+  /** Button label (default: the name). A column can override it. */
+  label?: string;
+  /** Confirmation text, `{key}` placeholders filled from the row. A column can override it. */
+  confirm?: string;
+  /** Style the button as dangerous. */
+  destructive?: boolean;
   /**
    * Run the action. `input` is the JSON body the console sent (the column's `input` template filled
    * from the row). Throw to fail: the message is shown to the viewer.
@@ -72,21 +78,29 @@ export interface DataAction {
 }
 
 /**
- * A button in a table cell that triggers an extension {@link DataAction} on that row, after a
+ * A button in a table cell that triggers an extension {@link ExtensionAction} on that row, after a
  * confirmation dialog. The table re-fetches when the action succeeds.
  */
 export interface ColumnAction {
   /** The action's name (it must belong to the same extension as the dashboard). */
-  action: string;
-  /** Button label, e.g. `'Reset'`. */
-  label: string;
-  /** Confirmation text with `{key}` placeholders filled from the row, e.g. `'Reset circuit {key}?'`. */
-  confirm: string;
+  name: string;
+  /** Button label (default: the action's `label`, else its name). */
+  label?: string;
+  /** Confirmation text, `{key}` placeholders filled from the row (default: the action's `confirm`). */
+  confirm?: string;
   /** The JSON body: each value is a `{key}` template filled from the row, e.g. `{ key: '{key}' }`. */
   input?: Record<string, string>;
-  /** Show the button only on rows whose `key` column equals one of `in` (e.g. status open/half-open). */
-  when?: { key: string; in: readonly (string | number | boolean)[] };
-  /** Style the button as dangerous. */
+  /** Show the button only on rows where each listed field has one of the values, e.g. `{ status: ['open', 'half-open'] }`. */
+  showWhen?: Record<string, readonly (string | number | boolean)[]>;
+  /** Style the button as dangerous (default: the action's `destructive`). */
+  destructive?: boolean;
+}
+
+/** An action as `/api/meta` describes it to the console (no `run`). */
+export interface ExtensionActionMeta {
+  name: string;
+  label?: string;
+  confirm?: string;
   destructive?: boolean;
 }
 

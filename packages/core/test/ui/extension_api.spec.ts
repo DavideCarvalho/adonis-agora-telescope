@@ -80,6 +80,22 @@ describe('ExtensionApi.data', () => {
 });
 
 describe('ExtensionApi.action', () => {
+  it('meta lists the actions without their run', () => {
+    const { api } = actionSetup();
+    const ctx = { request: makeRequest('GET'), response: new RecordingResponse() };
+    api.meta(ctx);
+    const body = ctx.response.body as { data: { actions: unknown[] } };
+    expect(body.data.actions).toEqual([
+      {
+        name: 'resilience.reset-circuit',
+        label: 'Reset',
+        confirm: 'Reset circuit {key}?',
+        destructive: true,
+      },
+      { name: 'resilience.boom' },
+    ]);
+  });
+
   function actionSetup() {
     const store = new InMemoryTelescopeStore();
     const ctx: ExtensionContext = {
@@ -93,8 +109,11 @@ describe('ExtensionApi.action', () => {
       actions: () => [
         {
           name: 'resilience.reset-circuit',
+          label: 'Reset',
+          confirm: 'Reset circuit {key}?',
+          destructive: true,
           run: async (input, actionCtx) => {
-            seen.push({ input, caller: actionCtx.caller.id });
+            seen.push({ input, caller: actionCtx.actor });
             return { status: 'closed' };
           },
         },

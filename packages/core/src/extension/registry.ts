@@ -1,7 +1,8 @@
 import type {
   DashboardSpec,
-  DataAction,
   DataProvider,
+  ExtensionAction,
+  ExtensionActionMeta,
   ExtensionContext,
   ExtensionEntryType,
   ScheduleContribution,
@@ -20,7 +21,7 @@ export class ExtensionRegistry {
   readonly #dashboards: DashboardSpec[] = [];
   readonly #providers = new Map<string, DataProvider>();
   readonly #providerOwners = new Map<string, string>();
-  readonly #actions = new Map<string, DataAction>();
+  readonly #actions = new Map<string, ExtensionAction>();
   readonly #actionOwners = new Map<string, string>();
   /** Kept so the schedules hook can be awaited AFTER boot — see {@link collectSchedules}. */
   readonly #extensions: readonly TelescopeExtension[];
@@ -91,7 +92,16 @@ export class ExtensionRegistry {
   providerOwner(name: string): string | undefined {
     return this.#providerOwners.get(name);
   }
-  findAction(name: string): DataAction | undefined {
+  /** Every action, without its `run`, for `/api/meta`. */
+  actions(): ExtensionActionMeta[] {
+    return [...this.#actions.values()].map((a) => ({
+      name: a.name,
+      ...(a.label !== undefined ? { label: a.label } : {}),
+      ...(a.confirm !== undefined ? { confirm: a.confirm } : {}),
+      ...(a.destructive !== undefined ? { destructive: a.destructive } : {}),
+    }));
+  }
+  findAction(name: string): ExtensionAction | undefined {
     return this.#actions.get(name);
   }
   actionOwner(name: string): string | undefined {

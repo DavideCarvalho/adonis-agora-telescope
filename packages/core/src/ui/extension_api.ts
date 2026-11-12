@@ -25,6 +25,7 @@ export class ExtensionApi {
       data: {
         entryTypes: this.registry.entryTypes(),
         dashboards: this.registry.dashboards(),
+        actions: this.registry.actions(),
         ...extra,
       },
     });
@@ -86,7 +87,7 @@ export class ExtensionApi {
         : {};
     const started = Date.now();
     try {
-      const result = await action.run(input, { ...this.ctx, caller, http });
+      const result = await action.run(input, { ...this.ctx, caller, actor: caller.id, http });
       await this.safeAudit({
         ext,
         action: actionName,
