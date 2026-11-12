@@ -144,6 +144,31 @@ Point your agent's MCP client at `https://your-app.example.com/telescope/mcp` wi
 `Authorization: Bearer` header shown above. The server advertises protocol revision `2025-06-18`, and
 identifies itself as `adonis-telescope` at the installed package version.
 
+## On the Agora dev endpoint
+
+When the app also runs `@adonis-agora/agent/mcp_provider`, Telescope's tools are served on the
+Agora developer endpoint (`/mcp/agora`) next to the other libraries' tools, with nothing to
+configure. There they are prefixed and gated by the **console's** `authorize`
+(`config/telescope_ui.ts`), not this endpoint's:
+
+| Tool | Same as |
+| --- | --- |
+| `telescope_list_entries` | `list_entries`, plus `page`; returns `{ items, next }` |
+| `telescope_get_entry` | `get_entry` |
+| `telescope_get_trace` | `get_trace` |
+| `telescope_get_waterfall` | `get_waterfall` |
+| `telescope_get_health` | `get_health` |
+| `telescope_diagnose_exception` | `diagnose_exception`; listed only when AI diagnosis is configured |
+
+```sh
+claude mcp add --transport http agora http://localhost:3333/mcp/agora \
+  --header "Authorization: Bearer $CONSOLE_TOKEN"
+```
+
+The token above works when the console uses `authorizeByToken`. `/telescope/mcp` keeps working on
+its own, so you can run both, either, or neither. Turning the console off
+(`telescope_ui.enabled: false`) also keeps Telescope's tools off the dev endpoint.
+
 ## Notable exports
 
 - `TelescopeMcpServer` — the JSON-RPC server itself, usable standalone (it takes a parsed body
