@@ -1,5 +1,13 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.4
+
+### Minor Changes
+
+- [#291](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/291) [`c5ea417`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/c5ea4174f1cadc3a442067f8177e365db4d9c707) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Libraries can plug their pages into Telescope with no app config: push a `TelescopeExtension` into the `'agora.telescope.extensions'` container binding from your provider's `register()` (create the array when absent). Telescope reads it at boot next to `config.extensions`; a configured extension with the same `name` wins.
+  
+  Extensions can also declare `actions`: server-side writes a table column triggers on its row (`column.action`), after a confirmation dialog. Every call runs behind the console's `authorize`, needs `{ confirmed: true }`, and is audited (log line + a `diagnostic` entry tagged `event:extension-action`). Console writes now send shield's `X-XSRF-TOKEN` header when the `XSRF-TOKEN` cookie is present.
+
 ## 3.0.0-rc.3
 
 ### Minor Changes
