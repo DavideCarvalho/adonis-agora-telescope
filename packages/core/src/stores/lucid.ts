@@ -14,6 +14,16 @@ import type {
   TraceIdQuery,
   TraceIdRow,
 } from '../store.js';
+import {
+  ensureSchema,
+  isMysqlDialect,
+  qualifiedName,
+  qualifiedSql,
+  quoteIdentifier,
+  rowsOf,
+  schemaExists,
+  validateSchema,
+} from './sql_schema.js';
 
 /**
  * The table {@link LucidTelescopeStore} reads and writes. Override via
@@ -52,22 +62,26 @@ export interface TelescopeColumns {
  *
  * Identifiers are double-quoted (sqlite / Postgres) unless `dialect` is a Lucid
  * MySQL dialect name (`mysql` / `mysql2`), which gets backticks and plain
- * `CREATE INDEX`; the column types are portable. A real deployment should still prefer the bundled migration stub
- * so the schema is versioned, but this lets a store stand itself up in tests and
- * scripts without a migration runner.
+ * `CREATE INDEX`; the column types are portable. With `schema`, the table is
+ * created as `"schema"."table"` (its indexes live next to it). A real deployment
+ * should still prefer the bundled migration stub so the schema is versioned, but
+ * this lets a store stand itself up in tests and scripts without a migration runner.
  */
 export function createTableStatements(
   tableName: string = DEFAULT_TABLE_NAME,
   dialect?: string,
+  schema?: string,
 ): string[] {
   const mysql = isMysql(dialect);
-  const q = (identifier: string) => (mysql ? `\`${identifier}\`` : `"${identifier}"`);
+  const q = (identifier: string) => quoteIdentifier(identifier, dialect);
+  const table = qualifiedSql(tableName, schema, dialect);
   // MySQL has no `CREATE INDEX IF NOT EXISTS`; an index that already exists fails with
-  // ER_DUP_KEYNAME, which the store's reconcile treats as done.
+  // ER_DUP_KEYNAME, which the store's reconcile treats as done. An index name is never
+  // schema-qualified: Postgres and MySQL both put it in its table's schema.
   const index = (suffix: string, columns: string[]) =>
-    `CREATE INDEX ${mysql ? '' : 'IF NOT EXISTS '}${q(`${tableName}_${suffix}`)} ON ${q(tableName)} (${columns.map(q).join(', ')})`;
+    `CREATE INDEX ${mysql ? '' : 'IF NOT EXISTS '}${q(`${tableName}_${suffix}`)} ON ${table} (${columns.map(q).join(', ')})`;
   return [
-    `CREATE TABLE IF NOT EXISTS ${q(tableName)} (
+    `CREATE TABLE IF NOT EXISTS ${table} (
       ${q('id')} VARCHAR(255) PRIMARY KEY NOT NULL,
       ${q('type')} VARCHAR(255) NOT NULL,
       ${q('family_hash')} VARCHAR(255) NULL,
@@ -90,7 +104,7 @@ export function createTableStatements(
 
 /** MySQL (and MariaDB) quote identifiers with backticks; a double-quoted name is a string there. */
 function isMysql(dialect: string | undefined): boolean {
-  return dialect === 'mysql' || dialect === 'mysql2';
+  return isMysqlDialect(dialect);
 }
 
 /** The Lucid dialect name of `db`, from the client itself or the facade's default connection. */
@@ -118,6 +132,7 @@ function isConcurrentDdlRace(error: unknown): boolean {
     code === '23505' || // unique_violation on a pg catalog index
     code === '42P07' || // duplicate_table
     code === '42710' || // duplicate_object (index)
+    code === '42P06' || // duplicate_schema
     code === 'ER_TABLE_EXISTS_ERROR' ||
     errno === 1050
   );
@@ -152,10 +167,14 @@ async function runIdempotentDdl(db: LucidDatabaseLike, stmt: string): Promise<vo
   }
 }
 
-/** Run the DDL for `tableName` on `db`, in its dialect. */
-async function runTableStatements(db: LucidDatabaseLike, tableName: string): Promise<void> {
+/** Run the DDL for `tableName` (in `schema`, when set) on `db`, in its dialect. */
+async function runTableStatements(
+  db: LucidDatabaseLike,
+  tableName: string,
+  schema: string | undefined,
+): Promise<void> {
   const dialect = dialectOf(db);
-  for (const stmt of createTableStatements(tableName, dialect)) {
+  for (const stmt of createTableStatements(tableName, dialect, schema)) {
     try {
       await runIdempotentDdl(db, stmt);
     } catch (error) {
@@ -200,9 +219,9 @@ export const INIT_RETRY_DELAY_MS = 5_000;
  * and introspection-free, portable across sqlite / Postgres / MySQL (quoted
  * identifiers, portable types) — mirroring {@link createTableStatements}' style.
  */
-function createSchemaMetaTableStatement(dialect?: string): string {
-  const q = (identifier: string) => (isMysql(dialect) ? `\`${identifier}\`` : `"${identifier}"`);
-  return `CREATE TABLE IF NOT EXISTS ${q(SCHEMA_META_TABLE_NAME)} (
+function createSchemaMetaTableStatement(dialect?: string, schema?: string): string {
+  const q = (identifier: string) => quoteIdentifier(identifier, dialect);
+  return `CREATE TABLE IF NOT EXISTS ${qualifiedSql(SCHEMA_META_TABLE_NAME, schema, dialect)} (
       ${q('id')} VARCHAR(255) PRIMARY KEY NOT NULL,
       ${q('fingerprint')} VARCHAR(64) NOT NULL,
       ${q('applied_at')} BIGINT NOT NULL
@@ -216,10 +235,10 @@ function createSchemaMetaTableStatement(dialect?: string): string {
  * with {@link SCHEMA_REVISION}, re-heals on any column/index/name change or a
  * manual revision bump and matches byte-for-byte otherwise.
  */
-function computeSchemaFingerprint(tableName: string): string {
+function computeSchemaFingerprint(tableName: string, schema: string | undefined): string {
   const payload = JSON.stringify({
     revision: SCHEMA_REVISION,
-    statements: createTableStatements(tableName),
+    statements: createTableStatements(tableName, undefined, schema),
   });
   return createHash('sha256').update(payload).digest('hex');
 }
@@ -270,6 +289,17 @@ export interface LucidInsertBuilderLike {
   insert(row: Record<string, unknown> | Record<string, unknown>[]): Promise<unknown>;
 }
 
+/** What {@link LucidTelescopeStore.inspectSchema} reports. */
+export interface SchemaInspection {
+  schema: string;
+  /** Whether the schema exists (and this connection can see it). */
+  exists: boolean;
+  /** The store's tables not found in the schema. */
+  missingTables: string[];
+  /** Why a no-op write to the entries table failed, or `null` when it went through. */
+  writeError: string | null;
+}
+
 /** Options for {@link LucidTelescopeStore} (and the `storage.lucid` factory). */
 export interface LucidStoreOptions {
   /** Table name. Defaults to `telescope_entries`. */
@@ -286,6 +316,14 @@ export interface LucidStoreOptions {
    * Default `false`.
    */
   autoCreateTable?: boolean;
+  /**
+   * Database schema the tables live in (a Postgres schema, a MySQL database), e.g.
+   * `'telescope'` for `"telescope"."telescope_entries"`. Every statement names it, so
+   * the connection's own default schema is never used. With `autoCreateTable` the
+   * schema is created when missing. Not supported on SQLite (boot fails). Default:
+   * unset, the connection's current schema.
+   */
+  schema?: string;
 }
 
 /** Rows per multi-row INSERT. Ten columns each keeps a statement at 900 bound values,
@@ -353,6 +391,12 @@ interface RowPosition {
  */
 export class LucidTelescopeStore implements TelescopeStore {
   private readonly tableName: string;
+  /** The configured `schema`, or `undefined` for the connection's current one. */
+  readonly schema: string | undefined;
+  /** {@link tableName} as the query builder takes it (`schema.table` when a schema is set). */
+  private readonly table: string;
+  /** The marker table, likewise qualified. */
+  private readonly metaTable: string;
   private readonly maxEntries: number | null;
   private readonly autoCreateTable: boolean;
   /** Lazily-resolved init (table creation + sequence seed), run once — re-run after a failure. */
@@ -371,6 +415,9 @@ export class LucidTelescopeStore implements TelescopeStore {
     options: LucidStoreOptions = {},
   ) {
     this.tableName = options.tableName ?? DEFAULT_TABLE_NAME;
+    this.schema = validateSchema(options.schema, dialectOf(db), 'storage.lucid()');
+    this.table = qualifiedName(this.tableName, this.schema);
+    this.metaTable = qualifiedName(SCHEMA_META_TABLE_NAME, this.schema);
     this.maxEntries =
       options.maxEntries !== undefined && options.maxEntries > 0 ? options.maxEntries : null;
     this.autoCreateTable = options.autoCreateTable ?? false;
@@ -416,7 +463,7 @@ export class LucidTelescopeStore implements TelescopeStore {
         this.warnedDrop = true;
         console.warn(
           `@adonis-agora/telescope: ${MAX_PENDING_WRITES} entries are waiting to be written to ` +
-            `"${this.tableName}"; new entries are dropped until the database catches up.`,
+            `"${this.table}"; new entries are dropped until the database catches up.`,
         );
       }
       return entry;
@@ -447,7 +494,7 @@ export class LucidTelescopeStore implements TelescopeStore {
   get(id: string): Promise<Entry | null> {
     return runAsTelescopeWork(async () => {
       await this.init();
-      const row = await this.db.from(this.tableName).where('id', id).first();
+      const row = await this.db.from(this.table).where('id', id).first();
       return row ? hydrate(row as unknown as TelescopeColumns) : null;
     });
   }
@@ -455,7 +502,7 @@ export class LucidTelescopeStore implements TelescopeStore {
   list(query: EntryQuery = {}): Promise<Entry[]> {
     return runAsTelescopeWork(async () => {
       await this.init();
-      let builder = this.db.from(this.tableName);
+      let builder = this.db.from(this.table);
       if (query.type !== undefined) builder = builder.where('type', query.type);
       if (query.familyHash !== undefined) builder = builder.where('family_hash', query.familyHash);
       if (query.traceId !== undefined) builder = builder.where('trace_id', query.traceId);
@@ -525,7 +572,7 @@ export class LucidTelescopeStore implements TelescopeStore {
   listTraceIds(query: TraceIdQuery): Promise<TraceIdRow[]> {
     return runAsTelescopeWork(async () => {
       await this.init();
-      let builder = this.db.from(this.tableName);
+      let builder = this.db.from(this.table);
       if (query.before !== undefined)
         builder = builder.where('created_at', '<', query.before.getTime());
       if (query.after !== undefined)
@@ -568,7 +615,7 @@ export class LucidTelescopeStore implements TelescopeStore {
       const bucketMs = Math.max(1, Math.floor(query.bucketMs));
 
       let builder = this.db
-        .from(this.tableName)
+        .from(this.table)
         .where('created_at', '>', startMs)
         .where('created_at', '<=', query.before.getTime());
       if (query.type !== undefined) builder = builder.where('type', query.type);
@@ -624,7 +671,7 @@ export class LucidTelescopeStore implements TelescopeStore {
       const limit = Math.max(0, Math.floor(query.limit));
       if (limit === 0) return [];
       let builder = this.db
-        .from(this.tableName)
+        .from(this.table)
         .whereNotNull('family_hash')
         .where('family_hash', '<>', '');
       if (query.type !== undefined) builder = builder.where('type', query.type);
@@ -657,7 +704,7 @@ export class LucidTelescopeStore implements TelescopeStore {
       const tally = new Map<string, { count: number; newest: RowPosition }>();
       let afterId: string | null = null;
       for (;;) {
-        let builder = this.db.from(this.tableName);
+        let builder = this.db.from(this.table);
         if (afterId !== null) builder = builder.where('id', '>', afterId);
         const rows = (await builder
           .orderBy('id', 'asc')
@@ -694,7 +741,7 @@ export class LucidTelescopeStore implements TelescopeStore {
   count(): Promise<number> {
     return runAsTelescopeWork(async () => {
       await this.init();
-      const rows = await this.db.from(this.tableName).count('*', 'total');
+      const rows = await this.db.from(this.table).count('*', 'total');
       return toInt(rows[0]?.total);
     });
   }
@@ -714,7 +761,7 @@ export class LucidTelescopeStore implements TelescopeStore {
       if (keepLast !== undefined) {
         newestDoomed = await this.position(
           this.db
-            .from(this.tableName)
+            .from(this.table)
             .where('created_at', '<', cutoff)
             .orderBy('created_at', 'desc')
             .orderBy('sequence', 'desc')
@@ -723,7 +770,7 @@ export class LucidTelescopeStore implements TelescopeStore {
         if (newestDoomed === null) return 0;
       }
       const doomed = (): LucidQueryBuilderLike => {
-        const builder = this.db.from(this.tableName);
+        const builder = this.db.from(this.table);
         return newestDoomed === null
           ? builder.where('created_at', '<', cutoff)
           : atOrBefore(builder, newestDoomed);
@@ -747,7 +794,44 @@ export class LucidTelescopeStore implements TelescopeStore {
     return runAsTelescopeWork(async () => {
       await this.init();
       await this.flush();
-      await this.db.from(this.tableName).whereRaw('1 = 1').delete();
+      await this.db.from(this.table).whereRaw('1 = 1').delete();
+    });
+  }
+
+  /**
+   * Where the configured {@link schema} stands, for `agora:doctor`: whether it exists, which
+   * of the store's tables are missing from it, and whether this connection may write to the
+   * entries table (an `INSERT … SELECT … WHERE 1 = 0` and a `DELETE … WHERE 1 = 0`, which
+   * change nothing but need the privileges). `null` without a schema.
+   */
+  inspectSchema(): Promise<SchemaInspection | null> {
+    const schema = this.schema;
+    if (schema === undefined) return Promise.resolve(null);
+    return runAsTelescopeWork(async () => {
+      if (!(await schemaExists(this.db, schema))) {
+        return { schema, exists: false, missingTables: [], writeError: null };
+      }
+      const expected = this.autoCreateTable
+        ? [this.tableName, SCHEMA_META_TABLE_NAME]
+        : [this.tableName];
+      const found = rowsOf(
+        await this.db.rawQuery(
+          `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = ? AND table_name IN (${expected.map(() => '?').join(', ')})`,
+          [schema, ...expected],
+        ),
+      ).map((row) => String(row.name ?? row.NAME ?? row.TABLE_NAME));
+      const missingTables = expected.filter((name) => !found.includes(name));
+      let writeError: string | null = null;
+      if (!missingTables.includes(this.tableName)) {
+        const table = qualifiedSql(this.tableName, schema, dialectOf(this.db));
+        try {
+          await this.db.rawQuery(`INSERT INTO ${table} SELECT * FROM ${table} WHERE 1 = 0`);
+          await this.db.rawQuery(`DELETE FROM ${table} WHERE 1 = 0`);
+        } catch (error) {
+          writeError = error instanceof Error ? error.message : String(error);
+        }
+      }
+      return { schema, exists: true, missingTables, writeError };
     });
   }
 
@@ -808,7 +892,7 @@ export class LucidTelescopeStore implements TelescopeStore {
   private async writeBatch(batch: PendingWrite[]): Promise<void> {
     try {
       await this.db
-        .table(this.tableName)
+        .table(this.table)
         .insert(batch.map((write) => write.row as unknown as Record<string, unknown>));
       for (const write of batch) write.resolve();
       return;
@@ -820,7 +904,7 @@ export class LucidTelescopeStore implements TelescopeStore {
     }
     for (const write of batch) {
       try {
-        await this.db.table(this.tableName).insert(write.row as unknown as Record<string, unknown>);
+        await this.db.table(this.table).insert(write.row as unknown as Record<string, unknown>);
         write.resolve();
       } catch (error) {
         write.reject(error);
@@ -862,7 +946,7 @@ export class LucidTelescopeStore implements TelescopeStore {
     // Seed the in-process counter from the persisted maximum so sequence keeps
     // climbing monotonically across restarts.
     const maxRow = await this.db
-      .from(this.tableName)
+      .from(this.table)
       .orderBy('sequence', 'desc')
       .limit(1)
       .select('sequence');
@@ -879,28 +963,33 @@ export class LucidTelescopeStore implements TelescopeStore {
    */
   private async reconcileSchema(): Promise<void> {
     // (1) Idempotent, introspection-free marker table (race-safe across processes).
-    await runIdempotentDdl(this.db, createSchemaMetaTableStatement(dialectOf(this.db)));
+    // (0) With a schema, it must exist before anything is created in it.
+    const dialect = dialectOf(this.db);
+    if (this.schema !== undefined) {
+      await ensureSchema(this.db, this.schema, dialect, (stmt) => runIdempotentDdl(this.db, stmt));
+    }
+    await runIdempotentDdl(this.db, createSchemaMetaTableStatement(dialect, this.schema));
     // (2) Read the stored fingerprint + (3) compute the expected one in memory.
     const stored = await this.readStoredFingerprint();
-    const expected = computeSchemaFingerprint(this.tableName);
+    const expected = computeSchemaFingerprint(this.tableName, this.schema);
     // (4) Steady state: identical fingerprint ⇒ skip the entries-table DDL.
     if (stored === expected) return;
     // (5) Absent/mismatch ⇒ (re)create the table + indexes, then re-cache.
-    await runTableStatements(this.db, this.tableName);
+    await runTableStatements(this.db, this.tableName, this.schema);
     await this.writeStoredFingerprint(expected);
   }
 
   /** Reads this table's stored fingerprint, or null when the marker row is absent. */
   private async readStoredFingerprint(): Promise<string | null> {
-    const row = await this.db.from(SCHEMA_META_TABLE_NAME).where('id', this.tableName).first();
+    const row = await this.db.from(this.metaTable).where('id', this.tableName).first();
     return row && typeof row.fingerprint === 'string' ? row.fingerprint : null;
   }
 
   /** Upserts this table's marker row (delete + insert, portable across dialects). */
   private async writeStoredFingerprint(fingerprint: string): Promise<void> {
-    await this.db.from(SCHEMA_META_TABLE_NAME).where('id', this.tableName).delete();
+    await this.db.from(this.metaTable).where('id', this.tableName).delete();
     try {
-      await this.db.table(SCHEMA_META_TABLE_NAME).insert({
+      await this.db.table(this.metaTable).insert({
         id: this.tableName,
         fingerprint,
         applied_at: Date.now(),
@@ -917,6 +1006,8 @@ export class LucidTelescopeStore implements TelescopeStore {
 export interface CreateTableOptions {
   /** Table to create. Defaults to `telescope_entries`. */
   tableName?: string;
+  /** Schema to create it in (created when missing). Default: the connection's current one. */
+  schema?: string;
 }
 
 /**
@@ -932,7 +1023,12 @@ export async function createTelescopeTable(
   db: LucidDatabaseLike,
   options: CreateTableOptions = {},
 ): Promise<void> {
-  await runTableStatements(db, options.tableName ?? DEFAULT_TABLE_NAME);
+  const dialect = dialectOf(db);
+  const schema = validateSchema(options.schema, dialect, 'createTelescopeTable()');
+  if (schema !== undefined) {
+    await ensureSchema(db, schema, dialect, (stmt) => runIdempotentDdl(db, stmt));
+  }
+  await runTableStatements(db, options.tableName ?? DEFAULT_TABLE_NAME, schema);
 }
 
 /** Parse JSON text columns back into an {@link Entry}. */

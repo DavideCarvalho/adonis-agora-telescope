@@ -15,7 +15,11 @@ import {
 } from '../src/define_config.js';
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
 import { registerDoctorChecks } from '../src/doctor/agora_doctor.js';
-import { telescopeDoctorChecks } from '../src/doctor/checks.js';
+import {
+  dbSchemaDoctorCheck,
+  type SchemaInspectable,
+  telescopeDoctorChecks,
+} from '../src/doctor/checks.js';
 import {
   ensureTelescopeExtensionsBinding,
   mergeExtensions,
@@ -97,10 +101,9 @@ export default class TelescopeProvider {
     // which AdonisJS does not await; before the `enabled` check so a disabled telescope is checked too.
     await registerDoctorChecks(this.app.container, telescopeDoctorChecks).catch(() => {});
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
-    const sampled = this.applySampling(
-      this.applyRedaction(await this.buildStore(config), config),
-      config,
-    );
+    const built = await this.buildStore(config);
+    await this.registerSchemaCheck(built);
+    const sampled = this.applySampling(this.applyRedaction(built, config), config);
     // Outermost: the tenant tags are on the entry before redaction, sampling, OTel and the stream
     // see it. Only when @adonis-agora/context publishes tenancy and telescope did not opt out.
     const wrapped = this.applyStreaming(await this.applyOtel(sampled, config), config);
@@ -197,6 +200,21 @@ export default class TelescopeProvider {
     router
       .post(config.clientErrors.path, (ctx: ClientErrorHttpContext) => ingestor.handle(ctx))
       .as('telescope.client_errors');
+  }
+
+  /**
+   * With a SQL store (alone or as a tiered store's hot tier) that has a `schema`, add the
+   * deep `telescope.db-schema` doctor check for it. Without a schema nothing is added.
+   */
+  private async registerSchemaCheck(store: TelescopeStore): Promise<void> {
+    const hot = (store as { hot?: unknown }).hot;
+    const candidate = (hot ?? store) as Partial<SchemaInspectable> & { schema?: unknown };
+    if (typeof candidate.inspectSchema !== 'function' || typeof candidate.schema !== 'string') {
+      return;
+    }
+    await registerDoctorChecks(this.app.container, [
+      dbSchemaDoctorCheck(candidate as SchemaInspectable),
+    ]).catch(() => {});
   }
 
   /**

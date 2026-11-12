@@ -244,6 +244,25 @@ Mechanism: skipping this silently breaks trace correlation for everything
 downstream (`byTrace`, waterfalls, N+1 detection) while every write still succeeds.
 Source: `docs/recipes/custom-storage.mdx` (load-bearing lines).
 
+### HIGH Moving the tables to another schema with searchPath
+
+```ts
+// Wrong — a connection with searchPath sends SET search_path on the session; behind
+// PgBouncer in transaction mode it leaks to other clients' connections.
+// config/database.ts: telescope: { client: 'pg', searchPath: ['telescope'], ... }
+lucid: storage.lucid({ connection: 'telescope' })
+```
+
+```ts
+// Correct — the store names the schema in every statement, on any connection.
+lucid: storage.lucid({ connection: 'pg', schema: 'telescope' })
+```
+
+Mechanism: `schema` qualifies every query (`"telescope"."telescope_entries"`) and,
+with `autoCreateTable`, creates the schema. On MySQL it is a database; on SQLite it
+fails at boot. The migration stub has a matching `schema` constant.
+Source: `docs/packages/storages.mdx` (Database schema).
+
 ### MEDIUM Importing services/db inside a provider's boot()
 
 ```ts
