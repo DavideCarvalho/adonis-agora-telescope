@@ -46,6 +46,7 @@ export const TYPE_COLORS: Record<string, string> = {
   log: '#94a3b8',
   'http-client': '#fbbf24',
   diagnostic: '#22d3ee',
+  span: '#a3e635',
 };
 
 const FALLBACK_COLOR = '#8b8b97';
@@ -59,6 +60,7 @@ export function typeLabel(type: string): string {
   const known: Record<string, string> = {
     'http-client': 'HTTP client',
     client_exception: 'client exception',
+    span: 'OTel span',
   };
   return known[type] ?? type;
 }

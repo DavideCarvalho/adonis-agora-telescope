@@ -21,6 +21,7 @@ export const ENTRY_TYPES = [
   'log',
   'http-client',
   'diagnostic',
+  'span',
 ] as const;
 
 export type KnownEntryType = (typeof ENTRY_TYPES)[number];

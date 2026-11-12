@@ -10,6 +10,10 @@ allowBuilds:
   '@swc/core': true
   better-sqlite3: true
   esbuild: true
+  # Pulled in by the optional @adonisjs/otel peer (its gRPC exporters). The postinstall only
+  # prints a version notice; nothing here needs it.
+  protobufjs: false
 minimumReleaseAgeExclude:
   - '@aws-sdk/client-s3@3.1154.0'
   - hyparquet-writer@0.17.0
+  - '@adonisjs/otel@2.0.0'

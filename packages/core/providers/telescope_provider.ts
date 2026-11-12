@@ -7,6 +7,7 @@ import {
   ClientErrorIngestor,
   storeRecorder,
 } from '../src/client_errors/index.js';
+import { setOtelTraceIdReader } from '../src/context_accessor.js';
 import {
   type ResolvedTelescopeConfig,
   resolveConfig,
@@ -15,7 +16,7 @@ import {
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import type { ExtensionContext } from '../src/extension/types.js';
-import type { OtelExporter } from '../src/otel/otel_exporter.js';
+import { isGlobalOtelRegistered } from '../src/otel/detect.js';
 import { OverloadGuard, type PauseController } from '../src/overload_guard.js';
 import { TelescopePruner } from '../src/pruner.js';
 import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
@@ -31,6 +32,7 @@ import {
   setTelescopeRuntime,
 } from '../src/registry.js';
 import { SamplingTelescopeStore } from '../src/sampling/sampling_store.js';
+import { setTelescopeWorkWrapper } from '../src/self_scope.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
@@ -61,7 +63,7 @@ export default class TelescopeProvider {
   private entryEvents: EntryEvents | null = null;
   private pruner: TelescopePruner | null = null;
   private overloadGuard: OverloadGuard | null = null;
-  private otelExporter: OtelExporter | null = null;
+  private otelReaderInstalled = false;
   private otelMetricsExporter: OtelMetricsExporter | null = null;
   private unsubscribePrometheus: (() => void) | null = null;
 
@@ -235,36 +237,39 @@ export default class TelescopeProvider {
   }
 
   /**
-   * Wrap the store with the OTel-export decorator, PLACED AFTER redaction +
-   * sampling (mirroring {@link applyStreaming}'s positioning) so it only ever
-   * exports the final, already-scrubbed, post-sampling entry — see
-   * {@link OtelExportingTelescopeStore}'s doc for exactly why that ordering
-   * matters. Skipped entirely when `config.otel.enabled` is `false` (the
-   * default): the dynamic `import()` below is the ONLY place any
-   * `@opentelemetry/*` package is ever loaded, so a host who never opts in never
-   * needs those peers installed.
+   * Route telescope into the app's OpenTelemetry pipeline when one is running (the app loads
+   * `@adonisjs/otel` in `otel.ts`, which registers the global providers before the app boots):
    *
-   * A missing/incompatible OTel package degrades to a LOGGED NO-OP rather than a
-   * boot crash — turning on `otel.enabled` without `npm i`-ing its peers should
-   * not take down the whole app, just leave the feature dark.
+   * - every entry takes the trace id of the active OTel span, so telescope entries and the
+   *   app's spans share one trace;
+   * - telescope's own storage work runs with tracing suppressed, so its INSERTs and reads are
+   *   not exported as app spans;
+   * - unless `otel: false`, the store is wrapped with the emitting decorator, AFTER redaction
+   *   and sampling (like streaming), so only what the local store kept is emitted.
+   *
+   * Without an SDK nothing changes and `@opentelemetry/api` is never loaded.
    */
   private async applyOtel(
     store: TelescopeStore,
     config: ResolvedTelescopeConfig,
   ): Promise<TelescopeStore> {
-    if (!config.otel.enabled) return store;
+    if (!config.enabled || !isGlobalOtelRegistered()) return store;
     try {
-      const [{ createOtelExporter }, { OtelExportingTelescopeStore }] = await Promise.all([
-        import('../src/otel/otel_exporter.js'),
-        import('../src/otel/otel_exporting_store.js'),
-      ]);
-      const exporter = await createOtelExporter(config.otel);
-      this.otelExporter = exporter;
-      return new OtelExportingTelescopeStore(store, exporter, config.otel.entryTypes);
+      const otel = await import('../src/otel/global_emitter.js');
+      setOtelTraceIdReader(otel.readActiveOtelTraceId);
+      setTelescopeWorkWrapper(otel.withoutTracing);
+      this.otelReaderInstalled = true;
+      if (!config.otel.enabled) return store;
+      const { OtelEmittingTelescopeStore } = await import('../src/otel/otel_emitting_store.js');
+      return new OtelEmittingTelescopeStore(
+        store,
+        otel.createGlobalOtelEmitter(),
+        config.otel.entryTypes,
+      );
     } catch (err) {
       console.error(
-        '@adonis-agora/telescope: config.otel.enabled is true, but its @opentelemetry/* peers ' +
-          'could not be loaded (are they installed?). OTel export is disabled for this boot:',
+        '@adonis-agora/telescope: an OpenTelemetry SDK is running, but @opentelemetry/api ' +
+          'could not be loaded. Entries are recorded but not sent to OpenTelemetry:',
         err,
       );
       return store;
@@ -273,10 +278,10 @@ export default class TelescopeProvider {
 
   /**
    * Start the AI-usage / agent-run metrics: the in-process registry behind the Prometheus scrape
-   * (`prometheus.enabled`) and the OTLP metrics signal (`otel.metrics.enabled`). Both subscribe to
-   * the `agora:agent:*` channels directly, independent of the `diagnostics` watcher and of
-   * sampling, so every event is counted exactly once. Missing OTel peers leave the OTLP side off
-   * with a logged error rather than failing boot.
+   * (`prometheus.enabled`) and the instruments on the app's OpenTelemetry meter (when an SDK is
+   * running, unless `otel: false` or `otel.metrics: false`). Both subscribe to the
+   * `agora:agent:*` channels directly, independent of the `diagnostics` watcher and of sampling,
+   * so every event is counted exactly once.
    */
   private async startAiMetrics(config: ResolvedTelescopeConfig): Promise<void> {
     if (config.prometheus.enabled) {
@@ -286,17 +291,17 @@ export default class TelescopeProvider {
       this.unsubscribePrometheus = subscribeAgentObservations((o) => registry.observe(o));
       setTelescopeAiMetrics(registry);
     }
-    if (!config.otel.metrics.enabled) return;
+    if (!config.otel.metrics || !isGlobalOtelRegistered()) return;
     try {
-      const { createOtelMetricsExporter } = await import(
-        '../src/ai_metrics/otel_metrics_exporter.js'
-      );
-      this.otelMetricsExporter = await createOtelMetricsExporter(config.otel.metrics);
+      const [{ createOtelMetricsExporter }, { globalTelescopeMeter }] = await Promise.all([
+        import('../src/ai_metrics/otel_metrics_exporter.js'),
+        import('../src/otel/global_emitter.js'),
+      ]);
+      this.otelMetricsExporter = createOtelMetricsExporter(globalTelescopeMeter());
     } catch (err) {
       console.error(
-        '@adonis-agora/telescope: config.otel.metrics.enabled is true, but @opentelemetry/sdk-metrics, ' +
-          '@opentelemetry/exporter-metrics-otlp-http and @opentelemetry/resources could not be ' +
-          'loaded (are they installed?). OTLP metrics export is disabled for this boot:',
+        '@adonis-agora/telescope: an OpenTelemetry SDK is running, but @opentelemetry/api ' +
+          'could not be loaded. AI-usage metrics are not sent to OpenTelemetry:',
         err,
       );
     }
@@ -327,13 +332,14 @@ export default class TelescopeProvider {
     this.logsWatcher = null;
     this.entryEvents?.clear();
     this.entryEvents = null;
-    // Flush any batched-but-unsent spans/logs before the process (or test) tears
-    // down, so a graceful shutdown never silently drops the tail of a trace.
-    await this.otelExporter?.shutdown();
-    this.otelExporter = null;
+    if (this.otelReaderInstalled) {
+      setOtelTraceIdReader(null);
+      setTelescopeWorkWrapper(null);
+    }
+    this.otelReaderInstalled = false;
     this.unsubscribePrometheus?.();
     this.unsubscribePrometheus = null;
-    await this.otelMetricsExporter?.shutdown();
+    this.otelMetricsExporter?.shutdown();
     this.otelMetricsExporter = null;
     resetTelescopeRuntime();
   }

@@ -51,7 +51,7 @@ export default defineConfig({
 | `prune`      | `{ after?, keepLast?, intervalMs?, enabled? }` | _off unless present_ | Background retention pruner — see [Retention & overload protection](/docs/telescope/concepts/protection). |
 | `overload`   | `{ enabled?, maxEventLoopLagMs?, startupGraceMs? }` | `enabled`, 200ms | Event-loop overload guard — see [Retention & overload protection](/docs/telescope/concepts/protection). |
 | `clientErrors` | `ClientErrorsConfig`           | _disabled_                    | Public [client-error ingestion](/docs/telescope/packages/client-errors) endpoint (opt-in). |
-| `otel`       | `OtelConfig`                     | _disabled_                    | [OTel export](/docs/telescope/packages/otel) — ships recorded entries as OTLP spans/logs to a Collector. Off by default; its `@opentelemetry/*` peers are only imported when enabled. `otel.metrics` adds the [AI metrics](/docs/telescope/packages/ai-metrics) signal, switched on independently and with its own endpoint. |
+| `otel`       | `false \| OtelConfig`           | _on with `@adonisjs/otel`_    | What Telescope sends through [`@adonisjs/otel`](/docs/telescope/packages/otel) when the app runs it: `entryTypes` (default: the types OpenTelemetry does not already trace) and `metrics` (AI-usage metrics, default `true`). `false` sends nothing. Endpoint and headers live in `config/otel.ts`. |
 | `prometheus` | `{ enabled?, maxSeriesPerMetric? }` | `{ enabled: false }`      | Serves the [AI metrics](/docs/telescope/packages/ai-metrics#prometheus-scrape-pull) at `GET <ui path>/metrics`, behind the API guard. |
 
 <Callout type="warn">

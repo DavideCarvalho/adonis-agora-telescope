@@ -21,10 +21,21 @@ const DEFAULT_PRUNE_INTERVAL_MS = 60_000;
 const DEFAULT_MAX_EVENT_LOOP_LAG_MS = 200;
 /** Default startup grace (ms) the overload guard discards before it can pause. */
 const DEFAULT_STARTUP_GRACE_MS = 5_000;
-/** Default OTel Collector OTLP/HTTP endpoint (the Collector's own default port). */
-const DEFAULT_OTEL_ENDPOINT = 'http://localhost:4318';
-/** Default per-export OTLP HTTP timeout (ms). */
-const DEFAULT_OTEL_TIMEOUT_MS = 5_000;
+/**
+ * Entry types emitted to the app's OpenTelemetry pipeline by default: the ones no OTel
+ * instrumentation already produces. `request`, `query`, `redis`, `http-client` and `log` are
+ * left out because `@adonisjs/otel` traces HTTP, knex, redis, fetch and pino on its own.
+ */
+export const DEFAULT_OTEL_ENTRY_TYPES: readonly string[] = [
+  'diagnostic',
+  'exception',
+  'client_exception',
+  'job',
+  'scheduled_task',
+  'mail',
+  'cache',
+  'profile',
+];
 
 /**
  * Sensitive-data redaction applied to EVERY entry's content before it is
@@ -228,18 +239,13 @@ export interface TelescopeConfig {
   clientErrors?: ClientErrorsConfig;
 
   /**
-   * OTel export: converts recorded entries into OTLP spans/logs shipped to a
-   * self-hosted OTel Collector (→ Tempo/Loki/Grafana or any OTLP-compatible
-   * backend). OFF by default — set `enabled: true` (plus an `endpoint`, unless the
-   * Collector default `http://localhost:4318` is right) to turn it on. When
-   * disabled, none of the `@opentelemetry/*` packages are ever imported: they stay
-   * genuinely optional peers. See {@link OtelConfig} and the `otel` docs page for
-   * the exact diagnostics-entry → span/log mapping.
-   *
-   * `otel.metrics` adds the OTLP METRICS signal (AI spend and agent run timings), switched on
-   * independently of the traces/logs above and able to target its own endpoint.
+   * What telescope sends to the app's OpenTelemetry pipeline when the app runs
+   * `@adonisjs/otel` (configured in `config/otel.ts`): recorded entries as spans and logs in
+   * the same traces as the app's own spans, plus the AI-usage metrics. Telescope has no
+   * exporter of its own; without `@adonisjs/otel` nothing is sent and everything is still
+   * recorded locally. `false` turns it off. See {@link OtelConfig}.
    */
-  otel?: OtelConfig;
+  otel?: false | OtelConfig;
 
   /**
    * Prometheus scrape endpoint for the AI-usage and agent-run metrics (`agora_ai_*`,
@@ -262,80 +268,19 @@ export interface PrometheusConfig {
 }
 
 /**
- * The OTLP metrics signal (see {@link OtelConfig.metrics}): the AI-usage and agent-run
- * instruments listed in the `otel` docs page, pushed from a PRIVATE `MeterProvider` that never
- * registers itself globally. Needs `@opentelemetry/sdk-metrics` and
- * `@opentelemetry/exporter-metrics-otlp-http` (optional peers, imported only when this is on).
- */
-export interface OtelMetricsConfig {
-  /**
-   * Push metrics. Default `false`. Independent of {@link OtelConfig.enabled}, which governs
-   * traces and logs only: metrics can be on while traces/logs are off, and vice versa.
-   */
-  enabled?: boolean;
-  /**
-   * Base URL of the OTLP/HTTP receiver for metrics. Defaults to {@link OtelConfig.endpoint}. Set
-   * it when metrics go somewhere else than traces/logs (e.g. a local Grafana while traces go to a
-   * hosted backend that does not ingest OTLP metrics).
-   */
-  endpoint?: string;
-  /** Path appended to the metrics endpoint. Default `'/v1/metrics'`. */
-  path?: string;
-  /**
-   * Headers for the metrics exports. Defaults to {@link OtelConfig.headers} when `endpoint` is not
-   * overridden, and to `{}` when it is (credentials for one backend never leak to another).
-   */
-  headers?: Record<string, string>;
-  /** How often the periodic reader pushes, in ms. Default `60000`. */
-  exportIntervalMs?: number;
-}
-
-/**
- * OTel export configuration (see {@link TelescopeConfig.otel}). Exports already
- * REDACTED, post-SAMPLING `diagnostic` entries (by default) as OTLP spans (for
- * entries carrying a duration) or logs (point-in-time entries), correlated by the
- * entry's resolved trace id. See `packages/core/src/otel/mapper.ts` for the
- * mapping rules and `docs/packages/otel.mdx` for a receiving-end Collector config.
+ * What telescope emits through the app's OpenTelemetry providers (see
+ * {@link TelescopeConfig.otel}). Endpoint, headers and service name live in `config/otel.ts`.
  */
 export interface OtelConfig {
-  /** Master switch. Default `false` — genuinely opt-in, and zero-cost while off. */
-  enabled?: boolean;
   /**
-   * Base URL of the OTLP HTTP receiver (an OTel Collector, or any OTLP-compatible
-   * backend). Default `'http://localhost:4318'` — the Collector's own default OTLP/HTTP
-   * port. `tracesPath`/`logsPath` are appended to it.
-   */
-  endpoint?: string;
-  /** Path appended to `endpoint` for the traces signal. Default `'/v1/traces'`. */
-  tracesPath?: string;
-  /** Path appended to `endpoint` for the logs signal. Default `'/v1/logs'`. */
-  logsPath?: string;
-  /**
-   * Extra HTTP headers sent with every export request — e.g. an `Authorization`
-   * bearer token for a hosted Collector ingress. Default `{}`.
-   */
-  headers?: Record<string, string>;
-  /**
-   * The `service.name` resource attribute stamped on every exported span/log, so
-   * Grafana can filter/group by which app produced them. Defaults to
-   * `process.env.OTEL_SERVICE_NAME`, else `'adonis-app'`.
-   */
-  serviceName?: string;
-  /**
-   * Which recorded entry TYPES are exported. Default `['diagnostic']` — the
-   * generic diagnostics watcher's entries, per the mapping this feature exists
-   * for. Widen it (e.g. add `'request'`) once you also want those exported; the
-   * mapper degrades any entry without an interpretable shape to a plain log.
+   * Entry types emitted, after redaction and sampling: a span when the entry has a duration,
+   * a log record otherwise. Default {@link DEFAULT_OTEL_ENTRY_TYPES}. Add a type the app's
+   * instrumentation does not already trace (e.g. `'query'` with the knex instrumentation off);
+   * adding one it does trace duplicates it.
    */
   entryTypes?: string[];
-  /** Per-export HTTP timeout, in ms. Default `5000`. */
-  timeoutMs?: number;
-  /**
-   * The OTLP METRICS signal: AI spend, tokens and agent run timings as counters and histograms.
-   * Opt-in and independent of `enabled` (which governs traces and logs). See
-   * {@link OtelMetricsConfig}.
-   */
-  metrics?: OtelMetricsConfig;
+  /** Record the AI-usage and agent-run metrics on the app's meter provider. Default `true`. */
+  metrics?: boolean;
 }
 
 /** Diagnostics-watcher configuration (see {@link TelescopeConfig.diagnostics}). */
@@ -481,36 +426,18 @@ export interface ResolvedTelescopeConfig {
   };
   /** Resolved client-error ingestion settings (always present; `enabled` defaults `false`). */
   clientErrors: ResolvedClientErrorsConfig;
-  /** Resolved OTel-export settings (always present; `enabled` defaults `false`). */
+  /** Resolved OTel settings (always present; `enabled` unless `otel: false`). */
   otel: ResolvedOtelConfig;
   /** Resolved Prometheus scrape settings (always present; `enabled` defaults `false`). */
   prometheus: { enabled: boolean; maxSeriesPerMetric: number };
 }
 
-/** The fully-resolved OTel-export config (see {@link OtelConfig}). */
+/** The resolved OTel settings (see {@link OtelConfig}). */
 export interface ResolvedOtelConfig {
+  /** `false` when the app set `otel: false`. */
   enabled: boolean;
-  endpoint: string;
-  tracesPath: string;
-  logsPath: string;
-  headers: Record<string, string>;
-  serviceName: string;
   entryTypes: string[];
-  timeoutMs: number;
-  metrics: ResolvedOtelMetricsConfig;
-}
-
-/** The fully-resolved OTLP metrics config (see {@link OtelMetricsConfig}). */
-export interface ResolvedOtelMetricsConfig {
-  enabled: boolean;
-  /** Full URL: endpoint + path. */
-  url: string;
-  headers: Record<string, string>;
-  exportIntervalMs: number;
-  /** Same as {@link ResolvedOtelConfig.serviceName}. */
-  serviceName: string;
-  /** Same as {@link ResolvedOtelConfig.timeoutMs}. */
-  timeoutMs: number;
+  metrics: boolean;
 }
 
 /**
@@ -590,33 +517,33 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
   };
 }
 
-/** Resolve the (optional) OTel-export block. Absent/`enabled: false` ⇒ disabled. */
+/** Keys of the 0.x `otel` block that moved to `config/otel.ts` in 1.0. */
+const REMOVED_OTEL_KEYS = [
+  'enabled',
+  'endpoint',
+  'tracesPath',
+  'logsPath',
+  'headers',
+  'serviceName',
+  'timeoutMs',
+] as const;
+
+/** Resolve the `otel` block. Absent ⇒ defaults; `false` ⇒ off. */
 function resolveOtel(otel: TelescopeConfig['otel']): ResolvedOtelConfig {
-  const endpoint = otel?.endpoint ?? DEFAULT_OTEL_ENDPOINT;
-  const headers = otel?.headers ?? {};
-  const serviceName = otel?.serviceName ?? process.env.OTEL_SERVICE_NAME ?? 'adonis-app';
-  const timeoutMs = otel?.timeoutMs ?? DEFAULT_OTEL_TIMEOUT_MS;
-  const metrics = otel?.metrics;
-  const metricsEndpoint = (metrics?.endpoint ?? endpoint).replace(/\/+$/, '');
+  if (otel === false) return { enabled: false, entryTypes: [], metrics: false };
+  const legacy = REMOVED_OTEL_KEYS.filter((key) => otel !== undefined && key in otel);
+  if (legacy.length > 0 || typeof otel?.metrics === 'object') {
+    throw new Error(
+      `@adonis-agora/telescope: config.otel.${legacy[0] ?? 'metrics'} was removed in 1.0. ` +
+        'Telescope no longer exports on its own: install @adonisjs/otel and configure the ' +
+        'endpoint and headers in config/otel.ts; telescope sends its entries through it. ' +
+        'See https://davidecarvalho.github.io/agora/docs/telescope/reference/migrating-to-1-0',
+    );
+  }
   return {
-    enabled: otel?.enabled ?? false,
-    endpoint,
-    tracesPath: otel?.tracesPath ?? '/v1/traces',
-    logsPath: otel?.logsPath ?? '/v1/logs',
-    headers,
-    serviceName,
-    entryTypes: otel?.entryTypes ?? ['diagnostic'],
-    timeoutMs,
-    metrics: {
-      enabled: metrics?.enabled ?? false,
-      url: `${metricsEndpoint}${metrics?.path ?? '/v1/metrics'}`,
-      // A metrics endpoint of its own gets headers of its own: the traces backend's token is
-      // never sent to a different host by default.
-      headers: metrics?.headers ?? (metrics?.endpoint === undefined ? headers : {}),
-      exportIntervalMs: Math.max(1000, metrics?.exportIntervalMs ?? 60_000),
-      serviceName,
-      timeoutMs,
-    },
+    enabled: true,
+    entryTypes: [...(otel?.entryTypes ?? DEFAULT_OTEL_ENTRY_TYPES)],
+    metrics: otel?.metrics ?? true,
   };
 }
 
