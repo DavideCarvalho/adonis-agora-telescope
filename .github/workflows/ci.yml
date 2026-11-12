@@ -32,9 +32,10 @@ jobs:
 
       - run: pnpm check:package
 
-      # The agora:doctor runner and command are copied verbatim into every @adonis-agora lib; they
-      # must match the reference copy @adonis-agora/durable publishes.
-      - run: pnpm check:agora-doctor
+      # The agora:doctor runner and command are copied verbatim into every @adonis-agora lib; the
+      # check pins their canonical sha256.
+      - name: Check agora:doctor copy
+        run: pnpm check:agora-doctor
 
   # The test suite runs on Node 24 and 26 (`engines.node: ">=24"`). Lint, typecheck and build above
   # stay on the pinned Node 24: they do not depend on the runtime, so the matrix only multiplies this.

@@ -141,8 +141,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs",
-    "copy:stubs": "mkdir -p dist/stubs && cp -R stubs/config dist/stubs/ && cp -R stubs/database dist/stubs/ && mkdir -p dist/agora-doctor && cp src/doctor/agora_doctor.ts dist/agora-doctor/agora_doctor.ts.txt && cp commands/agora_doctor.ts dist/agora-doctor/agora_doctor_command.ts.txt",
+    "copy:stubs": "mkdir -p dist/stubs && cp -R stubs/config dist/stubs/ && cp -R stubs/database dist/stubs/",
     "prepack": "pnpm run build",
+    "check:agora-doctor": "node ../../scripts/check-agora-doctor.mjs .",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json"

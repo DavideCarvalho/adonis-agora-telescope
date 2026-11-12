@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ApplicationService } from '@adonisjs/core/types';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import {
   AGORA_DOCTOR_BINDING,
   type AgoraDoctorRegistry,
@@ -21,6 +21,11 @@ import {
 } from '../src/doctor/checks.js';
 import { agoraDoctorChecks } from '../src/doctor/index.js';
 
+const fixtureRoots: string[] = [];
+afterAll(async () => {
+  await Promise.all(fixtureRoots.map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
 const gate = { name: 'console', file: 'config/telescope_ui.ts', docs: 'https://x' };
 
 /** An app rooted at a fixture dir with `node_modules/<name>/package.json` files. */
@@ -30,6 +35,7 @@ async function fixtureApp(
   inProduction = false,
 ): Promise<ApplicationService> {
   const root = await mkdtemp(join(tmpdir(), 'tel-doctor-'));
+  fixtureRoots.push(root);
   await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'app', dependencies: {} }));
   for (const [name, { version, at }] of Object.entries(packages)) {
     const dir = join(root, at ?? '', 'node_modules', name);
@@ -74,6 +80,7 @@ describe('telescope doctor checks', () => {
     expect(csrfBlocksPath({ csrf: { enabled: true, methods: ['PUT'] } }, '/telescope/mcp')).toBe(
       false,
     );
+    expect(csrfBlocksPath({ csrf: { enabled: true, methods: [] } }, '/telescope/mcp')).toBe(false);
     expect(csrfBlocksPath({ csrf: { enabled: true } }, '/telescope/mcp')).toBe(true);
     expect(
       csrfBlocksPath(
@@ -92,7 +99,13 @@ describe('telescope doctor checks', () => {
     };
     expect(
       csrfBlocksPath({ csrf: { enabled: true, exceptRoutes: throwing } }, '/telescope/mcp'),
-    ).toBe(false);
+    ).toBe('unknown');
+    expect(
+      checkCsrf(
+        { csrf: { enabled: true, exceptRoutes: throwing } },
+        { path: '/telescope/mcp', enabled: true, name: 'MCP endpoint' },
+      ).status,
+    ).toBe('skip');
 
     const blocked = checkCsrf(
       { csrf: { enabled: true } },
@@ -196,9 +209,9 @@ describe('agora:doctor with telescope', () => {
 });
 
 describe('agora-doctor copies', () => {
-  it('ship the runner and the command as reference text in dist', async () => {
+  it('are the canonical v1 files, checked in CI', async () => {
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-    expect(pkg.scripts['copy:stubs']).toContain('dist/agora-doctor/agora_doctor.ts.txt');
+    expect(pkg.scripts['check:agora-doctor']).toBe('node ../../scripts/check-agora-doctor.mjs .');
     expect(pkg.exports['./doctor']).toBeDefined();
     expect(pkg.exports['./commands']).toBeDefined();
     const runner = await readFile(
