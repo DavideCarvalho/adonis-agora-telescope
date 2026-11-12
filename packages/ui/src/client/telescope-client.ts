@@ -70,6 +70,25 @@ export interface TelescopeClientOptions {
   size?: number;
 }
 
+/**
+ * The `X-XSRF-TOKEN` header for a write, read from AdonisJS shield's `XSRF-TOKEN` cookie when the
+ * app enables it, so console writes pass CSRF without an `exceptRoutes` entry. Empty otherwise.
+ */
+export function xsrfHeader(cookie?: string): Record<string, string> {
+  const source = cookie ?? (typeof document !== 'undefined' ? document.cookie : '');
+  for (const part of source.split(';')) {
+    const [name, ...rest] = part.trim().split('=');
+    if (name === 'XSRF-TOKEN' && rest.length > 0) {
+      try {
+        return { 'x-xsrf-token': decodeURIComponent(rest.join('=')) };
+      } catch {
+        return {};
+      }
+    }
+  }
+  return {};
+}
+
 /** Drop `undefined`/empty values and stringify the rest into a query record. */
 function toQuery(params: Record<string, string | number | undefined>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -156,8 +175,8 @@ export class TelescopeClient {
       method: 'POST',
       headers:
         body === undefined
-          ? { accept: 'application/json' }
-          : { accept: 'application/json', 'content-type': 'application/json' },
+          ? { accept: 'application/json', ...xsrfHeader() }
+          : { accept: 'application/json', 'content-type': 'application/json', ...xsrfHeader() },
       credentials: 'same-origin',
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
@@ -306,6 +325,28 @@ export class TelescopeClient {
     );
   }
 
+  /**
+   * Run an extension action (`{ext}/{action}`) the viewer confirmed. Never throws on a 4xx/5xx:
+   * resolves `{ ok: false, message }` so the table can show why inline.
+   */
+  async extAction(
+    ext: string,
+    action: string,
+    input: Record<string, unknown>,
+  ): Promise<{ ok: true; data: unknown } | { ok: false; message: string }> {
+    try {
+      const data = await this.post<unknown>(
+        `/ext/${encodeURIComponent(ext)}/actions/${encodeURIComponent(action)}`,
+        {},
+        { confirmed: true, input },
+      );
+      return { ok: true, data };
+    } catch (err) {
+      if (err instanceof TelescopeApiError) return { ok: false, message: err.message };
+      throw err;
+    }
+  }
+
   // ── AI exception diagnosis ──────────────────────────────────────────────
 
   /**
@@ -427,7 +468,11 @@ export class TelescopeClient {
       const url = `${this.base}/queues/live/${encodeURIComponent(queue)}/enqueue`;
       const response = await this.doFetch(url, {
         method: 'POST',
-        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          ...xsrfHeader(),
+        },
         credentials: 'same-origin',
         body: JSON.stringify(name !== undefined ? { name, payload } : { payload }),
       });

@@ -1,0 +1,131 @@
+import { useState } from 'react';
+import type { ColumnAction, ExtensionActionMeta } from '../client/types.js';
+import { Button } from './primitives/button.js';
+import { Dialog } from './primitives/dialog.js';
+import { useTelescopeClient } from './use-telescope.js';
+
+/** Substitute `{key}` placeholders from the row; a missing key yields an empty string. */
+export function fillText(template: string, row: Record<string, unknown>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => {
+    const value = row[key];
+    return value === undefined || value === null ? '' : String(value);
+  });
+}
+
+/** Whether the action applies to this row (its `showWhen` filter: every field matches). */
+export function actionApplies(action: ColumnAction, row: Record<string, unknown>): boolean {
+  if (!action.showWhen) return true;
+  return Object.entries(action.showWhen).every(([field, values]) =>
+    values.some((candidate) => candidate === row[field]),
+  );
+}
+
+/** The column's action with the action-level defaults (label, confirm, destructive) filled in. */
+export function resolveColumnAction(
+  action: ColumnAction,
+  meta: ExtensionActionMeta | undefined,
+): Required<Pick<ColumnAction, 'name' | 'label' | 'confirm' | 'destructive'>> & ColumnAction {
+  const label = action.label ?? meta?.label ?? action.name;
+  return {
+    ...action,
+    label,
+    confirm: action.confirm ?? meta?.confirm ?? `${label}?`,
+    destructive: action.destructive ?? meta?.destructive ?? false,
+  };
+}
+
+/** The JSON input for the action, every `{key}` template filled from the row. */
+export function actionInput(
+  action: ColumnAction,
+  row: Record<string, unknown>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, template] of Object.entries(action.input ?? {})) {
+    out[name] = fillText(template, row);
+  }
+  return out;
+}
+
+/**
+ * A table-cell button that runs an extension action on its row: a confirmation dialog first, then
+ * the call; the table reloads on success, and a failure is shown in the dialog.
+ */
+export function ColumnActionButton({
+  ext,
+  action: column,
+  meta,
+  row,
+  onDone,
+}: {
+  ext: string;
+  action: ColumnAction;
+  /** The action as `/meta` describes it (its default label, confirm and style). */
+  meta?: ExtensionActionMeta | undefined;
+  row: Record<string, unknown>;
+  onDone: () => void;
+}) {
+  const action = resolveColumnAction(column, meta);
+  const client = useTelescopeClient();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!actionApplies(action, row)) return <span className="text-muted-foreground">—</span>;
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const outcome = await client.extAction(ext, action.name, actionInput(action, row));
+      if (outcome.ok) {
+        setOpen(false);
+        onDone();
+      } else {
+        setError(outcome.message);
+      }
+    } catch {
+      setError('The action could not be reached. Check your connection and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        variant={action.destructive ? 'danger' : 'outline'}
+        size="xs"
+        onClick={(e) => {
+          e.stopPropagation();
+          setError(null);
+          setOpen(true);
+        }}
+      >
+        {action.label}
+      </Button>
+      <Dialog open={open} onOpenChange={(next) => !busy && setOpen(next)} title={action.label}>
+        <div className="flex flex-col gap-4 px-5 py-4 text-[13px]">
+          <p>{fillText(action.confirm, row)}</p>
+          {error !== null && (
+            <p role="alert" className="tint-bad rounded-md border px-3 py-2">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="chip" disabled={busy} onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant={action.destructive ? 'danger' : 'brand'}
+              size="chip"
+              disabled={busy}
+              onClick={() => void run()}
+            >
+              {busy ? 'Working…' : 'Confirm'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    </>
+  );
+}

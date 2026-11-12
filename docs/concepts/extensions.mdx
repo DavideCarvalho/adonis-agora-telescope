@@ -25,18 +25,48 @@ interface TelescopeExtension {
   entryTypes?(ctx: ExtensionContext): ExtensionEntryType[]  // navigable nav entries
   dashboards?(ctx: ExtensionContext): DashboardSpec[]       // declarative pages
   dataProviders?(ctx: ExtensionContext): DataProvider[]     // server-side queries
+  actions?(ctx: ExtensionContext): ExtensionAction[]        // server-side writes, see Actions
 }
 ```
 
-You register extensions in `config/telescope.ts`; the provider runs every hook **once
-at boot**. Hooks are *multi* — every extension runs and results accumulate.
+The provider runs every hook **once at boot**. Hooks are *multi* — every extension runs and
+results accumulate.
+
+### Registering an extension
+
+A library that ships an extension registers it itself, so the app adds nothing: its pages appear
+in Telescope as soon as both packages are installed. Push the extension into the
+`'agora.telescope.extensions'` container binding from your provider's `register()`, creating the
+array when nobody has yet:
+
+```ts title="providers/my_lib_provider.ts"
+import type { ApplicationService } from '@adonisjs/core/types'
+import { myLibTelescopeExtension } from '../src/telescope.js'
+
+export default class MyLibProvider {
+  constructor(protected app: ApplicationService) {}
+
+  register() {
+    const key = 'agora.telescope.extensions'
+    if (!this.app.container.hasBinding(key)) this.app.container.bindValue(key, [])
+    this.app.container.make(key).then((list) => (list as unknown[]).push(myLibTelescopeExtension()))
+  }
+}
+```
+
+The binding is read once, when Telescope boots, so push from `register()`, not from `boot()`.
+Nothing is imported from `@adonis-agora/telescope`: the array is plain data, and an app without
+Telescope just never reads it.
+
+An app can also list extensions itself in `config/telescope.ts`. When an extension there has the
+same `name` as one a library registered, the configured one wins:
 
 ```ts title="config/telescope.ts"
 import { defineConfig } from '@adonis-agora/telescope'
-import { durableTelescopeExtension } from '@adonis-agora/durable-telescope'
+import { durableTelescopeExtension } from '@adonis-agora/durable/telescope'
 
 export default defineConfig({
-  extensions: [durableTelescopeExtension()],
+  extensions: [durableTelescopeExtension({ /* your options */ })],
 })
 ```
 
@@ -192,12 +222,75 @@ binding panel's kind (the table above). The UI's JSON API exposes providers at
 `<path>/api/ext/:ext/data/:provider`, namespaced by the **owning extension** — so one
 extension can never be addressed under another's name.
 
+## Actions
+
+A table column can trigger a server-side write on its row, such as resetting a circuit or retrying
+a job. Declare the action on the extension and point a column at it:
+
+```ts
+actions: () => [
+  {
+    name: 'resilience.reset-circuit',
+    label: 'Reset',
+    confirm: 'Reset circuit {key}? Calls will go through again.',
+    destructive: true,
+    async run(input, ctx) {
+      const service = await ctx.container.make(ResilienceService)
+      await service.circuit(String(input.key)).reset()
+      return { reset: input.key }
+    },
+  },
+],
+
+dashboards: () => [
+  {
+    id: 'resilience.overview',
+    label: 'Resilience',
+    panels: [
+      {
+        kind: 'table',
+        title: 'Circuits',
+        data: { provider: 'resilience.circuits' },
+        columns: [
+          { key: 'key', label: 'Key' },
+          { key: 'status', label: 'Status' },
+          {
+            key: 'reset',
+            label: '',
+            action: {
+              name: 'resilience.reset-circuit',
+              input: { key: '{key}' },
+              showWhen: { status: ['open', 'half-open'] },
+            },
+          },
+        ],
+      },
+    ],
+  },
+],
+```
+
+The column's `label`, `confirm` and `destructive` default to the action's; set them on the column
+to override them for one table. `showWhen` lists, per field, the values a row needs for the button
+to show. The viewer gets a confirmation dialog first; the table reloads when the action succeeds, and an
+error thrown by `run` is shown in the dialog. Every call:
+
+- runs behind the console's `authorize`, like every other console request;
+- needs the confirmation (`POST <path>/api/ext/:ext/actions/:action` with `{ confirmed: true, input }`);
+- is audited: an `info` log line and a `diagnostic` entry tagged `lib:telescope`,
+  `event:extension-action`, `ext:<name>`, `action:<name>` and `caller:<id>` (`user:<id>`,
+  `token:<hash>` or `anonymous`).
+
+`run` receives `ctx.actor` (the same id) for your own audit trail. The console sends AdonisJS shield's
+`X-XSRF-TOKEN` header when the `XSRF-TOKEN` cookie is enabled, so actions pass CSRF without an
+`exceptRoutes` entry.
+
 ## Collisions
 
 The registry validates everything **at boot** and fails closed:
 
 <Callout type="warn">
-Two extensions cannot contribute the same entry-type id, dashboard id, or provider name.
+Two extensions cannot contribute the same entry-type id, dashboard id, provider name or action name.
 A collision throws at boot, naming both owners — so drift is a loud startup error, not a
 confusing runtime mystery. Each accessor returns copies, and the registry tracks the
 owning extension so the HTTP layer can enforce the namespace.
@@ -242,7 +335,8 @@ export function durableTelescopeExtension() {
 }
 ```
 
-The host adds `durableTelescopeExtension()` to `config/telescope.ts`. The UI fetches the
+The library pushes `durableTelescopeExtension()` into `'agora.telescope.extensions'` (or the
+host adds it to `config/telescope.ts`). The UI fetches the
 contributed metadata from `<path>/api/meta`, renders the **Workflows** page from the
 spec, and resolves each panel through `<path>/api/ext/durable/data/durable.activeRuns`.
 

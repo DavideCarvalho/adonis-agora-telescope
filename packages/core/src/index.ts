@@ -82,14 +82,25 @@ export {
   recordException,
   recordExceptionInStore,
 } from './exception_watcher.js';
+export {
+  ensureTelescopeExtensionsBinding,
+  mergeExtensions,
+  readBoundExtensions,
+  TELESCOPE_EXTENSIONS_BINDING,
+} from './extension/binding.js';
 export { ExtensionRegistry } from './extension/registry.js';
 export type {
   Column,
+  ColumnAction,
   ContainerLike,
   DashboardSection,
   DashboardSpec,
   DataBinding,
   DataProvider,
+  ExtensionAction,
+  ExtensionActionCaller,
+  ExtensionActionContext,
+  ExtensionActionMeta,
   ExtensionContext,
   ExtensionEntryType,
   LinkSpec,

@@ -1,6 +1,8 @@
 import type {
   DashboardSpec,
   DataProvider,
+  ExtensionAction,
+  ExtensionActionMeta,
   ExtensionContext,
   ExtensionEntryType,
   ScheduleContribution,
@@ -19,6 +21,8 @@ export class ExtensionRegistry {
   readonly #dashboards: DashboardSpec[] = [];
   readonly #providers = new Map<string, DataProvider>();
   readonly #providerOwners = new Map<string, string>();
+  readonly #actions = new Map<string, ExtensionAction>();
+  readonly #actionOwners = new Map<string, string>();
   /** Kept so the schedules hook can be awaited AFTER boot — see {@link collectSchedules}. */
   readonly #extensions: readonly TelescopeExtension[];
   readonly #ctx: ExtensionContext;
@@ -62,6 +66,17 @@ export class ExtensionRegistry {
         this.#providerOwners.set(p.name, ext.name);
         this.#providers.set(p.name, p);
       }
+
+      for (const a of ext.actions?.(ctx) ?? []) {
+        const prev = this.#actionOwners.get(a.name);
+        if (prev !== undefined) {
+          throw new Error(
+            `Telescope action "${a.name}" is contributed by both "${prev}" and "${ext.name}". Action names must be unique.`,
+          );
+        }
+        this.#actionOwners.set(a.name, ext.name);
+        this.#actions.set(a.name, a);
+      }
     }
   }
 
@@ -76,6 +91,25 @@ export class ExtensionRegistry {
   }
   providerOwner(name: string): string | undefined {
     return this.#providerOwners.get(name);
+  }
+  /** Every action, without its `run`, for `/api/meta`. */
+  actions(): ExtensionActionMeta[] {
+    return [...this.#actions.values()].map((a) => ({
+      name: a.name,
+      ...(a.label !== undefined ? { label: a.label } : {}),
+      ...(a.confirm !== undefined ? { confirm: a.confirm } : {}),
+      ...(a.destructive !== undefined ? { destructive: a.destructive } : {}),
+    }));
+  }
+  findAction(name: string): ExtensionAction | undefined {
+    return this.#actions.get(name);
+  }
+  actionOwner(name: string): string | undefined {
+    return this.#actionOwners.get(name);
+  }
+  /** Every extension that contributed something, by name (the owner of `/ext/:ext/...` routes). */
+  extensionNames(): string[] {
+    return this.#extensions.map((ext) => ext.name);
   }
 
   /**

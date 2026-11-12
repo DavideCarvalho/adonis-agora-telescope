@@ -12,6 +12,7 @@ import type {
   TimeseriesPanelData,
   TopNPanelData,
 } from '../client/types.js';
+import { ColumnActionButton } from './ColumnActionButton.js';
 import { Badge } from './primitives/badge.js';
 import { Button } from './primitives/button.js';
 import { cn } from './primitives/cn.js';
@@ -334,6 +335,8 @@ function TablePanel({
 }) {
   const [page, setPage] = useState(1);
   const size = 25;
+  const meta = useMeta();
+  const actionMeta = (name: string) => meta.data?.actions?.find((a) => a.name === name);
   const query = useMemo(() => {
     const base = asQuery(panel.data.query);
     return panel.paged ? { ...base, page: String(page), size: String(size) } : base;
@@ -367,7 +370,17 @@ function TablePanel({
                     <TableRow key={i}>
                       {panel.columns.map((col) => (
                         <TableCell key={col.key} className="mono">
-                          {renderCell(row, col, onOpenTrace)}
+                          {col.action ? (
+                            <ColumnActionButton
+                              ext={ext}
+                              action={col.action}
+                              meta={actionMeta(col.action.name)}
+                              row={row}
+                              onDone={state.reload}
+                            />
+                          ) : (
+                            renderCell(row, col, onOpenTrace)
+                          )}
                         </TableCell>
                       ))}
                     </TableRow>
