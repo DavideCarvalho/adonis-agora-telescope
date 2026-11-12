@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.5
+
+### Minor Changes
+
+- [#293](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/293) [`9cddf99`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/9cddf99ed9d7fa1efa85f55af7a9292b8235edac) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console switcher and global search. Telescope joins the shared `'agora.consoles'` registry (title "Telescope", order 20) with no config; when the app runs other Agora consoles, the sidebar brand becomes a menu of the ones the viewer may open (each decided by that console's own `authorize`), and the `⌘K` palette also searches Telescope entries (by id, trace id or text) and every other console the viewer may open. New routes: `GET <path>/api/consoles` and `GET <path>/api/consoles/search?q=`, behind the console `authorize`. While the switcher runs another console's gate, `ctx.agoraProbe` is `true`.
+
 ## 3.0.0-rc.4
 
 ### Minor Changes
