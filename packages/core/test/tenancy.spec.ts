@@ -146,6 +146,11 @@ describe('scoped store', () => {
     expect(await acme.get(globexEntry?.id as string)).toBeNull();
     expect(await acme.count()).toBe(1);
     expect(await new TenantScopedStore(inner, []).list()).toEqual([]);
+    // A caller's own anyTags is ANDed with the scope, not mistaken for it.
+    const both = new TenantScopedStore(inner, ['tenant:acme', 'tenant:globex']);
+    expect(await both.list({ anyTags: ['tenant:globex'] })).toHaveLength(2);
+    expect(await both.list({ anyTags: ['tenant:globex'], size: 1, page: 2 })).toHaveLength(1);
+    expect(await acme.list({ anyTags: ['tenant:globex'] })).toEqual([]);
     await expect(acme.record()).rejects.toThrow(/read-only/);
   });
 

@@ -88,10 +88,12 @@ export function EntriesSection({
   // a Set so styling each row is a lookup rather than a scan of the whole tail.
   const tailIds = useMemo(() => new Set(tail.entries.map((t) => t.id)), [tail.entries]);
 
-  // With every organization in view, say which one each entry belongs to.
+  // With more than one organization in view, say which one each entry belongs to.
   const tenants = useTenants();
   const showOrganization =
-    tenants.data?.enabled === true && tenants.data.all && selectedTenant() === undefined;
+    tenants.data?.enabled === true &&
+    (tenants.data.all || tenants.data.tenants.length > 1) &&
+    selectedTenant() === undefined;
 
   const columns = useMemo(
     () => [

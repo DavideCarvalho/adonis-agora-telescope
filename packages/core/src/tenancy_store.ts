@@ -77,18 +77,27 @@ export class TenantScopedStore implements TelescopeStore {
 
   async list(query: EntryQuery = {}): Promise<Entry[]> {
     if (this.tags.size === 0) return [];
-    const anyTags =
-      query.anyTags !== undefined
-        ? query.anyTags.filter((tag) => this.tags.has(tag))
-        : [...this.tags];
-    if (anyTags.length === 0) return [];
-    // The store filters natively; the second pass guards against a store that ignores `anyTags`.
-    const rows = await this.inner.list({ ...query, anyTags });
-    return rows.filter((entry) => this.visible(entry));
+    const scope = [...this.tags];
+    const wanted = query.anyTags;
+    if (wanted === undefined) {
+      // The store filters natively; the second pass guards against a store that ignores `anyTags`.
+      const rows = await this.inner.list({ ...query, anyTags: scope });
+      return rows.filter((entry) => this.visible(entry));
+    }
+    // The caller's own `anyTags` AND the scope: the store narrows by the scope, the caller's
+    // filter is applied here, then the page is cut.
+    if (wanted.length === 0) return [];
+    const { page, size, ...rest } = query;
+    const rows = (await this.inner.list({ ...rest, anyTags: scope })).filter(
+      (entry) => this.visible(entry) && entry.tags.some((tag) => wanted.includes(tag)),
+    );
+    if (size === undefined) return rows;
+    const offset = (Math.max(1, Math.floor(page ?? 1)) - 1) * size;
+    return rows.slice(offset, offset + size);
   }
 
   async count(): Promise<number> {
-    return (await this.list({})).length;
+    return (await this.list({ omitContent: true })).length;
   }
 
   prune(): Promise<number> {

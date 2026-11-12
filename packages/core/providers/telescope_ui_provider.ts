@@ -507,7 +507,7 @@ export default class TelescopeUiProvider {
           const a = await gate(ctx);
           if (a === null) return;
           // Counters over every organization: not for a viewer limited to some.
-          if (a.selected.tags !== null) return refuseRestricted(ctx);
+          if (a.selected.restricted) return refuseRestricted(ctx);
           const registry = getTelescopeRuntime().aiMetrics ?? null;
           if (registry === null) {
             return ctx.response.status(404).send({ error: 'Prometheus metrics are not running.' });

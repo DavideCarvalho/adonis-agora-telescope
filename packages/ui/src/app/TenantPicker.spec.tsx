@@ -21,6 +21,7 @@ describe('tenant selection in the URL', () => {
   it('reads ?tenant= and builds URLs that keep the hash route', () => {
     expect(selectedTenant('?tenant=acme')).toBe('acme');
     expect(selectedTenant('?x=1')).toBeUndefined();
+    expect(selectedTenant('?tenant=*')).toBeUndefined();
     expect(urlForTenant('acme', 'https://app.test/telescope?x=1#/entries')).toBe(
       '/telescope?x=1&tenant=acme#/entries',
     );

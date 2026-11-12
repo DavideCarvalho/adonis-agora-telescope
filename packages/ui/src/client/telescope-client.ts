@@ -69,7 +69,7 @@ function followUnauthenticated(body: unknown): void {
 export function selectedTenant(search?: string): string | undefined {
   const source = search ?? (typeof window !== 'undefined' ? window.location.search : '');
   const value = new URLSearchParams(source).get('tenant');
-  return value === null || value === '' ? undefined : value;
+  return value === null || value === '' || value === '*' ? undefined : value;
 }
 
 export interface TelescopeClientOptions {
