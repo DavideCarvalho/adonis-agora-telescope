@@ -101,14 +101,26 @@ export function checkCsrf(
   };
 }
 
-/** The OpenTelemetry SDK line a package version belongs to (`2` or `3`), or `null`. */
-export function sdkLine(name: string, version: string): 2 | 3 | null {
-  const major = Number(/^(\d+)/.exec(version)?.[1] ?? Number.NaN);
-  const minor = Number(/^\d+\.(\d+)/.exec(version)?.[1] ?? Number.NaN);
-  if (major === 2 || major === 3) return major;
-  // The experimental packages (sdk-logs, sdk-node, otlp exporters…) were 0.2xx on the SDK 2 line.
-  if (major === 0 && minor >= 200 && name.startsWith('@opentelemetry/')) return 2;
-  return null;
+/**
+ * The OpenTelemetry JS SDK line (`1`, `2`, `3`, …) a package version belongs to, or `null`.
+ *
+ * OTel JS ships two release trains that move together: the stable packages (`core`,
+ * `sdk-trace-base`, …) use the line as their major, and the experimental packages (`sdk-node`,
+ * `sdk-logs`, the OTLP exporters…) stay on `0.x` with the line encoded in the minor's hundreds:
+ * stable `2.x` ↔ experimental `0.2xx` (e.g. `sdk-node@0.200.0` pins `core@2.0.0`), stable `3.x` ↔
+ * experimental `0.3xx` (`sdk-node@0.300.0` pins `core@3.0.0`). Before 2.0 the experimental minors
+ * were below 100 (`sdk-node@0.57.x` pins `core@1.30.x`), which is the 1.x line. Future lines follow
+ * the same rule, so `0.4xx` is SDK 4.
+ */
+export function sdkLine(name: string, version: string): number | null {
+  if (!name.startsWith('@opentelemetry/')) return null;
+  const match = /^v?(\d+)\.(\d+)/.exec(version.trim());
+  if (match === null) return null;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  if (major >= 1) return major;
+  // Experimental `0.x`: `0.Nxx` is line N from 2.0 on; anything below 0.100 is the 1.x line.
+  return minor >= 200 ? Math.floor(minor / 100) : minor < 100 ? 1 : null;
 }
 
 /** The OTel SDK packages telescope compares (the API package `@opentelemetry/api` is separate). */
@@ -136,8 +148,8 @@ export interface OtelInstall {
 }
 
 /**
- * `telescope.otel`: OpenTelemetry SDK 2 and SDK 3 packages mixed in one app (error: their
- * providers do not interoperate), and two copies of `@opentelemetry/api` (warn: telescope would
+ * `telescope.otel`: OpenTelemetry SDK packages from different major lines (e.g. SDK 2 and SDK 3)
+ * mixed in one app (error: their providers do not interoperate), and two copies of `@opentelemetry/api` (warn: telescope would
  * emit into a global the app's SDK never reads). `@adonisjs/otel` 2 ships SDK 3.
  */
 export function checkOtel(install: OtelInstall): AgoraDoctorResult[] {
@@ -145,7 +157,7 @@ export function checkOtel(install: OtelInstall): AgoraDoctorResult[] {
     return [{ status: 'skip', message: 'OpenTelemetry is not installed.' }];
   }
   const results: AgoraDoctorResult[] = [];
-  const lines = new Map<2 | 3, string[]>();
+  const lines = new Map<number, string[]>();
   for (const pkg of install.sdk) {
     const line = sdkLine(pkg.name, pkg.version);
     if (line === null) continue;
@@ -153,13 +165,15 @@ export function checkOtel(install: OtelInstall): AgoraDoctorResult[] {
   }
   const adonisMajor = Number(/^(\d+)/.exec(install.adonisOtel ?? '')?.[1] ?? Number.NaN);
   if (adonisMajor === 2 && !lines.has(3)) lines.set(3, [`@adonisjs/otel@${install.adonisOtel}`]);
-  if (lines.has(2) && lines.has(3)) {
+  if (lines.size > 1) {
+    const sorted = [...lines.keys()].sort((a, b) => a - b);
+    const described = sorted.map((line) => `SDK ${line} (${(lines.get(line) ?? []).join(', ')})`);
     results.push({
       status: 'error',
-      message: `OpenTelemetry SDK 2 and SDK 3 are mixed: ${[...(lines.get(2) ?? [])].join(', ')} next to ${[...(lines.get(3) ?? [])].join(', ')}.`,
+      message: `OpenTelemetry SDK lines are mixed: ${described.join(' next to ')}.`,
       fix:
         adonisMajor === 2
-          ? 'Move every @opentelemetry SDK package to 3.x (the line @adonisjs/otel 2 uses), or drop the SDK 2 one.'
+          ? 'Move every @opentelemetry SDK package to 3.x / 0.3xx (the line @adonisjs/otel 2 uses), or drop the others.'
           : 'Keep every @opentelemetry SDK package on one major line.',
       docs: `${DOCS}/packages/otel`,
     });
@@ -178,7 +192,8 @@ export function checkOtel(install: OtelInstall): AgoraDoctorResult[] {
     });
   }
   if (results.length === 0) {
-    const line = lines.has(3) ? 'SDK 3' : lines.has(2) ? 'SDK 2' : 'the API only';
+    const [only] = lines.keys();
+    const line = only === undefined ? 'the API only' : `SDK ${only}`;
     results.push({ status: 'ok', message: `OpenTelemetry is consistent (${line}).` });
   }
   return results;
