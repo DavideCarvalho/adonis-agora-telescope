@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.7
+
+### Minor Changes
+
+- [#299](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/299) [`e73658f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/e73658f4393648cfd957f47e2ca3832b53318804) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `storage.lucid({ schema })` puts telescope's tables in a database schema other than the connection's (a Postgres schema, a MySQL database). Every statement names the schema, so it works on any connection without `searchPath`; `autoCreateTable` creates the schema when missing, the migration stub takes the same `schema`, `createTelescopeTable` / `createTableStatements` accept it, SQLite fails at boot when it is set, and `agora:doctor --deep` checks the schema (`telescope.db-schema`). Without `schema` nothing changes.
+
 ## 1.0.0-rc.6
 
 ### Minor Changes
