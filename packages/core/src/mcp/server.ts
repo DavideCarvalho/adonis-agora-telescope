@@ -117,14 +117,24 @@ export interface JsonRpcRequest {
   };
 }
 
-interface ToolArgs {
+/** The arguments every tool reads (a superset; each tool picks its own). */
+export interface McpToolArgs {
   type?: string;
   search?: string;
   tag?: string;
   sinceMinutes?: number;
   limit?: number;
+  /** 1-based page for `list_entries` (default 1). */
+  page?: number;
   id?: string;
   traceId?: string;
+}
+
+type ToolArgs = McpToolArgs;
+
+/** A "not found" style answer: the tool ran, there is nothing to show. */
+export interface McpToolNotice {
+  notice: string;
 }
 
 /** Optional AI diagnosis hook — resolves the diagnosis markdown, or `null` when AI is off. */
@@ -233,69 +243,119 @@ export class TelescopeMcpServer {
     if (name !== undefined && !this.tools.has(name as McpToolName)) {
       throw new Error(`Tool not enabled: ${name}`);
     }
+    if (name === 'list_entries') {
+      const { items } = await this.listEntries(args);
+      return json({ entries: items });
+    }
+    const result = await this.call(name, args);
+    if (typeof result === 'string') return result;
+    if (isNotice(result)) return result.notice;
+    return json(result);
+  }
+
+  /**
+   * One page of entries, newest first, as compact summaries: `{ items, next }` where `next` is
+   * the next page number, or `null` on the last page.
+   */
+  async listEntries(
+    args: ToolArgs,
+  ): Promise<{ items: Record<string, unknown>[]; next: number | null }> {
+    const size = clampLimit(args.limit);
+    const page =
+      typeof args.page === 'number' && Number.isFinite(args.page) && args.page >= 1
+        ? Math.floor(args.page)
+        : 1;
+    const query: EntryQuery = {
+      ...(args.type !== undefined ? { type: args.type } : {}),
+      ...(args.search !== undefined && args.search !== '' ? { search: args.search } : {}),
+      ...(args.tag !== undefined ? { tag: args.tag } : {}),
+      ...(typeof args.sinceMinutes === 'number'
+        ? { after: new Date(Date.now() - args.sinceMinutes * 60_000) }
+        : {}),
+      // One extra row tells whether a next page exists.
+      page: 1,
+      size: page * size + 1,
+    };
+    const all = await this.service.list(query);
+    const slice = all.slice((page - 1) * size, page * size);
+    return { items: slice.map(slim), next: all.length > page * size ? page + 1 : null };
+  }
+
+  /**
+   * Run one tool and return its structured result (what the JSON-RPC transport serializes).
+   * A "nothing to show" answer is a {@link McpToolNotice}. Throws on bad input or an unknown tool.
+   * Ignores the configured tool set: callers decide what they expose.
+   */
+  async call(name: string | undefined, args: ToolArgs): Promise<unknown> {
     switch (name) {
-      case 'list_entries': {
-        const query: EntryQuery = {
-          ...(args.type !== undefined ? { type: args.type } : {}),
-          ...(args.search !== undefined && args.search !== '' ? { search: args.search } : {}),
-          ...(args.tag !== undefined ? { tag: args.tag } : {}),
-          ...(typeof args.sinceMinutes === 'number'
-            ? { after: new Date(Date.now() - args.sinceMinutes * 60_000) }
-            : {}),
-          size: clampLimit(args.limit),
-        };
-        const entries = await this.service.list(query);
-        return json({ entries: entries.map(slim) });
-      }
+      case 'list_entries':
+        return this.listEntries(args);
       case 'get_entry': {
         if (typeof args.id !== 'string') throw new Error('`id` is required.');
         const entry = await this.service.find(args.id);
-        if (entry === null) return 'Entry not found (it may have been pruned).';
+        if (entry === null) return notice('Entry not found (it may have been pruned).');
         const siblings =
           entry.traceId !== null
             ? (await this.service.byTrace(entry.traceId)).filter((e) => e.id !== entry.id)
             : [];
-        return json({ entry, trace: siblings.map(slim) });
+        return { entry, trace: siblings.map(slim) };
       }
       case 'get_trace': {
         if (typeof args.traceId !== 'string') throw new Error('`traceId` is required.');
         const entries = await this.service.byTrace(args.traceId);
-        if (entries.length === 0) return 'Trace not found (it may have been pruned).';
-        return json({ entries });
+        if (entries.length === 0) return notice('Trace not found (it may have been pruned).');
+        return { entries };
       }
       case 'get_waterfall': {
         if (typeof args.traceId !== 'string') throw new Error('`traceId` is required.');
         const waterfall = await this.metrics.getWaterfall(args.traceId);
-        if (waterfall === null) return 'Trace not found (it may have been pruned).';
-        return json(waterfall);
+        if (waterfall === null) return notice('Trace not found (it may have been pruned).');
+        return waterfall;
       }
       case 'get_health': {
         const windowMs =
           typeof args.sinceMinutes === 'number' && args.sinceMinutes > 0
             ? args.sinceMinutes * 60_000
             : DEFAULT_HEALTH_WINDOW_MS;
-        const health = await this.service.getHealth({ windowMs });
-        return json(health);
+        return this.service.getHealth({ windowMs });
       }
       case 'diagnose_exception': {
         if (typeof args.id !== 'string') throw new Error('`id` is required.');
         if (this.diagnose === undefined) {
-          return 'AI diagnosis is not configured on this telescope.';
+          return notice('AI diagnosis is not configured on this telescope.');
         }
         const entry = await this.service.find(args.id);
         if (
           entry === null ||
           (entry.type !== EntryType.Exception && entry.type !== EntryType.ClientException)
         ) {
-          return 'No exception entry with that id.';
+          return notice('No exception entry with that id.');
         }
         const markdown = await this.diagnose(entry);
-        return markdown ?? 'AI diagnosis returned no result.';
+        return markdown ?? notice('AI diagnosis returned no result.');
       }
       default:
         throw new Error(`Unknown tool: ${String(name)}`);
     }
   }
+
+  /** Whether `diagnose_exception` has an AI coordinator behind it. */
+  canDiagnose(): boolean {
+    return this.diagnose !== undefined;
+  }
+}
+
+function notice(text: string): McpToolNotice {
+  return { notice: text };
+}
+
+function isNotice(value: unknown): value is McpToolNotice {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.keys(value).length === 1 &&
+    typeof (value as { notice?: unknown }).notice === 'string'
+  );
 }
 
 function json(value: unknown): string {

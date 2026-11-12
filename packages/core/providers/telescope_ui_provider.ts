@@ -1,6 +1,8 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js';
+import { registerTelescopeDevTools } from '../src/dev_tools/telescope_dev_tools.js';
 import type { ExtensionContext } from '../src/extension/types.js';
+import { buildTelescopeMcpServer } from '../src/mcp/build_server.js';
 import { getEnabledWatchers, getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
@@ -44,6 +46,16 @@ export default class TelescopeUiProvider {
       logger.warn(message);
     } catch {
       console.warn(message);
+    }
+  }
+
+  /** Log at debug through the app logger when one is bound. Never throws. */
+  private async debug(message: string): Promise<void> {
+    try {
+      const logger = (await this.app.container.make('logger')) as { debug(msg: string): void };
+      logger.debug(message);
+    } catch {
+      // No logger: nothing to say.
     }
   }
 
@@ -174,6 +186,15 @@ export default class TelescopeUiProvider {
     // through the runtime slot — the registry lives on the `ScheduleWatcher` module itself, exactly
     // like `recordScheduledRun`/`scheduleTask`), joined with each schedule's most recent run.
     const schedulesApi = new SchedulesApi(service);
+
+    // Developer tools over MCP: when the app runs `@adonis-agora/agent/mcp_provider`, telescope's
+    // tools are served on its dev endpoint (`/mcp/agora`), behind this console's `authorize`.
+    await registerTelescopeDevTools(
+      this.app.container,
+      buildTelescopeMcpServer(store, coreConfig),
+      config.authorize,
+      (reason) => void this.debug(`[@adonis-agora/telescope] dev tools not registered: ${reason}`),
+    );
 
     const apiBase = `${config.path}/api`;
     // Publish (or clear) the prefix the request middleware skips, so the console
