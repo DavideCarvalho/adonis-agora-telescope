@@ -106,7 +106,7 @@ Source: `docs/packages/telescope-ui.mdx` (The client).
 
 ### Pattern 3 — act through the gated endpoints
 
-The five acting methods never reject on an HTTP error — they resolve to
+The six acting methods never reject on an HTTP error — they resolve to
 `{ ok: true, ... } | { ok: false, message }`, because "replay is disabled here" is
 something to render, not an exception to catch.
 
@@ -116,12 +116,14 @@ if (!replay.ok) console.warn(replay.message)            // e.g. disabled → ren
 
 const diagnosis = await client.diagnoseException(entryId) // needs the AI subpath configured
 const armed = await client.armProfile(3, 'GET /users/:id') // needs cpuProfiling.armEnabled
+const reset = await client.extAction(ext, action, input) // extension column.action, confirmed + authorize
 
 new EventSource(client.streamUrl())                     // SSE live tail of new entries
 ```
 
-Every gate defaults to off in `config/telescope_ui.ts`; the console asks
-`<path>/api/meta` and renders which config key turns each surface on.
+Replay/arm/queue gates default to off in `config/telescope_ui.ts`; extension
+actions need no flag — they run behind `authorize` once an extension contributes
+them. The console asks `<path>/api/meta` and renders which config key turns each surface on.
 
 Source: `docs/packages/telescope-ui.mdx` (Acting on an entry, Getting around).
 
@@ -232,8 +234,8 @@ const result = await client.retryJob(queue, id)
 if (result.ok) toast('Retrying') else toast(result.message)
 ```
 
-Mechanism: `diagnoseException`, `replayRequest`, `armProfile`, `retryJob` and
-`enqueueJob` resolve `{ ok: false, message }` instead of rejecting; only the reading
+Mechanism: `diagnoseException`, `replayRequest`, `armProfile`, `retryJob`,
+`enqueueJob` and `extAction` resolve `{ ok: false, message }` instead of rejecting; only the reading
 methods throw `TelescopeApiError`.
 Source: `docs/packages/telescope-ui.mdx` (info callout under Acting on an entry).
 
