@@ -80,7 +80,7 @@ describe('telescope doctor checks', () => {
     expect(csrfBlocksPath({ csrf: { enabled: true, methods: ['PUT'] } }, '/telescope/mcp')).toBe(
       false,
     );
-    expect(csrfBlocksPath({ csrf: { enabled: true, methods: [] } }, '/telescope/mcp')).toBe(false);
+    expect(csrfBlocksPath({ csrf: { enabled: true, methods: [] } }, '/telescope/mcp')).toBe(true); // shield: empty methods = every method
     expect(csrfBlocksPath({ csrf: { enabled: true } }, '/telescope/mcp')).toBe(true);
     expect(
       csrfBlocksPath(

@@ -46,14 +46,18 @@ interface ShieldCsrfLike {
 
 /**
  * Whether shield's CSRF check would reject a bare `POST` to `path` (an MCP client or a beacon sends
- * no CSRF token): `false` when CSRF is off, `POST` is not a checked method (`methods: []` checks
- * none), or `exceptRoutes` exempts the route (an array naming it, or a function answering `true` for
+ * no CSRF token): `false` when CSRF is off, `POST` is not in an explicit method list (an empty
+ * `methods` is shield's default and checks every method), or `exceptRoutes` exempts the route (an array naming it, or a function answering `true` for
  * a minimal context of that request). `'unknown'` when that function throws on the minimal context.
  */
 export function csrfBlocksPath(shield: unknown, path: string): boolean | 'unknown' {
   const csrf = (shield as { csrf?: ShieldCsrfLike } | undefined)?.csrf;
   if (csrf === undefined || csrf.enabled !== true) return false;
-  if (Array.isArray(csrf.methods) && !csrf.methods.some((m) => m.toUpperCase() === 'POST')) {
+  if (
+    Array.isArray(csrf.methods) &&
+    csrf.methods.length > 0 &&
+    !csrf.methods.some((m) => m.toUpperCase() === 'POST')
+  ) {
     return false;
   }
   const pattern = path.startsWith('/') ? path : `/${path}`;
