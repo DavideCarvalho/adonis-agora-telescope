@@ -3,7 +3,7 @@ name: telescope-setup
 description: >-
   Set up @adonis-agora/telescope in an AdonisJS app. Covers node ace configure
   codemods (telescope_provider + TelescopeMiddleware on the server stack +
-  config/telescope.ts), defineConfig keys (enabled/store/stores/watchers/redact),
+  config/telescope.ts), defineConfig keys (enabled/store/stores/watchers/redact/tenancy),
   the storage.memory, storage.lucid and storage.tiered drivers, the headless TelescopeService query
   API (list/find/byTrace/count/topFamilies/topTags/getHealth), recordException for
   non-HTTP paths, opt-in requestCapture body gates, and why /telescope 404s without
@@ -94,8 +94,9 @@ export default class InspectorController {
 }
 ```
 
-`EntryQuery` composes filters with AND: `{ type, tag, familyHash, traceId, before,
-after, search, limit }`. `search` matches JSON content **and** tags, so a request
+`EntryQuery` composes filters with AND: `{ type, tag, anyTags, familyHash, traceId, before,
+after, search, limit }` (`anyTags` is an OR — entries carrying at least one — used
+to scope a console to some `tenant:<id>` tags). `search` matches JSON content **and** tags, so a request
 matches by url, a diagnostic by event name, a query by SQL — all from one box.
 For React usage in a custom console, see the `telescope-ui-dashboard` skill.
 

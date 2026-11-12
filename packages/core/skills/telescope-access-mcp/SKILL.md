@@ -52,7 +52,9 @@ curl -H 'Authorization: Bearer s3cr3t' http://localhost:3333/telescope/api/entri
 ```
 
 Only the `Authorization: Bearer` header is read (no `?token=`). A missing token
-throws when the config loads. Source: `docs/dashboard/auth.mdx` (Token access).
+throws when the config loads. With tenancy on, pass `tenants` (`'*'` or ids) —
+a token carries no signed-in organization, so without it it sees none.
+Source: `docs/dashboard/auth.mdx` (Token access).
 
 ## Core patterns
 
@@ -75,7 +77,9 @@ export default defineConfig({
 Guard outcomes: a bare `false` (or `{ allowed: false }` with no `reason`) → `403`
 `{ error: 'forbidden' }`; `{ allowed: false, reason: 'unauthenticated' }` → `401`
 `{ error: 'unauthenticated' }`; `{ redirectTo }` → `302` for a page, `401` JSON with
-`redirectTo` for the API; a throwing hook → `403`.
+`redirectTo` for the API; a throwing hook → `403`. With tenancy on,
+`{ allowed: true, tenants: [...] | '*' }` narrows the viewer to those
+organizations (omitted = the viewer's own active tenant).
 
 Source: `docs/dashboard/auth.mdx` (Delegate to your app's auth, Guard behaviour).
 
@@ -119,8 +123,8 @@ claude mcp add --transport http telescope https://your-app.example.com/telescope
 ```
 
 Six read tools ship: `list_entries`, `get_entry`, `get_trace`, `get_waterfall`,
-`get_health`, `diagnose_exception`. Redaction and sampling are never bypassed — an
-agent sees exactly what the dashboard sees. Without `authorize` the endpoint is open
+`get_health`, `diagnose_exception`. Redaction, sampling and tenancy scoping are never bypassed — an
+agent sees exactly what the dashboard sees for its granted organizations. Without `authorize` the endpoint is open
 outside production and `403` in production (boot warning names
 `config/telescope_mcp.ts`); denials are JSON `403 { error: 'forbidden' }` /
 `401 { error: 'unauthenticated' }`.
@@ -131,7 +135,9 @@ Source: `docs/packages/mcp.mdx`.
 
 Replay, CPU-arm and queue retry/enqueue are each disabled by default and answer
 `403` until their ui-config gate is flipped — even when the underlying feature is
-enabled.
+enabled. With tenancy on, a viewer limited to some organizations still gets `403`
+on CPU capture, queue actions, extension actions and Prometheus even when the
+gate is on — those reach every organization, so they need access to all of them.
 
 ```ts
 export default defineConfig({

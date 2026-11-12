@@ -186,7 +186,9 @@ Source: `docs/recipes/custom-watcher.mdx`.
 ### Pattern 4 — tag entries by tenant/user
 
 `getContextAccessor()` reads `@adonis-agora/context` structurally; add tags at
-record time so `list({ tag })` pivots on them.
+record time so `list({ tag })` pivots on them. With tenancy on (`tenancy.enabled`
+in `config/context.ts`, not disabled in `config/telescope.ts`), telescope tags
+every entry with `tenant:<id>` itself — no manual `withTenantTag` needed.
 
 ```ts
 import { getContextAccessor, type RecordInput } from '@adonis-agora/telescope'
