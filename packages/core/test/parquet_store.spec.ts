@@ -70,6 +70,8 @@ describe.each(ENGINES)('parquet cold store (%s engine, local dir)', (engine) => 
     ['type', { type: 'query', size: 40 }],
     ['type, page 3', { type: 'exception', page: 3, size: 25 }],
     ['tag (exact token)', { tag: 'lib:bill', size: 30 }],
+    ['anyTags (any of)', { anyTags: ['lib:bill', 'status:500'], size: 30 }],
+    ['empty anyTags', { anyTags: [] }],
     ['familyHash', { familyHash: 'fam-1' }],
     ['traceId', { traceId: 'trace-7' }],
     ['traceIds', { traceIds: ['trace-1', 'trace-2', 'trace-3'], size: 20 }],

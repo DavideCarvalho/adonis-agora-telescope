@@ -10,6 +10,7 @@ import { OverviewSection } from './OverviewSection.js';
 import { Button } from './primitives/button.js';
 import { Tooltip, TooltipProvider } from './primitives/tooltip.js';
 import { RetentionIndicator } from './RetentionIndicator.js';
+import { TenantEmptyNotice, TenantPicker } from './TenantPicker.js';
 import { typeColor, typeLabel } from './ui.js';
 import { useHashRoute } from './use-hash-route.js';
 import { useMeta } from './use-telescope.js';
@@ -243,6 +244,7 @@ export function App() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex items-center justify-end gap-3 border-b border-line px-4 py-2">
+            <TenantPicker />
             <RetentionIndicator />
             <CommandPalette
               dashboards={meta.data?.dashboards ?? []}
@@ -271,6 +273,7 @@ export function App() {
           </header>
 
           <main className="min-w-0 flex-1 overflow-x-hidden p-4">
+            <TenantEmptyNotice />
             <Suspense fallback={<p className="text-xs text-muted-foreground">Loading…</p>}>
               {route.name === 'entry' ? (
                 <EntryDetail

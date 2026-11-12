@@ -348,3 +348,9 @@ export function useLiveTail(enabled: boolean, cap = 100) {
   const clear = useCallback(() => setEntries([]), []);
   return { entries, status, clear };
 }
+
+/** The viewer's organization scope (tenancy), asked once per page. */
+export function useTenants() {
+  const client = useTelescopeClient();
+  return useTelescopeQuery(['tenants'], () => client.tenants());
+}

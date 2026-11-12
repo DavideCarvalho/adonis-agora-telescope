@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { formatDuration, formatRelative, formatTime } from '../client/format.js';
+import { selectedTenant } from '../client/telescope-client.js';
 import { ENTRY_TYPES, type EntriesQuery, type EntrySummary } from '../client/types.js';
 import { Badge } from './primitives/badge.js';
 import { Button } from './primitives/button.js';
@@ -13,8 +14,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from './primitives/select.js';
+import { tenantLabel } from './TenantPicker.js';
 import { AsyncBlock, Panel, SectionTitle, TypeBadge } from './ui.js';
-import { useEntriesPage, useLiveTail } from './use-telescope.js';
+import { useEntriesPage, useLiveTail, useTenants } from './use-telescope.js';
 
 /** Rows per page. The list is scanned, not read in bulk. */
 const PAGE_SIZE = 50;
@@ -86,6 +88,11 @@ export function EntriesSection({
   // a Set so styling each row is a lookup rather than a scan of the whole tail.
   const tailIds = useMemo(() => new Set(tail.entries.map((t) => t.id)), [tail.entries]);
 
+  // With every organization in view, say which one each entry belongs to.
+  const tenants = useTenants();
+  const showOrganization =
+    tenants.data?.enabled === true && tenants.data.all && selectedTenant() === undefined;
+
   const columns = useMemo(
     () => [
       {
@@ -119,6 +126,25 @@ export function EntriesSection({
           <span className="tnum block text-right">{formatDuration(row.original.durationMs)}</span>
         ),
       },
+      ...(showOrganization
+        ? [
+            {
+              id: 'organization',
+              header: 'Organization',
+              cell: ({ row }: { row: { original: EntrySummary } }) => {
+                const prefix = `${tenants.data?.tag ?? 'tenant'}:`;
+                const tag = row.original.tags.find(
+                  (t) => t.startsWith(prefix) && t !== `${prefix}*`,
+                );
+                return (
+                  <span className="text-muted-foreground">
+                    {tag ? tenantLabel(tenants.data, tag.slice(prefix.length)) : '—'}
+                  </span>
+                );
+              },
+            },
+          ]
+        : []),
       {
         id: 'tags',
         header: 'Tags',
@@ -145,7 +171,7 @@ export function EntriesSection({
         ),
       },
     ],
-    [onOpenTrace],
+    [onOpenTrace, showOrganization, tenants.data],
   );
 
   const commitSearch = () => changeSearch(draft.trim());

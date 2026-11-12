@@ -195,6 +195,12 @@ export function rowMatches(row: Record<string, unknown>, query: EntryQuery): boo
   }
   const tags = String(row.tags ?? '');
   if (query.tag !== undefined && !tags.includes(JSON.stringify(query.tag))) return false;
+  if (
+    query.anyTags !== undefined &&
+    !query.anyTags.some((tag) => tags.includes(JSON.stringify(tag)))
+  ) {
+    return false;
+  }
   if (query.search !== undefined) {
     const needle = query.search.toLowerCase();
     if (

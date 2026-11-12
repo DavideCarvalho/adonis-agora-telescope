@@ -71,6 +71,7 @@ export function referenceList(entries: Entry[], query: EntryQuery): Entry[] {
   const matches = entries
     .filter((e) => query.type === undefined || e.type === query.type)
     .filter((e) => query.tag === undefined || e.tags.includes(query.tag))
+    .filter((e) => query.anyTags === undefined || e.tags.some((t) => query.anyTags?.includes(t)))
     .filter((e) => query.familyHash === undefined || e.familyHash === query.familyHash)
     .filter((e) => query.traceId === undefined || e.traceId === query.traceId)
     .filter(

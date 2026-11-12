@@ -17,6 +17,8 @@ export interface GuardResult {
   message?: 'unauthenticated' | 'forbidden';
   /** When the hook answered `{ redirectTo }`: where a page navigation is sent (`302`). */
   redirectTo?: string;
+  /** When allowed with tenancy scoping: the tenants the hook granted (`'*'` = all). */
+  tenants?: '*' | string[];
 }
 
 /**
@@ -42,7 +44,11 @@ export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Pr
   }
 
   const decision = normalizeConsoleDecision(result);
-  if (decision.allowed) return { allowed: true };
+  if (decision.allowed) {
+    return decision.tenants !== undefined
+      ? { allowed: true, tenants: decision.tenants }
+      : { allowed: true };
+  }
   if (decision.redirectTo !== undefined) {
     return {
       allowed: false,
@@ -71,18 +77,29 @@ export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Pr
  * separate hook.
  */
 export async function enforceGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Promise<boolean> {
+  return (await enforceGuardDecision(ctx, authorize)) !== null;
+}
+
+/**
+ * {@link enforceGuard} that answers the allowed decision (with its `tenants`) instead of `true`,
+ * or `null` after writing the denial.
+ */
+export async function enforceGuardDecision(
+  ctx: UiHttpContext,
+  authorize: AuthorizeHook,
+): Promise<GuardResult | null> {
   const result = await runGuard(ctx, authorize);
-  if (result.allowed) return true;
-  if (ctx.response.getHeader('location')) return false;
+  if (result.allowed) return result;
+  if (ctx.response.getHeader('location')) return null;
   const status = result.status ?? 403;
   ctx.response.status(status);
   if (status === 401) ctx.response.header('WWW-Authenticate', BEARER_CHALLENGE);
   if (result.redirectTo !== undefined) {
     ctx.response.send({ error: 'unauthenticated', redirectTo: result.redirectTo });
-    return false;
+    return null;
   }
   ctx.response.send({ error: result.message ?? 'forbidden' });
-  return false;
+  return null;
 }
 
 /** The `WWW-Authenticate` challenge a `401` carries (what `authorizeByToken` accepts). */
