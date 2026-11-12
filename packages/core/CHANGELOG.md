@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.8
+
+### Patch Changes
+
+- [#300](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/300) [`0dac147`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/0dac147e68e6d348667754b82665b10a6077e21c) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `agora:doctor`'s `telescope.otel` check no longer flags `@opentelemetry/sdk-node@0.301.1` (pulled by `@adonisjs/otel` 2) as SDK 2. Experimental `0.Nxx` packages now map to SDK line N (`0.2xx` → SDK 2, `0.3xx` → SDK 3, `0.<100` → SDK 1), matching the stable `N.x` packages they pin, and any two different lines are reported as mixed.
+
 ## 1.0.0-rc.7
 
 ### Minor Changes
