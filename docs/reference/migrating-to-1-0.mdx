@@ -201,6 +201,23 @@ When the console's own API calls get a `401`, the SPA follows the `redirectTo` i
 reloads the page so the server answers it. The access-denied page only shows a "Sign in"
 button when you point it at your login page with `accessDenied: { loginHref: '/login' }`.
 
+## MCP: `/telescope/mcp` is opt-in
+
+The standalone endpoint is only mounted when `config/telescope_mcp.ts` sets `enabled: true`; with
+no config file, or one without `enabled`, no route exists. Telescope's tools are served on the Agora
+dev endpoint `/mcp/agora` instead, behind the console's `authorize` (see
+[`@adonis-agora/telescope/mcp`](/docs/telescope/packages/mcp)).
+
+Apps that use `/telescope/mcp`: set `enabled: true` in `config/telescope_mcp.ts`, or switch the
+clients to `/mcp/agora`.
+
+```ts title="config/telescope_mcp.ts"
+export default defineConfig({
+  enabled: true,
+  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
+})
+```
+
 ## MCP access: `credentials` is replaced by `authorize`
 
 `config/telescope_mcp.ts` no longer takes `credentials: { token, basic }`, and the endpoint no

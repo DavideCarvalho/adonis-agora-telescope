@@ -32,7 +32,9 @@ const FEATURES = [
   },
   {
     name: 'mcp',
-    message: 'MCP — expose telemetry to a coding agent over the Model Context Protocol',
+    // Not needed for MCP: Telescope's tools are served on the Agora dev endpoint (/mcp/agora).
+    // This publishes the opt-in standalone endpoint, for clients that can't do OAuth.
+    message: 'Standalone MCP endpoint at /telescope/mcp (token auth, for clients without OAuth)',
     provider: '@adonis-agora/telescope/mcp_provider',
     configStub: 'config/telescope_mcp.stub',
   },

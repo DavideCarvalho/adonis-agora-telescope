@@ -7,19 +7,21 @@
 import { defineConfig } from '@adonis-agora/telescope/mcp'
 
 /**
- * Configuration for '@adonis-agora/telescope/mcp'. Exposes the captured telemetry to
- * a coding agent (Claude Code, Cursor, …) over the Model Context Protocol as a
- * JSON-RPC endpoint at 'POST /telescope/mcp'.
+ * Configuration for '@adonis-agora/telescope/mcp': the standalone MCP endpoint
+ * ('POST /telescope/mcp'), for MCP clients that cannot sign in with OAuth. Coding
+ * agents that can should use the Agora dev endpoint (/mcp/agora) instead, which
+ * serves the same tools with no config here.
  *
- * Without authorize it is open outside production and answers 403 to every request
- * in production, so set authorize before you deploy. A denial is JSON:
+ * The endpoint is opt-in: it mounts only while enabled is true. Without authorize
+ * it is open outside production and answers 403 to every request in production,
+ * so set authorize before you deploy. A denial is JSON:
  * 403 { error: 'forbidden' } or 401 { error: 'unauthenticated' }.
  */
 export default defineConfig({
   /**
-   * Master switch. Set to false to register no routes at all.
+   * Mounts the endpoint. Defaults to false (no routes); set to false to turn it off.
    */
-  // enabled: true,
+  enabled: true,
 
   /**
    * URL the JSON-RPC endpoint mounts at.
