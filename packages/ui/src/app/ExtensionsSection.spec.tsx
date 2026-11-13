@@ -66,4 +66,52 @@ describe('ExtensionsSection', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Dashboard Two' }));
     expect(onSelect).toHaveBeenCalledWith('d2');
   });
+
+  it('renders a paged table from the offset envelope and asks for the next page', async () => {
+    const paged: DashboardSpec[] = [
+      {
+        id: 'p1',
+        label: 'Paged',
+        panels: [
+          {
+            kind: 'table',
+            title: 'Runs',
+            data: { provider: 'demo.runs' },
+            columns: [{ key: 'name', label: 'Name' }],
+            paged: true,
+          },
+        ],
+      },
+    ];
+    const extData = vi.fn(
+      async (_ext: string, _provider: string, query?: Record<string, string>) => ({
+        data: [{ name: `row-page-${query?.page}` }],
+        meta: {
+          total: 60,
+          perPage: 25,
+          currentPage: Number(query?.page),
+          lastPage: 3,
+          firstPage: 1,
+        },
+      }),
+    );
+    const client = fakeClient({
+      meta: vi
+        .fn()
+        .mockResolvedValue({ entryTypes: [], dashboards: paged, ai: { enabled: false } }),
+      extData,
+    } as unknown as Partial<TelescopeClient>);
+    renderWith(
+      client,
+      <ExtensionsSection selectedId="p1" onSelect={vi.fn()} onOpenTrace={vi.fn()} />,
+    );
+
+    await waitFor(() => expect(screen.getByText('row-page-1')).toBeTruthy());
+    expect(screen.getByText('Page 1 of 3')).toBeTruthy();
+    fireEvent.click(screen.getByText(/Next/));
+    await waitFor(() => expect(screen.getByText('row-page-2')).toBeTruthy());
+    expect(extData.mock.calls.some((call) => call[2]?.page === '2' && call[2]?.size === '25')).toBe(
+      true,
+    );
+  });
 });

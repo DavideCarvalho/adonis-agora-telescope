@@ -242,11 +242,11 @@ export type Panel =
        * Opt into paged-table mode: the UI renders prev/next controls (+ "page X
        * of Y") and re-resolves this panel's provider with `query.page` (1-based)
        * and `query.size` merged in on top of the panel's own static `data.query`
-       * — the `{ page, size }` pagination pair every `@adonis-agora/*` library
-       * uses (mirrors `@adonis-agora/filter`). The provider MUST then return
-       * `{ rows, total, page, size }` instead of a bare `{ rows }` — see
-       * {@link DataProvider.resolve}. Omit (or `false`) for the existing
-       * bare-rows table, unchanged.
+       * — the offset paging pair of `@adonis-agora/filter`. The provider MUST
+       * then return the offset list envelope `{ data: rows, meta }` (build it
+       * with `offsetPage(rows, { total, page, size })`) instead of `{ rows }` —
+       * see {@link DataProvider.resolve}. Omit (or `false`) for the bare-rows
+       * table.
        */
       paged?: boolean;
     }
@@ -279,10 +279,10 @@ export interface DataProvider {
    *  - timeseries   → `{ rows: Array<{ label: string } & Record<string, number>> }`
    *  - topN         → `{ items: Array<{ label: string; value: number; id?: string }> }`
    *  - table        → `{ rows: Array<Record<string, unknown>> }`, or — when the
-   *                   panel declares `paged: true` — `{ rows, total, page, size }`
-   *                   (`page`/`size` normally echo the requested `query.page` /
-   *                   `query.size`; `total` is the full, unpaginated row count so
-   *                   the UI can compute "page X of Y")
+   *                   panel declares `paged: true` — the offset list envelope
+   *                   `{ data: rows, meta: { total, perPage, currentPage, lastPage,
+   *                   firstPage } }` for the requested `query.page` / `query.size`
+   *                   (`offsetPage(rows, { total, page, size })` from `@adonis-agora/filter`)
    *  - distribution → `{ buckets: Array<{ label: string; count: number }>; p50?: number; p95?: number; p99?: number }`
    *  - gauge        → `{ value: number; min?: number; max?: number }`
    *  - breakdown    → `{ segments: Array<{ label: string; value: number; color?: string }> }`

@@ -6,6 +6,7 @@ import type {
   DashboardSpec,
   DistributionPanelData,
   GaugePanelData,
+  PagedTablePanelData,
   Panel,
   StatPanelData,
   TablePanelData,
@@ -341,19 +342,23 @@ function TablePanel({
     const base = asQuery(panel.data.query);
     return panel.paged ? { ...base, page: String(page), size: String(size) } : base;
   }, [panel.data.query, panel.paged, page]);
-  const state = useExtensionData<TablePanelData>(ext, panel.data.provider, query);
+  const state = useExtensionData<TablePanelData | PagedTablePanelData>(
+    ext,
+    panel.data.provider,
+    query,
+  );
 
   return (
     <PanelFrame title={panel.title}>
       <AsyncBlock
         state={state}
-        isEmpty={(d) => d.rows.length === 0}
+        isEmpty={(d) => tableRows(d).length === 0}
         empty="No rows."
         skeletonRows={4}
       >
         {(data) => {
-          const totalPages =
-            panel.paged && data.total !== undefined ? Math.max(1, Math.ceil(data.total / size)) : 1;
+          const rows = tableRows(data);
+          const totalPages = panel.paged && 'meta' in data ? Math.max(1, data.meta.lastPage) : 1;
           return (
             <div className="flex flex-col gap-2.5">
               <Table>
@@ -365,7 +370,7 @@ function TablePanel({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.rows.map((row, i) => (
+                  {rows.map((row, i) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: provider rows have no guaranteed id.
                     <TableRow key={i}>
                       {panel.columns.map((col) => (
@@ -414,6 +419,11 @@ function TablePanel({
       </AsyncBlock>
     </PanelFrame>
   );
+}
+
+/** A table payload's rows: `{ rows }`, or the offset envelope's `data` for a paged table. */
+function tableRows(data: TablePanelData | PagedTablePanelData): Array<Record<string, unknown>> {
+  return 'data' in data ? data.data : (data.rows ?? []);
 }
 
 function renderCell(

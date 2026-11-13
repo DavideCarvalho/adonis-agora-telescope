@@ -106,7 +106,7 @@ guard first.
 
 | Endpoint                              | Returns                                                                    |
 | ------------------------------------- | -------------------------------------------------------------------------- |
-| `GET <path>/api/entries`              | List entries — `?type=`, `?tag=`, `?traceId=`, `?search=`, `?before=` (ISO), plus `?page=` (1-based, default 1) and `?size=` (capped at 500, default 50). Drops `content` for a compact `summary`. |
+| `GET <path>/api/entries`              | The entry feed, newest first, cursor-paged — see [Listing entries](#listing-entries). Drops `content` for a compact `summary`. |
 | `GET <path>/api/entries/:id`          | One entry with its full `content`, or 404.                                 |
 | `GET <path>/api/trace/:traceId`       | Every entry under a trace, newest-first.                                   |
 | `GET <path>/api/stats`                | `{ count, topFamilies, topTags }`. `?limit=` caps each top-N; `?type=` scopes `topFamilies`. |
@@ -122,7 +122,7 @@ Analytics, all windowed and all reading the same stored entries the tables show:
 | ----------------------------------------------- | -------------------------------------------------------- |
 | `GET <path>/api/metrics/stats`                  | Latency, throughput and error aggregates over a window.  |
 | `GET <path>/api/metrics/timeseries`             | The same aggregates bucketed for charting.               |
-| `GET <path>/api/metrics/traces`                 | Recent traces, newest first — paginated with `?page=`/`?size=`. |
+| `GET <path>/api/metrics/traces`                 | Recent traces, most recently active first — cursor-paged both ways (`after`/`first`, `before`/`last`). |
 | `GET <path>/api/metrics/waterfall/:traceId`     | One trace laid out as a waterfall.                       |
 | `GET <path>/api/metrics/n-plus-one/:traceId`    | Repeated-query loops detected on one trace.              |
 | `GET <path>/api/metrics/pulse`                  | The [Pulse](/docs/telescope/packages/pulse) health rollup. Present unless `pulse` is disabled. |
@@ -143,7 +143,7 @@ And the read-only surfaces the console's newer views bind to:
 
 | Endpoint                                       | Returns                                                  |
 | ---------------------------------------------- | -------------------------------------------------------- |
-| `GET <path>/api/profiles`, `.../profiles/:id`, `.../profiles/status` | Captured CPU profiles, one flamegraph, and whether profiling is armed. |
+| `GET <path>/api/profiles`, `.../profiles/:id`, `.../profiles/status` | Captured CPU profiles (newest first, cursor-paged with `after`/`first`, default 100), one flamegraph, and whether profiling is armed. |
 | `GET <path>/api/schedules/live`                | Registered schedules with their computed next run, joined with their last recorded run. |
 | `GET <path>/api/queues/live`, `.../queues/live/:queue/jobs/:id` | Live queue state and one job's record.  |
 | `GET <path>/api/ext/:ext/data/:provider`       | One extension data provider's result (namespaced by owner). |
@@ -153,9 +153,39 @@ Each list entry comes back as an `EntrySummary` — `id`, `type`, `familyHash`, 
 (e.g. `GET /users/42 → 200`, `billing:invoice-paid`, or an exception message).
 
 ```sh
-curl 'http://localhost:3333/telescope/api/entries?type=exception&size=20&page=1'
+curl -g 'http://localhost:3333/telescope/api/entries?filter[type]=exception&first=20'
 curl 'http://localhost:3333/telescope/api/trace/abc123'
 curl 'http://localhost:3333/telescope/api/stats?type=diagnostic'
+```
+
+### Listing entries
+
+`GET <path>/api/entries`, `GET <path>/api/metrics/traces` and `GET <path>/api/profiles` speak the
+[`@adonis-agora/filter`](/docs/filter) list format, and page with cursors:
+
+| Param | Meaning |
+| ----- | ------- |
+| `filter[type]` | One entry type (`request`, `exception`, …). |
+| `filter[tag]` | One tag, or several (`filter[tag][]=a&filter[tag][]=b`) to match entries carrying any of them. |
+| `filter[traceId]` | One trace, or several. |
+| `filter[familyHash]` | One grouping key. |
+| `filter[createdAt][gte\|gt\|lte\|lt]` | A time range — ISO-8601 or epoch ms. `filter[createdAt][between]=a,b` for both ends. |
+| `search` | Free text over the entry's content and tags. |
+| `sort` | `-createdAt` (entries, profiles) or `-lastAt` (traces) — the one order each list has. |
+| `first` | Page size (default 50, 100 for profiles; capped at 500). |
+| `after` | The previous page's `meta.nextCursor`. |
+| `before` + `last` | Traces only: the page before a `meta.prevCursor`. |
+
+Every response is `{ data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }`. Cursors are
+opaque: pass them back as they came. The entry and profile feeds page forward only, so a client
+going back keeps the cursors it already visited (the dashboard does). An unknown filter field, an
+operator a field does not take, another sort, or a malformed cursor answers `400` with an `error`
+message. Traces and profiles take no `filter[...]`.
+
+```sh
+curl -g 'http://localhost:3333/telescope/api/entries?filter[tag][]=status:500&filter[createdAt][gte]=2026-11-01&first=50'
+# then, with the cursor from meta.nextCursor:
+curl -g 'http://localhost:3333/telescope/api/entries?filter[tag][]=status:500&filter[createdAt][gte]=2026-11-01&first=50&after=WyJlIiwxNzYzMDM...'
 ```
 
 ## Configuration

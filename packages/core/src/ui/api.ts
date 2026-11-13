@@ -1,3 +1,4 @@
+import { cursorPage, InvalidColumnFilterError } from '@adonis-agora/filter';
 import type { Entry } from '../entry.js';
 import { EntryType } from '../entry.js';
 import { MetricsService, type MetricsServiceOptions } from '../metrics/metrics_service.js';
@@ -5,8 +6,16 @@ import { PulseService, type PulseServiceOptions } from '../metrics/pulse.js';
 import type { RequestEntryContent } from '../request_watcher.js';
 import type { SamplingConfig } from '../sampling/sampling.js';
 import type { TelescopeService } from '../service.js';
-import type { EntryQuery } from '../store.js';
 import type { UiHttpContext, UiRequest } from './http.js';
+import {
+  type EntryListRequest,
+  encodeTraceCursor,
+  entryFeedPage,
+  parseEntryListRequest,
+  parseTraceListRequest,
+  readEntryPage,
+  type TraceListRequest,
+} from './list_api.js';
 import { type ReplayOptions, type ReplayResult, replayRequest } from './request_replay.js';
 
 /** The resolved pruner slice the retention endpoint echoes (mirrors `ResolvedTelescopeConfig['prune']`). */
@@ -41,10 +50,8 @@ export interface RetentionInfo {
   sampling: RetentionSamplingRate[];
 }
 
-/** Default page size for the list endpoint when no `size` is given. */
-const DEFAULT_SIZE = 50;
-/** Hard ceiling on `size` so a hostile query string can't ask for everything. */
-const MAX_SIZE = 500;
+/** Default for the top-N caps (`limit`, `top`, …) when the request sends none or junk. */
+const DEFAULT_TOP = 50;
 
 /**
  * The JSON-API handler functions over a {@link TelescopeService}. Each takes the
@@ -74,33 +81,23 @@ export class TelescopeApi {
   }
 
   /**
-   * `GET <path>/api/entries` — list entries newest-first, with optional filters:
-   * `?type=`, `?traceId=`, `?search=`, `?before=` (ISO date), plus the ecosystem's
-   * `?page=` (1-based) / `?size=` (capped) pagination pair.
+   * `GET <path>/api/entries` — the entry feed, newest first, cursor-paged forward:
+   * `filter[type|tag|traceId|familyHash|createdAt]`, `search`, `sort=-createdAt`, `after` + `first`.
+   * Answers `{ data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }`; `400` on an unknown
+   * filter field, operator or sort, a `before` cursor, or a malformed cursor.
    */
   async list(ctx: UiHttpContext): Promise<unknown> {
-    const query = buildQuery(ctx.request);
-    const size = query.size ?? DEFAULT_SIZE;
-    const page = query.page ?? 1;
-    const entries = await this.service.list(query);
-    // One row past the page tells us whether a next page exists -- a COUNT would
-    // re-run the same filters (including the `search` LIKE) over the whole table,
-    // which costs more than the page itself. Since the offset is DERIVED from
-    // `(page - 1) * size`, that row can't be had by asking for `size + 1` (it would
-    // move the offset too): it is `{ page: page * size + 1, size: 1 }`, the first row
-    // AFTER this page. Only a full page can have a successor, so a short page skips
-    // the probe entirely.
-    const hasMore =
-      entries.length === size &&
-      (await this.service.list({ ...query, page: page * size + 1, size: 1 })).length > 0;
-
+    let request: EntryListRequest;
+    try {
+      request = await parseEntryListRequest(ctx.request.qs());
+    } catch (err) {
+      return rejectList(ctx, err);
+    }
+    const { rows, nextCursor } = await readEntryPage((q) => this.service.list(q), request);
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
-      .send({
-        data: entries.map(toSummary),
-        meta: { count: entries.length, page, size, hasMore, query: describe(query) },
-      });
+      .send(entryFeedPage(rows.map(toSummary), nextCursor));
   }
 
   /** `GET <path>/api/entries/:id` — one entry with its full `content`, or 404. */
@@ -188,23 +185,45 @@ export class TelescopeApi {
   }
 
   /**
-   * `GET <path>/api/metrics/traces?page=&size=` — recent traces, newest-last-seen
-   * first, paginated.
+   * `GET <path>/api/metrics/traces` — recent traces, most recently active first, cursor-paged both
+   * ways (`after`/`first`, `before`/`last`); `sort=-lastAt` is the only order and there are no
+   * filters. Answers `{ data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }`.
    *
-   * `hasMore` instead of a total: counting distinct traces means a `COUNT(DISTINCT
-   * trace_id)` over the same table this endpoint exists to stop scanning. One extra
-   * row tells the UI whether to enable "next", which is all a Prev/Next pager needs.
+   * No total: counting distinct traces means a `COUNT(DISTINCT trace_id)` over the same table this
+   * endpoint exists to stop scanning. One extra trace id tells whether a next page exists.
    */
   async metricsTraces(ctx: UiHttpContext): Promise<unknown> {
-    const size = clampSize(readNumber(ctx.request, 'size') ?? 50);
-    const page = Math.max(1, Math.floor(readNumber(ctx.request, 'page') ?? 1));
-
-    const { rows: data, hasMore } = await this.metrics.getTracesPage(size, page);
-
+    let request: TraceListRequest;
+    try {
+      request = await parseTraceListRequest(ctx.request.qs());
+    } catch (err) {
+      return rejectList(ctx, err);
+    }
+    const { offset, size } = request;
+    let data: Awaited<ReturnType<MetricsService['getTraces']>> = [];
+    let hasNext = false;
+    if (size > 0) {
+      // The service pages by `{ page, size }`; an offset that is not a multiple of the size (a
+      // client that changed `first` mid-walk) reads from the top and drops the head.
+      const aligned = offset % size === 0;
+      const result = aligned
+        ? await this.metrics.getTracesPage(size, offset / size + 1)
+        : await this.metrics.getTracesPage(offset + size, 1);
+      data = aligned ? result.rows : result.rows.slice(offset);
+      hasNext = result.hasMore;
+    }
+    const end = offset + data.length;
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
-      .send({ data, meta: { count: data.length, page, size, hasMore } });
+      .send(
+        cursorPage(data, {
+          nextCursor: hasNext ? encodeTraceCursor(end) : null,
+          prevCursor: offset > 0 ? encodeTraceCursor(offset) : null,
+          hasNext,
+          hasPrev: offset > 0,
+        }),
+      );
   }
 
   /**
@@ -361,6 +380,14 @@ export class TelescopeApi {
   }
 }
 
+/** Answer a refused list request (unknown filter/sort, bad cursor) with `400`; rethrow the rest. */
+export function rejectList(ctx: UiHttpContext, err: unknown): unknown {
+  if (err instanceof InvalidColumnFilterError) {
+    return ctx.response.status(400).send({ error: err.message });
+  }
+  throw err;
+}
+
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -434,38 +461,8 @@ function summarize(entry: Entry): string {
   return entry.familyHash ?? entry.type;
 }
 
-/** Build an {@link EntryQuery} from the request's query string. */
-export function buildQuery(request: UiRequest): EntryQuery {
-  const query: EntryQuery = { size: clampSize(readNumber(request, 'size') ?? DEFAULT_SIZE) };
-  const type = readString(request, 'type');
-  if (type !== undefined) query.type = type;
-  const tag = readString(request, 'tag');
-  if (tag !== undefined) query.tag = tag;
-  const traceId = readString(request, 'traceId');
-  if (traceId !== undefined) query.traceId = traceId;
-  const search = readString(request, 'search');
-  if (search !== undefined) query.search = search;
-  const before = readString(request, 'before');
-  if (before !== undefined) {
-    const date = new Date(before);
-    if (!Number.isNaN(date.getTime())) query.before = date;
-  }
-  const page = readNumber(request, 'page');
-  if (page !== undefined && page > 1) query.page = Math.floor(page);
-  return query;
-}
-
-/** A JSON-safe echo of the applied query (Dates → ISO strings) for `meta`. */
-function describe(query: EntryQuery): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(query)) {
-    out[key] = value instanceof Date ? value.toISOString() : value;
-  }
-  return out;
-}
-
-function clampSize(value: number, max: number = MAX_SIZE): number {
-  if (!Number.isFinite(value) || value <= 0) return DEFAULT_SIZE;
+function clampSize(value: number, max: number): number {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_TOP;
   return Math.min(Math.floor(value), max);
 }
 

@@ -21,7 +21,7 @@ export type {
   RetentionSamplingRate,
 } from './api.js';
 // — JSON API —
-export { buildQuery, TelescopeApi, toSummary } from './api.js';
+export { rejectList, TelescopeApi, toSummary } from './api.js';
 export type {
   AuthorizeByTokenOptions,
   ConsoleAuthorize,
@@ -64,6 +64,25 @@ export {
   RecordingResponse,
   RecordingSink,
 } from './http.js';
+export type {
+  EntryListOptions,
+  EntryListRequest,
+  TraceListRequest,
+} from './list_api.js';
+// — list endpoints (filter wire format + cursor paging) —
+export {
+  DEFAULT_LIST_SIZE,
+  EntryFilter,
+  EntryQueryDraft,
+  encodeEntryCursor,
+  encodeTraceCursor,
+  entryFeedPage,
+  MAX_LIST_SIZE,
+  NoFilter,
+  parseEntryListRequest,
+  parseTraceListRequest,
+  readEntryPage,
+} from './list_api.js';
 export type { ArmProfileBody } from './profiles_api.js';
 
 // — CPU profiling JSON API (optional feature: @adonis-agora/telescope/cpu_profiling) —

@@ -94,7 +94,10 @@ import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
 
 const client = new TelescopeClient({ baseUrl: '/telescope/api' })
 
-const entries = await client.listEntries({ type: 'exception', size: 20 })
+const entries = await client.listEntries({ type: 'exception', first: 20 })
+// paging: { data, meta: { nextCursor, hasNext, … } } — pass nextCursor back as `after`
+const page = await client.listEntriesPage({ type: 'exception', first: 50 })
+const next = await client.listEntriesPage({ type: 'exception', first: 50, after: page.meta.nextCursor! })
 const entry = await client.getEntry(entries[0].id)
 const story = await client.entriesByTrace(entry.traceId!)
 const pulse = await client.pulse(15 * 60_000)
@@ -248,7 +251,7 @@ Source: `docs/packages/telescope-ui.mdx` (info callout under Acting on an entry)
 
 ```ts
 // Wrong — assuming CSV export includes SQL bodies / stacks for offline analysis.
-await client.listEntries({ type: 'query', search: 'users', size: 500 })
+await client.listEntries({ type: 'query', search: 'users', first: 500 })
 // then expecting `content` in the downloaded file
 ```
 
