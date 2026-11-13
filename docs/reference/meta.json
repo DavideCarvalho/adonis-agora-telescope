@@ -1,5 +1,5 @@
 {
   "title": "Reference",
   "icon": "Settings",
-  "pages": ["configuration", "health-check", "migrating-to-1-0"]
+  "pages": ["configuration", "cli", "health-check", "migrating-to-1-0"]
 }

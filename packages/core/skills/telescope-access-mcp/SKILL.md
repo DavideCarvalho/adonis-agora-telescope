@@ -21,6 +21,7 @@ sources:
   - "DavideCarvalho/adonis-telescope:docs/dashboard/auth.mdx"
   - "DavideCarvalho/adonis-telescope:docs/packages/mcp.mdx"
   - "DavideCarvalho/adonis-telescope:docs/packages/ui.mdx"
+  - "DavideCarvalho/adonis-telescope:docs/reference/cli.mdx"
 ---
 
 # Dashboard access control & MCP
@@ -147,6 +148,16 @@ export default defineConfig({
 
 Source: `docs/packages/ui.mdx` (Configuration, Request replay),
 `docs/packages/cpu-profiling.mdx` (arming callout).
+
+## From the terminal
+
+Every console screen and action is also a `node ace telescope:<noun>:<verb>` command
+(`telescope:entries:list --type exception --since 1h`, `telescope:traces:waterfall <id>`,
+`telescope:pulse:show`, `telescope:jobs:retry <queue> <id>`, `telescope:entries:prune --dry-run`).
+They run the console's handlers in the app's process, without `authorize` (a shell on the host is
+trusted like a viewer allowed every organization), but keep the `replay.enabled` /
+`queueActions.enabled` gates. `--json` everywhere, `--tenant` narrows, destructive ones need
+`--force` without a terminal. Source: `docs/reference/cli.mdx`.
 
 ## Common mistakes
 

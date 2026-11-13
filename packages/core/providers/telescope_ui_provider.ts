@@ -6,27 +6,26 @@ import {
 } from '../src/dev_tools/telescope_dev_tools.js';
 import { scopedTelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import type { Entry } from '../src/entry.js';
-import type { ExtensionContext } from '../src/extension/types.js';
-import { getEnabledWatchers, getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
-import { TelescopeService } from '../src/service.js';
+import { getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { TenantScopedStore } from '../src/tenancy_store.js';
-import { TelescopeApi } from '../src/ui/api.js';
 import { callerOf } from '../src/ui/caller.js';
+import {
+  buildConsoleApis,
+  consoleMeta,
+  QUEUE_ACTIONS_DISABLED,
+  recordExtensionAction,
+} from '../src/ui/console_apis.js';
 import {
   MISSING_AUTHORIZE_WARNING,
   type ResolvedTelescopeUiConfig,
   resolveConfig,
   type TelescopeUiConfig,
 } from '../src/ui/define_config.js';
-import { DiagnosisApi } from '../src/ui/diagnosis_api.js';
-import { type ExtensionActionAudit, ExtensionApi } from '../src/ui/extension_api.js';
+import type { ExtensionActionAudit } from '../src/ui/extension_api.js';
 import { enforceGuardDecision } from '../src/ui/guard.js';
 import type { SseSink, UiHttpContext } from '../src/ui/http.js';
-import { ProfilesApi } from '../src/ui/profiles_api.js';
-import { QueueManagerApi } from '../src/ui/queue_manager_api.js';
-import { SchedulesApi } from '../src/ui/schedules_api.js';
 import {
   consoleTenantScope,
   describeTenantScope,
@@ -86,50 +85,15 @@ export default class TelescopeUiProvider {
     );
   }
 
-  /**
-   * Audit one extension action: an `info` log line, plus a `diagnostic` entry tagged
-   * `lib:telescope`, `event:extension-action` so it shows up in telescope itself.
-   */
+  /** Audit one extension action (log line + a `diagnostic` entry). */
   private async auditAction(store: TelescopeStore, record: ExtensionActionAudit): Promise<void> {
-    const input = JSON.stringify(record.input);
-    const line = {
-      telescopeAction: `${record.ext}/${record.action}`,
-      caller: record.caller,
-      ok: record.ok,
-      ms: record.ms,
-      input: input.length > 1024 ? `${input.slice(0, 1024)}…` : input,
-      ...(record.error !== undefined ? { error: record.error } : {}),
-    };
+    let logger: { info(obj: unknown, msg?: string): void } | null = null;
     try {
-      const logger = (await this.app.container.make('logger')) as {
-        info(obj: unknown, msg?: string): void;
-      };
-      logger.info(line, '[@adonis-agora/telescope] extension action');
+      logger = (await this.app.container.make('logger')) as unknown as typeof logger;
     } catch {
-      // No logger: the entry below is the record.
+      // No logger: the entry is the record.
     }
-    await store.record({
-      type: 'diagnostic',
-      content: {
-        v: 1,
-        lib: 'telescope',
-        event: 'extension-action',
-        ts: Date.now(),
-        traceId: null,
-        payload: record,
-        durationMs: record.ms,
-      },
-      tags: [
-        'lib:telescope',
-        'event:extension-action',
-        `ext:${record.ext}`,
-        `action:${record.action}`,
-        `caller:${record.caller}`,
-        record.ok ? 'status:ok' : 'status:error',
-      ],
-      familyHash: 'telescope:extension-action',
-      durationMs: record.ms,
-    });
+    await recordExtensionAction(store, record, logger);
   }
 
   async boot() {
@@ -159,72 +123,16 @@ export default class TelescopeUiProvider {
     }
 
     const coreConfig = resolveTelescopeConfig(this.app.config.get('telescope', {}));
-    // Live Queue Manager (additive): reads the driver the `queue-manager` watcher publishes at
-    // `boot()` time — `null` when not enabled/configured, in which case `QueueManagerApi` degrades
-    // every call to a 404.
-    const queueManagerApi = new QueueManagerApi(getTelescopeRuntime().queueManager);
 
-    // Extension SDK surface (only when at least one extension contributed a registry at boot).
-    const registry = getTelescopeRuntime().registry;
-    const extensionConfig = resolveTelescopeConfig(this.app.config.get('telescope', {}));
-
-    // Every read API over one store: the full store, or a tenant-scoped view of it.
-    const buildApis = (source: TelescopeStore) => {
-      const service = new TelescopeService(source);
-      const api = new TelescopeApi(
-        service,
-        {
-          ...(coreConfig.nPlusOne.enabled
-            ? { nPlusOneThreshold: coreConfig.nPlusOne.threshold }
-            : {}),
-        },
-        // Request replay (additive): off unless the host opts in via telescope_ui config.
-        {
-          enabled: config.replay.enabled,
-          ...(config.replay.port !== undefined ? { port: config.replay.port } : {}),
-          ...(config.replay.timeoutMs !== undefined ? { timeoutMs: config.replay.timeoutMs } : {}),
-        },
-        // Pulse rollup options from core `config.telescope.pulse`.
-        {
-          windowMs: coreConfig.pulse.windowMs,
-          topN: coreConfig.pulse.topN,
-          buckets: coreConfig.pulse.buckets,
-          slowRouteMs: coreConfig.pulse.slowRouteMs,
-          cards: coreConfig.pulse.cards,
-          ...(coreConfig.nPlusOne.enabled
-            ? { nPlusOneThreshold: coreConfig.nPlusOne.threshold }
-            : {}),
-        },
-        // Retention/sampling posture (additive) from core `config.telescope.prune`/`sampling`.
-        { prune: coreConfig.prune, sampling: coreConfig.sampling },
-      );
-      // AI exception diagnosis (additive): reads the coordinator the AI provider publishes at
-      // `register()` time — `null` when `@adonis-agora/telescope/ai` isn't installed/configured, in
-      // which case `DiagnosisApi` degrades every call to a 404 rather than throwing.
-      const diagnosisApi = new DiagnosisApi(service, getTelescopeRuntime().diagnosisCoordinator);
-
-      // CPU profiling (additive): reads the `ProfilerService` the `cpu_profiling` provider publishes
-      // at `register()` time — `null` when `@adonis-agora/telescope/cpu_profiling` isn't installed/
-      // enabled, in which case `ProfilesApi` degrades every call to a 404 rather than throwing.
-      const profilesApi = new ProfilesApi(service, getTelescopeRuntime().cpuProfiler);
-
-      // Live Schedules (additive): reads the registry `registerSchedule()` maintains directly (not
-      // through the runtime slot — the registry lives on the `ScheduleWatcher` module itself, exactly
-      // like `recordScheduledRun`/`scheduleTask`), joined with each schedule's most recent run.
-      const schedulesApi = new SchedulesApi(service);
-      const extApi = registry
-        ? new ExtensionApi(
-            registry,
-            {
-              store: source,
-              container: { make: (token) => this.app.container.make(token as never) },
-              config: extensionConfig,
-            } satisfies ExtensionContext,
-            (record) => this.auditAction(store, record),
-          )
-        : null;
-      return { api, diagnosisApi, profilesApi, schedulesApi, extApi, queueManagerApi };
-    };
+    // Every console API over one store: the full store, or a tenant-scoped view of it. The same
+    // builder backs the `telescope:*` ace commands.
+    const buildApis = (source: TelescopeStore) =>
+      buildConsoleApis(source, {
+        coreConfig,
+        uiConfig: config,
+        container: { make: (token) => this.app.container.make(token as never) },
+        audit: (record) => this.auditAction(store, record),
+      });
     const shared = buildApis(store);
     const scopedApis = new Map<string, ReturnType<typeof buildApis>>();
     const apisFor = (tags: string[] | null) => {
@@ -568,7 +476,7 @@ export default class TelescopeUiProvider {
         .as('telescope_ui.stream');
     }
 
-    if (registry) {
+    if (getTelescopeRuntime().registry) {
       router
         .get(`${apiBase}/ext/:ext/data/:provider`, async (ctx: GuardedContext) => {
           const a = await gate(ctx);
@@ -615,20 +523,10 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/meta`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
-        const ai = { enabled: a.diagnosisApi.isConfigured() };
-        const profiling = { enabled: a.profilesApi.isConfigured() };
-        const queueManager = { enabled: a.queueManagerApi.isConfigured() };
-        // The watcher names actually running, so a panel can say "the `query` watcher
-        // is off" instead of "No N+1 loops detected 🎉" — reporting its own blindness
-        // in the voice of good news is worse than reporting nothing.
-        const watchers = getEnabledWatchers();
-        if (a.extApi) return a.extApi.meta(ctx, { ai, profiling, queueManager, watchers });
         return ctx.response
           .status(200)
           .header('content-type', 'application/json')
-          .send({
-            data: { entryTypes: [], dashboards: [], ai, profiling, queueManager, watchers },
-          });
+          .send({ data: consoleMeta(a) });
       })
       .as('telescope_ui.meta');
   }
@@ -675,9 +573,7 @@ function bodyOf(ctx: GuardedContext): Record<string, unknown> {
 
 /** `403` for a queue mutation route when `telescope_ui.queueActions.enabled` is not set. */
 function queueMutationsDisabled(ctx: GuardedContext): unknown {
-  return ctx.response
-    .status(403)
-    .send({ error: 'Queue actions are disabled (set telescope_ui `queueActions.enabled: true`).' });
+  return ctx.response.status(403).send({ error: QUEUE_ACTIONS_DISABLED });
 }
 
 /**
