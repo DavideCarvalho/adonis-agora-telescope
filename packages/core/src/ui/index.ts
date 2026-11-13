@@ -40,6 +40,7 @@ export type {
   ReplayConfig,
   ResolvedTelescopeUiConfig,
   ResolveUiConfigOptions,
+  TelescopeDashboardOptions,
   TelescopeUiConfig,
 } from './define_config.js';
 // — config —

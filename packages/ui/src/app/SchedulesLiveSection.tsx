@@ -1,6 +1,6 @@
+import { Badge } from '../agora-kit/ui/badge';
 import { formatDuration, formatRelative } from '../client/format.js';
 import type { LiveScheduledTask, ScheduleKind, ScheduleRunStatus } from '../client/types.js';
-import { Badge } from './primitives/badge.js';
 import {
   Table,
   TableBody,
@@ -9,12 +9,12 @@ import {
   TableHeader,
   TableRow,
 } from './primitives/table.js';
-import { AsyncBlock, Panel, SectionTitle } from './ui.js';
+import { AsyncBlock, PageHeader, Panel, SectionTitle } from './ui.js';
 import { useLiveSchedules } from './use-telescope.js';
 
-const KIND_VARIANT: Record<ScheduleKind, 'brand' | 'outline' | 'warn'> = {
+const KIND_VARIANT: Record<ScheduleKind, 'brand' | 'neutral' | 'warn'> = {
   cron: 'brand',
-  interval: 'outline',
+  interval: 'neutral',
   custom: 'warn',
 };
 
@@ -24,7 +24,7 @@ function KindBadge({ kind }: { kind: ScheduleKind }) {
 
 function StatusBadge({ status }: { status: ScheduleRunStatus | null }) {
   if (status === null) return <span className="text-muted-foreground">—</span>;
-  return <Badge variant={status === 'completed' ? 'good' : 'bad'}>{status}</Badge>;
+  return <Badge variant={status === 'completed' ? 'good' : 'destructive'}>{status}</Badge>;
 }
 
 /** Next-run is an ISO string in the future; `formatRelative` only reads sensibly for the past, so
@@ -37,8 +37,8 @@ function formatNextRun(iso: string | null): string {
 
 function ScheduleRow({ task }: { task: LiveScheduledTask }) {
   return (
-    <TableRow className="hover:bg-panel/40">
-      <TableCell className="font-medium text-foreground">{task.name}</TableCell>
+    <TableRow>
+      <TableCell className="font-medium text-fg">{task.name}</TableCell>
       <TableCell>
         <KindBadge kind={task.kind} />
       </TableCell>
@@ -69,41 +69,48 @@ function ScheduleRow({ task }: { task: LiveScheduledTask }) {
  * running/stopped flag off, so faking one would be worse than omitting it.
  */
 export function SchedulesLiveSection() {
-  const { data, loading, error } = useLiveSchedules();
+  const { data, loading, error, reload } = useLiveSchedules();
   const tasks = data?.tasks ?? [];
 
   return (
-    <Panel>
-      <SectionTitle
-        title="Live Schedules"
-        hint={tasks.length > 0 ? `${tasks.length} registered` : undefined}
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title="Schedules"
+        description="Every registered schedule with its next fire and its most recent recorded run."
       />
-      <AsyncBlock
-        state={{ data: data ? tasks : null, loading, error }}
-        isEmpty={(rows) => rows.length === 0}
-        empty="No schedules registered. Call registerSchedule({ name, schedule, kind }) once per scheduled task to populate this console."
-      >
-        {(rows) => (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Kind</TableHead>
-                <TableHead>Schedule</TableHead>
-                <TableHead>Next run</TableHead>
-                <TableHead>Last run</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((task) => (
-                <ScheduleRow key={`${task.kind}:${task.name}`} task={task} />
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </AsyncBlock>
-    </Panel>
+      <Panel>
+        <SectionTitle
+          title="Live schedules"
+          hint={tasks.length > 0 ? `${tasks.length} registered` : undefined}
+        />
+        <AsyncBlock
+          state={{ data: data ? tasks : null, loading, error, reload }}
+          isEmpty={(rows) => rows.length === 0}
+          empty="No schedules registered. Call registerSchedule({ name, schedule, kind }) once per scheduled task to populate this console."
+        >
+          {(rows) => (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Kind</TableHead>
+                  <TableHead>Pool</TableHead>
+                  <TableHead>Schedule</TableHead>
+                  <TableHead>Next run</TableHead>
+                  <TableHead>Last run</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((task) => (
+                  <ScheduleRow key={`${task.kind}:${task.name}`} task={task} />
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </AsyncBlock>
+      </Panel>
+    </div>
   );
 }

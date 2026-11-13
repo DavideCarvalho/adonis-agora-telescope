@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type {
   Entry,
@@ -184,6 +184,18 @@ const goto = (hash: string) =>
 // `history.length` starting at its jsdom minimum (1) on a fresh page, so it must run FIRST and the
 // reset must be a no-op when the hash is already empty (which is also the only way the first test
 // keeps `history.length === 1`).
+// The shell loads every page but the Overview lazily. Transforming a page module (and the kit
+// components it pulls in) the first time can take longer than `waitFor`'s 1s budget, so warm the
+// module cache once up front: the tests then measure navigation, not the transformer.
+beforeAll(async () => {
+  await Promise.all([
+    import('./EntriesSection.js'),
+    import('./EntryDetail.js'),
+    import('./TraceDetail.js'),
+    import('./ExtensionsSection.js'),
+  ]);
+}, 30_000);
+
 beforeEach(() => {
   vi.clearAllMocks();
   if (window.location.hash !== '') window.location.hash = '';
@@ -220,7 +232,7 @@ describe('App shell navigation', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy());
 
     fireEvent.click(
-      within(screen.getByRole('navigation', { name: 'sections' })).getByRole('button', {
+      within(screen.getByRole('navigation', { name: 'Console' })).getByRole('link', {
         name: 'Entries',
       }),
     );
@@ -230,8 +242,9 @@ describe('App shell navigation', () => {
       expect(screen.getByRole('combobox', { name: /filter by type/i })).toBeTruthy(),
     );
 
+    // The watchers are a collapsible dot list in the same sidebar, one link per entry type.
     fireEvent.click(
-      within(screen.getByRole('navigation', { name: 'watchers' })).getByRole('button', {
+      within(screen.getByRole('navigation', { name: 'Console' })).getByRole('link', {
         name: 'exception',
       }),
     );
@@ -247,7 +260,7 @@ describe('App shell navigation', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /back to entries/i })).toBeTruthy(),
     );
-    expect(screen.getByText('Content')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Content')).toBeTruthy());
     expect(screen.getByText('e-1')).toBeTruthy();
 
     goto('#/entries');
@@ -307,6 +320,7 @@ describe('sidebar — dashboards contribuídos', () => {
   it('não existe mais um item "Extensions"', async () => {
     renderApp(clientWithDashboard());
     await waitFor(() => expect(screen.getByText('Workflows')).toBeTruthy());
+    expect(screen.queryByRole('link', { name: 'Extensions' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Extensions' })).toBeNull();
   });
 
@@ -314,14 +328,16 @@ describe('sidebar — dashboards contribuídos', () => {
     renderApp(clientWithDashboard());
     // Escopado à barra lateral: depois do clique a própria seção também escreve
     // "Workflows", e um getByText solto passaria a achar dois.
-    const sidebar = () => within(screen.getByRole('navigation', { name: 'sections' }));
-    const item = await waitFor(() => sidebar().getByText('Workflows'));
+    const sidebar = () => within(screen.getByRole('navigation', { name: 'Console' }));
+    const item = await waitFor(() => sidebar().getByRole('link', { name: 'Workflows' }));
 
     fireEvent.click(item);
 
     expect(window.location.hash).toContain('extensions');
     await waitFor(() =>
-      expect(sidebar().getByText('Workflows').getAttribute('aria-current')).toBe('page'),
+      expect(sidebar().getByRole('link', { name: 'Workflows' }).getAttribute('aria-current')).toBe(
+        'page',
+      ),
     );
   });
 });

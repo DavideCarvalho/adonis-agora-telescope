@@ -236,18 +236,20 @@ describe('telescope search provider', () => {
 });
 
 describe('shell data block', () => {
-  it('carries switcher/search when given, apiBase always, and escapes <', () => {
+  it('carries switcher/search/viewer/signOut when given, apiBase always, and escapes <', () => {
     const html = injectApiBase('<head></head>', '/telescope/api', {
       switcher: { endpoint: '/telescope/api/consoles', others: 2 },
       search: { endpoint: '/telescope/api/consoles/search' },
-      note: '</script>',
+      viewer: { label: '</script><b>', role: 'admin' },
+      signOut: { action: '/logout', csrfToken: 't' },
     });
     const json = /<script type="application\/json"[^>]*>(.*)<\/script>/.exec(html)?.[1] ?? '';
     expect(json).not.toContain('</script>');
     expect(JSON.parse(json)).toEqual({
       switcher: { endpoint: '/telescope/api/consoles', others: 2 },
       search: { endpoint: '/telescope/api/consoles/search' },
-      note: '</script>',
+      viewer: { label: '</script><b>', role: 'admin' },
+      signOut: { action: '/logout', csrfToken: 't' },
       apiBase: '/telescope/api',
     });
     expect(injectApiBase('<head></head>', '/x/api')).toContain('{"apiBase":"/x/api"}');

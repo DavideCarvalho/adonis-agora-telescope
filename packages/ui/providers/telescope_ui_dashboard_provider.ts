@@ -13,6 +13,7 @@ import {
 import type { HttpContext } from '@adonisjs/core/http';
 import type { ApplicationService } from '@adonisjs/core/types';
 import { type SearchableStore, telescopeConsoleSearch } from '../src/server/console_search.js';
+import { resolveSignOut, resolveViewer } from '../src/server/console_shell.js';
 import {
   type AgoraConsoleDecision,
   countOtherConsoles,
@@ -22,6 +23,7 @@ import {
   searchConsoles,
 } from '../src/server/console_switcher.js';
 import {
+  type ResolvedTelescopeDashboardConfig,
   resolveDashboardConfig,
   type TelescopeDashboardConfig,
 } from '../src/server/define_config.js';
@@ -31,6 +33,7 @@ import {
   injectApiBase,
   mountPathFor,
   rewriteRelativeAssets,
+  type ShellFields,
   safeAssetSegments,
 } from '../src/server/paths.js';
 
@@ -125,7 +128,7 @@ export default class TelescopeUiDashboardProvider {
 
     router.get(mount, async (ctx) => {
       if (!(await this.gate(ctx, guard, denial))) return;
-      await this.sendIndex(ctx, mount, apiBase);
+      await this.sendIndex(ctx, mount, apiBase, dashboardConfig);
     });
 
     // Built assets (JS/CSS/fonts/...), with an index fallback for any unmatched path so the
@@ -137,7 +140,7 @@ export default class TelescopeUiDashboardProvider {
       if (segments === null) {
         return ctx.response.status(400).json({ error: 'bad asset path' });
       }
-      await this.sendAsset(ctx, segments, mount, apiBase);
+      await this.sendAsset(ctx, segments, mount, apiBase, dashboardConfig);
     });
   }
 
@@ -182,19 +185,28 @@ export default class TelescopeUiDashboardProvider {
     }
   }
 
-  /** The `switcher` / `search` fields of the shell's data block (no `authorize` runs here). */
-  private async shellConfig(apiBase: string): Promise<Record<string, unknown>> {
-    try {
-      const registry = await readAgoraConsoles(this.app);
-      const others = countOtherConsoles(registry, CONSOLE_ID);
-      if (others === 0) return {};
-      return {
-        switcher: { endpoint: `${apiBase}/consoles`, others },
-        search: { endpoint: `${apiBase}/consoles/search` },
-      };
-    } catch {
-      return {};
-    }
+  /**
+   * The console-shell fields of the page's data block (no `authorize` runs here): the switcher
+   * (only when other consoles are registered), ⌘K search (whenever a console registry exists —
+   * Telescope registers its own search, so it searches its own entries even when alone), the
+   * signed-in viewer and the sign-out (the host's option, else the one an account console
+   * announced on the registry). Each part fails closed: an error drops it, never the page.
+   */
+  private async shellConfig(
+    apiBase: string,
+    ctx: HttpContext,
+    config: ResolvedTelescopeDashboardConfig,
+  ): Promise<ShellFields> {
+    const registry = await readAgoraConsoles(this.app).catch(() => null);
+    const others = countOtherConsoles(registry, CONSOLE_ID);
+    const viewer = await resolveViewer(ctx, config.viewer);
+    const signOut = resolveSignOut(ctx, config.signOut, registry);
+    return {
+      ...(others > 0 ? { switcher: { endpoint: `${apiBase}/consoles`, others } } : {}),
+      ...(registry ? { search: { endpoint: `${apiBase}/consoles/search` } } : {}),
+      ...(viewer ? { viewer } : {}),
+      ...(signOut ? { signOut } : {}),
+    };
   }
 
   /**
@@ -217,11 +229,16 @@ export default class TelescopeUiDashboardProvider {
    * (the SPA is a `base: './'` Vite build; see {@link rewriteRelativeAssets}), inject the API base,
    * and send it.
    */
-  private async sendIndex(ctx: HttpContext, mount: string, apiBase: string): Promise<void> {
+  private async sendIndex(
+    ctx: HttpContext,
+    mount: string,
+    apiBase: string,
+    config: ResolvedTelescopeDashboardConfig,
+  ): Promise<void> {
     const html = await readFile(new URL('index.html', this.spaDirUrl), 'utf8');
     ctx.response.header('content-type', 'text/html; charset=utf-8');
     ctx.response.header('cache-control', 'no-store, must-revalidate');
-    const extra = await this.shellConfig(apiBase);
+    const extra = await this.shellConfig(apiBase, ctx, config);
     ctx.response.send(injectApiBase(rewriteRelativeAssets(html, mount), apiBase, extra));
   }
 
@@ -231,6 +248,7 @@ export default class TelescopeUiDashboardProvider {
     segments: string[],
     mount: string,
     apiBase: string,
+    config: ResolvedTelescopeDashboardConfig,
   ): Promise<void> {
     const filename = segments[segments.length - 1] ?? 'index.html';
     try {
@@ -239,7 +257,7 @@ export default class TelescopeUiDashboardProvider {
       ctx.response.send(buffer);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        await this.sendIndex(ctx, mount, apiBase);
+        await this.sendIndex(ctx, mount, apiBase, config);
         return;
       }
       throw error;

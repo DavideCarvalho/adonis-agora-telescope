@@ -144,6 +144,40 @@ export interface TelescopeUiConfig {
    * console (`GET .../queues/live*`) is unaffected; only `POST .../queues/live/*` is gated.
    */
   queueActions?: { enabled?: boolean };
+  /**
+   * The console SPA's own block, read by `@adonis-agora/telescope-ui` (ignored without it): turn
+   * the SPA off or re-mount it, and set the sidebar footer's signed-in user and sign-out.
+   */
+  dashboard?: TelescopeDashboardOptions;
+}
+
+/**
+ * `telescope_ui.dashboard` — the `@adonis-agora/telescope-ui` console's options. Declared here so a
+ * host's `config/telescope_ui.ts` type-checks; the UI package owns the behaviour.
+ */
+export interface TelescopeDashboardOptions {
+  /** Mount the SPA. Default `true`. */
+  enabled?: boolean;
+  /** Override the SPA mount path. Defaults to `telescope_ui.path`. */
+  path?: string;
+  /**
+   * Who the sidebar footer shows as signed in: `{ label, email?, role? }`, or `null` for no user
+   * row. Omit it to read `ctx.auth.user` (`fullName`/`name`/`email`, first of `role`/`roles`) when
+   * the request is already authenticated. A throw counts as `null`.
+   */
+  viewer?: (
+    ctx: UiHttpContext,
+  ) =>
+    | { label: string; email?: string; role?: string }
+    | null
+    | undefined
+    | Promise<{ label: string; email?: string; role?: string } | null | undefined>;
+  /**
+   * The footer's sign-out: a POST action path (`'/logout'`, sent with the CSRF token as `_csrf`),
+   * `{ href }` for a link, or `false` for none. Omit it to use the sign-out an account console
+   * (authkit) announces on the `agora.consoles` registry. Same-origin paths only.
+   */
+  signOut?: string | { action: string } | { href: string } | false;
 }
 
 /** Request-replay configuration (see {@link TelescopeUiConfig.replay}). */

@@ -1,19 +1,39 @@
-import { Suspense, useEffect, useState } from 'react';
-import { readShellSwitcherConfig } from '../client/console_switcher.js';
-import type { ExtensionEntryType } from '../client/types.js';
+import { type CSSProperties, type ReactNode, Suspense, useEffect, useMemo } from 'react';
+import { ErrorBoundary } from '../agora-kit/blocks/error-boundary';
+import { MetricGridSkeleton } from '../agora-kit/blocks/metric-card';
+import { AppShell, type NavSection, PageBody } from '../agora-kit/shell/app-shell';
+import type { SearchCommand } from '../agora-kit/shell/console-search';
+import { readShellConfig } from '../agora-kit/shell-config';
+import { Skeleton } from '../agora-kit/ui/skeleton';
+import { CONFIG_ELEMENT_ID } from '../client/api-base.js';
+import type { DashboardSpec, ExtensionEntryType } from '../client/types.js';
 import { ENTRY_TYPES } from '../client/types.js';
-import { CommandPalette, type PaletteTarget } from './CommandPalette.js';
-import { ConsoleSwitcher } from './ConsoleSwitcher.js';
-import { MoonIcon, SunIcon } from './icons.js';
+import { buildCommands, type CommandTarget } from './commands.js';
+import {
+  AiIcon,
+  ClockIcon,
+  DashboardIcon,
+  EntriesIcon,
+  ExceptionIcon,
+  ExportIcon,
+  FlameIcon,
+  OverviewIcon,
+  PulseIcon,
+  QueueIcon,
+  ScreensIcon,
+  TelescopeMark,
+  TracesIcon,
+} from './icons.js';
 import { lazySection } from './lazy-section.js';
 import { OverviewSection } from './OverviewSection.js';
-import { Button } from './primitives/button.js';
-import { Tooltip, TooltipProvider } from './primitives/tooltip.js';
 import { RetentionIndicator } from './RetentionIndicator.js';
 import { TenantEmptyNotice, TenantPicker } from './TenantPicker.js';
 import { typeColor, typeLabel } from './ui.js';
-import { useHashRoute } from './use-hash-route.js';
+import { formatHash, type TelescopeRoute, useHashRoute } from './use-hash-route.js';
 import { useMeta } from './use-telescope.js';
+
+/** Telescope's accent (magenta): passed to the kit's ThemeProvider in `main.tsx`. */
+export const TELESCOPE_ACCENT = '#e879f9';
 
 // Every section except the landing Overview is its own chunk (loaded on first visit), so the
 // initial page only downloads and parses the shell + Overview.
@@ -46,56 +66,27 @@ type SectionKey =
   | 'ai'
   | 'exceptions'
   | 'exports'
-  | 'extensions'
   | 'profiles'
   | 'queues'
   | 'schedules';
 
-/**
- * The sidebar's built-in section list — order matches `@dudousxd/nestjs-telescope-ui`'s
- * `DashboardLayout` NAV wherever this console shares the page (Overview, Entries, Traces, Pulse,
- * Queues, Schedules, Exports, Profiles, AI), plus this console's own additions (Exceptions — a
- * dedicated grouped-exception view nestjs folds into Entries/Pulse instead; Screens).
- *
- * Contributed dashboards are NOT here: they are rendered below this list, each under its own
- * name, which is the same one-nav-item-per-dashboard shape nestjs uses. There used to be a
- * single "Extensions" picker above them, and it meant the bar had two entries leading to the
- * same screen — one named after what you want to see, one named after the machinery that
- * delivers it.
- */
-const NAV: { key: SectionKey; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'entries', label: 'Entries' },
-  { key: 'traces', label: 'Traces' },
-  { key: 'screens', label: 'Screens' },
-  { key: 'ai', label: 'AI' },
-  { key: 'pulse', label: 'Pulse' },
-  { key: 'exceptions', label: 'Exceptions' },
-  { key: 'queues', label: 'Queues' },
-  { key: 'schedules', label: 'Schedules' },
-  { key: 'exports', label: 'Exports' },
-  { key: 'profiles', label: 'Profiles' },
-];
-
-const THEME_STORAGE_KEY = 'telescope-theme';
-
-function readStoredTheme(): 'light' | 'dark' | null {
-  try {
-    const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return raw === 'light' || raw === 'dark' ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-function storeTheme(theme: 'light' | 'dark' | null): void {
-  try {
-    if (theme) window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-    else window.localStorage.removeItem(THEME_STORAGE_KEY);
-  } catch {
-    // Private-mode / disabled storage: theme just won't persist across reloads.
-  }
-}
+/** Topbar titles per route. */
+const TITLES: Record<TelescopeRoute['name'], string> = {
+  overview: 'Overview',
+  pulse: 'Pulse',
+  exceptions: 'Exceptions',
+  entries: 'Entries',
+  entry: 'Entry',
+  traces: 'Traces',
+  trace: 'Trace',
+  screens: 'Screens',
+  ai: 'AI',
+  profiles: 'Profiles',
+  queues: 'Queues',
+  schedules: 'Schedules',
+  exports: 'Exports',
+  extensions: 'Dashboards',
+};
 
 /** A watcher/entry-type nav row: built-ins from `ENTRY_TYPES` plus anything an extension
  *  contributed via `/api/meta` (e.g. `adonis-durable`'s "Workflows" type), de-duped by id. */
@@ -108,44 +99,150 @@ function watcherTypes(
   return [...built, ...extra];
 }
 
-function navItemClass(active: boolean): string {
-  return `block rounded px-3 py-1.5 text-left text-xs uppercase tracking-wide ${
-    active ? 'bg-panel-2 text-brand' : 'text-muted-foreground hover:bg-panel hover:text-foreground'
-  }`;
+/** A watcher's colour dot, sized like a nav icon so the labels line up with the rows above. */
+function Dot({ color }: { color: string }) {
+  return (
+    <span className="grid size-[15px] shrink-0 place-items-center" aria-hidden>
+      <span
+        className="type-ink size-[7px] rounded-full bg-current"
+        style={{ '--type': color } as CSSProperties}
+      />
+    </span>
+  );
 }
 
-function watcherItemClass(active: boolean): string {
-  return `flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs ${
-    active
-      ? 'bg-panel-2 text-foreground'
-      : 'text-muted-foreground hover:bg-panel hover:text-foreground'
-  }`;
+/** The sidebar row a route lights up. A filtered entries list lights its watcher. */
+function activeNavId(route: TelescopeRoute): string {
+  switch (route.name) {
+    case 'entry':
+      return 'entries';
+    case 'trace':
+      return 'traces';
+    case 'entries':
+      return route.type === undefined ? 'entries' : `watcher:${route.type}`;
+    case 'extensions':
+      return route.dashboardId ? `dashboard:${route.dashboardId}` : 'extensions';
+    default:
+      return route.name;
+  }
 }
 
 /**
- * The dashboard shell: a fixed left sidebar (brand + section nav + watchers sub-nav), a compact
- * header (retention, command palette, theme toggle), and the active view. A selected entry or
- * trace opens an overlay detail (entry wins over trace), so any list row / trace pill can
- * deep-dive without leaving the section it was opened from.
+ * The sidebar: MONITOR (Overview, Pulse, Exceptions) · EXPLORE (Entries, Traces, Screens, AI,
+ * Profiles) · OPERATIONS (Queues, Schedules) · DASHBOARDS (one item per contributed dashboard, under
+ * its own name — never a generic "Extensions" entry) · WATCHERS (a collapsible dot list) · DATA.
+ */
+function buildNav(
+  go: (route: TelescopeRoute) => void,
+  dashboards: DashboardSpec[],
+  watchers: { id: string; label: string; dot: string }[],
+): NavSection[] {
+  const page = (key: SectionKey, label: string, icon: ReactNode) => ({
+    id: key,
+    label,
+    icon,
+    href: formatHash({ name: key }),
+    onSelect: () => go({ name: key }),
+  });
+  return [
+    {
+      section: 'Monitor',
+      items: [
+        page('overview', 'Overview', <OverviewIcon />),
+        page('pulse', 'Pulse', <PulseIcon />),
+        page('exceptions', 'Exceptions', <ExceptionIcon />),
+      ],
+    },
+    {
+      section: 'Explore',
+      items: [
+        page('entries', 'Entries', <EntriesIcon />),
+        page('traces', 'Traces', <TracesIcon />),
+        page('screens', 'Screens', <ScreensIcon />),
+        page('ai', 'AI', <AiIcon />),
+        page('profiles', 'Profiles', <FlameIcon />),
+      ],
+    },
+    {
+      section: 'Operations',
+      items: [
+        page('queues', 'Queues', <QueueIcon />),
+        page('schedules', 'Schedules', <ClockIcon />),
+      ],
+    },
+    {
+      section: 'Dashboards',
+      items: dashboards.map((d) => {
+        const route: TelescopeRoute = { name: 'extensions', dashboardId: d.id };
+        return {
+          id: `dashboard:${d.id}`,
+          label: d.label,
+          icon: <DashboardIcon />,
+          href: formatHash(route),
+          onSelect: () => go(route),
+        };
+      }),
+    },
+    {
+      section: 'Watchers',
+      collapsible: true,
+      items: watchers.map((w) => {
+        const route: TelescopeRoute = { name: 'entries', type: w.id };
+        return {
+          id: `watcher:${w.id}`,
+          label: w.label,
+          icon: <Dot color={w.dot} />,
+          href: formatHash(route),
+          onSelect: () => go(route),
+        };
+      }),
+    },
+    { section: 'Data', items: [page('exports', 'Exports', <ExportIcon />)] },
+  ];
+}
+
+/** The topbar's live indicator: Telescope is recording right now. */
+function LiveIndicator() {
+  return (
+    <span
+      className="hidden items-center gap-1.5 rounded-full border border-good/25 bg-good/10 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-good sm:inline-flex"
+      title="Telescope is capturing live"
+    >
+      <span className="live-dot" aria-hidden />
+      Live
+    </span>
+  );
+}
+
+/** What a lazily-loaded page shows while its chunk downloads: metric tiles and a panel. */
+function PageSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" role="status" aria-busy="true" aria-label="Loading">
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="h-3 w-64" />
+      </div>
+      <MetricGridSkeleton count={4} />
+      <Skeleton className="h-56 w-full rounded-lg" />
+    </div>
+  );
+}
+
+/**
+ * The Telescope console: the Agora shell (kit) — sidebar with the console switcher, grouped nav and
+ * a collapsible watcher list; topbar with the organization picker, retention, the live dot and
+ * ⌘K — around the active page. Every page renders inside its own error boundary, and the panels
+ * inside a page fetch and fail on their own.
  *
- * Matches `@dudousxd/nestjs-telescope-ui`'s `DashboardLayout` structurally (sidebar nav, not top
- * tabs; monospace shell; flat black background; dense panels) — but with a hash router instead of
- * `HashRouter`/`<NavLink>`: the URL (`#/entries?type=…`, `#/entries/<id>`, `#/traces/<id>` …) is the
- * single source of truth, so deep links, browser back/forward and programmatic navigation all
- * converge on the same state.
+ * Routing stays on the URL hash (`#/entries?type=…`, `#/entries/<id>`, `#/traces/<id>` …): it is
+ * the single source of truth, so deep links, browser back/forward and programmatic navigation all
+ * converge on the same state. A selected entry or trace replaces the page with its detail view.
  */
 export function App() {
-  const [theme, setTheme] = useState<'light' | 'dark' | null>(() => readStoredTheme());
   const { route, navigate } = useHashRoute();
   const meta = useMeta();
-  const [shell] = useState(() => readShellSwitcherConfig());
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const resolved = theme ?? 'dark';
-    root.classList.toggle('light', resolved === 'light');
-    storeTheme(theme);
-  }, [theme]);
+  // What the provider put in the page: switcher, ⌘K search, viewer, sign-out (all optional).
+  const shell = useMemo(() => readShellConfig(CONFIG_ELEMENT_ID), []);
 
   // On first load with an empty hash, land on the overview (also gives the URL a deep-linkable
   // hash so a plain page visit doesn't fight the route parse).
@@ -163,175 +260,127 @@ export function App() {
     else navigate({ name: fallback });
   };
 
-  const onPaletteNavigate = (target: PaletteTarget) => {
-    if (target.kind === 'section') {
-      navigate({ name: target.key });
-    } else if (target.kind === 'entryType') {
-      navigate({ name: 'entries', type: target.type });
-    } else {
-      navigate({ name: 'extensions', dashboardId: target.id });
-    }
-  };
+  const dashboards = meta.data?.dashboards ?? [];
+  const contributedTypes = meta.data?.entryTypes;
+  const watchers = useMemo(() => watcherTypes(contributedTypes), [contributedTypes]);
+  const nav = useMemo(
+    () => buildNav(navigate, dashboards, watchers),
+    [navigate, dashboards, watchers],
+  );
 
-  const isDark = (theme ?? 'dark') === 'dark';
-  const watchers = watcherTypes(meta.data?.entryTypes);
+  // ⌘K: Telescope's own jumps (every page, every entry type, every contributed dashboard) above
+  // the cross-console search the provider announced.
+  const commands = useMemo<SearchCommand[]>(
+    () =>
+      buildCommands(dashboards).map((c) => ({
+        id: c.id,
+        label: c.label,
+        group: c.group,
+        hint: c.hint,
+        ...(c.dot ? { icon: <Dot color={c.dot} /> } : {}),
+        onSelect: () => navigate(routeFor(c.target)),
+      })),
+    [dashboards, navigate],
+  );
+
+  const dashboardLabel =
+    route.name === 'extensions'
+      ? dashboards.find((d) => d.id === route.dashboardId)?.label
+      : undefined;
+  const title =
+    route.name === 'entries' && route.type !== undefined
+      ? `Entries · ${typeLabel(route.type)}`
+      : (dashboardLabel ?? TITLES[route.name]);
 
   return (
-    <TooltipProvider>
-      <div className="flex min-h-screen bg-background font-mono text-sm text-foreground">
-        <aside className="flex w-56 shrink-0 flex-col gap-6 border-r border-line px-3 py-4">
-          <ConsoleSwitcher
-            brand={<span className="text-base font-semibold text-brand">Telescope</span>}
-            {...(shell.switcher ? { endpoint: shell.switcher.endpoint } : {})}
-          />
-          <nav className="flex flex-col gap-1" aria-label="sections">
-            {NAV.map((item) => {
-              const active = route.name === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={navItemClass(active)}
-                  aria-current={active ? 'page' : undefined}
-                  onClick={() => go(item.key)}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-            {/*
-              Cada dashboard contribuído entra pelo NOME dele. Não há um item
-              "Extensions" acima: ele abria a mesma seção sem dashboard escolhido, então
-              a barra tinha dois itens que levavam ao mesmo lugar — um com o nome do que
-              você quer ver ("Workflows") e outro com o nome da mecânica que o entrega.
-              "Extensão" é um conceito de quem escreve a lib, não de quem lê o console.
-            */}
-            {(meta.data?.dashboards ?? []).map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                className={navItemClass(route.name === 'extensions' && route.dashboardId === d.id)}
-                aria-current={
-                  route.name === 'extensions' && route.dashboardId === d.id ? 'page' : undefined
-                }
-                onClick={() => navigate({ name: 'extensions', dashboardId: d.id })}
-              >
-                {d.label}
-              </button>
-            ))}
-          </nav>
-          <nav className="flex flex-col gap-1" aria-label="watchers">
-            <span className="px-3 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-              Watchers
-            </span>
-            {watchers.map((type) => (
-              <button
-                key={type.id}
-                type="button"
-                className={watcherItemClass(route.name === 'entries' && route.type === type.id)}
-                onClick={() => openType(type.id)}
-              >
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: type.dot }}
-                  aria-hidden="true"
-                />
-                {type.label}
-              </button>
-            ))}
-          </nav>
-        </aside>
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-end gap-3 border-b border-line px-4 py-2">
-            <TenantPicker />
+    <AppShell
+      brand={{
+        name: 'telescope',
+        subtitle: 'observability',
+        mark: <TelescopeMark />,
+        current: { title: 'Telescope', package: '@adonis-agora/telescope', icon: 'telescope' },
+      }}
+      nav={nav}
+      activeId={activeNavId(route)}
+      shell={shell}
+      title={title}
+      commands={commands}
+      searchPlaceholder={
+        shell.search ? 'Jump to a page, or search entries, runs, users…' : 'Jump to a page…'
+      }
+      actions={
+        <>
+          <TenantPicker />
+          <div className="hidden md:block">
             <RetentionIndicator />
-            <CommandPalette
-              dashboards={meta.data?.dashboards ?? []}
-              onNavigate={onPaletteNavigate}
-              {...(shell.search ? { searchEndpoint: shell.search.endpoint } : {})}
-            />
-            <Tooltip label="Toggle light / dark">
-              <Button
-                variant="outline"
-                className="normal-case"
-                aria-label="toggle theme"
-                aria-pressed={!isDark}
-                onClick={() => setTheme((t) => ((t ?? 'dark') === 'light' ? 'dark' : 'light'))}
-              >
-                {isDark ? <MoonIcon /> : <SunIcon />}
-                {isDark ? 'Dark' : 'Light'}
-              </Button>
-            </Tooltip>
-            <span
-              className="inline-flex items-center gap-1.5 rounded-sm border border-good/30 bg-good/10 px-2.5 py-1 text-xs uppercase tracking-wide text-good"
-              title="Telescope is capturing live"
-            >
-              <span className="live-dot" aria-hidden="true" />
-              Live
-            </span>
-          </header>
-
-          <main className="min-w-0 flex-1 overflow-x-hidden p-4">
-            <TenantEmptyNotice />
-            <Suspense fallback={<p className="text-xs text-muted-foreground">Loading…</p>}>
-              {route.name === 'entry' ? (
-                <EntryDetail
-                  id={route.id}
-                  onOpenTrace={openTrace}
-                  onBack={() => goBack('entries')}
-                />
-              ) : route.name === 'trace' ? (
-                <TraceDetail
-                  traceId={route.traceId}
-                  onOpenEntry={openEntry}
-                  onBack={() => goBack('traces')}
-                />
-              ) : route.name === 'overview' ? (
-                <OverviewSection
-                  onOpenTrace={openTrace}
-                  onOpenEntry={openEntry}
-                  onOpenQueues={() => go('queues')}
-                  onOpenPulse={() => go('pulse')}
-                  onOpenExceptions={() => go('exceptions')}
-                  onOpenType={openType}
-                />
-              ) : route.name === 'pulse' ? (
-                <PulseSection onOpenTrace={openTrace} />
-              ) : route.name === 'entries' ? (
-                <EntriesSection
-                  key={route.type ?? 'default'}
-                  onOpenEntry={openEntry}
-                  onOpenTrace={openTrace}
-                  {...(route.type !== undefined ? { presetType: route.type } : {})}
-                />
-              ) : route.name === 'screens' ? (
-                <ScreensSection onOpenType={openType} />
-              ) : route.name === 'ai' ? (
-                <AiSection onOpenTrace={openTrace} onOpenEntry={openEntry} />
-              ) : route.name === 'traces' ? (
-                <TracesSection onOpenTrace={openTrace} />
-              ) : route.name === 'exceptions' ? (
-                <ExceptionsSection onOpenType={(type) => navigate({ name: 'entries', type })} />
-              ) : route.name === 'schedules' ? (
-                <SchedulesLiveSection />
-              ) : route.name === 'queues' ? (
-                <QueueManagerSection />
-              ) : route.name === 'profiles' ? (
-                <ProfilesSection />
-              ) : route.name === 'exports' ? (
-                <ExportsSection />
-              ) : (
-                <ExtensionsSection
-                  selectedId={route.dashboardId ?? null}
-                  onSelect={(id) => navigate({ name: 'extensions', dashboardId: id })}
-                  onOpenTrace={openTrace}
-                />
-              )}
-            </Suspense>
-          </main>
-        </div>
-      </div>
-    </TooltipProvider>
+          </div>
+          <LiveIndicator />
+        </>
+      }
+    >
+      <PageBody>
+        <TenantEmptyNotice />
+        <ErrorBoundary label={TITLES[route.name]} resetKeys={[formatHash(route)]}>
+          <Suspense fallback={<PageSkeleton />}>
+            {route.name === 'entry' ? (
+              <EntryDetail id={route.id} onOpenTrace={openTrace} onBack={() => goBack('entries')} />
+            ) : route.name === 'trace' ? (
+              <TraceDetail
+                traceId={route.traceId}
+                onOpenEntry={openEntry}
+                onBack={() => goBack('traces')}
+              />
+            ) : route.name === 'overview' ? (
+              <OverviewSection
+                onOpenTrace={openTrace}
+                onOpenEntry={openEntry}
+                onOpenQueues={() => go('queues')}
+                onOpenPulse={() => go('pulse')}
+                onOpenExceptions={() => go('exceptions')}
+                onOpenType={openType}
+              />
+            ) : route.name === 'pulse' ? (
+              <PulseSection onOpenTrace={openTrace} />
+            ) : route.name === 'entries' ? (
+              <EntriesSection
+                key={route.type ?? 'default'}
+                onOpenEntry={openEntry}
+                onOpenTrace={openTrace}
+                {...(route.type !== undefined ? { presetType: route.type } : {})}
+              />
+            ) : route.name === 'screens' ? (
+              <ScreensSection onOpenType={openType} />
+            ) : route.name === 'ai' ? (
+              <AiSection onOpenTrace={openTrace} onOpenEntry={openEntry} />
+            ) : route.name === 'traces' ? (
+              <TracesSection onOpenTrace={openTrace} />
+            ) : route.name === 'exceptions' ? (
+              <ExceptionsSection onOpenType={openType} />
+            ) : route.name === 'schedules' ? (
+              <SchedulesLiveSection />
+            ) : route.name === 'queues' ? (
+              <QueueManagerSection />
+            ) : route.name === 'profiles' ? (
+              <ProfilesSection />
+            ) : route.name === 'exports' ? (
+              <ExportsSection />
+            ) : (
+              <ExtensionsSection
+                selectedId={route.dashboardId ?? null}
+                onSelect={(id) => navigate({ name: 'extensions', dashboardId: id })}
+                onOpenTrace={openTrace}
+              />
+            )}
+          </Suspense>
+        </ErrorBoundary>
+      </PageBody>
+    </AppShell>
   );
+}
+
+/** The route a ⌘K command lands on. */
+function routeFor(target: CommandTarget): TelescopeRoute {
+  if (target.kind === 'section') return { name: target.key };
+  if (target.kind === 'entryType') return { name: 'entries', type: target.type };
+  return { name: 'extensions', dashboardId: target.id };
 }

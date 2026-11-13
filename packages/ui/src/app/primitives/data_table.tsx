@@ -8,7 +8,8 @@ import {
   useTable,
 } from '@tanstack/react-table';
 import { useState } from 'react';
-import { Button } from './button.js';
+import { ChevronLeftIcon, ChevronRightIcon } from '../../agora-kit/icons';
+import { Button } from '../../agora-kit/ui/button';
 import { cn } from './cn.js';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table.js';
 
@@ -143,10 +144,7 @@ export function DataTable<TRow extends RowData>({
         <TableBody>
           {rows.length === 0 ? (
             <TableRow>
-              <TableCell
-                colSpan={columns.length}
-                className="py-6 text-center text-muted-foreground"
-              >
+              <TableCell colSpan={columns.length} className="py-8 text-center text-faint">
                 {empty}
               </TableCell>
             </TableRow>
@@ -154,14 +152,11 @@ export function DataTable<TRow extends RowData>({
             rows.map((row) => (
               <TableRow
                 key={row.id}
-                className={cn(
-                  onRowClick && 'cursor-pointer hover:bg-surface-2',
-                  rowClassName?.(row.original),
-                )}
+                className={cn(onRowClick && 'cursor-pointer', rowClassName?.(row.original))}
                 {...(onRowClick ? { onClick: () => onRowClick(row.original) } : {})}
               >
                 {row.getAllCells().map((cell) => (
-                  <TableCell key={cell.id} className="mono">
+                  <TableCell key={cell.id} className="mono text-[12px]">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}
@@ -198,21 +193,25 @@ function Pager({
   // Page 1 with nothing on it is the empty state, not a pager.
   if (page === 1 && !hasMore && rowsOnPage === 0) return null;
   return (
-    <div className="flex items-center justify-end gap-2.5">
+    <div className="flex items-center justify-end gap-2.5 px-1">
       <Button
         variant="outline"
+        size="sm"
         disabled={page <= 1 || isFetching}
         onClick={() => onPageChange(page - 1)}
       >
-        ← Prev
+        <ChevronLeftIcon />
+        Prev
       </Button>
-      <span className="tnum text-muted-foreground">Page {page}</span>
+      <span className="mono tnum text-[11px] text-faint">Page {page}</span>
       <Button
         variant="outline"
+        size="sm"
         disabled={!hasMore || isFetching}
         onClick={() => onPageChange(page + 1)}
       >
-        Next →
+        Next
+        <ChevronRightIcon />
       </Button>
     </div>
   );

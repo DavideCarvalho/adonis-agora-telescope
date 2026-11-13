@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
+import { Toolbar } from '../agora-kit/blocks/page-header';
+import { Button } from '../agora-kit/ui/button';
 import { formatCount, formatDuration, formatRelative } from '../client/format.js';
 import type { ScreenStats } from '../client/types.js';
-import { Button } from './primitives/button.js';
 import { DataTable } from './primitives/data_table.js';
-import { AsyncBlock, Panel, SectionTitle } from './ui.js';
+import { AsyncBlock, PageHeader, Panel, SectionTitle } from './ui.js';
 import { useScreens } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
 
@@ -91,44 +92,48 @@ export function ScreensSection({ onOpenType }: { onOpenType: (type: string) => v
   const active = KINDS.find((k) => k.key === kind) ?? KINDS[0];
 
   return (
-    <Panel>
-      <SectionTitle
+    <div className="flex flex-col gap-4">
+      <PageHeader
         title="Screens"
-        hint={<WindowSelect value={windowMs} onChange={setWindowMs} />}
+        description="Traffic per route, split by how it was reached: a page view, an API call, an asset."
+        actions={<WindowSelect value={windowMs} onChange={setWindowMs} />}
       />
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <Toolbar label="route kind">
         {KINDS.map((k) => (
           <Button
+            size="chip"
             key={k.key}
-            variant={kind === k.key ? 'brand' : 'outline'}
+            variant="chip"
             aria-pressed={kind === k.key}
             onClick={() => setKind(k.key)}
           >
             {k.label}
           </Button>
         ))}
-        <span className="text-muted-foreground text-xs">{active.hint}</span>
-      </div>
-      <AsyncBlock
-        state={state}
-        isEmpty={(rows) => rows.length === 0}
-        empty="No requests of this kind in this window."
-        skeletonRows={6}
-      >
-        {(rows) => (
-          <DataTable
-            id={`screens-${kind}`}
-            data={rows}
-            columns={columns}
-            rowKey={(s) => `${s.kind} ${s.url}`}
-            onRowClick={() => onOpenType('request')}
-            rowClassName={() => 'hover:bg-brand/5'}
-            // Client-side: the window's routes are an aggregate the browser already
-            // holds in full, so paging here costs no round trip and hides nothing.
-            clientPageSize={PAGE_SIZE}
-          />
-        )}
-      </AsyncBlock>
-    </Panel>
+        <span className="ml-1 text-xs text-faint">{active.hint}</span>
+      </Toolbar>
+      <Panel>
+        <SectionTitle title={active.label} hint="by hits" />
+        <AsyncBlock
+          state={state}
+          isEmpty={(rows) => rows.length === 0}
+          empty="No requests of this kind in this window."
+          skeletonRows={6}
+        >
+          {(rows) => (
+            <DataTable
+              id={`screens-${kind}`}
+              data={rows}
+              columns={columns}
+              rowKey={(s) => `${s.kind} ${s.url}`}
+              onRowClick={() => onOpenType('request')}
+              // Client-side: the window's routes are an aggregate the browser already
+              // holds in full, so paging here costs no round trip and hides nothing.
+              clientPageSize={PAGE_SIZE}
+            />
+          )}
+        </AsyncBlock>
+      </Panel>
+    </div>
   );
 }

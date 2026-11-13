@@ -134,7 +134,7 @@ export default defineConfig({
 | `replay`      | `{ enabled?, port?, timeoutMs? }`     | _disabled_     | Request replay from the dashboard — off by default (a captured `POST`/`DELETE` re-runs). |
 | `cpuProfiling`| `{ armEnabled? }`                     | _disabled_     | Whether the console may ARM a [CPU capture](/docs/telescope/packages/cpu-profiling#arming-a-capture). Reading captured profiles is never gated by this. |
 | `queueActions`| `{ enabled? }`                        | _disabled_     | Whether the [queue console](/docs/telescope/packages/watchers#live-queue-manager) may retry or enqueue jobs. Reading it is never gated by this. |
-| `dashboard`   | `{ enabled?, path? }`                 | `enabled`      | Toggles / re-mounts the [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui) SPA. |
+| `dashboard`   | `{ enabled?, path?, viewer?, signOut? }` | `enabled`   | Toggles / re-mounts the [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui) SPA, and sets its signed-in user row and sign-out. |
 
 See [Dashboard auth](/docs/telescope/dashboard/auth).
 

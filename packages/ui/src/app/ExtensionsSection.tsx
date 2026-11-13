@@ -1,4 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { ChevronLeftIcon, ChevronRightIcon } from '../agora-kit/icons';
+import { Badge } from '../agora-kit/ui/badge';
+import { Button, buttonVariants } from '../agora-kit/ui/button';
 import { formatCount, formatDuration, formatPercent } from '../client/format.js';
 import type {
   BreakdownPanelData,
@@ -14,8 +17,6 @@ import type {
   TopNPanelData,
 } from '../client/types.js';
 import { ColumnActionButton } from './ColumnActionButton.js';
-import { Badge } from './primitives/badge.js';
-import { Button } from './primitives/button.js';
 import { cn } from './primitives/cn.js';
 import {
   Table,
@@ -25,7 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from './primitives/table.js';
-import { AsyncBlock, Panel as Card, SectionTitle, ShareBar, Sparkline } from './ui.js';
+import { AsyncBlock, Panel as Card, PageHeader, SectionTitle, ShareBar, Sparkline } from './ui.js';
 import { useExtensionData, useMeta } from './use-telescope.js';
 
 /** The owning extension's namespace is the dashboard id's prefix before the first `.`
@@ -72,10 +73,15 @@ export function ExtensionsSection({
   onOpenTrace: (traceId: string) => void;
 }) {
   const state = useMeta();
+  const dashboards = state.data?.dashboards ?? [];
+  const current = dashboards.find((d) => d.id === selectedId) ?? dashboards[0];
 
   return (
     <div className="flex flex-col gap-4">
-      <SectionTitle title="Extensions" hint="dashboards contributed by installed extensions" />
+      <PageHeader
+        title={current?.label ?? 'Dashboards'}
+        description="A dashboard an installed library contributed to Telescope."
+      />
       <AsyncBlock
         state={state}
         isEmpty={(meta) => meta.dashboards.length === 0}
@@ -125,8 +131,8 @@ function ExtensionsBody({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <div className="flex flex-wrap gap-1.5" role="tablist">
+      {dashboards.length > 1 && (
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="dashboards">
           {dashboards.map((d) => {
             const isActive = d.id === active.id;
             return (
@@ -137,10 +143,8 @@ function ExtensionsBody({
                 aria-selected={isActive}
                 onClick={() => onSelect(d.id)}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px]',
-                  isActive
-                    ? 'border-brand bg-brand text-brand-foreground'
-                    : 'border-line bg-panel text-muted-foreground transition-colors hover:text-foreground',
+                  buttonVariants({ variant: 'chip', size: 'chip' }),
+                  isActive && 'border-brand-border bg-brand-soft text-fg',
                 )}
               >
                 {d.label}
@@ -148,10 +152,17 @@ function ExtensionsBody({
             );
           })}
         </div>
-      </Card>
+      )}
       {sections.map((section) => (
-        <Card key={section.title ?? `section-${section.panels.map((p) => p.title).join('|')}`}>
-          {section.title && <SectionTitle title={section.title} />}
+        <section
+          key={section.title ?? `section-${section.panels.map((p) => p.title).join('|')}`}
+          className="flex flex-col gap-2.5"
+        >
+          {section.title && (
+            <h2 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
+              {section.title}
+            </h2>
+          )}
           <div className={cn('grid grid-cols-1 gap-4', SECTION_COLS[section.cols ?? 2])}>
             {section.panels.map((panel) => (
               <PanelView
@@ -162,7 +173,7 @@ function ExtensionsBody({
               />
             ))}
           </div>
-        </Card>
+        </section>
       ))}
     </div>
   );
@@ -217,7 +228,7 @@ function StatPanel({ ext, panel }: { ext: string; panel: Extract<Panel, { kind: 
       <AsyncBlock state={state} empty="No data." skeletonRows={2}>
         {(data) => (
           <div className="flex flex-col gap-2">
-            <div className="mono tnum text-2xl font-semibold tracking-tight">
+            <div className="mono tnum text-[26px] font-semibold leading-none tracking-[-0.02em] text-brand">
               {formatByKind(data.value, panel.format)}
             </div>
             {data.delta !== undefined && (
@@ -395,21 +406,25 @@ function TablePanel({
               {panel.paged && (
                 <div className="flex items-center justify-end gap-2.5">
                   <Button
+                    size="sm"
                     variant="outline"
                     disabled={page <= 1}
                     onClick={() => setPage((p) => p - 1)}
                   >
-                    ← Prev
+                    <ChevronLeftIcon />
+                    Prev
                   </Button>
-                  <span className="tnum text-muted-foreground">
+                  <span className="mono tnum text-[11px] text-faint">
                     Page {page} of {totalPages}
                   </span>
                   <Button
+                    size="sm"
                     variant="outline"
                     disabled={page >= totalPages}
                     onClick={() => setPage((p) => p + 1)}
                   >
-                    Next →
+                    Next
+                    <ChevronRightIcon />
                   </Button>
                 </div>
               )}
@@ -444,7 +459,7 @@ function renderCell(
     return (
       <button
         type="button"
-        className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-brand"
+        className="mono inline-flex h-[18px] items-center rounded-full border border-brand-border bg-brand-soft px-2 text-[10px] text-brand transition-colors hover:bg-brand/20"
         onClick={(e) => {
           e.stopPropagation();
           onOpenTrace(traceId);
@@ -457,7 +472,7 @@ function renderCell(
   if (/^(javascript|data|vbscript):/i.test(href)) return value;
   return (
     <a
-      className="rounded-sm border border-line px-1.5 py-0.5 text-[11px] text-brand"
+      className="mono inline-flex h-[18px] items-center rounded-full border border-brand-border bg-brand-soft px-2 text-[10px] text-brand transition-colors hover:bg-brand/20"
       href={href}
       target={col.link.external ? '_blank' : undefined}
       rel="noreferrer"
@@ -511,17 +526,17 @@ function DistributionPanel({
               {(panel.markers ?? []).length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   {panel.markers?.includes('p50') && data.p50 !== undefined && (
-                    <Badge variant="outline" className="mono tnum">
+                    <Badge variant="neutral" className="mono tnum">
                       p50 {fmt(data.p50)}
                     </Badge>
                   )}
                   {panel.markers?.includes('p95') && data.p95 !== undefined && (
-                    <Badge variant="outline" className="mono tnum">
+                    <Badge variant="neutral" className="mono tnum">
                       p95 {fmt(data.p95)}
                     </Badge>
                   )}
                   {panel.markers?.includes('p99') && data.p99 !== undefined && (
-                    <Badge variant="outline" className="mono tnum">
+                    <Badge variant="neutral" className="mono tnum">
                       p99 {fmt(data.p99)}
                     </Badge>
                   )}
@@ -561,14 +576,14 @@ function GaugePanel({ ext, panel }: { ext: string; panel: Extract<Panel, { kind:
             panel.thresholds &&
             (panel.thresholds.direction === 'up-bad'
               ? data.value >= panel.thresholds.bad
-                ? 'var(--bad)'
+                ? 'var(--agora-bad)'
                 : data.value >= panel.thresholds.warn
-                  ? 'var(--warn)'
+                  ? 'var(--agora-warn)'
                   : undefined
               : data.value <= panel.thresholds.bad
-                ? 'var(--bad)'
+                ? 'var(--agora-bad)'
                 : data.value <= panel.thresholds.warn
-                  ? 'var(--warn)'
+                  ? 'var(--agora-warn)'
                   : undefined);
           return (
             <div className="flex flex-col gap-2">
@@ -616,7 +631,7 @@ function BreakdownPanel({
                 <div key={seg.label} className="flex items-center gap-2">
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ background: seg.color ?? 'var(--accent)' }}
+                    style={{ background: seg.color ?? 'var(--agora-accent-ink)' }}
                   />
                   <span className="mono flex-1">{seg.label}</span>
                   <span className="tnum text-muted-foreground">

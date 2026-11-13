@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MetricGridSkeleton } from '../agora-kit/blocks/metric-card';
 import { formatCount, formatDuration, formatPercent } from '../client/format.js';
 import type { PulseSummary } from '../client/types.js';
 import { cn } from './primitives/cn.js';
@@ -7,13 +8,16 @@ import {
   AsyncBlock,
   clickable,
   Empty,
+  PageHeader,
   Panel,
   SectionTitle,
   ShareBar,
+  Skeleton,
   Sparkline,
   Stat,
-  typeColor,
+  StatGrid,
   typeLabel,
+  typeStyle,
   WatcherOff,
 } from './ui.js';
 import { usePulse, useWatcherEnabled } from './use-telescope.js';
@@ -30,11 +34,12 @@ export function PulseSection({ onOpenTrace }: { onOpenTrace: (traceId: string) =
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm text-brand">Pulse · health overview</h2>
-        <WindowSelect value={windowMs} onChange={setWindowMs} />
-      </div>
-      <AsyncBlock state={state} empty="No data in this window." skeletonRows={4}>
+      <PageHeader
+        title="Pulse"
+        description="Health over one window: throughput, errors, latency and the hotspots behind them."
+        actions={<WindowSelect value={windowMs} onChange={setWindowMs} />}
+      />
+      <AsyncBlock state={state} empty="No data in this window." skeleton={<PulseSkeleton />}>
         {(pulse) => <PulseBody pulse={pulse} onOpenTrace={onOpenTrace} />}
       </AsyncBlock>
     </div>
@@ -62,7 +67,7 @@ function PulseBody({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-4 gap-4">
+      <StatGrid>
         <Stat
           label="Throughput"
           value={formatCount(pulse.throughput.total)}
@@ -83,7 +88,7 @@ function PulseBody({
           value={formatCount(pulse.scanned)}
           sub={pulse.truncated ? 'truncated' : 'complete'}
         />
-      </div>
+      </StatGrid>
 
       <Panel>
         <SectionTitle title="Throughput by type" hint={`${throughputSeries.length} buckets`} />
@@ -95,7 +100,7 @@ function PulseBody({
         <EntriesByType counts={pulse.counts} />
       </Panel>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel>
           <SectionTitle title="HTTP status" />
           <StatusBars status={pulse.requests.status} total={pulse.requests.total} />
@@ -189,7 +194,7 @@ function PulseBody({
       {pulse.cache && (
         <Panel>
           <SectionTitle title="Cache" hint={`hit ratio ${formatPercent(pulse.cache.hitRatio)}`} />
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="Hits" value={formatCount(pulse.cache.hits)} />
             <Stat label="Misses" value={formatCount(pulse.cache.misses)} />
             <Stat label="Sets" value={formatCount(pulse.cache.sets)} />
@@ -209,11 +214,11 @@ function StatusBars({
   total: number;
 }) {
   const rows: { key: keyof typeof status; textClass: string; barColor: string }[] = [
-    { key: '2xx', textClass: 'text-good', barColor: 'var(--good)' },
-    { key: '3xx', textClass: 'text-live', barColor: 'var(--live)' },
-    { key: '4xx', textClass: 'text-warn', barColor: 'var(--warn)' },
-    { key: '5xx', textClass: 'text-bad', barColor: 'var(--bad)' },
-    { key: 'other', textClass: 'text-muted-foreground', barColor: 'var(--muted)' },
+    { key: '2xx', textClass: 'text-good', barColor: 'var(--agora-good)' },
+    { key: '3xx', textClass: 'text-live', barColor: 'var(--agora-live)' },
+    { key: '4xx', textClass: 'text-warn', barColor: 'var(--agora-warn)' },
+    { key: '5xx', textClass: 'text-bad', barColor: 'var(--agora-bad)' },
+    { key: 'other', textClass: 'text-muted-foreground', barColor: 'var(--agora-muted)' },
   ];
   const denom = total > 0 ? total : 1;
   return (
@@ -224,7 +229,7 @@ function StatusBars({
           <div className="flex-1">
             <ShareBar fraction={status[key] / denom} color={barColor} />
           </div>
-          <span className="tnum w-14 text-right text-muted-foreground">
+          <span className="mono tnum w-14 text-right text-[11.5px] text-faint">
             {formatCount(status[key])}
           </span>
         </div>
@@ -242,11 +247,11 @@ function EntriesByType({ counts }: { counts: Record<string, number> }) {
       {rows.map(([type, count]) => (
         <li key={type} className="flex items-center gap-1.5">
           <span
-            className="h-[7px] w-[7px] shrink-0 rounded-full"
-            style={{ background: typeColor(type) }}
+            className="type-ink size-[7px] shrink-0 rounded-full bg-current"
+            style={typeStyle(type)}
           />
-          <span className="text-muted-foreground">{typeLabel(type)}:</span>
-          <span className="tnum text-foreground">{formatCount(count)}</span>
+          <span className="text-dim">{typeLabel(type)}</span>
+          <span className="mono tnum text-fg">{formatCount(count)}</span>
         </li>
       ))}
     </ul>
@@ -271,15 +276,39 @@ function HotspotList({
           return (
             <TableRow
               key={row.key}
-              className={cn(linkable && 'cursor-pointer hover:bg-brand/5')}
+              className={cn(linkable && 'cursor-pointer')}
               {...(linkable ? clickable(() => onOpenTrace?.(row.traceId as string)) : {})}
             >
-              <TableCell className="mono max-w-[420px] truncate">{row.label}</TableCell>
-              <TableCell className="tnum text-right text-muted-foreground">{row.right}</TableCell>
+              <TableCell className="mono max-w-[420px] truncate whitespace-nowrap text-[12px] text-fg-2">
+                {row.label}
+              </TableCell>
+              <TableCell className="mono tnum whitespace-nowrap text-right text-[11.5px] text-faint">
+                {row.right}
+              </TableCell>
             </TableRow>
           );
         })}
       </TableBody>
     </Table>
+  );
+}
+
+/** Pulse while its rollup loads: the stat row and two panels, shaped like the page. */
+function PulseSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-busy="true">
+      <MetricGridSkeleton count={4} />
+      <Panel>
+        <Skeleton rows={2} />
+      </Panel>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Panel>
+          <Skeleton rows={4} />
+        </Panel>
+        <Panel>
+          <Skeleton rows={4} />
+        </Panel>
+      </div>
+    </div>
   );
 }

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { formatDuration, formatRelative } from '../client/format.js';
 import type { TraceSummary } from '../client/types.js';
 import { DataTable } from './primitives/data_table.js';
-import { AsyncBlock, Panel, SectionTitle, typeColor } from './ui.js';
+import { AsyncBlock, PageHeader, Panel, SectionTitle, typeStyle } from './ui.js';
 import { useCursorPager, useTracesPage } from './use-telescope.js';
 
 /** Traces per page. Small on purpose: this list is scanned, not read in bulk, and a
@@ -38,9 +38,9 @@ export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) 
             {row.original.types.map((type) => (
               <span
                 key={type}
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                className="type-ink size-2 shrink-0 rounded-full bg-current"
                 title={type}
-                style={{ background: typeColor(type) }}
+                style={typeStyle(type)}
               />
             ))}
           </span>
@@ -76,33 +76,38 @@ export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) 
   );
 
   return (
-    <Panel>
-      <SectionTitle title="Traces" hint="recent, newest-active first" />
-      <AsyncBlock
-        state={state}
-        // Page 2+ coming back empty is a real (if odd) state, not "nothing recorded":
-        // only page 1 empty means the console has no traces at all.
-        isEmpty={(p) => p.data.length === 0 && page === 1}
-        empty="No traces recorded yet."
-        skeletonRows={6}
-      >
-        {(result) => (
-          <DataTable
-            id="traces"
-            data={result.data}
-            columns={columns}
-            rowKey={(t) => t.traceId}
-            onRowClick={(t) => onOpenTrace(t.traceId)}
-            rowClassName={() => 'hover:bg-brand/5'}
-            pagination={{
-              page,
-              onPageChange: (next) => pager.onPageChange(next, result.meta.nextCursor),
-              hasMore: result.meta.hasNext,
-              isFetching: state.loading,
-            }}
-          />
-        )}
-      </AsyncBlock>
-    </Panel>
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title="Traces"
+        description="Every request, job and command as one trace. A row opens its waterfall."
+      />
+      <Panel>
+        <SectionTitle title="Recent traces" hint="newest-active first" />
+        <AsyncBlock
+          state={state}
+          // Page 2+ coming back empty is a real (if odd) state, not "nothing recorded":
+          // only page 1 empty means the console has no traces at all.
+          isEmpty={(p) => p.data.length === 0 && page === 1}
+          empty="No traces recorded yet."
+          skeletonRows={6}
+        >
+          {(result) => (
+            <DataTable
+              id="traces"
+              data={result.data}
+              columns={columns}
+              rowKey={(t) => t.traceId}
+              onRowClick={(t) => onOpenTrace(t.traceId)}
+              pagination={{
+                page,
+                onPageChange: (next) => pager.onPageChange(next, result.meta.nextCursor),
+                hasMore: result.meta.hasNext,
+                isFetching: state.loading,
+              }}
+            />
+          )}
+        </AsyncBlock>
+      </Panel>
+    </div>
   );
 }

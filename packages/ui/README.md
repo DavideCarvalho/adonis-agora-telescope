@@ -56,12 +56,13 @@ export default defineConfig({
 
 ## Design
 
-Tailwind + a vendored shadcn-style component layer on [Base UI](https://base-ui.com) (`button`,
-`badge`, `dialog`, `tabs`, `tooltip`, `popover`, `input`, `select`, `table` — `src/app/primitives/`),
-on the **Aviary** design tokens shared across the Agora ecosystem's consoles — same neutrals/status
-hues as `@dudousxd/nestjs-telescope-ui` (this dashboard's NestJS sibling), same magenta `--accent`,
-so the two Telescope dashboards match pixel-for-pixel regardless of host framework. Dark-mode-first
-with a `.light`-class override (persisted to `localStorage`), responsive. Data loading goes through
-TanStack Query (`@tanstack/react-query`) and tables through TanStack Table. Everything else is
-hand-rolled: SVG sparklines, a CSS waterfall (a dense, grid-based timeline that loses legibility as
-pure utilities), and native `EventSource` for the live tail — no react-router, no charting library.
+Built on the Agora console kit (`src/agora-kit/`, copied verbatim into every `@adonis-agora`
+console): React 19, Tailwind 4 and vendored shadcn/ui components on [Base UI](https://base-ui.com),
+with the `--agora-*` tokens (dark and light), Telescope's magenta accent (`#e879f9`), and bundled
+Sora (UI) and JetBrains Mono (data) fonts — no Google Fonts request. The shell is the kit's: a
+sidebar with the console switcher and grouped nav (a drawer on phones), a topbar with the
+organization picker, retention, the live dot and ⌘K, and a footer with the signed-in user, the
+theme toggle and sign-out. Every page and data region renders through an error boundary, with
+shaped skeletons and empty states. Data loading goes through TanStack Query and tables through
+TanStack Table; sparklines, the waterfall and the flamegraph are hand-rolled, and the live tail is
+a native `EventSource`.

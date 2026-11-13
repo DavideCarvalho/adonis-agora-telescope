@@ -1,6 +1,6 @@
+import { Hint } from '../agora-kit/blocks/hint';
+import { Badge } from '../agora-kit/ui/badge';
 import type { RetentionInfo } from '../client/types.js';
-import { Badge } from './primitives/badge.js';
-import { Tooltip } from './primitives/tooltip.js';
 import { useRetention } from './use-telescope.js';
 
 /** Coarsest-unit duration label for a ms span: `2d`, `6h`, `45m`, `30s`. Unlike
@@ -42,16 +42,18 @@ export function RetentionIndicator() {
     : 'No retention pruning configured.';
 
   return (
-    <Tooltip label={title}>
-      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <span className="uppercase tracking-wide text-muted-foreground">retention:</span>
-        <span className="text-muted-foreground">{label}</span>
+    <Hint label={title}>
+      <span className="flex h-[26px] items-center gap-1.5 rounded-[6px] px-2 text-[11px] text-dim">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-faint">
+          retention
+        </span>
+        <span className="mono text-fg-2">{label}</span>
         {note && (
           <Badge variant="warn" className="ml-0.5 rounded-full px-1.5" title={note}>
             ?
           </Badge>
         )}
       </span>
-    </Tooltip>
+    </Hint>
   );
 }

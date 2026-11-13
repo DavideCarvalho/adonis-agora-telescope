@@ -1,3 +1,4 @@
+import { Skeleton } from '../../agora-kit/ui/skeleton';
 import { formatCount, formatDuration, formatPercent } from '../../client/format.js';
 import type { QueueSummary, TimeseriesReport } from '../../client/types.js';
 import { cn } from '../primitives/cn.js';
@@ -12,6 +13,7 @@ import {
   Stat,
   typeColor,
   typeLabel,
+  typeStyle,
   WatcherOff,
 } from '../ui.js';
 import {
@@ -73,18 +75,18 @@ function ListRows({
 }) {
   if (rows.length === 0) return <Empty>{empty}</Empty>;
   return (
-    <ul className="space-y-1 text-xs">
+    <ul className="-mx-2 flex flex-col text-[12.5px]">
       {rows.map((row) => (
         <li
           key={row.key}
           {...(row.onClick ? clickable(row.onClick) : {})}
           className={cn(
-            'flex items-center justify-between gap-3 border-t border-line-soft pt-1 first:border-0 first:pt-0',
-            row.onClick && 'cursor-pointer hover:text-foreground',
+            'flex items-center justify-between gap-3 rounded-md border-t border-line-soft px-2 py-1.5 first:border-0',
+            row.onClick && 'cursor-pointer transition-colors hover:bg-hover',
           )}
         >
           <span className="min-w-0 truncate">{row.label}</span>
-          <span className="tnum shrink-0 text-muted-foreground">{row.right}</span>
+          <span className="mono tnum shrink-0 text-[11.5px] text-faint">{row.right}</span>
         </li>
       ))}
     </ul>
@@ -93,7 +95,18 @@ function ListRows({
 
 /** A stat tile that shows a dash until its own data lands, instead of blocking the row. */
 function PendingStat({ label, sub }: { label: string; sub?: string }) {
-  return <Stat label={label} value={<span className="text-muted-foreground">—</span>} sub={sub} />;
+  return (
+    <div
+      className="agora-surface min-w-0 rounded-lg border border-border px-[18px] pt-4 pb-3.5"
+      aria-busy="true"
+    >
+      <div className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">
+        {label}
+      </div>
+      <Skeleton className="h-6 w-16 bg-line-strong/50" />
+      {sub ? <div className="mono mt-2 truncate text-[10.5px] text-faint">{sub}</div> : null}
+    </div>
+  );
 }
 
 export function RequestsStat({
@@ -186,8 +199,8 @@ export function RecentFailuresPanel({ windowMs }: { windowMs: number }) {
               key: e.key,
               label: (
                 <>
-                  <span className="text-bad">{e.class}</span>{' '}
-                  <span className="text-muted-foreground">{e.message}</span>
+                  <span className="mono text-bad">{e.class}</span>{' '}
+                  <span className="text-dim">{e.message}</span>
                 </>
               ),
               right: `×${formatCount(e.count)}`,
@@ -230,7 +243,7 @@ export function NPlusOnePanel({
               label: (
                 <>
                   <span className="whitespace-nowrap text-warn">×{n.perRequest}</span>{' '}
-                  <span className="truncate text-muted-foreground">{n.sql}</span>
+                  <span className="mono truncate text-dim">{n.sql}</span>
                 </>
               ),
               right: `${n.total} total${n.totalDurationMs > 0 ? ` · ${formatDuration(n.totalDurationMs)}` : ''}`,
@@ -262,8 +275,10 @@ export function SlowestPanel({
               key: s.id,
               label: (
                 <>
-                  <span className="text-brand">{s.type}</span>{' '}
-                  <span className="text-muted-foreground">{s.label}</span>
+                  <span className="type-ink mono" style={typeStyle(s.type)}>
+                    {s.type}
+                  </span>{' '}
+                  <span className="mono text-dim">{s.label}</span>
                 </>
               ),
               right: formatDuration(s.durationMs),
@@ -281,23 +296,28 @@ export function QueuesAttentionPanel({ onOpenQueues }: { onOpenQueues: () => voi
   const state = useLiveQueues();
   return (
     <Panel>
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h3 className="m-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Queues needing attention
-        </h3>
-        <button
-          type="button"
-          onClick={onOpenQueues}
-          className="text-[11px] text-muted-foreground hover:text-brand"
-        >
-          All queues →
-        </button>
-      </div>
+      <SectionTitle
+        title="Queues needing attention"
+        hint={
+          <button
+            type="button"
+            onClick={onOpenQueues}
+            className="font-sans text-[11px] text-dim transition-colors hover:text-brand"
+          >
+            All queues →
+          </button>
+        }
+      />
       <AsyncBlock state={state} empty="No queues configured." skeletonRows={3}>
         {(live) => {
           const attention = queuesNeedingAttention(live.queues);
           if (attention.length === 0) {
-            return <p className="text-[13px] text-good">All queues healthy</p>;
+            return (
+              <p className="flex items-center gap-2 py-2 text-[12.5px] text-good">
+                <span className="live-dot" aria-hidden />
+                All queues healthy
+              </p>
+            );
           }
           return (
             <ListRows
@@ -422,9 +442,9 @@ function ByTypeBreakdown({ series }: { series: TimeseriesReport }) {
     <div className="flex flex-col gap-1.5">
       {rows.map(([type, count]) => (
         <div key={type} className={cn('flex items-center gap-2.5 text-[13px]')}>
-          <span className="w-28 shrink-0 truncate text-muted-foreground">{typeLabel(type)}</span>
+          <span className="w-28 shrink-0 truncate text-dim">{typeLabel(type)}</span>
           <ShareBar fraction={count / total} color={typeColor(type)} />
-          <span className="tnum w-16 shrink-0 text-right text-muted-foreground">
+          <span className="mono tnum w-16 shrink-0 text-right text-[11.5px] text-faint">
             {formatCount(count)}
           </span>
         </div>
@@ -440,7 +460,7 @@ export function RetentionPanel() {
       <SectionTitle title="Retention" />
       <AsyncBlock state={state} empty="Retention not reported." skeletonRows={1}>
         {(retention) => (
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Stat
               label="Window"
               value={retention.enabled ? formatRetentionWindow(retention.afterMs) : 'none'}
