@@ -1,7 +1,7 @@
 import { useState } from 'react';
+import { ActionDialog } from '../agora-kit/blocks/action-dialog';
+import { Button } from '../agora-kit/ui/button';
 import type { ColumnAction, ExtensionActionMeta } from '../client/types.js';
-import { Button } from './primitives/button.js';
-import { Dialog } from './primitives/dialog.js';
 import { useTelescopeClient } from './use-telescope.js';
 
 /** Substitute `{key}` placeholders from the row; a missing key yields an empty string. */
@@ -93,8 +93,8 @@ export function ColumnActionButton({
   return (
     <>
       <Button
-        variant={action.destructive ? 'danger' : 'outline'}
-        size="xs"
+        variant={action.destructive ? 'destructive' : 'outline'}
+        size="micro"
         onClick={(e) => {
           e.stopPropagation();
           setError(null);
@@ -103,29 +103,36 @@ export function ColumnActionButton({
       >
         {action.label}
       </Button>
-      <Dialog open={open} onOpenChange={(next) => !busy && setOpen(next)} title={action.label}>
-        <div className="flex flex-col gap-4 px-5 py-4 text-[13px]">
+      <ActionDialog
+        open={open}
+        onOpenChange={(next: boolean) => {
+          if (!busy) setOpen(next);
+        }}
+        title={action.label}
+        footer={
+          <>
+            <Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant={action.destructive ? 'destructive' : 'default'}
+              disabled={busy}
+              onClick={() => void run()}
+            >
+              {busy ? 'Working…' : 'Confirm'}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3 text-[13px] text-fg-2">
           <p>{fillText(action.confirm, row)}</p>
           {error !== null && (
             <p role="alert" className="tint-bad rounded-md border px-3 py-2">
               {error}
             </p>
           )}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="chip" disabled={busy} onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant={action.destructive ? 'danger' : 'brand'}
-              size="chip"
-              disabled={busy}
-              onClick={() => void run()}
-            >
-              {busy ? 'Working…' : 'Confirm'}
-            </Button>
-          </div>
         </div>
-      </Dialog>
+      </ActionDialog>
     </>
   );
 }

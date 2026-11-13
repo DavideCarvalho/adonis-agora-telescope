@@ -56,39 +56,34 @@ the core is running.
 
 ## What it shows
 
-The console is a client of the JSON API below and nothing else. Its left sidebar carries eleven
-sections:
+The console is a client of the JSON API below and nothing else. Its left sidebar groups the pages:
 
-- **Overview** — the triage landing page: error rate, failed jobs, slow routes, recent failures,
-  N+1 hotspots, load by user, and the current retention posture.
-- **Entries** — every captured entry, newest-first, filterable by type and free-text search, with
-  a **Live tail** toggle that streams new ones in over SSE. Opening a row shows the full
-  type-specific `content` — the SQL and bindings for a query, the stack for an exception, the
-  payload for a diagnostic.
-- **Traces** — every entry recorded under one trace id, so you can replay a whole request's
-  story: the request, its queries, the diagnostics it published, and the exception that ended it,
-  laid out as a waterfall with any N+1 loops flagged.
-- **AI** — AI spend by feature, model and payer (with the platform and estimated shares), agent
-  runs with their queue / model / tools timings and per-step breakdown, and the calls that carried
-  no cost. See [AI spend & agent runs](/docs/telescope/packages/ai-metrics).
-- **Pulse** — the [health rollup](/docs/telescope/packages/pulse) over a selectable window.
-- **Exceptions** — exceptions grouped by class and message, with occurrence counts and a
-  when-it-fired sparkline.
-- **Queues** and **Schedules** — the live consoles for jobs and scheduled tasks.
-- **Exports** — download a filtered slice of the entries feed as JSON or CSV.
-- **Profiles** — captured [CPU flamegraphs](/docs/telescope/packages/cpu-profiling).
-- **Extensions** — dashboards contributed by installed
-  [extensions](/docs/telescope/concepts/extensions).
+- **Monitor** — **Overview** (the triage landing page: requests, error rate, failed jobs, slow
+  routes, recent failures, N+1 hotspots, load by user, retention), **Pulse** (the
+  [health rollup](/docs/telescope/packages/pulse) over a selectable window) and **Exceptions**
+  (grouped by class and message, with counts and a sparkline).
+- **Explore** — **Entries** (every captured entry, filterable by type and text, with a **Live tail**
+  toggle over SSE), **Traces** (a request's whole story as a waterfall, N+1 loops flagged),
+  **Screens** (traffic per route), **AI** (spend and agent runs, see
+  [AI spend & agent runs](/docs/telescope/packages/ai-metrics)) and **Profiles** (captured
+  [CPU flamegraphs](/docs/telescope/packages/cpu-profiling)).
+- **Operations** — the live **Queues** and **Schedules** consoles.
+- **Dashboards** — one item per dashboard an installed
+  [extension](/docs/telescope/concepts/extensions) contributed (Workflows, Resilience, …).
+- **Watchers** — a collapsible list of entry types, each a colour dot that opens Entries filtered
+  to it.
+- **Data** — **Exports**: download a filtered slice of the entries feed as JSON or CSV.
 
-A **Watchers** sub-nav below them jumps straight to Entries filtered to one entry type, and `⌘K`
-(`Ctrl-K`) opens a command palette over everything.
+The topbar holds the organization picker, the retention posture, the live indicator and `⌘K`
+(`Ctrl-K`) search. The sidebar footer shows who is signed in, the light/dark toggle and sign-out.
+Below 768px the sidebar opens as a drawer.
 
 ### Switching between consoles
 
 When the app runs other Agora consoles (Workflows, Payments, Media, Agents, Identity), the
 **Telescope** brand at the top of the sidebar becomes a menu of the ones the signed-in viewer may
 open, with nothing to configure. Each console decides with its own `authorize`, so a viewer only
-sees the consoles they can actually enter; with none, the brand stays plain. The command palette
+sees the consoles they can actually enter; with none, the brand stays plain. `⌘K`
 then also searches across them: type an entry id, a trace id or some text to find Telescope
 entries, and the other consoles answer with their own hits (runs, payments, users…).
 

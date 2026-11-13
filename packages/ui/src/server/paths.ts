@@ -1,3 +1,5 @@
+import type { ConsoleSignOut, ConsoleViewer } from './console_shell.js';
+
 /**
  * Pure path/asset helpers for the dashboard provider — extracted so they can be unit-tested without
  * booting an AdonisJS app. The provider composes these; it holds only the router wiring + I/O.
@@ -71,6 +73,18 @@ export function safeAssetSegments(wildcard: string | string[] | undefined): stri
   return segments;
 }
 
+/**
+ * The console-shell fields of the data block (CONSOLE-SHELL-SPEC), each optional: absent → that
+ * piece of the shell is hidden. `switcher` lists the other consoles, `search` drives ⌘K across
+ * them, `viewer` is the sidebar footer's user row and `signOut` its sign-out control.
+ */
+export interface ShellFields {
+  switcher?: { endpoint: string; others: number };
+  search?: { endpoint: string };
+  viewer?: ConsoleViewer;
+  signOut?: ConsoleSignOut;
+}
+
 /** `id` of the JSON data block {@link injectApiBase} emits; the SPA's `resolveApiBase()` reads it. */
 export const CONFIG_ELEMENT_ID = 'telescope-dashboard-config';
 
@@ -85,11 +99,7 @@ export const CONFIG_ELEMENT_ID = 'telescope-dashboard-config';
  * URL, which is right for the usual `<mount>/api` layout but not for a custom one, where every
  * request from a console that rendered perfectly answers 404.
  */
-export function injectApiBase(
-  html: string,
-  apiBase: string,
-  extra: Record<string, unknown> = {},
-): string {
+export function injectApiBase(html: string, apiBase: string, extra: ShellFields = {}): string {
   // `<` escaped as `\u003c` inside the JSON: a data block ends at the first `</script`, and a
   // config value must not be able to close it early. Valid JSON either way.
   const json = JSON.stringify({ ...extra, apiBase }).replace(/</g, '\\u003c');

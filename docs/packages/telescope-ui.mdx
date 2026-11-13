@@ -1,7 +1,7 @@
 ---
 title: "@adonis-agora/telescope-ui"
 icon: AppWindow
-description: The observability console SPA — a React single-page app with ten sections (overview, entries + live tail, traces & waterfall, Pulse, exception groups, live queues, live schedules, exports, CPU profiles, extension dashboards), a command palette and a light/dark theme, served by a thin AdonisJS provider under the same prefix and behind the same auth guard as the core JSON API it consumes.
+description: The observability console SPA — a React single-page app with ten sections (overview, entries + live tail, traces & waterfall, Pulse, exception groups, live queues, live schedules, exports, CPU profiles, extension dashboards), a ⌘K search and a light/dark theme, served by a thin AdonisJS provider under the same prefix and behind the same auth guard as the core JSON API it consumes.
 ---
 
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
@@ -67,7 +67,9 @@ It needs the core UI to be enabled (that is the backend the SPA talks to); if
 ## What it shows
 
 The console holds no server-side state of its own — every view is a call to the core's read
-routes. Eleven sections sit in the left sidebar, in this order:
+routes. The left sidebar groups the pages under **Monitor** (Overview, Pulse, Exceptions),
+**Explore** (Entries, Traces, Screens, AI, Profiles), **Operations** (Queues, Schedules),
+**Dashboards** (one item per contributed dashboard), **Watchers** and **Data** (Exports):
 
 | Section | What you get |
 | ------- | ------------ |
@@ -81,9 +83,10 @@ routes. Eleven sections sit in the left sidebar, in this order:
 | **Schedules** | Every registered scheduled task with its computed next run, joined with its last recorded run — see [Live Schedules](/docs/telescope/packages/watchers#live-schedules--registering-what-exists-not-just-what-ran). |
 | **Exports** | Filter the entries feed, pick a row limit and a format, download it — see [Exports](#exports). |
 | **Profiles** | Captured [CPU profiles](/docs/telescope/packages/cpu-profiling): a flamegraph plus a hot-functions table, with an **Arm capture** control for grabbing the next N requests. |
-| **Extensions** | The dashboards contributed by installed [extensions](/docs/telescope/concepts/extensions), rendered from their declarative panel specs. Each contributed dashboard also gets its own row in the sidebar, so an installed extension feels first-class. |
+| **Screens** | Traffic per route over a window, split into page views, API calls and assets: hits, distinct users, average and max time, errors. |
+| **Dashboards** | The dashboards contributed by installed [extensions](/docs/telescope/concepts/extensions), rendered from their declarative panel specs. Each one is its own sidebar item, under its own name. |
 
-Under those, a **Watchers** sub-nav lists every entry type as a colored dot. Clicking one jumps to
+The **Watchers** group (collapsible) lists every entry type as a colored dot. Clicking one jumps to
 Entries pre-filtered to that type. The list is the twelve built-in types plus any type an
 extension contributed that isn't already one of them.
 
@@ -93,16 +96,18 @@ you which config key turns it on rather than a button that would fail.
 
 ### Getting around
 
-- **Command palette** — `⌘K` on macOS, `Ctrl-K` elsewhere (the same chord closes it), or the `⌘K`
-  button in the header. Type to filter, arrow keys to move, Enter to go. It lists every section,
-  a `Entries: <type>` jump for each entry type, and one entry per extension dashboard. It's a
-  navigator, not a search over your entries.
-- **Retention indicator** — a `retention: 24h` chip in the header, reading the same posture the
+- **Search** — `⌘K` on macOS, `Ctrl-K` elsewhere (the same chord closes it), or **Search** in the
+  topbar. It lists every page, an `Entries: <type>` jump for each entry type and one entry per
+  contributed dashboard, filtered as you type; when other Agora consoles are installed, the same
+  box also searches Telescope's entries and every console you may open.
+- **Retention indicator** — a `retention 24h` chip in the topbar, reading the same posture the
   Overview panel shows, so you can tell "nothing happened" apart from "it was already pruned". A
   `?` badge appears next to it when some entry type is being sampled below 100%, because then the
   counts on screen undercount reality.
-- **Theme** — a header toggle flips light and dark. The choice is remembered in `localStorage`
-  under `telescope-theme`; the default is dark.
+- **Theme** — the sidebar footer's toggle flips light and dark. The choice is remembered in
+  `localStorage` under `agora-telescope-theme`; the default is dark.
+- **Signed-in user and sign-out** — the sidebar footer shows who is signed in and a sign-out button;
+  see [Signed-in user and sign-out](#signed-in-user-and-sign-out).
 - **Entry actions** — an exception's detail view offers **Diagnose with AI** (and a **Re-run**
   that spends a fresh model call) when [`ai`](/docs/telescope/packages/ai) is configured; a
   request's detail view offers **Replay request**. Both are always user-initiated.
@@ -163,6 +168,32 @@ export default defineConfig({
 | ------------------- | ---------------- | ------------------------------------------------------ |
 | `dashboard.enabled` | `true`           | Mount the SPA. `false` keeps the static routes off.    |
 | `dashboard.path`    | `telescope_ui.path` | Override the SPA mount path.                        |
+| `dashboard.viewer`  | `ctx.auth.user`  | `(ctx) => ({ label, email?, role? }) \| null`: who the sidebar footer shows. |
+| `dashboard.signOut` | announced by authkit | The footer's sign-out: a POST action path, `{ href }`, or `false`. |
+
+### Signed-in user and sign-out
+
+Without `dashboard.viewer`, the console reads `ctx.auth.user` when the request is already
+authenticated: the label is `fullName`, `name` or `email`, and the role is the first of `role` or
+`roles`. Pass `viewer` to show something else, or return `null` to hide the user row:
+
+```ts title="config/telescope_ui.ts"
+export default defineConfig({
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
+  dashboard: {
+    viewer: (ctx) => {
+      const user = ctx.auth.user
+      return user ? { label: user.fullName, email: user.email, role: 'admin' } : null
+    },
+    signOut: '/logout',
+  },
+})
+```
+
+A string `signOut` is a path the button POSTs to, with the request's CSRF token as `_csrf` when
+shield is installed. `{ href: '/bye' }` renders a link instead. Without `signOut`, the console uses
+the sign-out that authkit's account console registers. `false` removes the button. Only
+same-origin paths are accepted.
 
 The console's mutating actions are gated by the core config, not this block: `replay`,
 `cpuProfiling.armEnabled` and `queueActions.enabled` are each off by default — see

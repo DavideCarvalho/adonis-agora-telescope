@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { formatCount, formatRelative } from '../client/format.js';
 import type { ExceptionGroupStats } from '../client/types.js';
 import { DataTable } from './primitives/data_table.js';
-import { AsyncBlock, Panel, SectionTitle, Sparkline } from './ui.js';
+import { AsyncBlock, PageHeader, Panel, SectionTitle, Sparkline } from './ui.js';
 import { useMetricsStats } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
 
@@ -34,7 +34,7 @@ export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) =
         id: 'class',
         header: 'Class',
         cell: ({ row }: { row: { original: ExceptionGroupStats } }) => (
-          <span className="text-bad">{row.original.class}</span>
+          <span className="mono text-bad">{row.original.class}</span>
         ),
       },
       { id: 'message', header: 'Message', accessorFn: (g: ExceptionGroupStats) => g.message },
@@ -58,7 +58,12 @@ export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) =
         id: 'trend',
         header: 'Trend',
         cell: ({ row }: { row: { original: ExceptionGroupStats } }) => (
-          <Sparkline values={row.original.overTime} width={140} height={26} color="#f87171" />
+          <Sparkline
+            values={row.original.overTime}
+            width={140}
+            height={26}
+            color="var(--agora-bad)"
+          />
         ),
       },
     ],
@@ -66,34 +71,37 @@ export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) =
   );
 
   return (
-    <Panel>
-      <SectionTitle
-        title="Exception groups"
-        hint={<WindowSelect value={windowMs} onChange={setWindowMs} />}
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title="Exceptions"
+        description="Server and browser errors grouped by class and message. A row opens its entries."
+        actions={<WindowSelect value={windowMs} onChange={setWindowMs} />}
       />
-      <AsyncBlock
-        state={state}
-        isEmpty={(stats) => (stats.exceptions?.length ?? 0) === 0}
-        empty="No exceptions recorded in this window. 🎉"
-        skeletonRows={5}
-      >
-        {(stats) => (
-          <DataTable
-            id="exception-groups"
-            data={stats.exceptions ?? []}
-            columns={columns}
-            rowKey={(g) => g.key}
-            // Pelo tipo DAQUELE grupo, não `exception` fixo: um erro de browser é
-            // `client_exception`, e mandar o clique para a lista de `exception` dava
-            // "0 shown" numa linha que acabara de dizer que o erro ocorreu 26 vezes.
-            onRowClick={(g) => onOpenType(g.type)}
-            rowClassName={() => 'hover:bg-brand/5'}
-            // Client-side: these rows are an aggregate the browser already holds in
-            // full, so paging here saves no round trip and hides nothing.
-            clientPageSize={PAGE_SIZE}
-          />
-        )}
-      </AsyncBlock>
-    </Panel>
+      <Panel>
+        <SectionTitle title="Exception groups" hint={`${GROUPS} most frequent`} />
+        <AsyncBlock
+          state={state}
+          isEmpty={(stats) => (stats.exceptions?.length ?? 0) === 0}
+          empty="No exceptions recorded in this window. 🎉"
+          skeletonRows={5}
+        >
+          {(stats) => (
+            <DataTable
+              id="exception-groups"
+              data={stats.exceptions ?? []}
+              columns={columns}
+              rowKey={(g) => g.key}
+              // Pelo tipo DAQUELE grupo, não `exception` fixo: um erro de browser é
+              // `client_exception`, e mandar o clique para a lista de `exception` dava
+              // "0 shown" numa linha que acabara de dizer que o erro ocorreu 26 vezes.
+              onRowClick={(g) => onOpenType(g.type)}
+              // Client-side: these rows are an aggregate the browser already holds in
+              // full, so paging here saves no round trip and hides nothing.
+              clientPageSize={PAGE_SIZE}
+            />
+          )}
+        </AsyncBlock>
+      </Panel>
+    </div>
   );
 }

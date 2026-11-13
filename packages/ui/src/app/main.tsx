@@ -1,6 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './App.js';
+import '../agora-kit/fonts';
+import { ThemeProvider } from '../agora-kit/theme';
+import { App, TELESCOPE_ACCENT } from './App.js';
 import { TelescopeQueryProvider } from './query-provider.js';
 import './index.css';
 
@@ -11,8 +13,10 @@ if (container === null) {
 
 createRoot(container).render(
   <StrictMode>
-    <TelescopeQueryProvider>
-      <App />
-    </TelescopeQueryProvider>
+    <ThemeProvider storageKey="agora-telescope-theme" accent={TELESCOPE_ACCENT}>
+      <TelescopeQueryProvider>
+        <App />
+      </TelescopeQueryProvider>
+    </ThemeProvider>
   </StrictMode>,
 );

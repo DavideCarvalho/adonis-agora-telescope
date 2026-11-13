@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Badge } from '../agora-kit/ui/badge';
+import { Button } from '../agora-kit/ui/button';
 import { formatDuration, formatTime } from '../client/format.js';
 import type {
   DiagnoseOutcome,
@@ -6,14 +8,13 @@ import type {
   ReplayOutcome,
   RequestEntryContent,
 } from '../client/types.js';
-import { Badge } from './primitives/badge.js';
-import { Button } from './primitives/button.js';
+import { ArrowLeftIcon } from './icons.js';
 import { cn } from './primitives/cn.js';
 import { AsyncBlock, Panel, SectionTitle, TypeBadge } from './ui.js';
 import { useEntry, useMeta, useTelescopeClient } from './use-telescope.js';
 
 const CODE_CLASS =
-  'm-0 mt-3 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-line bg-background p-3.5 font-mono text-xs leading-relaxed text-foreground';
+  'm-0 mt-3 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-border bg-sunken/30 p-3.5 font-mono text-xs leading-relaxed text-foreground';
 
 /** The full entry view: type-aware header, a metadata list, and the pretty-printed `content`. Plus,
  *  for exception/client_exception entries, the AI diagnosis panel, and for `request` entries, the
@@ -32,13 +33,10 @@ export function EntryDetail({
 
   return (
     <div className="flex flex-col gap-4">
-      <button
-        type="button"
-        className="w-fit border-0 bg-transparent p-0 pb-1 text-[13px] text-brand"
-        onClick={onBack}
-      >
-        ← Back to entries
-      </button>
+      <Button variant="ghost" size="sm" className="-ml-2 w-fit text-dim" onClick={onBack}>
+        <ArrowLeftIcon />
+        Back to entries
+      </Button>
       <AsyncBlock state={state} empty="Entry not found." skeletonRows={5}>
         {(entry) => (
           <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -55,23 +53,23 @@ export function EntryDetail({
             <Panel>
               <SectionTitle title="Details" />
               <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]">
-                <dt className="text-muted-foreground">ID</dt>
+                <dt className="text-faint">ID</dt>
                 <dd className="mono m-0 wrap-break-word">{entry.id}</dd>
-                <dt className="text-muted-foreground">Type</dt>
+                <dt className="text-faint">Type</dt>
                 <dd className="m-0">{entry.type}</dd>
-                <dt className="text-muted-foreground">Family</dt>
+                <dt className="text-faint">Family</dt>
                 <dd className="mono m-0 wrap-break-word">{entry.familyHash ?? '—'}</dd>
-                <dt className="text-muted-foreground">Duration</dt>
+                <dt className="text-faint">Duration</dt>
                 <dd className="tnum m-0">{formatDuration(entry.durationMs)}</dd>
-                <dt className="text-muted-foreground">Sequence</dt>
+                <dt className="text-faint">Sequence</dt>
                 <dd className="tnum m-0">{entry.sequence}</dd>
-                <dt className="text-muted-foreground">Origin</dt>
+                <dt className="text-faint">Origin</dt>
                 <dd className="m-0">{entry.origin}</dd>
-                <dt className="text-muted-foreground">Recorded</dt>
+                <dt className="text-faint">Recorded</dt>
                 <dd className="m-0" title={entry.createdAt}>
                   {formatTime(entry.createdAt)}
                 </dd>
-                <dt className="text-muted-foreground">Trace</dt>
+                <dt className="text-faint">Trace</dt>
                 <dd className="m-0">
                   {entry.traceId ? (
                     <button
@@ -85,13 +83,13 @@ export function EntryDetail({
                     '—'
                   )}
                 </dd>
-                <dt className="text-muted-foreground">User</dt>
+                <dt className="text-faint">User</dt>
                 <dd className="m-0">{entryUserLabel(entry) ?? '—'}</dd>
               </dl>
               {entry.tags.length > 0 && (
                 <div className="mt-3.5 flex flex-wrap gap-1">
                   {entry.tags.map((t) => (
-                    <Badge key={t} variant="outline">
+                    <Badge key={t} variant="neutral">
                       {t}
                     </Badge>
                   ))}
@@ -124,10 +122,10 @@ function isException(entry: Entry): boolean {
 function RequestHeader({ content }: { content: RequestEntryContent }) {
   const status = content.status;
   const variant =
-    status === null ? 'outline' : status >= 500 ? 'bad' : status >= 400 ? 'warn' : 'good';
+    status === null ? 'neutral' : status >= 500 ? 'destructive' : status >= 400 ? 'warn' : 'good';
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
-      <Badge variant="outline" className="mono">
+      <Badge variant="neutral" className="mono">
         {content.method}
       </Badge>
       <span className="mono text-xs">{content.url}</span>
@@ -180,22 +178,22 @@ function DiagnosePanel({ entryId, aiEnabled }: { entryId: string; aiEnabled: boo
   const isCached = result?.ok && result.cached;
 
   return (
-    <div className="mt-4 rounded-lg border border-line p-3">
+    <div className="mt-4 rounded-lg border border-border bg-panel-2 p-3.5">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+        <h3 className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">
           AI diagnosis
           {isCached && (
-            <span className="rounded-sm bg-panel px-1.5 py-0.5 text-[10px] normal-case text-warn">
+            <span className="rounded-full border border-warn/25 bg-warn/10 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-warn">
               cached
             </span>
           )}
         </h3>
         {result !== null ? (
-          <Button variant="outline" size="xs" onClick={() => run(true)} disabled={pending}>
+          <Button variant="outline" size="micro" onClick={() => run(true)} disabled={pending}>
             {pending ? 'Re-running…' : 'Re-run'}
           </Button>
         ) : (
-          <Button variant="brand" size="xs" onClick={() => run(false)} disabled={pending}>
+          <Button variant="brand" size="micro" onClick={() => run(false)} disabled={pending}>
             {pending ? 'Diagnosing…' : 'Diagnose with AI'}
           </Button>
         )}
@@ -206,7 +204,9 @@ function DiagnosePanel({ entryId, aiEnabled }: { entryId: string; aiEnabled: boo
         result.ok ? (
           <Markdown source={result.markdown} />
         ) : (
-          <p className="rounded-sm bg-panel p-3 text-xs text-bad">{result.message}</p>
+          <p className="rounded-md border border-border bg-sunken/30 p-3 text-xs text-bad">
+            {result.message}
+          </p>
         )
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -270,7 +270,7 @@ function parseMarkdownBlocks(source: string): MarkdownBlock[] {
 function Markdown({ source }: { source: string }) {
   const blocks = parseMarkdownBlocks(source);
   return (
-    <div className="rounded-sm bg-panel p-3">
+    <div className="rounded-md border border-border bg-sunken/30 p-3">
       {blocks.map((block) => {
         if (block.kind === 'heading') {
           return (
@@ -327,10 +327,10 @@ function ReplayPanel({ entryId }: { entryId: string }) {
   }
 
   return (
-    <div className="mt-4 rounded-lg border border-line p-3">
+    <div className="mt-4 rounded-lg border border-border bg-panel-2 p-3.5">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-xs uppercase tracking-wide text-muted-foreground">Replay</h3>
-        <Button variant="outline" size="xs" onClick={run} disabled={pending}>
+        <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">Replay</h3>
+        <Button variant="outline" size="micro" onClick={run} disabled={pending}>
           {pending ? 'Replaying…' : 'Replay request'}
         </Button>
       </div>
@@ -340,7 +340,7 @@ function ReplayPanel({ entryId }: { entryId: string }) {
         </p>
       ) : result !== null ? (
         result.ok ? (
-          <div className="rounded-sm bg-panel p-3 text-xs">
+          <div className="rounded-md border border-border bg-sunken/30 p-3 text-xs">
             <div className="mono flex items-center gap-3">
               <span className={cn(statusToneClass(result.status))}>{result.status}</span>
               <span className="tnum text-muted-foreground">{result.durationMs}ms</span>
@@ -349,7 +349,9 @@ function ReplayPanel({ entryId }: { entryId: string }) {
             {result.body && <pre className={cn(CODE_CLASS, 'max-h-48')}>{result.body}</pre>}
           </div>
         ) : (
-          <p className="rounded-sm bg-panel p-3 text-xs text-bad">{result.message}</p>
+          <p className="rounded-md border border-border bg-sunken/30 p-3 text-xs text-bad">
+            {result.message}
+          </p>
         )
       ) : (
         <p className="text-xs text-muted-foreground">

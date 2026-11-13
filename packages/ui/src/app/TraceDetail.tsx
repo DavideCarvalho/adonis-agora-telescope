@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
+import { Button } from '../agora-kit/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '../agora-kit/ui/tabs';
 import { formatCount, formatDuration, formatRelative } from '../client/format.js';
 import type { EntrySummary, NPlusOnePattern, Waterfall, WaterfallSpan } from '../client/types.js';
+import { ArrowLeftIcon } from './icons.js';
 import {
   Table,
   TableBody,
@@ -9,7 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from './primitives/table.js';
-import { Tabs, TabsList, TabsTab } from './primitives/tabs.js';
 import { AsyncBlock, clickable, Panel, SectionTitle, TypeBadge, typeColor } from './ui.js';
 import { type AsyncState, useNPlusOne, useTraceEntries, useWaterfall } from './use-telescope.js';
 
@@ -60,28 +62,25 @@ export function TraceDetail({
   }, [entriesState.data]);
   return (
     <div className="flex flex-col gap-4">
-      <button
-        type="button"
-        className="w-fit border-0 bg-transparent p-0 pb-1 text-[13px] text-brand"
-        onClick={onBack}
-      >
-        ← Back to traces
-      </button>
+      <Button variant="ghost" size="sm" className="-ml-2 w-fit text-dim" onClick={onBack}>
+        <ArrowLeftIcon />
+        Back to traces
+      </Button>
       <Panel>
         <SectionTitle title="Trace" hint={<span className="mono">{traceId.slice(0, 20)}</span>} />
-        <p className="mb-3 text-xs text-muted-foreground">
-          user: <span className="text-foreground">{userLabel ?? '—'}</span>
+        <p className="mb-3 text-xs text-faint">
+          user: <span className="text-fg-2">{userLabel ?? '—'}</span>
         </p>
         <Tabs
           value={view}
-          onValueChange={(next) => {
+          onValueChange={(next: unknown) => {
             if (typeof next === 'string') setView(next as typeof view);
           }}
         >
           <TabsList className="mb-4">
-            <TabsTab value="waterfall">Waterfall</TabsTab>
-            <TabsTab value="entries">Entries</TabsTab>
-            <TabsTab value="nplusone">N+1</TabsTab>
+            <TabsTrigger value="waterfall">Waterfall</TabsTrigger>
+            <TabsTrigger value="entries">Entries</TabsTrigger>
+            <TabsTrigger value="nplusone">N+1</TabsTrigger>
           </TabsList>
         </Tabs>
         {view === 'waterfall' ? (
@@ -125,7 +124,7 @@ function NPlusOneView({
             {patterns.map((p) => (
               <TableRow
                 key={p.childFamilyHash}
-                className="cursor-pointer hover:bg-brand/5"
+                className="cursor-pointer"
                 {...clickable(() => onOpenEntry(p.representativeId))}
               >
                 <TableCell
@@ -167,7 +166,7 @@ function WaterfallView({
         const rows = flattenWaterfall(waterfall);
         return (
           <>
-            <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+            <div className="mono mb-3 flex items-center justify-between text-[11px] text-faint">
               <span>total {formatDuration(waterfall.totalDurationMs)}</span>
               <span>{rows.length} spans</span>
             </div>
@@ -234,7 +233,7 @@ function TraceEntries({
             {entries.map((e) => (
               <TableRow
                 key={e.id}
-                className="cursor-pointer hover:bg-brand/5"
+                className="cursor-pointer"
                 {...clickable(() => onOpenEntry(e.id))}
               >
                 <TableCell>

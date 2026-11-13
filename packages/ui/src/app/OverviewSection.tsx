@@ -14,6 +14,7 @@ import {
   SlowRoutesStat,
   ThroughputPanel,
 } from './overview/containers.js';
+import { PageHeader, StatGrid } from './ui.js';
 import { WindowSelect } from './WindowSelect.js';
 
 export { queuesNeedingAttention } from './overview/containers.js';
@@ -51,36 +52,37 @@ export function OverviewSection({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm text-brand">Overview</h2>
-        <WindowSelect value={windowMs} onChange={setWindowMs} />
-      </div>
+      <PageHeader
+        title="Overview"
+        description="What is failing, slow or backed up right now — every tile opens its breakdown."
+        actions={<WindowSelect value={windowMs} onChange={setWindowMs} />}
+      />
 
       {/* TOP — "what's wrong right now": criticality stat row. */}
-      <div className="grid grid-cols-4 gap-4">
+      <StatGrid>
         <RequestsStat windowMs={windowMs} onOpenType={onOpenType} />
         <ErrorRateStat windowMs={windowMs} onOpenExceptions={onOpenExceptions} />
         <FailedJobsStat onOpenQueues={onOpenQueues} />
         <SlowRoutesStat windowMs={windowMs} onOpenPulse={onOpenPulse} />
-      </div>
+      </StatGrid>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <RecentFailuresPanel windowMs={windowMs} />
         <NPlusOnePanel windowMs={windowMs} onOpenTrace={onOpenTrace} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SlowestPanel windowMs={windowMs} onOpenEntry={onOpenEntry} />
         <QueuesAttentionPanel onOpenQueues={onOpenQueues} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SlowestJobsPanel windowMs={windowMs} />
         <LoadByUserPanel windowMs={windowMs} />
       </div>
 
       {/* BOTTOM — trends & composition, plus this console's own retention posture. */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ThroughputPanel windowMs={windowMs} />
         <ByTypePanel windowMs={windowMs} />
       </div>

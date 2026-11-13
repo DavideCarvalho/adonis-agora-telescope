@@ -10,6 +10,12 @@
     "moduleResolution": "Bundler",
     "verbatimModuleSyntax": false
   },
-  "include": ["src/app/**/*.ts", "src/app/**/*.tsx", "src/client/**/*.ts"],
+  "include": [
+    "src/app/**/*.ts",
+    "src/app/**/*.tsx",
+    "src/client/**/*.ts",
+    "src/agora-kit/**/*.ts",
+    "src/agora-kit/**/*.tsx"
+  ],
   "exclude": ["dist/**", "node_modules"]
 }

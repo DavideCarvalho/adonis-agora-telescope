@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { Badge } from '../agora-kit/ui/badge';
+import { Button } from '../agora-kit/ui/button';
 import {
   formatCount,
   formatDuration,
@@ -14,8 +16,6 @@ import type {
   AiUnpricedRow,
   AiUsageSummary,
 } from '../client/types.js';
-import { Badge } from './primitives/badge.js';
-import { Button } from './primitives/button.js';
 import { DataTable } from './primitives/data_table.js';
 import {
   Table,
@@ -25,7 +25,16 @@ import {
   TableHeader,
   TableRow,
 } from './primitives/table.js';
-import { AsyncBlock, clickable, Empty, Panel, SectionTitle, ShareBar, Stat } from './ui.js';
+import {
+  AsyncBlock,
+  clickable,
+  Empty,
+  PageHeader,
+  Panel,
+  SectionTitle,
+  ShareBar,
+  Stat,
+} from './ui.js';
 import { useAi } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
 
@@ -37,9 +46,9 @@ const RUNS_PAGE_SIZE = 15;
  * the console accent, tools a fixed blue — never the status colours, which mean good/bad here.
  */
 const SEGMENTS = [
-  { key: 'queueMs', label: 'Queue', color: 'var(--muted)' },
-  { key: 'modelMs', label: 'Model', color: 'var(--accent)' },
-  { key: 'toolsMs', label: 'Tools', color: '#38bdf8' },
+  { key: 'queueMs', label: 'Queue', color: 'var(--agora-muted)' },
+  { key: 'modelMs', label: 'Model', color: 'var(--agora-accent-ink)' },
+  { key: 'toolsMs', label: 'Tools', color: 'var(--agora-info)' },
 ] as const;
 
 /** `$0.0123` with enough precision for sub-cent spend, `$12.34` above a dollar. */
@@ -69,10 +78,11 @@ export function AiSection({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm text-brand">AI · spend and agent runs</h2>
-        <WindowSelect value={windowMs} onChange={setWindowMs} />
-      </div>
+      <PageHeader
+        title="AI"
+        description="What the window's model calls cost, who paid, and where agent runs spent their time."
+        actions={<WindowSelect value={windowMs} onChange={setWindowMs} />}
+      />
       <AsyncBlock state={state} empty="No data in this window." skeletonRows={5}>
         {(ai) => <AiBody ai={ai} onOpenTrace={onOpenTrace} onOpenEntry={onOpenEntry} />}
       </AsyncBlock>
@@ -94,7 +104,7 @@ function AiBody({
   return (
     <div className="flex flex-col gap-4">
       {ai.truncated && (
-        <p className="text-[11px] text-warn">
+        <p className="rounded-lg border border-warn/25 bg-warn/5 px-3 py-2 text-[11.5px] text-warn">
           This window holds more agent events than one scan reads; totals cover the newest ones.
         </p>
       )}
@@ -174,7 +184,7 @@ function SpendPanel({ spend, coverage }: { spend: AiSpend; coverage: AiCoverage 
           title="Spend over time"
           hint={
             <span className="flex items-center gap-3">
-              <Legend color="var(--accent)" label="users" />
+              <Legend color="var(--agora-accent-ink)" label="users" />
               <Legend color="#a1a1aa" label="platform" />
             </span>
           }
@@ -232,7 +242,13 @@ function SpendBars({ spend }: { spend: AiSpend }) {
               <title>{`${formatTime(b.start)} · ${formatUsd(b.costUsd)} (${formatUsd(
                 b.platformUsd,
               )} platform) · ${formatCount(b.calls)} calls`}</title>
-              <rect x={x} y={height - hUser} width={bar} height={hUser} fill="var(--accent)" />
+              <rect
+                x={x}
+                y={height - hUser}
+                width={bar}
+                height={hUser}
+                fill="var(--agora-accent-ink)"
+              />
               <rect
                 x={x}
                 y={height - hUser - hPlatform}
@@ -281,10 +297,10 @@ function Breakdown({ title, rows, total }: { title: string; rows: AiSpendRow[]; 
   );
 }
 
-function statusVariant(status: AiRunRow['status']): 'good' | 'bad' | 'outline' {
+function statusVariant(status: AiRunRow['status']): 'good' | 'destructive' | 'neutral' {
   if (status === 'completed') return 'good';
-  if (status === 'failed') return 'bad';
-  return 'outline';
+  if (status === 'failed') return 'destructive';
+  return 'neutral';
 }
 
 /**
@@ -302,7 +318,7 @@ export function TimingBar({ run, scaleMs }: { run: AiRunRow; scaleMs: number }) 
   const label = SEGMENTS.map((s) => `${s.label} ${formatDuration(run[s.key])}`).join(' · ');
   return (
     <div
-      className="flex h-2 min-w-[120px] overflow-hidden rounded-full bg-line"
+      className="flex h-2 min-w-[120px] overflow-hidden rounded-full bg-line-strong/60"
       title={measured ? label : 'No timing breakdown (agent lib < 0.93.0)'}
       role="img"
       aria-label={measured ? label : 'no timing breakdown'}
@@ -434,9 +450,7 @@ function RunsPanel({
             columns={columns}
             rowKey={(r) => r.entryId}
             onRowClick={onSelect}
-            rowClassName={(r) =>
-              r.entryId === selected?.entryId ? 'bg-brand/10' : 'hover:bg-brand/5'
-            }
+            rowClassName={(r) => (r.entryId === selected?.entryId ? 'bg-brand-soft' : undefined)}
             clientPageSize={RUNS_PAGE_SIZE}
           />
         )}
@@ -486,7 +500,7 @@ function RunList({
             {runs.map((run) => (
               <TableRow
                 key={run.entryId}
-                className="cursor-pointer hover:bg-brand/5"
+                className="cursor-pointer"
                 {...clickable(() => onSelect(run))}
               >
                 <TableCell>{run.agent}</TableCell>
@@ -514,17 +528,21 @@ export function RunDetail({
 }) {
   const stepMax = Math.max(0, ...run.stepTimings.map((s) => (s.modelMs ?? 0) + s.toolsMs));
   return (
-    <Panel className="border-brand/30">
+    <Panel className="border-brand-border">
       <SectionTitle
         title={`Run ${run.runId ?? run.entryId}`}
         hint={
           <span className="flex items-center gap-2">
             {run.traceId !== null && (
-              <Button variant="outline" onClick={() => onOpenTrace(run.traceId as string)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onOpenTrace(run.traceId as string)}
+              >
                 Open trace waterfall
               </Button>
             )}
-            <Button variant="outline" onClick={() => onOpenEntry(run.entryId)}>
+            <Button size="sm" variant="outline" onClick={() => onOpenEntry(run.entryId)}>
               Raw event
             </Button>
           </span>
@@ -585,7 +603,10 @@ export function RunDetail({
                       {model > 0 && (
                         <span
                           className="block h-full"
-                          style={{ width: `${(model / span) * 100}%`, background: 'var(--accent)' }}
+                          style={{
+                            width: `${(model / span) * 100}%`,
+                            background: 'var(--agora-accent-ink)',
+                          }}
                         />
                       )}
                       {step.toolsMs > 0 && (

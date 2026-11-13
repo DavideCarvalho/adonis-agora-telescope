@@ -1,5 +1,6 @@
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { moveIndex } from '../client/console_switcher.js';
+import { ChevronDownIcon } from '../agora-kit/icons';
+import { buttonVariants } from '../agora-kit/ui/button';
 import { selectedTenant } from '../client/telescope-client.js';
 import type { TenantOption, TenantScope } from '../client/types.js';
 import { cn } from './primitives/cn.js';
@@ -22,6 +23,14 @@ export function tenantLabel(scope: TenantScope | null, id: string): string {
 
 const ALL = '*';
 
+/** Arrow navigation over `count` options (wraps around). */
+function moveIndex(current: number, key: string, count: number): number {
+  if (count <= 0) return -1;
+  if (key === 'ArrowDown') return current < 0 ? 0 : (current + 1) % count;
+  if (key === 'ArrowUp') return current <= 0 ? count - 1 : current - 1;
+  return current;
+}
+
 /**
  * The header's "Organization" control: a fixed chip when the viewer sees one organization, a
  * searchable picker when it sees several or all of them. Picking reloads the console with
@@ -35,11 +44,11 @@ export function TenantPicker() {
     const only = data.tenants[0];
     return (
       <span
-        className="inline-flex items-center gap-1.5 rounded-sm border border-line px-2.5 py-1 text-xs"
+        className="inline-flex h-[26px] items-center gap-1.5 rounded-[6px] border border-border bg-panel-2 px-2.5 text-[11px]"
         data-tenant-chip=""
       >
-        <span className="text-muted-foreground">Organization</span>
-        <span>{only ? only.label : 'none'}</span>
+        <span className="hidden text-faint sm:inline">Organization</span>
+        <span className="max-w-32 truncate text-fg">{only ? only.label : 'none'}</span>
       </span>
     );
   }
@@ -113,16 +122,14 @@ function TenantMenu({ scope, current }: { scope: TenantScope; current: string | 
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-sm border border-line px-2.5 py-1 text-xs hover:bg-panel"
+        className={buttonVariants({ variant: 'outline', size: 'sm', className: 'max-w-56' })}
       >
-        <span className="text-muted-foreground">Organization</span>
-        <span className="max-w-40 truncate">{label}</span>
-        <span className="text-muted-foreground" aria-hidden="true">
-          ▾
-        </span>
+        <span className="hidden text-faint sm:inline">Organization</span>
+        <span className="max-w-32 truncate text-fg">{label}</span>
+        <ChevronDownIcon className="text-faint" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-line bg-panel-2 text-[13px]">
+        <div className="absolute right-0 top-full z-50 mt-1.5 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-popover text-[13px] shadow-(--agora-shadow)">
           <input
             ref={inputRef}
             type="text"
@@ -138,12 +145,12 @@ function TenantMenu({ scope, current }: { scope: TenantScope; current: string | 
               setQuery(e.target.value);
               setActive(0);
             }}
-            className="w-full border-b border-line bg-transparent px-3 py-2 text-xs outline-hidden placeholder:text-muted-foreground"
+            className="w-full border-b border-border bg-transparent px-3 py-2.5 text-xs text-fg outline-hidden placeholder:text-faint"
           />
           {/* biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: composite ARIA listbox driven from the combobox input. */}
           <ul id={listId} role="listbox" className="max-h-64 overflow-y-auto py-1">
             {options.length === 0 && (
-              <li className="px-3 py-2 text-xs text-muted-foreground">No organizations.</li>
+              <li className="px-3 py-2 text-xs text-faint">No organizations.</li>
             )}
             {options.map((option, i) => {
               const selected = option.id === ALL ? current === undefined : option.id === current;
@@ -161,15 +168,14 @@ function TenantMenu({ scope, current }: { scope: TenantScope; current: string | 
                     choose(option);
                   }}
                   className={cn(
-                    'flex cursor-pointer items-center justify-between gap-2 px-3 py-1.5',
-                    i === active ? 'bg-panel text-brand' : 'text-foreground',
+                    'mx-1 flex cursor-pointer items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-xs',
+                    i === active ? 'bg-hover text-fg' : 'text-fg-2',
+                    selected && 'font-medium text-brand',
                   )}
                 >
                   <span className="truncate">{option.label}</span>
                   {option.id !== ALL && option.label !== option.id && (
-                    <span className="mono shrink-0 text-[11px] text-muted-foreground">
-                      {option.id}
-                    </span>
+                    <span className="mono shrink-0 text-[10.5px] text-faint">{option.id}</span>
                   )}
                 </li>
               );
@@ -187,7 +193,7 @@ export function TenantEmptyNotice() {
   if (data === null || !data.enabled || data.all || data.tenants.length > 0) return null;
   return (
     <p
-      className="mb-4 rounded-md border border-line px-4 py-3 text-xs text-muted-foreground"
+      className="rounded-lg border border-warn/25 bg-warn/5 px-4 py-3 text-xs text-fg-2"
       role="status"
     >
       Choose an organization to see its data.
