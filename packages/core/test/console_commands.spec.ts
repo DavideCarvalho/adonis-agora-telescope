@@ -244,6 +244,20 @@ describe('console commands', () => {
     retry.assertFailed();
     expect(logs(retry)).toContain('403: Queue actions are disabled');
 
+    const scopedRetry = await run(TelescopeJobsRetry, [
+      'default',
+      '1',
+      '--tenant',
+      'acme',
+      '--force',
+    ]);
+    scopedRetry.assertFailed();
+    expect(logs(scopedRetry)).toContain('reaches every organization');
+
+    const badWindow = await run(TelescopePulseShow, ['--window', 'soon']);
+    badWindow.assertFailed();
+    expect(logs(badWindow)).toContain('--window must be a duration');
+
     const queues = await run(TelescopeQueuesList);
     queues.assertFailed();
     expect(logs(queues)).toContain('404');
@@ -274,6 +288,8 @@ describe('console commands', () => {
 
     const dry = await json(TelescopeEntriesPrune, ['--dry-run']);
     expect(dry).toMatchObject({ dryRun: true, olderThanCutoff: 3, capped: false });
+    const kept = await json(TelescopeEntriesPrune, ['--dry-run', '--keep-last', '1']);
+    expect(kept).toMatchObject({ olderThanCutoff: 3, wouldDelete: 2, keepLast: 1 });
     expect(await store().count()).toBe(4);
 
     const refused = await run(TelescopeEntriesPrune, []);

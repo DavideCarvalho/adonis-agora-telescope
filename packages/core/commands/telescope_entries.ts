@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { args, flags } from '@adonisjs/core/ace';
 import type { EntrySummary } from '../src/ui/api.js';
 import { MAX_LIST_SIZE } from '../src/ui/list_api.js';
-import { cell, instantFlag, intFlag, TelescopeCommand } from './shared.js';
+import { CliUsageError, cell, instantFlag, intFlag, TelescopeCommand } from './shared.js';
 
 /** The entry feed's filters (`filter[...]`, `search`), shared by list and export. */
 abstract class EntryFeedCommand extends TelescopeCommand {
@@ -124,7 +124,8 @@ export class TelescopeEntriesExport extends EntryFeedCommand {
 
   override async run() {
     const format = this.format ?? 'json';
-    if (format !== 'json' && format !== 'csv') throw new Error('--format must be json or csv');
+    if (format !== 'json' && format !== 'csv')
+      throw new CliUsageError('--format must be json or csv');
     const limit = intFlag(this.limit, 'limit') ?? 500;
     const { apis } = await this.console();
     const rows: EntrySummary[] = [];
@@ -213,16 +214,20 @@ export class TelescopeEntriesPrune extends TelescopeCommand {
     const cutoff = new Date(Date.now() - afterMs);
     if (this.dryRun) {
       const older = await countOlder(store, cutoff);
+      // The store keeps the newest `keepLast` of the entries past the cutoff.
+      const wouldDelete = Math.max(0, older.count - (keepLast ?? 0));
       const result = {
         dryRun: true,
         cutoff: cutoff.toISOString(),
         keepLast: keepLast ?? null,
         olderThanCutoff: older.count,
+        wouldDelete,
         capped: older.capped,
       };
       if (this.json) return this.printJson(result);
+      const atLeast = older.capped ? 'at least ' : '';
       this.logger.info(
-        `would delete entries recorded before ${result.cutoff}: ${older.capped ? 'at least ' : ''}${older.count}${keepLast !== undefined ? ` (keeping the newest ${keepLast})` : ''}`,
+        `would delete ${atLeast}${wouldDelete} of the ${atLeast}${older.count} entries recorded before ${result.cutoff}${keepLast !== undefined ? ` (keeping the newest ${keepLast})` : ''}`,
       );
       return;
     }

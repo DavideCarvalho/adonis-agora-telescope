@@ -1,5 +1,5 @@
 import { args, flags } from '@adonisjs/core/ace';
-import { intFlag, TelescopeCommand, WindowCommand } from './shared.js';
+import { CliUsageError, intFlag, TelescopeCommand, WindowCommand } from './shared.js';
 
 /** `telescope:traces:list`: the console's Traces list, most recently active first. */
 export class TelescopeTracesList extends TelescopeCommand {
@@ -138,7 +138,8 @@ export class TelescopePulseShow extends WindowCommand {
 
   override async run() {
     const { apis, coreConfig } = await this.console();
-    if (!coreConfig.pulse.enabled) throw new Error('Pulse is disabled (config telescope.pulse).');
+    if (!coreConfig.pulse.enabled)
+      throw new CliUsageError('Pulse is disabled (config telescope.pulse).');
     const top = intFlag(this.top, 'top');
     const windowMs = this.windowMs();
     const body = await this.handle((ctx) => apis.api.metricsPulse(ctx), {

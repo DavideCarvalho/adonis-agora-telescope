@@ -2,7 +2,14 @@ import { readFile } from 'node:fs/promises';
 import { args, flags } from '@adonisjs/core/ace';
 import { consoleMeta, QUEUE_ACTIONS_DISABLED } from '../src/ui/console_apis.js';
 import { consoleTenantScope, describeTenantScope } from '../src/ui/tenant_scope.js';
-import { ConsoleRefusal, cell, cliActor, TelescopeCommand } from './shared.js';
+import {
+  CliUsageError,
+  ConsoleRefusal,
+  cell,
+  cliActor,
+  intFlag,
+  TelescopeCommand,
+} from './shared.js';
 
 /** A JSON flag: inline JSON, or `@path/to/file.json`. Exported for tests. */
 export async function jsonFlag(value: string, name: string): Promise<unknown> {
@@ -10,7 +17,7 @@ export async function jsonFlag(value: string, name: string): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error(`--${name} must be JSON (inline, or @file.json)`);
+    throw new CliUsageError(`--${name} must be JSON (inline, or @file.json)`);
   }
 }
 
@@ -108,6 +115,8 @@ abstract class QueueMutationCommand extends TelescopeCommand {
   declare force?: boolean;
 
   protected async gate(question: string): Promise<boolean> {
+    // Queue actions reach every organization (the console refuses them to a restricted viewer).
+    this.refuseScoped('A queue action');
     const { uiConfig } = await this.console();
     if (!uiConfig.queueActions.enabled) throw new ConsoleRefusal(403, QUEUE_ACTIONS_DISABLED);
     return this.confirmed(this.force, question);
@@ -188,9 +197,10 @@ export class TelescopeProfilesList extends TelescopeCommand {
   declare after?: string;
 
   override async run() {
+    const first = intFlag(this.first, 'first');
     const { apis } = await this.console();
     const body = await this.handle((ctx) => apis.profilesApi.list(ctx), {
-      ...(this.first !== undefined ? { first: this.first } : {}),
+      ...(first !== undefined ? { first } : {}),
       ...(this.after ? { after: this.after } : {}),
     });
     if (this.json) return this.printJson(body);
@@ -284,7 +294,7 @@ export class TelescopeExtData extends TelescopeCommand {
     const qs: Record<string, unknown> = {};
     for (const pair of this.param ?? []) {
       const at = pair.indexOf('=');
-      if (at <= 0) throw new Error('--param must be key=value');
+      if (at <= 0) throw new CliUsageError('--param must be key=value');
       qs[pair.slice(0, at)] = pair.slice(at + 1);
     }
     const body = await this.handle((ctx) => extApi.data(ctx, this.ext, this.provider), qs);

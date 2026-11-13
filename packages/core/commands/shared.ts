@@ -31,8 +31,14 @@ export function cliActor(): { id: string } {
   return { id: `cli:${name}` };
 }
 
+/**
+ * A refusal the operator can act on (bad flag value, feature off, needs --force): printed as one
+ * line with exit code 1. Anything else keeps its stack.
+ */
+export class CliUsageError extends Error {}
+
 /** A console answer that is not 2xx, as one line: `404: Entry not found`. */
-export class ConsoleRefusal extends Error {
+export class ConsoleRefusal extends CliUsageError {
   constructor(
     readonly status: number,
     message: string,
@@ -72,16 +78,11 @@ export abstract class TelescopeCommand extends BaseCommand {
 
   /**
    * A refused call (not found, disabled, bad input) is one error line and exit code 1, not a stack
-   * trace. Programming errors keep their stack.
+   * trace. Every other failure (store, file system) keeps its stack.
    */
   override async completed() {
     const error = this.error as unknown;
-    if (
-      error instanceof Error &&
-      !(error instanceof TypeError) &&
-      !(error instanceof ReferenceError) &&
-      !(error instanceof SyntaxError)
-    ) {
+    if (error instanceof CliUsageError) {
       this.logger.error(error.message);
       this.exitCode = 1;
       return true;
@@ -96,7 +97,7 @@ export abstract class TelescopeCommand extends BaseCommand {
     if (this.resolved !== undefined) return this.resolved;
     const store = getTelescopeRuntime().store;
     if (store === null) {
-      throw new Error(
+      throw new CliUsageError(
         'telescope is not running in this app (is it enabled in config/telescope.ts?)',
       );
     }
@@ -109,7 +110,7 @@ export abstract class TelescopeCommand extends BaseCommand {
     let scoped = false;
     if (this.tenant !== undefined && this.tenant !== '') {
       const scope = consoleTenantScope({ tenants: '*' }, coreConfig.tenancy);
-      if (scope === null) throw new Error('--tenant needs tenancy (it is off in this app)');
+      if (scope === null) throw new CliUsageError('--tenant needs tenancy (it is off in this app)');
       const { tags } = selectTenantScope(scope, this.tenant, coreConfig.tenancy);
       if (tags !== null) {
         source = new TenantScopedStore(store, tags);
@@ -163,7 +164,7 @@ export abstract class TelescopeCommand extends BaseCommand {
   /** Refuse an action that reaches every organization when `--tenant` narrowed the command. */
   protected refuseScoped(what: string): void {
     if (this.tenant !== undefined && this.tenant !== '') {
-      throw new Error(`${what} reaches every organization: run it without --tenant`);
+      throw new CliUsageError(`${what} reaches every organization: run it without --tenant`);
     }
   }
 
@@ -178,7 +179,7 @@ export abstract class TelescopeCommand extends BaseCommand {
   protected async confirmed(force: boolean | undefined, question: string): Promise<boolean> {
     if (force) return true;
     if (process.stdin.isTTY !== true) {
-      throw new Error(`${question.replace(/\?$/, '')}: needs confirmation, pass --force`);
+      throw new CliUsageError(`${question.replace(/\?$/, '')}: needs confirmation, pass --force`);
     }
     if (await this.prompt.confirm(question)) return true;
     this.logger.warning('cancelled');
@@ -247,7 +248,12 @@ export abstract class WindowCommand extends TelescopeCommand {
   declare window?: string;
 
   protected windowMs(): number | undefined {
-    return this.window !== undefined ? durationToMs(this.window) : undefined;
+    if (this.window === undefined) return undefined;
+    try {
+      return durationToMs(this.window);
+    } catch {
+      throw new CliUsageError('--window must be a duration such as 15m, 1h or 1d');
+    }
   }
 }
 
@@ -257,7 +263,8 @@ export function instantFlag(value: string, name: string): string {
     return new Date(Date.now() - durationToMs(value.trim())).toISOString();
   }
   const ms = Date.parse(value);
-  if (Number.isNaN(ms)) throw new Error(`--${name} must be a duration (15m, 2h) or an ISO date`);
+  if (Number.isNaN(ms))
+    throw new CliUsageError(`--${name} must be a duration (15m, 2h) or an ISO date`);
   return new Date(ms).toISOString();
 }
 
@@ -265,7 +272,8 @@ export function instantFlag(value: string, name: string): string {
 export function intFlag(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
   const n = Number(value);
-  if (!Number.isInteger(n) || n < 0) throw new Error(`--${name} must be a non-negative integer`);
+  if (!Number.isInteger(n) || n < 0)
+    throw new CliUsageError(`--${name} must be a non-negative integer`);
   return n;
 }
 
