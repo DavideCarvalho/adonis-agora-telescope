@@ -56,10 +56,12 @@ Source: `docs/packages/telescope-ui.mdx` (Install),
 
 ## Core patterns
 
-### Pattern 1 — override or toggle the SPA mount
+### Pattern 1 — override the SPA mount, viewer or sign-out
 
 The SPA reuses the core `config/telescope_ui.ts` block; an optional nested
-`dashboard` block only toggles it on/off or re-mounts it elsewhere:
+`dashboard` block (`TelescopeDashboardOptions` in `@adonis-agora/telescope/ui`)
+toggles it on/off, re-mounts it elsewhere, and sets the sidebar footer's
+signed-in user and sign-out:
 
 ```ts
 // config/telescope_ui.ts
@@ -71,9 +73,16 @@ export default defineConfig({
   dashboard: {
     enabled: true,
     // path: '/__telescope',   // serve the SPA from a different prefix than the API
+    // viewer: (ctx) => ({ label: ctx.auth.user?.fullName ?? ctx.auth.user?.email }),
+    // signOut: '/logout',     // POST action path (carries the CSRF token), { href } or false
   },
 })
 ```
+
+Omitted `viewer` reads `ctx.auth.user` structurally (`fullName`/`name`/`email`,
+first of `role`/`roles`) when the request is already authenticated; omitted
+`signOut` uses the sign-out an account console announces on the
+`agora.consoles` registry. Same-origin paths only.
 
 The core provider's static API routes take precedence over the SPA wildcard, so
 `<path>/api/*` always wins.
