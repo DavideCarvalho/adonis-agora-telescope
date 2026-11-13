@@ -6,6 +6,8 @@
  * metrics/trace payloads (`firstAt`, `lastAt`) arrive as ISO strings; SSE emits an {@link EntrySummary}.
  */
 
+import type { OffsetPage } from '@adonis-agora/filter-client';
+
 /** The built-in entry types (mirrors core `EntryType`). `Entry.type` is a plain string — custom
  *  watcher/extension types are allowed — but these are the known values. */
 export const ENTRY_TYPES = [
@@ -77,23 +79,26 @@ export interface RequestEntryContent {
   user: { id: string; email?: string } | null;
 }
 
-/** The AND-composed filter set the `/entries` list route accepts. */
+/** The filters + cursor the `/entries` feed accepts (sent as `filter[…]`, `search`, `after`, `first`). */
 export interface EntriesQuery {
   type?: string;
   tag?: string;
   traceId?: string;
   search?: string;
-  /** Keyset cursor: strictly older than this ISO timestamp (pass the oldest row's `createdAt`). */
+  /** Continue after this cursor — a previous page's `meta.nextCursor`. */
+  after?: string;
+  /** Page size (server-capped at 500; defaults to the client's `size`, 50). */
+  first?: number;
+}
+
+/** Cursor + size for the `/metrics/traces` list. */
+export interface TracesCursor {
+  /** The page after this cursor — a previous page's `meta.nextCursor`. */
+  after?: string;
+  /** The page before this cursor — a previous page's `meta.prevCursor`. */
   before?: string;
-  /**
-   * 1-based page for offset pagination (default `1`). `{ page, size }` is the
-   * pagination pair every `@adonis-agora/*` library uses — it mirrors
-   * `@adonis-agora/filter`'s `FilterInput` shape on purpose (structural match,
-   * filter is not a dependency).
-   */
-  page?: number;
-  /** Page size (server-capped at 500, default 50). */
-  size?: number;
+  /** Page size (server-capped at 500; defaults to the client's `size`, 50). */
+  first?: number;
 }
 
 /** How a request reached the app — a screen visit, a data fetch, or a static file. */
@@ -318,18 +323,13 @@ export interface Envelope<T> {
   meta?: Record<string, unknown>;
 }
 
-/**
- * A page of rows plus whether another one exists.
- *
- * `hasMore` and not `total`: the paginated endpoints answer it by fetching one row
- * past the page, because counting would mean an aggregate over the very table the
- * pagination exists to stop scanning. Prev/Next needs no total.
- */
-export interface Page<T> {
-  rows: T[];
-  page: number;
-  hasMore: boolean;
-}
+/** The list envelopes (`@adonis-agora/filter` wire format) the paged routes answer with. */
+export type {
+  CursorPageMeta,
+  CursorPageResponse,
+  OffsetPage,
+  OffsetPageMeta,
+} from '@adonis-agora/filter-client';
 
 // ── retention (`GET <base>/retention`) ──────────────────────────────────────
 
@@ -669,14 +669,16 @@ export interface TopNPanelData {
   items: TopNPanelItem[];
 }
 
+/** A `table` panel's provider payload: `{ rows }`. */
 export interface TablePanelData {
   rows: Array<Record<string, unknown>>;
-  total?: number;
-  /** 1-based page number, echoing the requested `query.page`. */
-  page?: number;
-  /** Page size, echoing the requested `query.size`. */
-  size?: number;
 }
+
+/**
+ * A `table` panel with `paged: true`: the offset list envelope for the requested `page` / `size`
+ * (`{ data: rows, meta: { total, perPage, currentPage, lastPage, firstPage } }`).
+ */
+export type PagedTablePanelData = OffsetPage<Record<string, unknown>>;
 
 export interface DistributionPanelData {
   buckets: Array<{ label: string; count: number }>;

@@ -178,7 +178,7 @@ own admin UI:
 import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
 
 const client = new TelescopeClient({ baseUrl: '/telescope/api' })
-const entries = await client.listEntries({ type: 'exception', size: 20 })
+const entries = await client.listEntries({ type: 'exception', first: 20 })
 ```
 
 `new TelescopeClient(options?)` takes `baseUrl` (defaults to the base resolved for the current
@@ -189,13 +189,15 @@ is sent same-origin, so it inherits whatever session already gates the dashboard
 
 | Method | Returns |
 | ------ | ------- |
-| `listEntries(query?)` | `EntrySummary[]` for a `{ type, tag, traceId, search, before, page, size }` filter. |
+| `listEntries(query?)` | The first page of `EntrySummary[]` for a `{ type, tag, traceId, search, first }` filter. |
+| `listEntriesPage(query?)` | One page in the cursor envelope `{ data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }`. Pass `meta.nextCursor` back as `after` for the next one. |
 | `getEntry(id)` | One `Entry` with its full `content`. |
 | `entriesByTrace(traceId)` | Every entry on one trace. |
 | `stats(limit?, type?)` | Count plus the busiest families and tags. |
 | `metricsStats(type, windowMs?, buckets?)` | The per-type analytics block for one entry type. |
 | `metricsTimeseries(windowMs?, buckets?, type?)` | Bucketed throughput, total and by type. |
-| `traces(size?)` | Recent traces, newest-active first. |
+| `traces(first?)` | Recent traces, newest-active first (the first page). |
+| `tracesPage({ after?, before?, first? })` | One page of traces in the cursor envelope; `before` a `meta.prevCursor` goes back. |
 | `waterfall(traceId)` | One trace as a nested span tree. |
 | `nPlusOne(traceId, threshold?)` | Repeated-query loops on one trace. |
 | `pulse(windowMs?, topN?)` | The whole [Pulse](/docs/telescope/packages/pulse) rollup. |
@@ -209,7 +211,7 @@ is sent same-origin, so it inherits whatever session already gates the dashboard
 | Method | Returns |
 | ------ | ------- |
 | `profilerStatus()` | Sampling and arm state, or `null` when CPU profiling isn't installed. |
-| `profiles(limit?)` | Captured profiles, newest first, without the frame tree. |
+| `profiles(first?)` | The newest `first` captured profiles (default 100), without the frame tree. |
 | `profile(id)` | One profile's full entry: flamegraph tree plus hot frames. |
 | `armProfile(count, label?)` | Arms a capture of the next `count` requests, optionally filtered by route label. |
 | `liveQueues()` | Configured queues, their counts and what the driver can actually do — `null` when no queue driver is wired. |
@@ -260,6 +262,7 @@ useful for building a type filter. `Entry['type']` is a plain string, so a custo
 extension can record types outside that list.
 
 Every wire shape is exported as a type too — `Entry`, `EntrySummary`, `EntriesQuery`,
+`TracesCursor`, `CursorPageResponse`, `OffsetPage`,
 `StatsResult`, `TimeseriesReport`, `TraceSummary`, `Waterfall`, `NPlusOnePattern`, `PulseSummary`,
 `RetentionInfo`, `TelescopeMeta`, `Panel`, `DashboardSpec`, `CpuProfileContent`, `LiveQueues`,
 `LiveSchedules` and the rest.

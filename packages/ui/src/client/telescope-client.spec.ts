@@ -19,14 +19,39 @@ const client = (fetch: typeof globalThis.fetch) =>
   new TelescopeClient({ baseUrl: '/telescope/api', fetch });
 
 describe('TelescopeClient', () => {
-  it('lists entries with filters and unwraps the data envelope', async () => {
+  it('lists entries with filter[...] params and unwraps the data envelope', async () => {
     const { fetch, calls } = stubFetch({ data: [{ id: 'e1', type: 'request' }], meta: {} });
-    const rows = await client(fetch).listEntries({ type: 'request', search: 'users', size: 25 });
+    const rows = await client(fetch).listEntries({ type: 'request', search: 'users', first: 25 });
     expect(rows).toEqual([{ id: 'e1', type: 'request' }]);
     expect(calls[0]).toContain('/telescope/api/entries?');
-    expect(calls[0]).toContain('type=request');
-    expect(calls[0]).toContain('search=users');
-    expect(calls[0]).toContain('size=25');
+    const params = new URLSearchParams(String(calls[0]).split('?')[1]);
+    expect(params.get('filter[type]')).toBe('request');
+    expect(params.get('search')).toBe('users');
+    expect(params.get('first')).toBe('25');
+  });
+
+  it('pages entries with the after cursor and returns the cursor envelope', async () => {
+    const meta = { nextCursor: 'c3', prevCursor: null, hasNext: true, hasPrev: false };
+    const { fetch, calls } = stubFetch({ data: [{ id: 'e2' }], meta });
+    const page = await client(fetch).listEntriesPage({ after: 'c2', tag: 'lib:billing' });
+    expect(page).toEqual({ data: [{ id: 'e2' }], meta });
+    const params = new URLSearchParams(String(calls[0]).split('?')[1]);
+    expect(params.get('after')).toBe('c2');
+    expect(params.get('first')).toBe('50');
+    expect(params.get('filter[tag]')).toBe('lib:billing');
+  });
+
+  it('pages traces both ways', async () => {
+    const meta = { nextCursor: null, prevCursor: null, hasNext: false, hasPrev: false };
+    const { fetch, calls } = stubFetch({ data: [], meta });
+    await client(fetch).tracesPage({ after: 'n1', first: 10 });
+    await client(fetch).tracesPage({ before: 'p1', first: 10 });
+    const forward = new URLSearchParams(String(calls[0]).split('?')[1]);
+    expect(forward.get('after')).toBe('n1');
+    expect(forward.get('first')).toBe('10');
+    const backward = new URLSearchParams(String(calls[1]).split('?')[1]);
+    expect(backward.get('before')).toBe('p1');
+    expect(backward.get('last')).toBe('10');
   });
 
   it('fetches a single entry by id', async () => {
@@ -153,7 +178,7 @@ describe('TelescopeClient', () => {
     const rows = await client(fetch).profiles(50);
     expect(rows).toEqual([{ id: 'p1', type: 'cpu_profile' }]);
     expect(calls[0]).toContain('/telescope/api/profiles?');
-    expect(calls[0]).toContain('limit=50');
+    expect(calls[0]).toContain('first=50');
   });
 
   it('fetches one profile by id', async () => {

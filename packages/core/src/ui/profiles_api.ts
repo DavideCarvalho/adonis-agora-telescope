@@ -3,8 +3,15 @@ import { EntryType } from '../entry.js';
 import type { ProfilerService, ProfilerStatus } from '../profiling/profiler_service.js';
 import type { CpuProfileContent } from '../profiling/types.js';
 import type { TelescopeService } from '../service.js';
-import { type EntrySummary, toSummary } from './api.js';
+import { type EntrySummary, rejectList, toSummary } from './api.js';
 import type { UiHttpContext } from './http.js';
+import {
+  type EntryListRequest,
+  entryFeedPage,
+  NoFilter,
+  parseEntryListRequest,
+  readEntryPage,
+} from './list_api.js';
 
 /** `POST <path>/api/profiles/arm` request body. */
 export interface ArmProfileBody {
@@ -45,20 +52,28 @@ export class ProfilesApi {
   }
 
   /**
-   * `GET <path>/api/profiles?limit=` — captured profiles newest-first, WITHOUT their (potentially
-   * large) frame tree — the summary already omits `content` (see {@link toSummary}).
+   * `GET <path>/api/profiles` — captured profiles newest first, cursor-paged forward (`after` +
+   * `first`, default 100), WITHOUT their (potentially large) frame tree — the summary already omits
+   * `content` (see {@link toSummary}). `sort=-createdAt` is the only order; there are no filters.
    */
   async list(ctx: UiHttpContext): Promise<unknown> {
     if (this.profiler === null) return notConfigured(ctx);
-    const limitRaw = ctx.request.qs().limit;
-    const limit =
-      typeof limitRaw === 'string' && Number.isFinite(Number(limitRaw)) ? Number(limitRaw) : 100;
-    const entries = await this.service.list({ type: EntryType.CpuProfile, size: limit });
-    const data: EntrySummary[] = entries.map(toSummary);
+    let request: EntryListRequest;
+    try {
+      request = await parseEntryListRequest(ctx.request.qs(), {
+        filter: NoFilter,
+        defaultSize: 100,
+      });
+    } catch (err) {
+      return rejectList(ctx, err);
+    }
+    request.query.type = EntryType.CpuProfile;
+    const { rows, nextCursor } = await readEntryPage((q) => this.service.list(q), request);
+    const data: EntrySummary[] = rows.map(toSummary);
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
-      .send({ data, meta: { count: data.length } });
+      .send(entryFeedPage(data, nextCursor));
   }
 
   /** `GET <path>/api/profiles/:id` — one profile's full frame tree (the flamegraph payload), or 404. */

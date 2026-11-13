@@ -87,6 +87,37 @@ describe('ProfilesApi', () => {
     expect((body.data[0] as unknown as { content?: unknown }).content).toBeUndefined();
   });
 
+  it('list() pages with a cursor and refuses filters', async () => {
+    await seedProfile(store);
+    await seedProfile(store);
+    await store.record({ type: 'log', content: { message: 'not a profile' } });
+    const profiler = new ProfilerService(resolveConfig({ enabled: true }));
+    const api = new ProfilesApi(service, profiler);
+
+    const first = ctx({ first: '1' });
+    await api.list(first.ctx);
+    const page1 = first.res.body as {
+      data: Array<{ id: string; type: string }>;
+      meta: { nextCursor: string | null; hasNext: boolean; hasPrev: boolean };
+    };
+    expect(page1.data).toHaveLength(1);
+    expect(page1.meta).toMatchObject({ hasNext: true, hasPrev: false });
+
+    const second = ctx({ first: '1', after: page1.meta.nextCursor });
+    await api.list(second.ctx);
+    const page2 = second.res.body as {
+      data: Array<{ id: string; type: string }>;
+      meta: { hasNext: boolean };
+    };
+    expect(page2.data.map((e) => e.type)).toEqual(['cpu_profile']);
+    expect(page2.data[0]?.id).not.toBe(page1.data[0]?.id);
+    expect(page2.meta.hasNext).toBe(false);
+
+    const filtered = ctx({ filter: { type: 'log' } });
+    await api.list(filtered.ctx);
+    expect(filtered.res.statusCode).toBe(400);
+  });
+
   it('show() returns the full entry (with tree/hot) or 404', async () => {
     const id = await seedProfile(store);
     const profiler = new ProfilerService(resolveConfig({ enabled: true }));

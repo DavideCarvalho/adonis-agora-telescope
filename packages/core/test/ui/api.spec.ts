@@ -54,15 +54,21 @@ describe('TelescopeApi', () => {
     await seed(store);
   });
 
-  it('lists entries newest-first as summaries', async () => {
+  it('lists entries newest-first as summaries in the cursor envelope', async () => {
     const { ctx: c, res } = ctx();
     await api.list(c);
     expect(res.statusCode).toBe(200);
     const body = res.body as {
       data: Array<{ type: string; summary: string }>;
-      meta: { count: number };
+      meta: Record<string, unknown>;
     };
-    expect(body.meta.count).toBe(3);
+    expect(body.data).toHaveLength(3);
+    expect(body.meta).toEqual({
+      nextCursor: null,
+      prevCursor: null,
+      hasNext: false,
+      hasPrev: false,
+    });
     // newest first: diagnostic was recorded last
     expect(body.data[0]?.type).toBe('diagnostic');
     expect(body.data[0]?.summary).toBe('billing:invoice-paid');
@@ -73,19 +79,37 @@ describe('TelescopeApi', () => {
     expect((body.data[0] as Record<string, unknown>).content).toBeUndefined();
   });
 
-  it('filters by type', async () => {
-    const { ctx: c, res } = ctx({ type: 'request' });
+  it('filters by type through filter[type]', async () => {
+    const { ctx: c, res } = ctx({ filter: { type: 'request' } });
     await api.list(c);
     const body = res.body as { data: Array<{ type: string }> };
     expect(body.data).toHaveLength(2);
     expect(body.data.every((e) => e.type === 'request')).toBe(true);
   });
 
-  it('filters by traceId', async () => {
-    const { ctx: c, res } = ctx({ traceId: 'trace-a' });
-    await api.list(c);
-    const body = res.body as { data: unknown[] };
-    expect(body.data).toHaveLength(2);
+  it('filters by traceId, familyHash and any of several tags', async () => {
+    const byTrace = ctx({ filter: { traceId: 'trace-a' } });
+    await api.list(byTrace.ctx);
+    expect((byTrace.res.body as { data: unknown[] }).data).toHaveLength(2);
+
+    const byFamily = ctx({ filter: { familyHash: 'POST /login' } });
+    await api.list(byFamily.ctx);
+    expect((byFamily.res.body as { data: unknown[] }).data).toHaveLength(1);
+
+    const byTags = ctx({ filter: { tag: ['status:500', 'lib:billing'] } });
+    await api.list(byTags.ctx);
+    expect((byTags.res.body as { data: unknown[] }).data).toHaveLength(2);
+  });
+
+  it('filters by a createdAt range', async () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const none = ctx({ filter: { createdAt: { gt: future } } });
+    await api.list(none.ctx);
+    expect((none.res.body as { data: unknown[] }).data).toHaveLength(0);
+
+    const all = ctx({ filter: { createdAt: { lte: future } } });
+    await api.list(all.ctx);
+    expect((all.res.body as { data: unknown[] }).data).toHaveLength(3);
   });
 
   it('filters by search across content + tags', async () => {
@@ -96,32 +120,54 @@ describe('TelescopeApi', () => {
     expect(body.data[0]?.type).toBe('diagnostic');
   });
 
-  it('caps size to the configured max', async () => {
-    const { ctx: c, res } = ctx({ size: '99999' });
+  it.each([
+    [{ filter: { status: '500' } }, 'Unknown filter field'],
+    [{ filter: { type: { contains: 'req' } } }, 'does not support'],
+    [{ filter: { createdAt: { gt: 'yesterday' } } }, 'needs a date'],
+    [{ sort: 'durationMs' }, 'Unknown sort field'],
+    [{ sort: 'createdAt' }, 'newest first'],
+    [{ before: 'abc' }, 'forward only'],
+    [{ after: 'not-a-cursor' }, 'Invalid cursor'],
+  ])('answers 400 for %j', async (qs, message) => {
+    const { ctx: c, res } = ctx(qs);
     await api.list(c);
-    const body = res.body as { meta: { query: { size: number } } };
-    expect(body.meta.query.size).toBe(500);
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toContain(message);
   });
 
-  it('pages with 1-based `page` + `size` and echoes both in meta', async () => {
-    const { ctx: c, res } = ctx({ size: '2', page: '2' });
+  it('accepts its one order, sort=-createdAt', async () => {
+    const { ctx: c, res } = ctx({ sort: '-createdAt' });
     await api.list(c);
-    const body = res.body as {
-      data: unknown[];
-      meta: { page: number; size: number; hasMore: boolean; query: { page?: number } };
-    };
-    expect(body.meta.page).toBe(2);
-    expect(body.meta.size).toBe(2);
-    expect(body.meta.query.page).toBe(2);
-    expect(body.data).toHaveLength(1);
-    expect(body.meta.hasMore).toBe(false);
+    expect(res.statusCode).toBe(200);
+  });
 
-    // A full page probes for its successor instead of counting.
-    const { ctx: first, res: firstRes } = ctx({ size: '2', page: '1' });
-    await api.list(first);
-    const firstBody = firstRes.body as { data: unknown[]; meta: { hasMore: boolean } };
-    expect(firstBody.data).toHaveLength(2);
-    expect(firstBody.meta.hasMore).toBe(true);
+  it('walks the feed forward with after + first', async () => {
+    const first = ctx({ first: '2' });
+    await api.list(first.ctx);
+    const page1 = first.res.body as {
+      data: Array<{ id: string }>;
+      meta: { nextCursor: string | null; hasNext: boolean };
+    };
+    expect(page1.data).toHaveLength(2);
+    expect(page1.meta.hasNext).toBe(true);
+
+    const second = ctx({ first: '2', after: page1.meta.nextCursor });
+    await api.list(second.ctx);
+    const page2 = second.res.body as {
+      data: Array<{ id: string }>;
+      meta: { nextCursor: string | null; hasNext: boolean };
+    };
+    expect(page2.data).toHaveLength(1);
+    expect(page2.meta).toMatchObject({ nextCursor: null, hasNext: false });
+    const ids = [...page1.data, ...page2.data].map((e) => e.id);
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it('caps first at 500', async () => {
+    for (let i = 0; i < 600; i++) await store.record({ type: 'log', content: { i } });
+    const { ctx: c, res } = ctx({ first: '99999' });
+    await api.list(c);
+    expect((res.body as { data: unknown[] }).data).toHaveLength(500);
   });
 
   it('returns one entry with full content for show()', async () => {

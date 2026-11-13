@@ -1,8 +1,10 @@
+import { filterQuery } from '@adonis-agora/filter-client';
 import { resolveApiBase } from './api-base.js';
 import type {
   AiUsageSummary,
   ArmOutcome,
   ArmProfileResult,
+  CursorPageResponse,
   DiagnoseOutcome,
   DiagnosisResult,
   EnqueueOutcome,
@@ -13,7 +15,6 @@ import type {
   LiveQueues,
   LiveSchedules,
   NPlusOnePattern,
-  Page,
   ProfilerStatus,
   PulseSummary,
   QueueJobDetail,
@@ -28,6 +29,7 @@ import type {
   TenantScope,
   TimeseriesReport,
   TraceSummary,
+  TracesCursor,
   Waterfall,
 } from './types.js';
 
@@ -143,8 +145,15 @@ export class TelescopeClient {
     return `${this.base}/stream${search ? `?${search}` : ''}`;
   }
 
-  private async get<T>(path: string, query: Record<string, string> = {}): Promise<T> {
-    const search = new URLSearchParams(this.withTenant(query)).toString();
+  /**
+   * GET `path` with `query` — a record, or a query string already built (the list routes' `filter[…]`
+   * / cursor params, from `@adonis-agora/filter-client`).
+   */
+  private async get<T>(path: string, query: Record<string, string> | string = {}): Promise<T> {
+    const tenant = new URLSearchParams(
+      this.withTenant(typeof query === 'string' ? {} : query),
+    ).toString();
+    const search = [typeof query === 'string' ? query : '', tenant].filter(Boolean).join('&');
     const url = `${this.base}${path}${search ? `?${search}` : ''}`;
     const response = await this.doFetch(url, {
       method: 'GET',
@@ -162,21 +171,9 @@ export class TelescopeClient {
   }
 
   /** Unwrap the standard `{ data }` envelope. */
-  private async data<T>(path: string, query: Record<string, string> = {}): Promise<T> {
+  private async data<T>(path: string, query: Record<string, string> | string = {}): Promise<T> {
     const body = await this.get<Envelope<T>>(path, query);
     return body.data;
-  }
-
-  /** Unwrap a `{ data, meta }` envelope into a {@link Page}, keeping the paging meta
-   *  that {@link data} throws away. */
-  private async page<T>(path: string, query: Record<string, string> = {}): Promise<Page<T>> {
-    const body = await this.get<Envelope<T[]>>(path, query);
-    const meta = body.meta ?? {};
-    return {
-      rows: body.data,
-      page: typeof meta.page === 'number' ? meta.page : 1,
-      hasMore: meta.hasMore === true,
-    };
   }
 
   /**
@@ -219,34 +216,25 @@ export class TelescopeClient {
 
   // ── entries ──────────────────────────────────────────────────────────────
 
-  listEntries(query: EntriesQuery = {}): Promise<EntrySummary[]> {
-    return this.data<EntrySummary[]>(
-      '/entries',
-      toQuery({
-        type: query.type,
-        tag: query.tag,
-        traceId: query.traceId,
-        search: query.search,
-        before: query.before,
-        size: query.size ?? this.size,
-      }),
-    );
+  /** The first page of entries (newest first) matching `query`. */
+  async listEntries(query: EntriesQuery = {}): Promise<EntrySummary[]> {
+    return (await this.listEntriesPage(query)).data;
   }
 
-  /** One page of entries, with whether a next page exists. */
-  listEntriesPage(query: EntriesQuery = {}): Promise<Page<EntrySummary>> {
-    return this.page<EntrySummary>(
-      '/entries',
-      toQuery({
-        type: query.type,
-        tag: query.tag,
-        traceId: query.traceId,
-        search: query.search,
-        before: query.before,
-        size: query.size ?? this.size,
-        page: query.page ?? 1,
-      }),
-    );
+  /**
+   * One page of entries, newest first, in the cursor envelope. Pass `meta.nextCursor` back as
+   * `after` for the next page; the feed pages forward only, so keep the cursors you visited to go
+   * back.
+   */
+  listEntriesPage(query: EntriesQuery = {}): Promise<CursorPageResponse<EntrySummary>> {
+    const builder = filterQuery();
+    if (query.type) builder.where('type', query.type);
+    if (query.tag) builder.where('tag', query.tag);
+    if (query.traceId) builder.where('traceId', query.traceId);
+    if (query.search) builder.search(query.search);
+    if (query.after) builder.after(query.after);
+    builder.first(query.first ?? this.size);
+    return this.get<CursorPageResponse<EntrySummary>>('/entries', builder.toQueryString());
   }
 
   getEntry(id: string): Promise<Entry> {
@@ -289,13 +277,24 @@ export class TelescopeClient {
     return this.data<AiUsageSummary>('/metrics/ai', toQuery({ windowMs, buckets }));
   }
 
-  traces(size = this.size): Promise<TraceSummary[]> {
-    return this.data<TraceSummary[]>('/metrics/traces', toQuery({ size }));
+  /** The most recently active traces (the first page). */
+  async traces(first = this.size): Promise<TraceSummary[]> {
+    return (await this.tracesPage({ first })).data;
   }
 
-  /** One page of traces, with whether a next page exists. */
-  tracesPage(size = this.size, page = 1): Promise<Page<TraceSummary>> {
-    return this.page<TraceSummary>('/metrics/traces', toQuery({ size, page }));
+  /**
+   * One page of traces, most recently active first, in the cursor envelope: `after` a
+   * `meta.nextCursor` for the next page, `before` a `meta.prevCursor` for the previous one.
+   */
+  tracesPage(cursor: TracesCursor = {}): Promise<CursorPageResponse<TraceSummary>> {
+    const builder = filterQuery();
+    const size = cursor.first ?? this.size;
+    if (cursor.before) builder.before(cursor.before).last(size);
+    else {
+      if (cursor.after) builder.after(cursor.after);
+      builder.first(size);
+    }
+    return this.get<CursorPageResponse<TraceSummary>>('/metrics/traces', builder.toQueryString());
   }
 
   waterfall(traceId: string): Promise<Waterfall> {
@@ -420,9 +419,9 @@ export class TelescopeClient {
     }
   }
 
-  /** Captured profiles newest-first, without their frame tree. */
-  profiles(limit = 100): Promise<EntrySummary[]> {
-    return this.data<EntrySummary[]>('/profiles', toQuery({ limit }));
+  /** The newest `first` captured profiles, without their frame tree. */
+  profiles(first = 100): Promise<EntrySummary[]> {
+    return this.data<EntrySummary[]>('/profiles', filterQuery().first(first).toQueryString());
   }
 
   /** One captured profile's full entry (with its flamegraph tree + hot frames). */

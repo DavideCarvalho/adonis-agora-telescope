@@ -74,7 +74,7 @@ export function useTelescopeQuery<T>(
 }
 
 const queryKey = (q: EntriesQuery) =>
-  `${q.type ?? ''}:${q.tag ?? ''}:${q.traceId ?? ''}:${q.search ?? ''}:${q.size ?? ''}`;
+  `${q.type ?? ''}:${q.tag ?? ''}:${q.traceId ?? ''}:${q.search ?? ''}:${q.first ?? ''}:${q.after ?? ''}`;
 
 export function useEntries(query: EntriesQuery) {
   const client = useTelescopeClient();
@@ -97,9 +97,9 @@ export function useTraceEntries(traceId: string) {
   return useTelescopeQuery(['trace-entries', traceId], () => client.entriesByTrace(traceId));
 }
 
-export function useTraces(size = 50) {
+export function useTraces(first = 50) {
   const client = useTelescopeClient();
-  return useTelescopeQuery(['traces', size], () => client.traces(size));
+  return useTelescopeQuery(['traces', first], () => client.traces(first));
 }
 
 /** Per-route traffic over a window. */
@@ -116,10 +116,33 @@ export function useAi(windowMs: number, buckets = 24) {
   return useTelescopeQuery(['ai', windowMs, buckets], () => client.ai(windowMs, buckets));
 }
 
-/** One page of traces. `page` is 1-based and owned by the caller; `size` is the page size. */
-export function useTracesPage(size: number, page: number) {
+/** One page of traces: `first` traces after the `after` cursor (the first page when absent). */
+export function useTracesPage(first: number, after: string | undefined) {
   const client = useTelescopeClient();
-  return useTelescopeQuery(['traces-page', size, page], () => client.tracesPage(size, page));
+  return useTelescopeQuery(['traces-page', first, after ?? ''], () =>
+    client.tracesPage({ first, ...(after !== undefined ? { after } : {}) }),
+  );
+}
+
+/**
+ * Prev/Next over a cursor feed: the cursors of the pages visited so far, so "Prev" goes back to a
+ * page the server already served (the entry feed pages forward only). `page` is 1-based.
+ */
+export function useCursorPager() {
+  const [cursors, setCursors] = useState<string[]>([]);
+  const page = cursors.length + 1;
+  return {
+    page,
+    /** The `after` cursor of the current page (absent on page 1). */
+    after: cursors[cursors.length - 1],
+    /** A DataTable `onPageChange`: forward pushes `nextCursor`, back pops. */
+    onPageChange: (next: number, nextCursor: string | null | undefined) => {
+      if (next > page && nextCursor) setCursors((c) => [...c, nextCursor]);
+      else if (next < page) setCursors((c) => c.slice(0, Math.max(0, next - 1)));
+    },
+    /** Back to page 1 (a filter changed). */
+    reset: () => setCursors([]),
+  };
 }
 
 export function useWaterfall(traceId: string) {
@@ -182,9 +205,9 @@ export function useProfilerStatus() {
   return useTelescopeQuery(['profiler-status'], () => client.profilerStatus());
 }
 
-export function useProfiles(limit = 100) {
+export function useProfiles(first = 100) {
   const client = useTelescopeClient();
-  return useTelescopeQuery(['profiles', limit], () => client.profiles(limit));
+  return useTelescopeQuery(['profiles', first], () => client.profiles(first));
 }
 
 export function useProfile(id: string | null) {

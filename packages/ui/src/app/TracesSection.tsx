@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { formatDuration, formatRelative } from '../client/format.js';
 import type { TraceSummary } from '../client/types.js';
 import { DataTable } from './primitives/data_table.js';
 import { AsyncBlock, Panel, SectionTitle, typeColor } from './ui.js';
-import { useTracesPage } from './use-telescope.js';
+import { useCursorPager, useTracesPage } from './use-telescope.js';
 
 /** Traces per page. Small on purpose: this list is scanned, not read in bulk, and a
  *  page is one round trip to a grouped query. */
@@ -11,8 +11,9 @@ const PAGE_SIZE = 25;
 
 /** The recent-traces list: root label, the type mix (colored dots), entry count, total time. */
 export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) => void }) {
-  const [page, setPage] = useState(1);
-  const state = useTracesPage(PAGE_SIZE, page);
+  const pager = useCursorPager();
+  const page = pager.page;
+  const state = useTracesPage(PAGE_SIZE, pager.after);
 
   const columns = useMemo(
     () => [
@@ -81,22 +82,22 @@ export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) 
         state={state}
         // Page 2+ coming back empty is a real (if odd) state, not "nothing recorded":
         // only page 1 empty means the console has no traces at all.
-        isEmpty={(p) => p.rows.length === 0 && p.page === 1}
+        isEmpty={(p) => p.data.length === 0 && page === 1}
         empty="No traces recorded yet."
         skeletonRows={6}
       >
         {(result) => (
           <DataTable
             id="traces"
-            data={result.rows}
+            data={result.data}
             columns={columns}
             rowKey={(t) => t.traceId}
             onRowClick={(t) => onOpenTrace(t.traceId)}
             rowClassName={() => 'hover:bg-brand/5'}
             pagination={{
               page,
-              onPageChange: setPage,
-              hasMore: result.hasMore,
+              onPageChange: (next) => pager.onPageChange(next, result.meta.nextCursor),
+              hasMore: result.meta.hasNext,
               isFetching: state.loading,
             }}
           />

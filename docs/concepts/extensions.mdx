@@ -119,7 +119,7 @@ Each `Panel` binds to a named data provider and declares how to draw the result:
 | `stat`         | A single number (+ optional spark, thresholds) | `{ value, delta?, deltaLabel?, spark? }`                  |
 | `timeseries`   | A line/area chart                | `{ rows: Array<{ label } & Record<string, number>> }`                   |
 | `topN`         | A ranked list                    | `{ items: Array<{ label, value, id? }> }`                               |
-| `table`        | A table (cells can deep-link)    | `{ rows: Array<Record<string, unknown>> }`, or `{ rows, total, page, size }` when `paged` |
+| `table`        | A table (cells can deep-link)    | `{ rows: Array<Record<string, unknown>> }`, or the offset page `{ data, meta }` when `paged` |
 | `distribution` | A histogram with p50/p95/p99     | `{ buckets: Array<{ label, count }>, p50?, p95?, p99? }`                |
 | `gauge`        | A gauge with thresholds          | `{ value, min?, max? }`                                                  |
 | `breakdown`    | A donut/bar breakdown            | `{ segments: Array<{ label, value, color? }> }`                         |
@@ -168,35 +168,34 @@ new tab.
 ### Paged tables
 
 A `table` panel with `paged: true` renders prev/next controls and a "Page X of Y" label. That
-changes what the bound provider must return: instead of a bare `{ rows }`, it must answer
+changes what the bound provider must return: instead of a bare `{ rows }`, it answers the offset
+list envelope every `@adonis-agora/*` list endpoint uses:
 
 ```ts
-{ rows, total, page, size }
+{ data: rows, meta: { total, perPage, currentPage, lastPage, firstPage } }
 ```
 
-where `total` is the **full, unpaginated** row count (that is what makes "of Y" computable) and
-`page` / `size` echo what was asked for. `{ page, size }` is the pagination pair every
-`@adonis-agora/*` library uses (the same shape as `@adonis-agora/filter`'s `FilterInput`). The
+where `total` is the **full, unpaginated** row count (that is what makes "of Y" computable). The
 console re-resolves the provider on every page turn, merging `page` (1-based) and `size` on top
-of the panel's own static `query`. Both arrive as **strings**, like every other query value, so
-coerce them:
+of the panel's own static `query`. Both arrive as **strings**, like every other query value;
+`parsePageParams` and `offsetPage` from `@adonis-agora/filter` read them and build the envelope:
 
 ```ts
+import { offsetPage, parsePageParams } from '@adonis-agora/filter'
+
 {
   name: 'durable.runs',
   async resolve(query, ctx) {
-    const page = Math.max(1, Number(query?.page ?? 1))
-    const size = Math.max(1, Number(query?.size ?? 25))
+    const { page, size } = parsePageParams(query ?? {}, { defaultSize: 25, maxSize: 100 })
     const { rows, total } = await fetchRuns({ offset: (page - 1) * size, limit: size })
-    return { rows, total, page, size }
+    return offsetPage(rows, { total, page, size })
   },
 }
 ```
 
 <Callout type="warn">
-A provider that returns a bare `{ rows }` to a `paged: true` panel still renders its rows, but
-the pager has nothing to count with — it reports a single page and the next button never enables.
-Set `paged` and the four-field return shape together, or neither.
+A `paged: true` panel reads its rows from `data`: a provider that still returns `{ rows }` renders
+nothing. Set `paged` and the offset envelope together, or neither.
 </Callout>
 
 ### The dashboard-id convention

@@ -1,3 +1,5 @@
+import type { OffsetPage, OffsetPageMeta } from '@adonis-agora/filter';
+
 /**
  * Pure helpers for the paged extension-dashboard table: the pagination math and the deep-link
  * templating a dashboard renders a `{ kind: 'table', paged: true }` panel with. Kept framework-free
@@ -6,26 +8,18 @@
  */
 
 /**
- * The provider payload for a `{ kind: 'table', paged: true }` panel — the shape
- * a {@link DataProvider} MUST return when the panel opts into paging. `page` /
- * `size` normally echo the requested `query.page` / `query.size` (the ecosystem's
- * `{ page, size }` pagination pair, mirroring `@adonis-agora/filter`); `total` is
- * the full, unpaginated row count so the UI can render "page X of Y".
+ * The provider payload for a `{ kind: 'table', paged: true }` panel — the offset list envelope
+ * every `@adonis-agora/*` list endpoint answers with: `{ data: rows, meta: { total, perPage,
+ * currentPage, lastPage, firstPage } }`. Build it with `offsetPage(rows, { total, page, size })`
+ * from `@adonis-agora/filter`, from the `page`/`size` the panel's query carries.
  */
-export interface PagedTableData {
-  rows?: Array<Record<string, unknown>>;
-  total?: number;
-  /** 1-based page number. */
-  page?: number;
-  /** Page size. */
-  size?: number;
-}
+export type PagedTableData = OffsetPage<Record<string, unknown>>;
 
 /** The pager state the UI renders from a {@link PagedTableData} payload. */
 export interface TablePagination {
   /** Current 1-based page (clamped to >= 1). */
   page: number;
-  /** Page size (rows-per-page) used to compute the page count. */
+  /** Page size (rows-per-page). */
   size: number;
   /** Full unpaginated row count. */
   total: number;
@@ -38,23 +32,27 @@ export interface TablePagination {
 }
 
 /**
- * Normalize a paged provider payload into pager state: clamp `page` to >= 1,
- * derive `size`/`total` defensively (so a provider echoing only `rows` still
- * renders one page), and compute `totalPages` + prev/next availability.
+ * Normalize a paged provider payload into pager state: clamp the page to >= 1, fall back to the
+ * row count when `meta` is incomplete (so a provider answering only `data` still renders one page),
+ * and compute prev/next availability.
  */
-export function tablePagination(data: PagedTableData): TablePagination {
-  const rows = data.rows ?? [];
-  const page = Math.max(1, data.page ?? 1);
-  const size = data.size && data.size > 0 ? data.size : rows.length || 1;
-  const total = data.total ?? rows.length;
-  const totalPages = Math.max(1, Math.ceil(total / size));
+export function tablePagination(page: {
+  data?: unknown[];
+  meta?: Partial<OffsetPageMeta>;
+}): TablePagination {
+  const rows = page.data ?? [];
+  const meta = page.meta ?? {};
+  const current = Math.max(1, meta.currentPage ?? 1);
+  const size = meta.perPage && meta.perPage > 0 ? meta.perPage : rows.length || 1;
+  const total = meta.total ?? rows.length;
+  const totalPages = Math.max(1, meta.lastPage ?? Math.ceil(total / size));
   return {
-    page,
+    page: current,
     size,
     total,
     totalPages,
-    hasPrev: page > 1,
-    hasNext: page < totalPages,
+    hasPrev: current > 1,
+    hasNext: current < totalPages,
   };
 }
 

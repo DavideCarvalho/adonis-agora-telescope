@@ -16,7 +16,7 @@ import {
 } from './primitives/select.js';
 import { tenantLabel } from './TenantPicker.js';
 import { AsyncBlock, Panel, SectionTitle, TypeBadge } from './ui.js';
-import { useEntriesPage, useLiveTail, useTenants } from './use-telescope.js';
+import { useCursorPager, useEntriesPage, useLiveTail, useTenants } from './use-telescope.js';
 
 /** Rows per page. The list is scanned, not read in bulk. */
 const PAGE_SIZE = 50;
@@ -42,11 +42,18 @@ export function EntriesSection({
   const [draft, setDraft] = useState<string>('');
   const [live, setLive] = useState(false);
 
-  const [page, setPage] = useState(1);
+  const pager = useCursorPager();
+  const page = pager.page;
+  const after = pager.after;
 
   const query: EntriesQuery = useMemo(
-    () => ({ ...(type ? { type } : {}), ...(search ? { search } : {}), size: PAGE_SIZE, page }),
-    [type, search, page],
+    () => ({
+      ...(type ? { type } : {}),
+      ...(search ? { search } : {}),
+      first: PAGE_SIZE,
+      ...(after !== undefined ? { after } : {}),
+    }),
+    [type, search, after],
   );
   const state = useEntriesPage(query);
   // Live tail only runs on page 1. Prepending arriving rows onto page 3 would shift
@@ -59,17 +66,17 @@ export function EntriesSection({
    *  results" when there are plenty. */
   const changeType = (next: string) => {
     setType(next);
-    setPage(1);
+    pager.reset();
   };
   const changeSearch = (next: string) => {
     setSearch(next);
-    setPage(1);
+    pager.reset();
   };
 
   // Merge live-tail entries (newest-first) ahead of the fetched page, de-duped by id, and respect the
   // active type/search filter so the tail never shows rows the filter would exclude.
   const rows: EntrySummary[] = useMemo(() => {
-    const base = state.data?.rows ?? [];
+    const base = state.data?.data ?? [];
     if (!live || page !== 1 || tail.entries.length === 0) return base;
     const matches = (e: EntrySummary) =>
       (!type || e.type === type) &&
@@ -282,8 +289,8 @@ export function EntriesSection({
               }
               pagination={{
                 page,
-                onPageChange: setPage,
-                hasMore: state.data?.hasMore ?? false,
+                onPageChange: (next) => pager.onPageChange(next, state.data?.meta.nextCursor),
+                hasMore: state.data?.meta.hasNext ?? false,
                 isFetching: state.loading,
               }}
             />
