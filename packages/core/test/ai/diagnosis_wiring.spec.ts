@@ -12,9 +12,9 @@ import {
   formatSlackMessage,
   type ResolvedAlerts,
 } from '../../src/alerts/index.js';
+import { TelescopeTools } from '../../src/dev_tools/telescope_tools.js';
 import type { Entry } from '../../src/entry.js';
 import { EntryType } from '../../src/entry.js';
-import { TelescopeMcpServer } from '../../src/mcp/server.js';
 import { MetricsService } from '../../src/metrics/metrics_service.js';
 import { TelescopeService } from '../../src/service.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
@@ -40,8 +40,8 @@ function configuredCoordinator(text = VALID_JSON): {
   return { coordinator: new DiagnosisCoordinator({ diagnoser }), create };
 }
 
-/** The exact hook the MCP provider builds from a configured coordinator. */
-function mcpHook(coordinator: DiagnosisCoordinator, service: TelescopeService) {
+/** The exact hook `buildTelescopeTools` builds from a configured coordinator. */
+function diagnoseHook(coordinator: DiagnosisCoordinator, service: TelescopeService) {
   return async (entry: Entry) => {
     const related = entry.traceId !== null ? await service.byTrace(entry.traceId) : undefined;
     return coordinator.diagnoseMarkdown(entry as Entry<ExceptionEntryContent>, {
@@ -50,9 +50,9 @@ function mcpHook(coordinator: DiagnosisCoordinator, service: TelescopeService) {
   };
 }
 
-// ─── MCP diagnose_exception ────────────────────────────────────────────────
+// ─── diagnose_exception tool ───────────────────────────────────────────────
 
-describe('MCP diagnose_exception ← coordinator', () => {
+describe('diagnose_exception tool ← coordinator', () => {
   async function seedException(store: InMemoryTelescopeStore): Promise<string> {
     await store.record({
       type: EntryType.Exception,
@@ -66,22 +66,16 @@ describe('MCP diagnose_exception ← coordinator', () => {
     const store = new InMemoryTelescopeStore();
     const service = new TelescopeService(store);
     const { coordinator, create } = configuredCoordinator();
-    const server = new TelescopeMcpServer(service, new MetricsService(store), {
-      diagnose: mcpHook(coordinator, service),
-    });
+    const server = new TelescopeTools(
+      service,
+      new MetricsService(store),
+      diagnoseHook(coordinator, service),
+    );
 
     const id = await seedException(store);
-    const res = (await server.handle(
-      {
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'tools/call',
-        params: { name: 'diagnose_exception', arguments: { id } },
-      },
-      true,
-    )) as { result: { content: { text: string }[] } };
+    const text = await server.call('diagnose_exception', { id });
 
-    const text = res.result.content[0]?.text ?? '';
+    expect(typeof text).toBe('string');
     expect(text).toContain('Probable cause');
     expect(text).toContain('A null user was dereferenced');
     expect(create).toHaveBeenCalledTimes(1);
@@ -91,18 +85,10 @@ describe('MCP diagnose_exception ← coordinator', () => {
     const store = new InMemoryTelescopeStore();
     const service = new TelescopeService(store);
     // The provider passes NO `diagnose` when the coordinator is absent / inert.
-    const server = new TelescopeMcpServer(service, new MetricsService(store));
+    const server = new TelescopeTools(service, new MetricsService(store));
     const id = await seedException(store);
-    const res = (await server.handle(
-      {
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'tools/call',
-        params: { name: 'diagnose_exception', arguments: { id } },
-      },
-      true,
-    )) as { result: { content: { text: string }[] } };
-    expect(res.result.content[0]?.text).toMatch(/not configured/i);
+    const text = await server.call('diagnose_exception', { id });
+    expect(text).toMatchObject({ notice: expect.stringMatching(/not configured/i) });
   });
 
   it('an inert coordinator (diagnoser: null) produces no hook → not configured', async () => {
@@ -111,21 +97,11 @@ describe('MCP diagnose_exception ← coordinator', () => {
     // Provider would pass undefined; assert the guard the provider uses.
     const store = new InMemoryTelescopeStore();
     const service = new TelescopeService(store);
-    const diagnose = inert.isConfigured() ? mcpHook(inert, service) : undefined;
-    const server = new TelescopeMcpServer(service, new MetricsService(store), {
-      ...(diagnose !== undefined ? { diagnose } : {}),
-    });
+    const diagnose = inert.isConfigured() ? diagnoseHook(inert, service) : undefined;
+    const server = new TelescopeTools(service, new MetricsService(store), diagnose);
     const id = await seedException(store);
-    const res = (await server.handle(
-      {
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'tools/call',
-        params: { name: 'diagnose_exception', arguments: { id } },
-      },
-      true,
-    )) as { result: { content: { text: string }[] } };
-    expect(res.result.content[0]?.text).toMatch(/not configured/i);
+    const text = await server.call('diagnose_exception', { id });
+    expect(text).toMatchObject({ notice: expect.stringMatching(/not configured/i) });
   });
 });
 

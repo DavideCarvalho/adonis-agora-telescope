@@ -40,7 +40,6 @@ const PUBLISHED_STUBS = [
   'config/telescope_ui.stub',
   'config/telescope_ai.stub',
   'config/telescope_alerts.stub',
-  'config/telescope_mcp.stub',
   'config/telescope_cpu_profiling.stub',
   'database/migrations/create_telescope_entries_table.stub',
 ];

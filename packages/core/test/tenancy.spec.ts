@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveConfig } from '../src/define_config.js';
 import { devToolsDecisionOf, devToolsGate } from '../src/dev_tools/telescope_dev_tools.js';
+import { scopedTelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import { EntryType } from '../src/entry.js';
-import { scopedMcpServers } from '../src/mcp/scoped_servers.js';
 import { TelescopeService } from '../src/service.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
 import {
@@ -269,7 +269,7 @@ describe('MCP scoping', () => {
       content: { level: 'info', message: 'b' },
       tags: ['tenant:globex'],
     });
-    const serverFor = scopedMcpServers(store, resolveConfig({}));
+    const serverFor = scopedTelescopeTools(store, resolveConfig({}));
     const count = async (tenants?: '*' | string[]) =>
       (await serverFor(tenants === undefined ? {} : { tenants }).listEntries({})).items.length;
     expect(await count('*')).toBe(2);

@@ -1,7 +1,7 @@
 ---
 title: Pulse health rollup
 icon: Activity
-description: Pulse is Telescope's aggregated "at a glance" health rollup — throughput, request error rate and latency percentiles, slowest entries, slow route/outgoing/job hotspots, N+1 suspects, top exception families, cache hit rate, and load-by-user — computed on demand from stored entries and served at <path>/api/metrics/pulse, from the headless getHealth API, and via the MCP get_health tool.
+description: Pulse is Telescope's aggregated "at a glance" health rollup — throughput, request error rate and latency percentiles, slowest entries, slow route/outgoing/job hotspots, N+1 suspects, top exception families, cache hit rate, and load-by-user — computed on demand from stored entries and served at <path>/api/metrics/pulse, from the headless getHealth API, and via the telescope_get_health MCP tool.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout'
@@ -19,7 +19,7 @@ Pulse is part of the core — it is configured on `config/telescope.ts` and read
 
 - the headless `TelescopeService.getHealth()` API;
 - the dashboard JSON route `GET <path>/api/metrics/pulse` (served by the UI provider);
-- the MCP [`get_health`](/docs/telescope/packages/mcp#the-tools) tool.
+- the [`telescope_get_health`](/docs/telescope/packages/mcp#the-tools) MCP tool.
 
 ## Configuration
 
@@ -122,7 +122,7 @@ GET <path>/api/metrics/pulse?windowMs=<ms>
 behind the dashboard [auth guard](/docs/telescope/dashboard/auth), returning the same
 `PulseSummary`. The `windowMs` query param overrides the configured window for that request.
 The bundled [dashboard SPA](/docs/telescope/packages/telescope-ui) renders it as the **Pulse**
-section; the [MCP `get_health` tool](/docs/telescope/packages/mcp) returns it to a coding agent.
+section; the [`telescope_get_health` MCP tool](/docs/telescope/packages/mcp) returns it to a coding agent.
 
 ## Hotspots vs. slowest
 

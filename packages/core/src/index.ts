@@ -112,24 +112,6 @@ export type {
 // — extension SDK —
 export { defineTelescopeExtension } from './extension/types.js';
 export type {
-  DiagnoseExceptionHook,
-  JsonRpcRequest,
-  McpToolName,
-  McpToolSpec,
-  ResolvedTelescopeMcpConfig,
-  TelescopeMcpConfig,
-  TelescopeMcpServerOptions,
-} from './mcp/index.js';
-// — MCP (Model Context Protocol) server — expose telemetry to a coding agent —
-export {
-  MCP_INTERNAL_ERROR,
-  MCP_METHOD_NOT_FOUND,
-  MCP_TOOL_NAMES,
-  MCP_TOOLS,
-  MCP_UNAUTHORIZED,
-  TelescopeMcpServer,
-} from './mcp/index.js';
-export type {
   MetricsServiceOptions,
   StatsQuery,
   TimeseriesQuery,

@@ -20,7 +20,6 @@ the chosen `@adonis-agora/telescope/<feature>_provider` and publishing its `conf
 | [`@adonis-agora/telescope/ui`](/docs/telescope/packages/ui)             | The JSON API + SSE live-stream, behind an auth guard.                       |
 | [`@adonis-agora/telescope/alerts`](/docs/telescope/packages/alerts)     | Alerting — new-exception / every-exception / exception-rate / metric-threshold rules → Slack, webhook, console, or custom channels. |
 | [`@adonis-agora/telescope/ai`](/docs/telescope/packages/ai)             | AI-assisted exception diagnosis via the Anthropic Claude API, cached by family. |
-| [`@adonis-agora/telescope/mcp`](/docs/telescope/packages/mcp)           | A Model Context Protocol JSON-RPC endpoint so a coding agent can query the captured telemetry. |
 | [`@adonis-agora/telescope-ui`](/docs/telescope/packages/telescope-ui)   | Separate package — the React dashboard SPA served under the same prefix and guard as the API. |
 
 The package is MIT, ESM-only, and requires Node 24+ and `@adonisjs/core` `^7.3.0`. Optional peers (`@adonisjs/lucid`, `@adonisjs/mail`,
@@ -44,7 +43,7 @@ structurally and degrades gracefully when they're absent.
   <Card title="Dashboard SPA" href="/docs/telescope/packages/telescope-ui" description="The React observability dashboard (@adonis-agora/telescope-ui)." />
   <Card title="Alerts" href="/docs/telescope/packages/alerts" description="Page on new exception families and metric thresholds via Slack, webhook, or custom channels." />
   <Card title="AI" href="/docs/telescope/packages/ai" description="Structured root-cause diagnosis of exceptions, cached by family." />
-  <Card title="MCP" href="/docs/telescope/packages/mcp" description="Query the captured telemetry from a coding agent over the Model Context Protocol." />
+  <Card title="MCP" href="/docs/telescope/packages/mcp" description="Query the captured telemetry from a coding agent, through the Agora dev endpoint /mcp/agora." />
   <Card title="Client errors" href="/docs/telescope/packages/client-errors" description="A public, opt-in endpoint for browser-reported front-end errors." />
   <Card title="Advanced / programmatic" href="/docs/telescope/packages/advanced" description="The bounded-redaction, tail-sampling, and live-stream store decorators for wiring a custom store chain by hand." />
 </Cards>

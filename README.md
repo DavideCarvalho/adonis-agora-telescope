@@ -36,7 +36,6 @@ only the optional peers for the features you actually use.
 | [`@adonis-agora/telescope/ui`](./docs/packages/ui.mdx) | `@adonis-agora/telescope/ui_provider` | JSON API + SSE live-stream behind an auth guard (+ opt-in [request replay](./docs/packages/ui.mdx)) | — |
 | [`@adonis-agora/telescope/ai`](./docs/packages/ai.mdx) | `@adonis-agora/telescope/ai_provider` | Claude-powered exception diagnosis, cached by family | `@anthropic-ai/sdk` |
 | [`@adonis-agora/telescope/alerts`](./docs/packages/alerts.mdx) | `@adonis-agora/telescope/alerts_provider` | new-exception / exception-rate / metric-threshold alerts to Slack / webhook / console / custom, with optional [geo-enrichment](./docs/packages/alerts.mdx) | — |
-| [`@adonis-agora/telescope/mcp`](./docs/packages/mcp.mdx) | `@adonis-agora/telescope/mcp_provider` | Opt-in standalone MCP endpoint (`/telescope/mcp`); the tools are on `/mcp/agora` without it | — |
 | [`@adonis-agora/telescope/cpu_profiling`](./docs/packages/cpu-profiling.mdx) | `@adonis-agora/telescope/cpu_profiling_provider` | on-demand V8 CPU profiling (real `node:inspector` flamegraph captures, arm-trigger + dashboard flamegraph view) | — (`node:inspector` is a Node.js built-in) |
 
 The React dashboard **page** ships as a separate pre-built package,
@@ -177,7 +176,7 @@ diagnostics watchers, Pulse, the [Metrics API](./docs/packages/metrics.mdx), cli
 ingestion, redaction + tail-sampling + live-stream decorators) plus the
 [optional feature subpaths](#optional-features) above — the full watcher set
 (`query` / `http-client` / `logs` / `mail` / `cache` / `queue` / `events` / `redis` /
-`profiling` / `schedule`), the dashboard UI + SPA, AI diagnosis, alerts, and MCP.
+`profiling` / `schedule`), the dashboard UI + SPA, AI diagnosis, alerts, and [MCP tools](./docs/packages/mcp.mdx) on the Agora dev endpoint (`/mcp/agora`).
 
 Still planned, not built (see [`DESIGN.md`](./DESIGN.md) for rationale):
 

@@ -16,9 +16,9 @@ node ace agora:doctor
 
 telescope 1.0.0
   ✔ Console access in production
-  ! MCP endpoint passes CSRF
-    Shield's CSRF check rejects POST /telescope/mcp: the MCP endpoint cannot be reached.
-    fix: Add '/telescope/mcp' to csrf.exceptRoutes in config/shield.ts.
+  ! Client error ingestion passes CSRF
+    Shield's CSRF check rejects POST /telescope/client-errors: the client error endpoint cannot be reached.
+    fix: Add '/telescope/client-errors' to csrf.exceptRoutes in config/shield.ts.
   ✖ OpenTelemetry packages line up
     OpenTelemetry SDK lines are mixed: SDK 2 (…) next to SDK 3 (…).
 ```
@@ -58,9 +58,7 @@ In CI, fail the build on anything the doctor flags:
 | Id | Checks | Status |
 | --- | --- | --- |
 | `telescope.console-gate` | `config/telescope_ui.ts` sets `authorize` | warn here, error in production |
-| `telescope.mcp-gate` | with `/telescope/mcp` enabled, `config/telescope_mcp.ts` sets `authorize`; skipped while it is off | warn here, error in production |
-| `telescope.mcp-csrf` | with `/telescope/mcp` enabled, shield's CSRF lets `POST /telescope/mcp` through (`csrf.exceptRoutes`) | warn |
-| `telescope.client-errors-csrf` | the same for client error ingestion, when it is on | warn |
+| `telescope.client-errors-csrf` | with client error ingestion on, shield's CSRF lets `POST /telescope/client-errors` through (`csrf.exceptRoutes`) | warn |
 | `telescope.otel` | OpenTelemetry SDK packages are all on one line (stable `N.x` and experimental `0.Nxx` are the same line, so `core@3.1.1` and `sdk-node@0.301.1` are both SDK 3; `@adonisjs/otel` 2 uses SDK 3); one copy of `@opentelemetry/api` | error / warn |
 | `telescope.retention` | a database store has `prune` set in production | warn |
 | `telescope.peers` | every peer dependency is installed and in range | error |

@@ -81,16 +81,6 @@
       "import": "./dist/providers/telescope_ai_provider.js",
       "default": "./dist/providers/telescope_ai_provider.js"
     },
-    "./mcp": {
-      "types": "./dist/src/mcp/index.d.ts",
-      "import": "./dist/src/mcp/index.js",
-      "default": "./dist/src/mcp/index.js"
-    },
-    "./mcp_provider": {
-      "types": "./dist/providers/telescope_mcp_provider.d.ts",
-      "import": "./dist/providers/telescope_mcp_provider.js",
-      "default": "./dist/providers/telescope_mcp_provider.js"
-    },
     "./alerts": {
       "types": "./dist/src/alerts/index.d.ts",
       "import": "./dist/src/alerts/index.js",
