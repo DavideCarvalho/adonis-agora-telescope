@@ -40,8 +40,8 @@ const repoRoot = fileURLToPath(new URL('../../../../../', import.meta.url));
 const distStubsRoot = join(pkgRoot, 'dist/stubs');
 
 /**
- * Every stub this package publishes, with the path `configure` writes it to. All eight emit typed
- * TypeScript: the seven config files each import a `defineConfig` from a different subpath of the
+ * Every stub this package publishes, with the path `configure` writes it to. All seven emit typed
+ * TypeScript: the six config files each import a `defineConfig` from a different subpath of the
  * package (so between them they exercise every published entry point a consumer configures against),
  * and the migration imports Lucid's `BaseSchema`.
  *
@@ -55,7 +55,6 @@ const STUBS = [
   { stub: 'config/telescope_ui.stub' },
   { stub: 'config/telescope_ai.stub' },
   { stub: 'config/telescope_alerts.stub' },
-  { stub: 'config/telescope_mcp.stub' },
   { stub: 'config/telescope_cpu_profiling.stub' },
   {
     stub: 'database/migrations/create_telescope_entries_table.stub',
@@ -101,9 +100,9 @@ async function renderAll(appRoot) {
  * Re-enable every commented-out example in a config stub, so the gate covers what a user actually
  * uncomments.
  *
- * Without this the gate is nearly worthless here: across the seven config stubs there are 28 lines of
- * live code and 101 commented config lines, so ~78% of the surface these stubs document —
- * `storage.lucid`, `redact.perType`, the `sampling` rules, every alert rule shape, the MCP `authorize`,
+ * Without this the gate is nearly worthless here: most of the surface the config stubs
+ * document is commented-out config —
+ * `storage.lucid`, `redact.perType`, the `sampling` rules, every alert rule shape,
  * `requestCapture`, `queueManager` — would drift out of the published types with the gate still
  * green. The commented block IS the documentation; it has to compile.
  *
@@ -215,7 +214,6 @@ try {
       '',
       "export default await Env.create(new URL('../', import.meta.url), {",
       '  ANTHROPIC_API_KEY: Env.schema.string.optional(),',
-      '  TELESCOPE_MCP_TOKEN: Env.schema.string.optional(),',
       '  TELESCOPE_SLACK_WEBHOOK: Env.schema.string(),',
       '  TELESCOPE_ALERT_WEBHOOK: Env.schema.string(),',
       '})',

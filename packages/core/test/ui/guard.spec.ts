@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resolveConfig as resolveMcpConfig } from '../../src/mcp/define_config.js';
-import { authorizeByToken } from '../../src/mcp/index.js';
+import { authorizeByToken } from '../../src/ui/console_authorize.js';
 import { type AuthorizeDecision, resolveConfig } from '../../src/ui/define_config.js';
 import { enforceGuard, enforcePageGuard, runGuard } from '../../src/ui/guard.js';
 import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
@@ -339,25 +338,12 @@ describe('enforcePageGuard (a BROWSER is refused with a page, not JSON)', () => 
   });
 });
 
-describe('the MCP endpoint uses the console authorize contract', () => {
-  it('is open outside production and 403s every request in production when omitted', async () => {
-    const dev = resolveMcpConfig({}, { inProduction: false });
-    expect(dev.authorizeConfigured).toBe(false);
-    expect(await runGuard(ctx().ctx, dev.authorize)).toEqual({ allowed: true });
-
-    const prod = resolveMcpConfig({}, { inProduction: true });
-    const { ctx: c, res } = ctx();
-    expect(await enforceGuard(c, prod.authorize)).toBe(false);
-    expect(res.statusCode).toBe(403);
-    expect(res.body).toEqual({ error: 'forbidden' });
-  });
-
+describe('authorizeByToken through the guard (JSON clients)', () => {
   it('authorizeByToken: 401 JSON without the Bearer token, allowed with it, no ?token=', async () => {
-    const { authorize, authorizeConfigured } = resolveMcpConfig(
+    const { authorize } = resolveConfig(
       { authorize: authorizeByToken({ token: 'secret' }) },
       { inProduction: true },
     );
-    expect(authorizeConfigured).toBe(true);
 
     const missing = ctx();
     expect(await enforceGuard(missing.ctx, authorize)).toBe(false);
@@ -378,21 +364,5 @@ describe('the MCP endpoint uses the console authorize contract', () => {
     expect(await runGuard(ctx({}, { authorization: 'Bearer secret' }).ctx, authorize)).toEqual({
       allowed: true,
     });
-  });
-
-  it('a custom authorize returning false is a 403 JSON', async () => {
-    const { authorize } = resolveMcpConfig({ authorize: () => false }, { inProduction: false });
-    const { ctx: c, res } = ctx();
-    expect(await enforceGuard(c, authorize)).toBe(false);
-    expect(res.statusCode).toBe(403);
-    expect(res.body).toEqual({ error: 'forbidden' });
-  });
-
-  it('drops the removed credentials option', () => {
-    const config = resolveMcpConfig({}, { inProduction: false }) as unknown as Record<
-      string,
-      unknown
-    >;
-    expect('credentials' in config).toBe(false);
   });
 });

@@ -133,7 +133,7 @@ cross-process sharing.
 ## The diagnosis coordinator
 
 `TelescopeAiDiagnoser.diagnose` is the low-level call. On top of it sits the
-**`DiagnosisCoordinator`** — the single seam the [MCP `diagnose_exception`](/docs/telescope/packages/mcp)
+**`DiagnosisCoordinator`** — the single seam the [`telescope_diagnose_exception` MCP tool](/docs/telescope/packages/mcp)
 tool, the dashboard's **Diagnose** button and the
 [alerter](/docs/telescope/packages/alerts#ai-probable-cause-on-exception-alerts) all call. Every
 one of them degrades gracefully when AI is not configured — the tool and the alert simply go out

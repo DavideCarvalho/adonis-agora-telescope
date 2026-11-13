@@ -205,29 +205,6 @@ export default defineConfig({
 **Env:** `ANTHROPIC_API_KEY` (validate as `Env.schema.string.optional()`). See
 [`@adonis-agora/telescope/ai`](/docs/telescope/packages/ai).
 
-## MCP — `config/telescope_mcp.ts`
-
-The opt-in standalone endpoint. Telescope's tools are served on `/mcp/agora` without this file.
-
-```ts
-import env from '#start/env'
-import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/mcp'
-
-export default defineConfig({
-  enabled: true,
-  path: '/telescope/mcp',
-  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
-  // tools: ['list_entries', 'get_trace', 'get_health'],
-})
-```
-
-| Key           | Type              | Default          | Description                                                        |
-| ------------- | ----------------- | ---------------- | ---------------------------------------------------------------- |
-| `enabled`     | `boolean`         | `false`          | Mounts the standalone endpoint. Off, no route exists; the tools are on `/mcp/agora`. |
-| `path`        | `string`          | `/telescope/mcp` | URL the JSON-RPC endpoint mounts at.                             |
-| `authorize`   | `ConsoleAuthorize` | open outside production, `403` in production | Who may call the endpoint, same contract as `telescope_ui.authorize`. `authorizeByToken({ token })` gives `Authorization: Bearer` access. Denials are `403`/`401` JSON. |
-| `tools`       | `McpToolName[]`   | all six          | Which tools to expose. See [`@adonis-agora/telescope/mcp`](/docs/telescope/packages/mcp). |
-
 ## CPU profiling — `config/telescope_cpu_profiling.ts`
 
 ```ts
@@ -264,7 +241,6 @@ is a subpath of the one `@adonis-agora/telescope` package:
 | ui        | `@adonis-agora/telescope/ui_provider`           | routes registered at boot               |
 | alerts    | `@adonis-agora/telescope/alerts_provider`       | —                                       |
 | ai        | `@adonis-agora/telescope/ai_provider`           | binds `TelescopeAiDiagnoser`, publishes the diagnosis coordinator |
-| mcp       | `@adonis-agora/telescope/mcp_provider`          | JSON-RPC route registered at boot when `enabled: true` |
 | cpu_profiling | `@adonis-agora/telescope/cpu_profiling_provider` | publishes the profiler the UI's profile routes read |
 
 One provider is **not** offered at the prompt and has to be added by hand, because it lives in a

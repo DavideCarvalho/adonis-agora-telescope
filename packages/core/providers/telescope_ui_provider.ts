@@ -4,9 +4,9 @@ import {
   devToolsDecisionOf,
   registerTelescopeDevTools,
 } from '../src/dev_tools/telescope_dev_tools.js';
+import { scopedTelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import type { Entry } from '../src/entry.js';
 import type { ExtensionContext } from '../src/extension/types.js';
-import { scopedMcpServers } from '../src/mcp/scoped_servers.js';
 import { getEnabledWatchers, getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
 import { TelescopeService } from '../src/service.js';
 import type { TelescopeStore } from '../src/store.js';
@@ -244,8 +244,8 @@ export default class TelescopeUiProvider {
     await registerTelescopeDevTools(
       this.app.container,
       (() => {
-        const serverFor = scopedMcpServers(store, coreConfig);
-        return (ctx: unknown) => serverFor(devToolsDecisionOf(ctx));
+        const toolsFor = scopedTelescopeTools(store, coreConfig);
+        return (ctx: unknown) => toolsFor(devToolsDecisionOf(ctx));
       })(),
       config.authorize,
       (reason) => void this.debug(`[@adonis-agora/telescope] dev tools not registered: ${reason}`),

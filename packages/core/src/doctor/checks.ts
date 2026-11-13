@@ -11,7 +11,7 @@ const PKG = '@adonis-agora/telescope';
 
 type AnyConfig = Record<string, unknown>;
 
-/** `telescope.console-gate` / `telescope.mcp-gate`: a console with no `authorize`. */
+/** `telescope.console-gate`: a console with no `authorize`. */
 export function checkGate(
   config: AnyConfig | undefined,
   inProduction: boolean,
@@ -37,29 +37,6 @@ export function checkGate(
   };
 }
 
-/**
- * The `telescope.mcp-gate` check. The standalone `/telescope/mcp` endpoint is opt-in, so its gate
- * is only evaluated when `config/telescope_mcp.ts` sets `enabled: true`; otherwise it is mounted
- * nowhere and Telescope's tools are reached through `/mcp/agora`.
- */
-export function checkMcpGate(
-  config: AnyConfig | undefined,
-  inProduction: boolean,
-): AgoraDoctorResult {
-  if (config?.enabled !== true) {
-    return {
-      status: 'skip',
-      message:
-        "The standalone MCP endpoint is off (opt-in with `enabled: true`): Telescope's tools are served on /mcp/agora, behind the console's authorize.",
-    };
-  }
-  return checkGate(config, inProduction, {
-    name: 'MCP endpoint',
-    file: 'config/telescope_mcp.ts',
-    docs: `${DOCS}/packages/mcp`,
-  });
-}
-
 /** The `csrf` block of `config/shield.ts`, duck-typed. */
 interface ShieldCsrfLike {
   enabled?: boolean;
@@ -68,8 +45,7 @@ interface ShieldCsrfLike {
 }
 
 /**
- * Whether shield's CSRF check would reject a bare `POST` to `path` (an MCP client or a beacon sends
- * no CSRF token): `false` when CSRF is off, `POST` is not in an explicit method list (an empty
+ * Whether shield's CSRF check would reject a bare `POST` to `path` (a beacon sends no CSRF token): `false` when CSRF is off, `POST` is not in an explicit method list (an empty
  * `methods` is shield's default and checks every method), or `exceptRoutes` exempts the route (an array naming it, or a function answering `true` for
  * a minimal context of that request). `'unknown'` when that function throws on the minimal context.
  */
@@ -100,7 +76,7 @@ export function csrfBlocksPath(shield: unknown, path: string): boolean | 'unknow
   return true;
 }
 
-/** `telescope.mcp-csrf` / `telescope.client-errors-csrf`: a POST endpoint shield's CSRF would reject. */
+/** `telescope.client-errors-csrf`: a POST endpoint shield's CSRF would reject. */
 export function checkCsrf(
   shield: unknown,
   endpoint: { path: string; enabled: boolean; name: string },
@@ -120,7 +96,7 @@ export function checkCsrf(
     status: 'warn',
     message: `Shield's CSRF check rejects POST ${endpoint.path}: the ${endpoint.name} cannot be reached.`,
     fix: `Add '${endpoint.path}' to csrf.exceptRoutes in config/shield.ts.`,
-    docs: `${DOCS}/packages/mcp`,
+    docs: `${DOCS}/packages/client-errors`,
   };
 }
 
@@ -361,25 +337,6 @@ export const telescopeDoctorChecks: AgoraDoctorCheck[] = [
         file: 'config/telescope_ui.ts',
         docs: `${DOCS}/dashboard/auth`,
       }),
-  },
-  {
-    id: 'telescope.mcp-gate',
-    lib: 'telescope',
-    title: 'MCP endpoint access in production',
-    run: (app) => checkMcpGate(get(app, 'telescope_mcp'), app.inProduction),
-  },
-  {
-    id: 'telescope.mcp-csrf',
-    lib: 'telescope',
-    title: 'MCP endpoint passes CSRF',
-    run: (app) => {
-      const mcp = get(app, 'telescope_mcp');
-      return checkCsrf(get(app, 'shield'), {
-        path: path(mcp?.path, '/telescope/mcp'),
-        enabled: mcp?.enabled === true,
-        name: 'MCP endpoint',
-      });
-    },
   },
   {
     id: 'telescope.client-errors-csrf',

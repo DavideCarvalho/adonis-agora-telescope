@@ -1,4 +1,3 @@
-import type { TelescopeMcpServer } from '../mcp/server.js';
 import type { AuthorizeHook } from '../ui/define_config.js';
 import { type GuardResult, runGuard } from '../ui/guard.js';
 import type { UiHttpContext } from '../ui/http.js';
@@ -9,6 +8,7 @@ import {
   type DevToolsHub,
   type DevToolsLib,
 } from './contract.js';
+import type { TelescopeTools } from './telescope_tools.js';
 
 const LIMIT = {
   type: 'integer',
@@ -18,12 +18,11 @@ const LIMIT = {
 } as const;
 
 /**
- * Telescope's developer tools for the dev MCP endpoint: the same six tools as `/telescope/mcp`,
- * prefixed `telescope_`, answered by the same {@link TelescopeMcpServer} over stored (already
- * redacted) entries.
+ * Telescope's developer tools for the Agora dev MCP endpoint (`/mcp/agora`): six read tools,
+ * prefixed `telescope_`, answered by {@link TelescopeTools} over stored (already redacted) entries.
  */
 export function telescopeDevTools(
-  server: TelescopeMcpServer | ((ctx: unknown) => TelescopeMcpServer),
+  server: TelescopeTools | ((ctx: unknown) => TelescopeTools),
 ): DevTool[] {
   const serverOf = typeof server === 'function' ? server : () => server;
   return [
@@ -167,7 +166,7 @@ export interface DevToolsContainerLike {
  */
 export async function registerTelescopeDevTools(
   container: DevToolsContainerLike,
-  server: TelescopeMcpServer | ((ctx: unknown) => TelescopeMcpServer),
+  server: TelescopeTools | ((ctx: unknown) => TelescopeTools),
   authorize: AuthorizeHook,
   onSkip: (reason: string) => void = () => {},
 ): Promise<boolean> {

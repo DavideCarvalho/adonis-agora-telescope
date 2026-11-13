@@ -31,14 +31,6 @@ const FEATURES = [
     configStub: 'config/telescope_alerts.stub',
   },
   {
-    name: 'mcp',
-    // Not needed for MCP: Telescope's tools are served on the Agora dev endpoint (/mcp/agora).
-    // This publishes the opt-in standalone endpoint, for clients that can't do OAuth.
-    message: 'Standalone MCP endpoint at /telescope/mcp (token auth, for clients without OAuth)',
-    provider: '@adonis-agora/telescope/mcp_provider',
-    configStub: 'config/telescope_mcp.stub',
-  },
-  {
     name: 'cpu_profiling',
     message: 'CPU profiling — on-demand V8 flamegraph captures via node:inspector',
     provider: '@adonis-agora/telescope/cpu_profiling_provider',

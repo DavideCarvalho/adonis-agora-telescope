@@ -25,7 +25,7 @@ const execFileAsync = promisify(execFile);
  * for three minors. `stubs.spec.ts` catches empty; this catches "exists, has content, does not
  * compile".
  *
- * Covers all eight stubs `configure` publishes, each compiled under NodeNext + strict with the package
+ * Covers all seven stubs `configure` publishes, each compiled under NodeNext + strict with the package
  * resolved BY NAME — so what is checked is the shipped `dist/**\/*.d.ts` a consumer installs, not `src/`.
  */
 describe('the published stubs compile in a consumer app (real @adonisjs types)', () => {

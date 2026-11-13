@@ -6,9 +6,8 @@ import {
   registerTelescopeDevTools,
   telescopeDevTools,
 } from '../src/dev_tools/telescope_dev_tools.js';
+import { buildTelescopeTools, TelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import { EntryType } from '../src/entry.js';
-import { buildTelescopeMcpServer } from '../src/mcp/build_server.js';
-import { TelescopeMcpServer } from '../src/mcp/server.js';
 import { MetricsService } from '../src/metrics/metrics_service.js';
 import { TelescopeService } from '../src/service.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
@@ -45,7 +44,7 @@ const ctx = (headers: Record<string, string> = {}) => ({
 
 describe('telescope dev tools', () => {
   it('are the six tools, prefixed, read-only, inside the dev-tools schema subset', async () => {
-    const server = buildTelescopeMcpServer(await seeded(), resolveConfig({}));
+    const server = buildTelescopeTools(await seeded(), resolveConfig({}));
     const tools = telescopeDevTools(server);
     expect(tools.map((t) => t.name)).toEqual([
       'telescope_list_entries',
@@ -68,7 +67,7 @@ describe('telescope dev tools', () => {
   });
 
   it('list_entries pages with { items, next } and honours the caller row cap', async () => {
-    const server = buildTelescopeMcpServer(await seeded(), resolveConfig({}));
+    const server = buildTelescopeTools(await seeded(), resolveConfig({}));
     const list = telescopeDevTools(server)[0];
     const call = {
       ctx: {},
@@ -89,9 +88,9 @@ describe('telescope dev tools', () => {
     expect(last.next).toBeNull();
   });
 
-  it('get tools return the same data as /telescope/mcp, or a notice', async () => {
+  it('get tools return the stored data, or a notice', async () => {
     const store = await seeded();
-    const server = buildTelescopeMcpServer(store, resolveConfig({}));
+    const server = buildTelescopeTools(store, resolveConfig({}));
     const tools = telescopeDevTools(server);
     const call = {
       ctx: {},
@@ -111,11 +110,9 @@ describe('telescope dev tools', () => {
     const store = new InMemoryTelescopeStore();
     const service = new TelescopeService(store);
     const metrics = new MetricsService(store);
-    const without = telescopeDevTools(new TelescopeMcpServer(service, metrics));
+    const without = telescopeDevTools(new TelescopeTools(service, metrics));
     expect(await without[5]?.available?.()).toBe(false);
-    const withAi = telescopeDevTools(
-      new TelescopeMcpServer(service, metrics, { diagnose: async () => 'md' }),
-    );
+    const withAi = telescopeDevTools(new TelescopeTools(service, metrics, async () => 'md'));
     expect(await withAi[5]?.available?.()).toBe(true);
   });
 
@@ -138,7 +135,7 @@ describe('telescope dev tools', () => {
 describe('registerTelescopeDevTools', () => {
   it('registers lib "telescope" with the console gate when the hub exists', async () => {
     const container = hub();
-    const server = buildTelescopeMcpServer(new InMemoryTelescopeStore(), resolveConfig({}));
+    const server = buildTelescopeTools(new InMemoryTelescopeStore(), resolveConfig({}));
     const ok = await registerTelescopeDevTools(container, server, () => false);
     expect(ok).toBe(true);
     expect(container.libs).toHaveLength(1);
@@ -150,7 +147,7 @@ describe('registerTelescopeDevTools', () => {
   });
 
   it('skips without a hub, on another hub version, or when the hub refuses', async () => {
-    const server = buildTelescopeMcpServer(new InMemoryTelescopeStore(), resolveConfig({}));
+    const server = buildTelescopeTools(new InMemoryTelescopeStore(), resolveConfig({}));
     const none = { hasBinding: () => false, make: async () => undefined };
     expect(await registerTelescopeDevTools(none, server, () => true)).toBe(false);
 

@@ -12,7 +12,7 @@ with nothing else to configure:
 - every entry recorded during a request gets the organization's tag, `tenant:<id>` (one tag per
   level of a nested tenant, e.g. a clinic and its unit); work run inside `Context.allTenants()` is
   tagged `tenant:*`;
-- the console, the JSON API, the live tail, `/telescope/mcp` and the dev MCP tools show each viewer
+- the console, the JSON API, the live tail and the MCP tools on `/mcp/agora` show each viewer
   only the organizations it may see. Counts, exception groups and Pulse are computed from those
   entries only, never across organizations.
 
@@ -58,13 +58,12 @@ export default class TelescopeAccess implements ConsoleAuthorizer {
 
 A token has no organization of its own, so give token holders their scope explicitly:
 
-```ts title="config/telescope_mcp.ts"
+```ts title="config/telescope_ui.ts"
 import env from '#start/env'
-import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/mcp'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
-  enabled: true,
-  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN'), tenants: '*' }),
+  authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN'), tenants: '*' }),
 })
 ```
 

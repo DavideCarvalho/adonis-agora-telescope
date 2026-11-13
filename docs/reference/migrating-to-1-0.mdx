@@ -201,75 +201,55 @@ When the console's own API calls get a `401`, the SPA follows the `redirectTo` i
 reloads the page so the server answers it. The access-denied page only shows a "Sign in"
 button when you point it at your login page with `accessDenied: { loginHref: '/login' }`.
 
-## MCP: `/telescope/mcp` is opt-in
+## Standalone `/telescope/mcp` removed, use the agent hub `/mcp/agora`
 
-The standalone endpoint is only mounted when `config/telescope_mcp.ts` sets `enabled: true`; with
-no config file, or one without `enabled`, no route exists. Telescope's tools are served on the Agora
-dev endpoint `/mcp/agora` instead, behind the console's `authorize` (see
-[`@adonis-agora/telescope/mcp`](/docs/telescope/packages/mcp)).
+Telescope no longer mounts an MCP endpoint of its own. Its tools are served on the Agora dev
+endpoint `/mcp/agora`, which `@adonis-agora/agent` provides, behind the console's `authorize`
+(see [MCP tools](/docs/telescope/packages/mcp)).
 
-Apps that use `/telescope/mcp`: set `enabled: true` in `config/telescope_mcp.ts`, or switch the
-clients to `/mcp/agora`.
+Remove from the app:
 
-```ts title="config/telescope_mcp.ts"
-export default defineConfig({
-  enabled: true,
-  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
-})
+- `() => import('@adonis-agora/telescope/mcp_provider')` from `providers` in `adonisrc.ts`;
+- `config/telescope_mcp.ts`;
+- `TELESCOPE_MCP_TOKEN` from `start/env.ts` and `.env`;
+- `/telescope/mcp` from `csrf.exceptRoutes` in `config/shield.ts`, and from any route list that
+  skips auth, session or CSP for it;
+- any import from `@adonis-agora/telescope/mcp`. `authorizeByToken` is exported by
+  `@adonis-agora/telescope/ui`.
+
+To keep a coding agent on Telescope's data, register the agent's MCP provider and point the
+client at `/mcp/agora`:
+
+```ts title="adonisrc.ts"
+providers: [
+  () => import('@adonis-agora/agent/mcp_provider'),
+],
 ```
-
-## MCP access: `credentials` is replaced by `authorize`
-
-`config/telescope_mcp.ts` no longer takes `credentials: { token, basic }`, and the endpoint no
-longer reads `?token=` or HTTP Basic. `authorize` takes the same forms as the console's; MCP
-clients use `authorizeByToken`, which reads only `Authorization: Bearer <token>`. The
-`McpCredentials` type is gone.
-
-Without `authorize`, the endpoint is open outside production and answers `403` to every
-request in production, and logs a warning at boot naming `config/telescope_mcp.ts`.
-
-A denial is now a plain JSON response, `403 { "error": "forbidden" }` or
-`401 { "error": "unauthenticated" }`, instead of a `200` carrying a JSON-RPC `-32001` error.
-
-Before:
-
-```ts title="config/telescope_mcp.ts"
-import env from '#start/env'
-import { defineConfig } from '@adonis-agora/telescope/mcp'
-
-export default defineConfig({
-  credentials: { token: env.get('TELESCOPE_MCP_TOKEN') },
-})
-```
-
-After:
-
-```ts title="config/telescope_mcp.ts"
-import env from '#start/env'
-import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/mcp'
-
-export default defineConfig({
-  authorize: authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') }),
-})
-```
-
-`authorizeByToken` throws when the token is empty or missing, so declare it as required, or
-only set `authorize` when it is present:
-
-```ts title="start/env.ts"
-export default await Env.create(new URL('../', import.meta.url), {
-  TELESCOPE_MCP_TOKEN: Env.schema.string(),
-})
-```
-
-Clients that put the token in the URL must send the header instead:
 
 ```sh
-# Before
-curl -X POST 'https://app.example.com/telescope/mcp?token=s3cr3t' ...
-# After
-curl -X POST -H 'Authorization: Bearer s3cr3t' https://app.example.com/telescope/mcp ...
+claude mcp add --transport http agora http://localhost:3333/mcp/agora
 ```
+
+Callers are checked by `authorize` in `config/telescope_ui.ts`. A client that sent the old MCP token
+sends a token the console accepts instead:
+
+```ts title="config/telescope_ui.ts"
+import env from '#start/env'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }),
+})
+```
+
+```sh
+claude mcp add --transport http agora https://app.example.com/mcp/agora \
+  --header "Authorization: Bearer $CONSOLE_TOKEN"
+```
+
+The tools carry a `telescope_` prefix (`telescope_list_entries`, `telescope_get_trace`, …), and
+`telescope_list_entries` returns `{ items, next }`. The doctor checks `telescope.mcp-gate` and
+`telescope.mcp-csrf` are gone; drop them from `--only` and CI allowlists.
 
 ## OpenTelemetry export moves to `config/otel.ts`
 
