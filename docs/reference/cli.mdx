@@ -1,0 +1,102 @@
+---
+title: CLI
+icon: Terminal
+description: Read and operate Telescope from node ace — entries, traces, Pulse, exceptions, queues, schedules, profiles, AI, exports and retention.
+---
+
+Everything the console shows, and every action it offers, is also a `node ace` command. A command
+answers exactly what the console answers for the same request: same filters, same limits, same
+feature gates.
+
+```sh
+node ace telescope:entries:list --type exception --since 1h
+node ace telescope:traces:waterfall 4bf92f3577b34da6a3ce929d0e0e4736
+node ace telescope:pulse:show --window 15m
+```
+
+`node ace configure @adonis-agora/telescope` registers the commands. On an app configured before,
+add the barrel to `adonisrc.ts`:
+
+```ts title="adonisrc.ts"
+commands: [() => import('@adonis-agora/telescope/commands')]
+```
+
+## Common flags
+
+| Flag | Meaning |
+|---|---|
+| `--json` | Print JSON instead of a table. Lists print the console's envelope: `{ data, meta }`. |
+| `--tenant <id>` | Only that organization's entries (tenancy on). Actions that reach every organization refuse it. |
+| `--window <duration>` | Trailing window for the analytics commands: `15m`, `1h`, `1d`. |
+| `--force` | Skip the confirmation of a destructive action. Without a terminal (CI, a pipe) these actions refuse unless `--force`. |
+
+A refused call (not found, feature off, bad input) prints one line such as
+`404: Entry not found` and exits with code `1`.
+
+The commands run in the app's process: they read the configured store, so they see what the
+console sees. A shell on the host counts as a console viewer allowed every organization.
+
+## Entries
+
+| Command | What it does |
+|---|---|
+| `telescope:entries:list` | The entry feed, newest first. Filters: `--type`, `--tag` (repeat for any of them), `--trace`, `--family`, `--search`, `--since`, `--until` (a duration ago such as `2h`, or an ISO date). Paging: `--first`, `--after <meta.nextCursor>`. |
+| `telescope:entries:show <id>` | One entry with its full content and the other entries of its trace. |
+| `telescope:entries:export` | The Exports screen: the same filters, `--format json\|csv`, `--limit` (default 500), `--output <file>` (default stdout). |
+| `telescope:entries:prune` | Delete entries older than `--older-than` (default: `prune.after` from `config/telescope.ts`), keeping the newest `--keep-last`. `--dry-run` counts them. Asks unless `--force`. |
+| `telescope:entries:clear` | Delete every entry. Asks unless `--force`. |
+
+```sh
+node ace telescope:entries:list --tag status:500 --first 20
+node ace telescope:entries:export --type request --since 1d --format csv --output requests.csv
+node ace telescope:entries:prune --older-than 7d --dry-run
+```
+
+## Traces
+
+| Command | What it does |
+|---|---|
+| `telescope:traces:list` | Recent traces, most recently active first. `--first`, `--after`, `--before`. |
+| `telescope:traces:show <traceId>` | Every entry of the trace. |
+| `telescope:traces:waterfall <traceId>` | The span waterfall. |
+| `telescope:traces:n-plus-one <traceId>` | N+1 query loops in the trace. `--threshold`. |
+
+## Analytics
+
+| Command | What it does |
+|---|---|
+| `telescope:overview:show` | Entry count, top families, top tags. `--limit`, `--type`. |
+| `telescope:pulse:show` | The Pulse rollup. `--window`, `--top`. Needs `pulse` on (the default). |
+| `telescope:metrics:show --type <type>` | Latency percentiles and breakdowns for one entry type. `--window`, `--buckets`. |
+| `telescope:metrics:timeseries` | Throughput per bucket. `--type`, `--window`, `--buckets`. |
+| `telescope:screens:list` | Per-route traffic. `--kind page\|api\|asset`, `--window`, `--limit`. |
+| `telescope:exceptions:list` | Exception families over `--window`, most frequent first. `--top`. |
+| `telescope:ai:show` | AI spend by feature, model and actor, agent runs, unpriced calls. `--window`, `--top`, `--runs`. |
+| `telescope:retention:show` | The configured retention and the sampled entry types. |
+
+## Actions
+
+| Command | What it does |
+|---|---|
+| `telescope:exceptions:diagnose <id>` | AI diagnosis of an exception entry, as markdown. `--fresh` skips the cached one. Needs `@adonis-agora/telescope/ai`. |
+| `telescope:requests:replay <id>` | Re-issue a captured request against the app. Needs `replay.enabled` in `config/telescope_ui.ts`. Asks unless `--force`. |
+| `telescope:jobs:retry <queue> <id>` | Retry a failed job. Needs `queueActions.enabled`. Asks unless `--force`. |
+| `telescope:jobs:enqueue <queue> --payload <json\|@file>` | Add a job, optionally `--name`. Needs `queueActions.enabled`. Asks unless `--force`. |
+| `telescope:ext:action <ext> <action>` | Run an extension action with `--input <json\|@file>`. Recorded in Telescope as `cli:<os user>`. Asks unless `--force`. |
+
+## Live state
+
+| Command | What it does |
+|---|---|
+| `telescope:queues:list` | Live queues, their counts and the actions they support. Needs the `queue-manager` watcher. |
+| `telescope:jobs:show <queue> <id>` | One live job. |
+| `telescope:schedules:list` | Registered schedules with their next and last run. |
+| `telescope:profiles:status` | CPU profiling: installed, enabled, sampling. |
+| `telescope:profiles:list` | Captured CPU profiles. `--first`, `--after`. |
+| `telescope:profiles:show <id>` | One profile; `--json` prints the whole V8 profile. |
+| `telescope:tenants:list` | The organizations Telescope has entries for. |
+| `telescope:meta:show` | Which features are on, the running watchers, what extensions contribute. |
+| `telescope:ext:data <ext> <provider>` | An extension's dashboard data, with `--param key=value`. |
+
+Arming a CPU capture has no command: a capture profiles the requests of the process it was armed
+in, so it is armed from the console of the running server.
