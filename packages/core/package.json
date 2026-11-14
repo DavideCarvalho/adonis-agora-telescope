@@ -199,7 +199,7 @@
     "@adonisjs/core": "7.6.0",
     "@adonisjs/lucid": "22.4.2",
     "@anthropic-ai/sdk": "1.8.0",
-    "@aws-sdk/client-s3": "3.1165.0",
+    "@aws-sdk/client-s3": "3.1166.0",
     "@duckdb/node-api": "1.5.6-r.2",
     "@opentelemetry/api": "1.10.0",
     "@opentelemetry/context-async-hooks": "3.1.1",
