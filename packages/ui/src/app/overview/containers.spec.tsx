@@ -110,6 +110,53 @@ describe('Overview — containers', () => {
     expect(liveQueues).not.toHaveBeenCalled();
   });
 
+  it('sem queue manager, o tile "Failed jobs" diz que não mede em vez de ficar no skeleton', async () => {
+    const meta = vi.fn().mockResolvedValue({
+      entryTypes: [],
+      dashboards: [],
+      watchers: ['request'],
+      queueManager: { enabled: false },
+    });
+    renderOverview(client({ meta: meta as unknown as TelescopeClient['meta'] }));
+
+    await waitFor(() => expect(screen.getByText('not measured · no queue manager')).toBeTruthy());
+    const tile = screen.getByText('Failed jobs').parentElement;
+    expect(tile?.getAttribute('aria-busy')).toBeNull();
+    expect(tile?.textContent).toContain('—');
+  });
+
+  it('o tile "Failed jobs" sai do skeleton quando /queues/live falha', async () => {
+    renderOverview(
+      client({ liveQueues: vi.fn().mockRejectedValue(new Error('queues fora do ar')) }),
+    );
+
+    await waitFor(() => expect(screen.getByText('could not load queues')).toBeTruthy());
+  });
+
+  it('com queue manager, o tile mostra a soma de falhas', async () => {
+    const meta = vi.fn().mockResolvedValue({
+      entryTypes: [],
+      dashboards: [],
+      queueManager: { enabled: true },
+    });
+    const liveQueues = vi.fn().mockResolvedValue({
+      queues: [
+        { queue: 'a', counts: { failed: 2 } },
+        { queue: 'b', counts: { failed: 1 } },
+      ],
+    });
+    renderOverview(
+      client({
+        meta: meta as unknown as TelescopeClient['meta'],
+        liveQueues: liveQueues as unknown as TelescopeClient['liveQueues'],
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText('Failed jobs').parentElement?.textContent).toContain('3'),
+    );
+  });
+
   it('chama /queues/live quando o queue manager está configurado', async () => {
     const liveQueues = vi.fn().mockResolvedValue({ queues: [] });
     const meta = vi.fn().mockResolvedValue({

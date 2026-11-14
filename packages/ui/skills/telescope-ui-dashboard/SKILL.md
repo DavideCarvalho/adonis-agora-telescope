@@ -80,7 +80,9 @@ export default defineConfig({
 ```
 
 Omitted `viewer` reads `ctx.auth.user` structurally (`fullName`/`name`/`email`,
-first of `role`/`roles`) when the request is already authenticated; omitted
+one role from `role`/`roles` (strings, `{ name }` or `{ role }` rows)/`globalRoles`
+plus authkit's per-request `ctx.authkit` `globalRoles` (250 ms cap, admin-like first
+else first)) when the request is already authenticated; omitted
 `signOut` uses the sign-out an account console announces on the
 `agora.consoles` registry. Same-origin paths only.
 
