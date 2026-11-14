@@ -200,7 +200,7 @@ importers:
   packages/core:
     dependencies:
       '@adonis-agora/filter':
-        specifier: ^1.0.0-rc.5
+        specifier: 1.0.0-rc.5
         version: 1.0.0-rc.5(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.0.3)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       '@adonisjs/cache':
         specifier: ^2.1.0
@@ -291,7 +291,7 @@ importers:
   packages/ui:
     dependencies:
       '@adonis-agora/filter-client':
-        specifier: ^1.0.0-rc.1
+        specifier: 1.0.0-rc.1
         version: 1.0.0-rc.1(@tanstack/table-core@9.3.1)
       '@base-ui/react':
         specifier: 1.9.0
