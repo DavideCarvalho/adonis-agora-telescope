@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.10
+
+### Patch Changes
+
+- [#317](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/317) [`ff9896a`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/ff9896a0f2a318bd8fa74522cae2cdd642bd0b43) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console ⌘K shows its loading state: a spinner in the search box while a request is in flight, skeleton rows until the first answer, earlier hits kept but dimmed during a re-search, "Nothing found" only after an empty answer, and a quiet "didn't answer" line with Retry when the search fails. Synced with the shared console kit (DataTable `rowClassName`/`subRow`, ⌘K console-local `commands`, collapsible nav sections).
+
 ## 3.0.0-rc.9
 
 ### Patch Changes
