@@ -18,6 +18,7 @@ export { LoadMore, Pager } from './blocks/pager';
 export { Panel } from './blocks/panel';
 export { errorStatus, QueryBoundary, type QueryLike } from './blocks/query-boundary';
 export {
+  fetchSearchGroups,
   loadConsoles,
   resetConsoleCache,
   type SearchGroup,
