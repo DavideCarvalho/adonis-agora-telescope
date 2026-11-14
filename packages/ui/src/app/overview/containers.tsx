@@ -150,9 +150,23 @@ export function ErrorRateStat({
   );
 }
 
+/**
+ * Failed jobs across queues, from the live queue manager. Without one (none configured, so
+ * `/queues/live` is never asked and the answer is `null`) the tile says it is not measuring
+ * instead of sitting on its skeleton — a dash and a reason, like the watcher-off panels.
+ */
 export function FailedJobsStat({ onOpenQueues }: { onOpenQueues: () => void }) {
-  const { data } = useLiveQueues();
-  if (data === null) return <PendingStat label="Failed jobs" sub="across queues" />;
+  const { data, loading, error } = useLiveQueues();
+  if (loading) return <PendingStat label="Failed jobs" sub="across queues" />;
+  if (error !== null || data === null) {
+    return (
+      <Stat
+        label="Failed jobs"
+        value={<span className="text-faint">—</span>}
+        sub={error !== null ? 'could not load queues' : 'not measured · no queue manager'}
+      />
+    );
+  }
   const failed = data.queues.reduce((acc, q) => acc + (q.counts.failed ?? 0), 0);
   return (
     <Stat
