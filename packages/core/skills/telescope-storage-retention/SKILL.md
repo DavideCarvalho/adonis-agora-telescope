@@ -150,15 +150,18 @@ Source: `docs/concepts/protection.mdx` (Pausing on purpose).
 Implement the six required methods (`record`/`get`/`list`/`count`/`prune`/`clear`)
 and pass an instance as `store` — add the optional fast paths (`listTraceIds`,
 `countByBucket`, `countFamilies`, `countTags`) when you can, or decorators and the
-dashboard fall back to a full scan. Two
-responsibilities are easy to miss: `record` must resolve `traceId`/`origin`, and
-`search` needs serialized content text. A third arrived with tenancy: `list` must
+dashboard fall back to a full scan. Three
+responsibilities are easy to miss: `record` must resolve `traceId`/`origin`,
+`record` must keep a given `id`/`createdAt` via `resolveEntryId` /
+`resolveCreatedAt` (a missing, invalid or >5min-future time becomes now; an id
+the store already holds stores nothing new), and
+`search` needs serialized content text. A fourth arrived with tenancy: `list` must
 honour `anyTags` (OR over tags — entries carrying at least one), the filter a
 tenant-scoped console reads through.
 
 ```ts
 import {
-  currentTraceId, isBatchOrigin,
+  currentTraceId, isBatchOrigin, resolveCreatedAt, resolveEntryId,
   type BatchOrigin, type Entry, type EntryQuery,
   type RecordInput, type TelescopeStore,
 } from '@adonis-agora/telescope'
@@ -166,12 +169,18 @@ import { randomUUID } from 'node:crypto'
 
 export class MongoTelescopeStore implements TelescopeStore {
   async record<T>(input: RecordInput<T>): Promise<Entry<T>> {
+    if (input.id !== undefined) {
+      const existing = await this.get(input.id)
+      if (existing) return existing as Entry<T>
+    }
     const traceId = input.traceId !== undefined ? input.traceId : currentTraceId()
     const origin: BatchOrigin = isBatchOrigin(input.origin) ? input.origin : 'manual'
     const entry: Entry<T> = {
-      id: randomUUID(), type: input.type, familyHash: input.familyHash ?? null,
+      id: input.id !== undefined ? resolveEntryId(input.id) : randomUUID(),
+      type: input.type, familyHash: input.familyHash ?? null,
       content: input.content, tags: input.tags ?? [], sequence: this.sequence++,
-      durationMs: input.durationMs ?? null, origin, traceId, createdAt: new Date(),
+      durationMs: input.durationMs ?? null, origin, traceId,
+      createdAt: resolveCreatedAt(input.createdAt),
     }
     await this.col.insertOne({ ...entry, createdAtMs: entry.createdAt.getTime(),
                                contentText: JSON.stringify(entry.content) }) // search target
