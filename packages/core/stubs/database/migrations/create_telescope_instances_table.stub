@@ -1,0 +1,48 @@
+{{{
+  exports({ to: app.migrationsPath(`${new Date().getTime() + 1}_create_telescope_instances_table.ts`) })
+}}}
+import { BaseSchema } from '@adonisjs/lucid/schema'
+
+/**
+ * Creates the table telescope's fleet keeps instances in: one row per app and instance, replaced
+ * by every heartbeat. 'data' is JSON text (checks, send buffer); the times are epoch milliseconds.
+ */
+/**
+ * The database schema the table lives in: the same value as 'schema' in storage.lucid().
+ * Leave it undefined to use the connection's current schema. On MySQL a schema is a database.
+ */
+const schema: string | undefined = undefined
+
+export default class extends BaseSchema {
+  protected tableName = 'telescope_instances'
+
+  async up() {
+    if (schema) {
+      const create = this.db.dialect.name === 'mysql' ? 'CREATE DATABASE' : 'CREATE SCHEMA'
+      this.schema.raw(this.db.knexRawQuery(create + ' IF NOT EXISTS ??', [schema]).toQuery())
+    }
+    this.builder().createTable(this.tableName, (table) => {
+      table.string('id').primary().notNullable()
+      table.string('app', 64).notNullable()
+      table.string('instance_id', 128).notNullable()
+      table.string('host').notNullable()
+      table.string('version', 100).nullable()
+      table.string('state', 16).notNullable()
+      table.bigInteger('booted_at').notNullable()
+      table.bigInteger('first_seen_at').notNullable()
+      table.bigInteger('last_seen_at').notNullable()
+      table.text('data').notNullable()
+
+      table.index(['app', 'last_seen_at'])
+    })
+  }
+
+  async down() {
+    this.builder().dropTable(this.tableName)
+  }
+
+  /** The schema builder, pointed at 'schema' when it is set. */
+  private builder() {
+    return schema ? this.schema.withSchema(schema) : this.schema
+  }
+}

@@ -18,6 +18,7 @@ import {
   resolveConfig as resolveUiConfig,
   type TelescopeUiConfig,
 } from '../src/ui/define_config.js';
+import { appsOfTags } from '../src/ui/fleet_api.js';
 import { makeRequest, RecordingResponse, type UiHttpContext } from '../src/ui/http.js';
 import { consoleTenantScope, selectTenantScope } from '../src/ui/tenant_scope.js';
 
@@ -58,6 +59,8 @@ export interface TelescopeConsole {
   scoped: boolean;
   apis: ConsoleApis;
   tools: TelescopeTools;
+  /** The apps `--app` narrowed to, `null` for all. */
+  appIds: string[] | null;
   coreConfig: ResolvedTelescopeConfig;
   uiConfig: ResolvedTelescopeUiConfig;
 }
@@ -140,7 +143,8 @@ export abstract class TelescopeCommand extends BaseCommand {
       source,
       scoped,
       apis,
-      tools: buildTelescopeTools(source, coreConfig),
+      tools: buildTelescopeTools(source, coreConfig, { apps: appsOfTags(appTags) }),
+      appIds: appsOfTags(appTags),
       coreConfig,
       uiConfig,
     };

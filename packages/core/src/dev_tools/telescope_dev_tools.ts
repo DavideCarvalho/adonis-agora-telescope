@@ -18,7 +18,7 @@ const LIMIT = {
 } as const;
 
 /**
- * Telescope's developer tools for the Agora dev MCP endpoint (`/mcp/agora`): six read tools,
+ * Telescope's developer tools for the Agora dev MCP endpoint (`/mcp/agora`): seven read tools,
  * prefixed `telescope_`, answered by {@link TelescopeTools} over stored (already redacted) entries.
  */
 export function telescopeDevTools(
@@ -121,6 +121,14 @@ export function telescopeDevTools(
       },
       available: () => serverOf(undefined).canDiagnose(),
       run: async (input, call) => serverOf(call.ctx).call('diagnose_exception', input),
+    },
+    {
+      name: 'telescope_get_fleet',
+      kind: 'read',
+      description:
+        'The fleet: per app, how many instances are up, starting, draining or gone, their versions and deploys (with rollout progress), restart loops, failing health checks (with the exception families since) and each instance (host, version, uptime, last seen, health, buffer). Returns { apps } or { notice }.',
+      input: { type: 'object', properties: {} },
+      run: async (_input, call) => serverOf(call.ctx).call('get_fleet', {}),
     },
   ];
 }

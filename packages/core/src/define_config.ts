@@ -5,6 +5,8 @@ import {
   resolveClientErrors,
 } from './client_errors/config.js';
 import type { TelescopeExtension } from './extension/types.js';
+import { isCheckInput, type TelescopeCheckInput } from './fleet/checks.js';
+import { type FleetConfig, type ResolvedFleetConfig, resolveFleetConfig } from './fleet/config.js';
 import { PULSE_CARDS, type PulseCardName } from './metrics/pulse.js';
 import type { RedactBounds } from './redaction/redact.js';
 import type { RequestCaptureOptions, RequestEnrichment } from './request_watcher.js';
@@ -272,6 +274,36 @@ export interface TelescopeConfig extends TelescopeTopologyConfig {
    * default. Lets Prometheus (and so Grafana) read the metrics without an OTel Collector.
    */
   prometheus?: PrometheusConfig;
+
+  /**
+   * Health checks of this process: `checks.redis()`, `checks.lucid()`, `checks.custom()`, or any
+   * `@adonisjs/core/health` check. Each result is reused for its `cacheFor` (default 30 s) and
+   * concurrent callers share one run. Their state is in the console, in every heartbeat, behind
+   * the optional `health` routes, and alerts can fire on them (`check-down`). Default none.
+   */
+  checks?: TelescopeCheckInput[];
+
+  /**
+   * Unauthenticated probe routes for a load balancer, kubelet or uptime monitor. Off by default.
+   * `readiness` answers 503 while a critical check is down or the instance is draining;
+   * `liveness` answers 200 while the process serves requests (it ignores the checks, so a Redis
+   * outage never restarts the pod). Bodies carry check names and statuses, never messages.
+   */
+  health?: HealthRoutesConfig;
+
+  /**
+   * This instance's heartbeat (every 15 s, over the same transport as the entries) and the fleet
+   * the control plane, or a standalone app, derives from them. On by default; `false` turns it off.
+   */
+  fleet?: FleetConfig | false;
+}
+
+/** See {@link TelescopeConfig.health}. */
+export interface HealthRoutesConfig {
+  /** The readiness route, e.g. `'/health/ready'`. Default off. */
+  readiness?: string | false;
+  /** The liveness route, e.g. `'/health/live'`. Default off. */
+  liveness?: string | false;
 }
 
 /** See {@link TelescopeConfig.prometheus}. */
@@ -455,6 +487,12 @@ export interface ResolvedTelescopeConfig {
   otel: ResolvedOtelConfig;
   /** Resolved Prometheus scrape settings (always present; `enabled` defaults `false`). */
   prometheus: { enabled: boolean; maxSeriesPerMetric: number };
+  /** The configured checks (validated). */
+  checks: TelescopeCheckInput[];
+  /** The probe routes, `null` when off. */
+  health: { readiness: string | null; liveness: string | null };
+  /** Resolved fleet settings. */
+  fleet: ResolvedFleetConfig;
 }
 
 /** The resolved OTel settings (see {@link OtelConfig}). */
@@ -484,6 +522,9 @@ export interface ResolvedOtelConfig {
 export function defineConfig(config: TelescopeConfig): TelescopeConfig {
   // A misconfigured control plane or tenant fails when the config file loads.
   resolveTopology(config);
+  resolveChecks(config.checks);
+  resolveHealthRoutes(config.health);
+  resolveFleetConfig(config.fleet);
   return config;
 }
 
@@ -543,6 +584,38 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
       enabled: config.prometheus?.enabled ?? false,
       maxSeriesPerMetric: Math.max(1, Math.floor(config.prometheus?.maxSeriesPerMetric ?? 2000)),
     },
+    checks: resolveChecks(config.checks),
+    health: resolveHealthRoutes(config.health),
+    fleet: resolveFleetConfig(config.fleet),
+  };
+}
+
+function resolveChecks(checks: TelescopeConfig['checks']): TelescopeCheckInput[] {
+  if (checks === undefined) return [];
+  if (!Array.isArray(checks) || !checks.every(isCheckInput)) {
+    throw new Error(
+      '@adonis-agora/telescope: every entry of `checks` must be checks.redis(), checks.lucid(), checks.custom() or an @adonisjs/core/health check',
+    );
+  }
+  const names = checks.map((c) => c.name);
+  const duplicate = names.find((name, index) => names.indexOf(name) !== index);
+  if (duplicate !== undefined) {
+    throw new Error(`@adonis-agora/telescope: two checks are named "${duplicate}"`);
+  }
+  return [...checks];
+}
+
+function resolveHealthRoutes(health: TelescopeConfig['health']): ResolvedTelescopeConfig['health'] {
+  const route = (value: string | false | undefined, key: string): string | null => {
+    if (value === undefined || value === false) return null;
+    if (typeof value !== 'string' || !value.startsWith('/')) {
+      throw new Error(`@adonis-agora/telescope: health.${key} must be a path starting with /`);
+    }
+    return value;
+  };
+  return {
+    readiness: route(health?.readiness, 'readiness'),
+    liveness: route(health?.liveness, 'liveness'),
   };
 }
 

@@ -42,4 +42,5 @@ See [Dev tools over MCP](/docs/agent/dev-tools) for the endpoint itself. Turning
 | `telescope_get_trace` | `traceId` | Every entry recorded under one trace id, newest first. |
 | `telescope_get_waterfall` | `traceId` | The span waterfall for a trace (each operation as a start/duration span). |
 | `telescope_get_health` | `sinceMinutes?` (default 60) | The [Pulse](/docs/telescope/packages/pulse) health snapshot over a trailing window. |
+| `telescope_get_fleet` | — | The [fleet](/docs/telescope/concepts/fleet): per app, instance counts by state, versions, deploys, restart loops, failing checks with the exceptions since, and each instance. |
 | `telescope_diagnose_exception` | `id` | The [AI diagnosis](/docs/telescope/packages/ai) for an exception entry (probable cause / fix). Listed only when AI diagnosis is configured. |

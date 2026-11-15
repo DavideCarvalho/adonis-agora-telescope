@@ -42,6 +42,7 @@ const PUBLISHED_STUBS = [
   'config/telescope_alerts.stub',
   'config/telescope_cpu_profiling.stub',
   'database/migrations/create_telescope_entries_table.stub',
+  'database/migrations/create_telescope_instances_table.stub',
 ];
 
 describe('shipped stubs', () => {

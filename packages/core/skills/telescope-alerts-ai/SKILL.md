@@ -83,8 +83,16 @@ rules: [
     threshold: 800,
     minSamples: 10,                          // guard percentiles against a single slow request
   },
+  // Fleet rules (control plane / standalone, need heartbeats): raise + resolve per app
+  { type: 'instances-up', app: 'shop', below: 2, for: '2m' },
+  { type: 'restart-loop' },
+  { type: 'check-down', check: 'redis', for: '2m' }, // needs `checks` in config/telescope.ts
+  { type: 'entries-dropped', window: '10m', threshold: 100 },
 ]
 ```
+
+Volume across every family: `metric-threshold` on `exception-count` (one page per incident),
+not `every-exception` (one page per family per cooldown).
 
 `new-exception` dedup is a bounded per-process map — in a multi-replica deploy the
 same family reports "new" once per replica, so budget `cooldown` accordingly.

@@ -43,7 +43,7 @@ const ctx = (headers: Record<string, string> = {}) => ({
 });
 
 describe('telescope dev tools', () => {
-  it('are the six tools, prefixed, read-only, inside the dev-tools schema subset', async () => {
+  it('are the seven tools, prefixed, read-only, inside the dev-tools schema subset', async () => {
     const server = buildTelescopeTools(await seeded(), resolveConfig({}));
     const tools = telescopeDevTools(server);
     expect(tools.map((t) => t.name)).toEqual([
@@ -53,6 +53,7 @@ describe('telescope dev tools', () => {
       'telescope_get_waterfall',
       'telescope_get_health',
       'telescope_diagnose_exception',
+      'telescope_get_fleet',
     ]);
     for (const tool of tools) {
       expect(tool.name).toMatch(TOOL_NAME);

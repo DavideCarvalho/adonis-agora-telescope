@@ -104,6 +104,14 @@ function ruleLabel(rule: AlertPayload['rule']): string {
       return 'Exception rate';
     case 'metric-threshold':
       return `Metric threshold (${rule.metric})`;
+    case 'instances-up':
+      return 'Instances up';
+    case 'restart-loop':
+      return 'Restart loop';
+    case 'check-down':
+      return 'Health check down';
+    case 'entries-dropped':
+      return 'Entries dropped';
   }
 }
 
@@ -271,6 +279,11 @@ export function formatSlackMessage(
       contextFields.push(field('Location', geoText));
     }
     contextFields.push(field('Occurrences', `${exception.occurrences} in window`));
+  } else if (payload.fleet !== undefined) {
+    contextFields.push(field('App', payload.fleet.app));
+    if (payload.fleet.check !== undefined) contextFields.push(field('Check', payload.fleet.check));
+    if (payload.fleet.host !== undefined) contextFields.push(field('Host', payload.fleet.host));
+    contextFields.push(field('Detail', payload.fleet.detail));
   } else {
     const window = 'window' in payload.rule ? payload.rule.window : null;
     if (window !== null) contextFields.push(field('Window', window));

@@ -115,7 +115,7 @@ function isMysql(dialect: string | undefined): boolean {
 }
 
 /** The Lucid dialect name of `db`, from the client itself or the facade's default connection. */
-function dialectOf(db: LucidDatabaseLike): string | undefined {
+export function dialectOf(db: LucidDatabaseLike): string | undefined {
   return db.dialect?.name ?? db.connection?.().dialect?.name;
 }
 
@@ -161,7 +161,7 @@ function isDuplicateKey(error: unknown): boolean {
 const DDL_RACE_ATTEMPTS = 4;
 
 /** Issue one idempotent (`IF NOT EXISTS`) DDL statement, retrying when it loses a concurrent race. */
-async function runIdempotentDdl(db: LucidDatabaseLike, stmt: string): Promise<void> {
+export async function runIdempotentDdl(db: LucidDatabaseLike, stmt: string): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
       await db.rawQuery(stmt);
@@ -428,6 +428,18 @@ export class LucidTelescopeStore implements TelescopeStore {
     this.maxEntries =
       options.maxEntries !== undefined && options.maxEntries > 0 ? options.maxEntries : null;
     this.autoCreateTable = options.autoCreateTable ?? false;
+  }
+
+  /**
+   * The connection, schema and table-creation setting this store runs on, so telescope's other
+   * tables (the fleet's instances) live next to the entries.
+   */
+  connectionInfo(): {
+    db: LucidDatabaseLike;
+    schema: string | undefined;
+    autoCreateTable: boolean;
+  } {
+    return { db: this.db, schema: this.schema, autoCreateTable: this.autoCreateTable };
   }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {

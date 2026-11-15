@@ -1,0 +1,121 @@
+---
+title: Health checks
+icon: HeartPulse
+description: Check Redis, Postgres and anything else from Telescope, see their state in the console, expose a readiness route that fails when they are down, and alert on them.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+List the services the app depends on in `checks`. Telescope runs them for every heartbeat, shows
+their state on the [Fleet](/docs/telescope/concepts/fleet) page next to the exceptions recorded
+since, can serve them on a readiness route, and can page you when one stays down.
+
+```ts title="config/telescope.ts"
+import { checks, defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  checks: [
+    checks.redis(),
+    checks.lucid({ connection: 'pg' }),
+    checks.custom('stripe', async () => {
+      const response = await fetch('https://status.stripe.com/api/v2/status.json')
+      return response.ok ? { status: 'ok' } : { status: 'warn', message: `HTTP ${response.status}` }
+    }),
+  ],
+  health: { readiness: '/health/ready', liveness: '/health/live' },
+})
+```
+
+## Built-in checks
+
+| Check | What it runs | Name |
+| --- | --- | --- |
+| `checks.redis({ connection? })` | `PING`, a 10-second `SET`, and `INFO memory`. | `redis` (`redis:<connection>`) |
+| `checks.lucid({ connection? })` | `SELECT 1`. | `db` (`db:<connection>`) |
+| `checks.custom(name, run)` | Your function. Return `{ status: 'ok' \| 'warn' \| 'down', message? }`; a throw is `down`. | `name` |
+
+`checks.redis()` writes a short-lived key so a Redis that answers `PING` but refuses writes is
+`down`. That is what happens at `maxmemory` with `noeviction` ("OOM command not allowed"). It is
+`warn` at 90% of `maxmemory`; set `memoryWarnRatio` to change that, or `write: false` to skip the
+write.
+
+Every check also takes:
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `name` | see above | The name in the console and in alerts. |
+| `cacheFor` | `'30s'` | How long a result is reused. |
+| `timeout` | `'5s'` | A run that takes longer is `down`. |
+| `critical` | `true` | `false`: shown and alerted on, but never fails the readiness route. |
+
+Concurrent callers share one run, so a kubelet probing every second, the console and the heartbeat
+together cost one `PING` per `cacheFor`.
+
+## AdonisJS checks
+
+`checks` also takes the checks you already have in `start/health.ts`:
+
+```ts title="config/telescope.ts"
+import { DiskSpaceCheck, MemoryHeapCheck } from '@adonisjs/core/health'
+import { checks, defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  checks: [
+    checks.redis(),
+    checks.lucid(),
+    new DiskSpaceCheck().cacheFor('1 minute'),
+    new MemoryHeapCheck(),
+  ],
+})
+```
+
+`warning` shows as `warn` and `error` as `down`.
+
+## Probe routes
+
+`health` registers two routes with no authentication, for a load balancer, a kubelet or an uptime
+monitor. Both are off until you name them.
+
+| Route | Answers |
+| --- | --- |
+| `readiness` | `200` while every critical check is ok or `warn`; `503` while one is `down`, and while the instance is shutting down. |
+| `liveness` | `200` while the process answers. It never runs the checks. |
+
+```json
+{ "status": "down", "checks": [{ "name": "redis", "status": "down" }] }
+```
+
+The bodies carry check names and statuses only, never messages. Telescope does not record these
+requests.
+
+<Callout type="info">
+Point uptime monitors and the kubelet's `readinessProbe` at `readiness`, and `livenessProbe` at
+`liveness`. A liveness probe that fails while Redis is down would restart every pod during the
+outage.
+</Callout>
+
+## In the console
+
+The checks appear on the [Fleet](/docs/telescope/concepts/fleet) page: per app, each check that is
+not ok, since when ("redis: down for 12 min on 3 of 3 instances"), and the exception families
+recorded since then.
+
+The console's API serves this process's checks at `GET <path>/api/health`, behind the console's
+`authorize`.
+
+## Alerts
+
+Page when a check stays down, with the `check-down` rule:
+
+```ts title="config/telescope_alerts.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
+
+export default defineConfig({
+  channels: [{ type: 'slack', url: env.get('TELESCOPE_SLACK_WEBHOOK') }],
+  rules: [{ type: 'check-down', check: 'redis', for: '2m' }],
+})
+```
+
+It fires once Redis has been down for two minutes on any live instance, and sends a resolved
+message when it is back. See [Alerts](/docs/telescope/packages/alerts#fleet-rules).

@@ -61,6 +61,10 @@ const STUBS = [
     // Pure DDL: no commented-out example block to enable.
     uncomment: false,
   },
+  {
+    stub: 'database/migrations/create_telescope_instances_table.stub',
+    uncomment: false,
+  },
 ];
 
 /**

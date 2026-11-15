@@ -110,7 +110,8 @@ Source: `docs/dashboard/auth.mdx` (Redirecting instead of answering JSON).
 
 With `@adonis-agora/agent/mcp_provider` in the app, Telescope's tools are on `/mcp/agora` with
 no config: `telescope_list_entries`, `telescope_get_entry`, `telescope_get_trace`,
-`telescope_get_waterfall`, `telescope_get_health`, `telescope_diagnose_exception`. Each call
+`telescope_get_waterfall`, `telescope_get_health`, `telescope_diagnose_exception`,
+`telescope_get_fleet` (instances per app, deploys, restart loops, failing checks). Each call
 runs the console's `authorize` (`config/telescope_ui.ts`); with authkit (`mcp: true`) the
 client signs in through the browser, with `authorizeByToken` it sends that token.
 

@@ -73,6 +73,11 @@ export async function configure(command: Configure) {
     'database/migrations/create_telescope_entries_table.stub',
     {},
   );
+  await codemods.makeUsingStub(
+    stubsRoot,
+    'database/migrations/create_telescope_instances_table.stub',
+    {},
+  );
 
   // — optional features (subpaths of this same package) —
   let selected: FeatureName[];

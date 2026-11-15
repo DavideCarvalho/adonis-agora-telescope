@@ -11,6 +11,8 @@
     "tenancy",
     "apps",
     "central-server",
-    "transports"
+    "transports",
+    "health-checks",
+    "fleet"
   ]
 }

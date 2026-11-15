@@ -58,6 +58,9 @@ export default defineConfig({
 | `ingest`     | `{ path?, maxEntries?, maxBodyBytes?, maxEntryBytes?, dedupeWindow? }` | `/_telescope/v1`, 1000, 2 MB, 256 KB, 100,000 | Control plane only: the ingest route and its limits. |
 | `tenant`     | `{ url?, partition, token, local?, buffer? }` | —                | Tenant only, required: the server (`url`, unless `transport` is set), this app's name, its token, an optional local store and the send buffer. |
 | `transport`  | `transports.http/queue/bullmq/redis/durable(...)` | HTTP to `tenant.url` | Tenant and control-plane: how a tenant's entries reach the server, the same driver on both sides. See [Transports](/docs/telescope/concepts/transports). |
+| `checks`     | `TelescopeCheckInput[]`          | `[]`                          | [Health checks](/docs/telescope/concepts/health-checks): `checks.redis()`, `checks.lucid()`, `checks.custom()`, or `@adonisjs/core/health` checks. |
+| `health`     | `{ readiness?, liveness? }`      | _off_                         | Unauthenticated probe routes, e.g. `{ readiness: '/health/ready', liveness: '/health/live' }`. See [Health checks](/docs/telescope/concepts/health-checks#probe-routes). |
+| `fleet`      | `FleetConfig \| false`           | _on_, every `15s`             | Heartbeats and the [fleet](/docs/telescope/concepts/fleet): `interval`, `app`, `version`, `host`, `goneAfter`, `retention`, `restartLoop`, `report`, `store`. |
 
 <Callout type="warn">
 Redaction is **on by default**. Every entry's `content` is scrubbed at the store boundary —
@@ -164,7 +167,7 @@ export default defineConfig({
 | -------------- | ------------------- | --------------------------------------------- | ---------------------------------------------------------- |
 | `enabled`      | `boolean`           | `true`                                        | Master switch.                                             |
 | `channels`     | `ChannelConfig[]`   | `[{ type: 'console' }]`                        | `{type:'slack',url}` / `{type:'webhook',url}` / `{type:'console'}` / a channel object. |
-| `rules`        | `AlertRule[]`       | `[{ type: 'new-exception', window: '1h' }]`   | `new-exception`, `every-exception` (fires on repeats too; `window` optional and display-only), `exception-rate` (`+ threshold`), and stateful `metric-threshold` rules (raise/auto-resolve). |
+| `rules`        | `AlertRule[]`       | `[{ type: 'new-exception', window: '1h' }]`   | `new-exception`, `every-exception` (fires on repeats too; `window` optional and display-only), `exception-rate` (`+ threshold`), stateful `metric-threshold` rules (raise/auto-resolve), and the [fleet rules](/docs/telescope/packages/alerts#fleet-rules) `instances-up`, `restart-loop`, `check-down`, `entries-dropped`. |
 | `dashboardUrl` | `string`            | _unset_                                       | External dashboard URL — enables Slack deep links.        |
 | `every`        | `string`            | `'30s'`                                        | Poll cadence (`ms`/`s`/`m`/`h`/`d`).                       |
 | `cooldown`     | `string`            | `'15m'`                                        | Per-rule / per-family re-notify suppression.              |

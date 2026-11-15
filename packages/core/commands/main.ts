@@ -8,6 +8,7 @@ import {
   TelescopeEntriesPrune,
   TelescopeEntriesShow,
 } from './telescope_entries.js';
+import { TelescopeFleetList } from './telescope_fleet.js';
 import {
   TelescopeAiShow,
   TelescopeExceptionsDiagnose,
@@ -75,6 +76,7 @@ export const consoleCommands = [
   TelescopeMetaShow,
   TelescopeExtData,
   TelescopeExtAction,
+  TelescopeFleetList,
 ];
 
 /**

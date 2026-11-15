@@ -1,0 +1,124 @@
+---
+title: Fleet
+icon: Server
+description: How many instances of each app are up, starting, draining or gone, with their versions, deploys, restart loops, health checks and send buffers.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Every instance of an app sends a heartbeat every 15 seconds. The control plane (or a standalone
+app, for its own replicas) keeps the last one of each instance and shows the fleet: per app, how
+many instances are up, starting, draining or gone, which versions they run, the deploys, the hosts
+in a restart loop and the [health checks](/docs/telescope/concepts/health-checks) that are failing.
+
+It is on by default. Nothing to add for the defaults.
+
+## What an instance sends
+
+| Field | From |
+| --- | --- |
+| app | The token on a control plane (never the heartbeat). `fleet.app` on a standalone app. |
+| host | `fleet.host`, else `HOSTNAME`, else the OS hostname (a pod's name in Kubernetes). |
+| version | `fleet.version`, else `GIT_SHA`, `COMMIT_SHA`, `SOURCE_VERSION`, `RENDER_GIT_COMMIT`, `RAILWAY_GIT_COMMIT_SHA`, `VERCEL_GIT_COMMIT_SHA`, `HEROKU_SLUG_COMMIT` or `K_REVISION`, else the app's `package.json` version. |
+| state | `starting` while the app boots, `ready` once it serves, `draining` from the shutdown signal on. |
+| boot time | When the process started. |
+| checks | The state of each [health check](/docs/telescope/concepts/health-checks). |
+| buffer | On a tenant: entries waiting, dropped and sent, and how far behind the buffer is. |
+
+A tenant sends its heartbeat with its entries, over the same
+[transport](/docs/telescope/concepts/transports) (HTTP, queue, BullMQ, Redis or durable). It never
+takes a place in the entry buffer, so a full buffer cannot hide the instance.
+
+## States
+
+| State | Meaning |
+| --- | --- |
+| up | It said `ready` in its last heartbeat. |
+| starting | It is booting. |
+| draining | It received the shutdown signal. |
+| gone | No heartbeat for more than 3 of its intervals. |
+
+The control plane's clock decides: an instance's clock cannot keep it alive.
+
+**Deploys.** A new version showing up among an app's instances is a deploy. The console shows each
+one with its rollout progress (live instances on the new version, of all live instances) until no
+live instance runs another version.
+
+**Restart loops.** A host that booted 3 times within 10 minutes is in a restart loop (a pod in
+`CrashLoopBackOff` keeps its name).
+
+## Configuration
+
+```ts title="config/telescope.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  fleet: {
+    interval: '15s',
+    version: env.get('GIT_SHA'),
+    restartLoop: { restarts: 3, within: '10m' },
+    retention: '7d',
+  },
+})
+```
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `interval` | `'15s'` | How often an instance sends a heartbeat. |
+| `app` | `APP_NAME`, else the package.json `name` | The app's name on a standalone app or a control plane. A tenant is named by its token. |
+| `version` | see above | A string, or a function returning one. |
+| `host` | `HOSTNAME`, else the OS hostname | |
+| `goneAfter` | `3` | Missed heartbeats before an instance is gone. |
+| `retention` | `'7d'` | How long a gone instance is kept, with its deploy and restart history. |
+| `restartLoop` | `{ restarts: 3, within: '10m' }` | |
+| `report` | `['web']` | Which environments send a heartbeat. Add `'console'` for workers started with `node ace`. |
+| `store` | `'auto'` | Where instances are kept: a `telescope_instances` table next to a Lucid entries store (same connection and `schema`), else memory. `'memory'`, or a store of your own. |
+
+`fleet: false` turns heartbeats and the fleet off.
+
+<Callout type="info">
+With `storage.lucid({ autoCreateTable: true })` the table is created on first use. Otherwise run
+the migration `node ace configure @adonis-agora/telescope` publishes
+(`create_telescope_instances_table`), with the same `schema` as `storage.lucid()`.
+</Callout>
+
+On a standalone app with several replicas, keep entries in Lucid so the replicas share the table
+and each one sees the others. With the memory store each replica only sees itself.
+
+## The Fleet page
+
+**Fleet** in the console's Monitor section (also in ⌘K) shows, for the app picked in the App
+picker or for every app:
+
+- the instance counts by state;
+- each instance: host, version, uptime, last heartbeat, health and send buffer;
+- the deploy timeline with rollout progress;
+- hosts in a restart loop;
+- each failing check, since when, on how many instances, and the exception families recorded since
+  it went bad.
+
+A viewer limited to some apps (`apps` in `authorize`) only sees those apps' instances. Instances are
+shared by every organization, so a viewer limited to some organizations sees none.
+
+## From the CLI and MCP
+
+```sh
+node ace telescope:fleet:list
+node ace telescope:fleet:list --app shop --json
+```
+
+The `telescope_get_fleet` tool on [`/mcp/agora`](/docs/telescope/packages/mcp) answers the same,
+for the apps the caller may see.
+
+## Alerts
+
+| Rule | Fires when |
+| --- | --- |
+| `{ type: 'instances-up', app?, below, for? }` | Fewer than `below` instances of an app are up for `for` (default `'1m'`). `below: 1` pages when none is left. |
+| `{ type: 'restart-loop', app? }` | A host of the app is in a restart loop. |
+| `{ type: 'check-down', check?, app?, for }` | A health check has been down for `for`. |
+| `{ type: 'entries-dropped', app?, window, threshold? }` | The app's instances dropped at least `threshold` (default 1) entries within `window`. |
+
+They fire and resolve per app on every channel. See
+[Alerts](/docs/telescope/packages/alerts#fleet-rules).

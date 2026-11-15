@@ -115,6 +115,28 @@ export function resolveConfig(config: TelescopeAlertsConfig = {}): ResolvedAlert
       if (rule.window !== undefined) durationToMs(rule.window);
       continue;
     }
+    if (rule.type === 'instances-up') {
+      if (!Number.isInteger(rule.below) || rule.below < 1) {
+        throw new Error('instances-up: `below` must be a whole number, 1 or more');
+      }
+      if (rule.for !== undefined) durationToMs(rule.for);
+      continue;
+    }
+    if (rule.type === 'restart-loop') continue;
+    if (rule.type === 'check-down') {
+      durationToMs(rule.for);
+      continue;
+    }
+    if (rule.type === 'entries-dropped') {
+      durationToMs(rule.window);
+      if (
+        rule.threshold !== undefined &&
+        (!Number.isFinite(rule.threshold) || rule.threshold < 1)
+      ) {
+        throw new Error('entries-dropped: `threshold` must be 1 or more');
+      }
+      continue;
+    }
     durationToMs(rule.window);
   }
 

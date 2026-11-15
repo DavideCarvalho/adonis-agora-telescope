@@ -139,6 +139,11 @@ type AlertRule =
       threshold: number
       minSamples?: number   // guard a percentile page against a single slow request; default 1
     }
+  // Over the fleet (see "Fleet rules" below)
+  | { type: 'instances-up'; app?: string; below: number; for?: string }
+  | { type: 'restart-loop'; app?: string }
+  | { type: 'check-down'; check?: string; app?: string; for: string }
+  | { type: 'entries-dropped'; app?: string; window: string; threshold?: number }
 ```
 
 - **`new-exception`** — fires the *first* time an exception's `familyHash` is seen within
@@ -199,6 +204,51 @@ tight loop of the same error from paging on every occurrence. A short cooldown o
 family is a self-inflicted alert storm; the per-family clock means a *different* family
 still pages immediately.
 </Callout>
+
+### Volume: every exception family together
+
+`every-exception` pages once per family per `cooldown`, so 30,000 errors of one family during an
+incident send a handful of messages. To page once on the whole incident, whatever the families,
+use `exception-count`: it counts every exception in the window, fires once while the count stays
+above the threshold, and resolves when it drops.
+
+```ts title="config/telescope_alerts.ts"
+rules: [
+  { type: 'metric-threshold', metric: 'exception-count', window: '5m', comparator: 'gte', threshold: 500 },
+]
+```
+
+### Fleet rules
+
+These rules read the [fleet](/docs/telescope/concepts/fleet) (every instance's heartbeat), so they
+run on a control plane or a standalone app. Each app (and, for `check-down`, each check) fires and
+resolves on its own.
+
+| Rule | Fires when |
+| --- | --- |
+| `instances-up` | Fewer than `below` instances of `app` (or of any app, without `app`) are up for `for` (default `'1m'`, so a rolling deploy does not page). `below: 1` pages when an app has none left. |
+| `restart-loop` | A host booted `fleet.restartLoop.restarts` times within `fleet.restartLoop.within` (default 3 in 10 minutes). |
+| `check-down` | A [health check](/docs/telescope/concepts/health-checks) (`check`, or any) has been `down` on a live instance for `for`. |
+| `entries-dropped` | The app's instances dropped at least `threshold` (default 1) entries within `window`: their buffer to the control plane overflowed. |
+
+```ts title="config/telescope_alerts.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
+
+export default defineConfig({
+  channels: [{ type: 'slack', url: env.get('TELESCOPE_SLACK_WEBHOOK') }],
+  rules: [
+    { type: 'instances-up', app: 'shop', below: 2, for: '2m' },
+    { type: 'instances-up', below: 1 },
+    { type: 'restart-loop' },
+    { type: 'check-down', check: 'redis', for: '2m' },
+    { type: 'entries-dropped', window: '10m', threshold: 100 },
+  ],
+})
+```
+
+A fleet alert carries `fleet: { app, check?, host?, detail }`, where `detail` is one line such as
+"redis: down for 12 min on 3 of 3 instances".
 
 ### Stateful raise / auto-resolve
 

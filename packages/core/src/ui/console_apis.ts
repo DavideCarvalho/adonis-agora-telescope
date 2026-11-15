@@ -7,6 +7,7 @@ import { TelescopeApi } from './api.js';
 import type { ResolvedTelescopeUiConfig } from './define_config.js';
 import { DiagnosisApi } from './diagnosis_api.js';
 import { type ExtensionActionAudit, ExtensionApi } from './extension_api.js';
+import { FleetApi } from './fleet_api.js';
 import { ProfilesApi } from './profiles_api.js';
 import { QueueManagerApi } from './queue_manager_api.js';
 import { SchedulesApi } from './schedules_api.js';
@@ -19,6 +20,7 @@ export interface ConsoleApis {
   schedulesApi: SchedulesApi;
   extApi: ExtensionApi | null;
   queueManagerApi: QueueManagerApi;
+  fleetApi: FleetApi;
 }
 
 /** What {@link buildConsoleApis} needs besides the store. */
@@ -80,6 +82,8 @@ export function buildConsoleApis(source: TelescopeStore, options: ConsoleApisOpt
     schedulesApi: new SchedulesApi(service),
     extApi,
     queueManagerApi: new QueueManagerApi(runtime.queueManager),
+    // A control plane's entries carry `app:<id>`: an app's incidents list its own exceptions.
+    fleetApi: new FleetApi(source, coreConfig.topology.topology === 'control-plane'),
   };
 }
 
@@ -147,6 +151,7 @@ export function consoleMeta(apis: ConsoleApis): Record<string, unknown> {
     ai: { enabled: apis.diagnosisApi.isConfigured() },
     profiling: { enabled: apis.profilesApi.isConfigured() },
     queueManager: { enabled: apis.queueManagerApi.isConfigured() },
+    fleet: { enabled: runtime.fleet !== null, checks: runtime.healthChecks?.size ?? 0 },
     // The watcher names actually running, so a panel can say "the `query` watcher is off" instead
     // of reporting its own blindness as good news.
     watchers: getEnabledWatchers(),

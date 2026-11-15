@@ -1,6 +1,8 @@
 import type { DiagnosisCoordinator } from './ai/diagnosis_coordinator.js';
 import type { AgentMetricsRegistry } from './ai_metrics/agent_metrics.js';
 import type { ExtensionRegistry } from './extension/registry.js';
+import type { HealthChecks } from './fleet/checks.js';
+import type { FleetRegistry, InstanceReporter } from './fleet/registry.js';
 import type { ProfilerService } from './profiling/profiler_service.js';
 import type { RequestCaptureOptions, RequestEnrichment } from './request_watcher.js';
 import type { TelescopeStore } from './store.js';
@@ -101,6 +103,17 @@ export interface TelescopeRuntime {
    * reads it per request (no DI) and answers 404 while it is `null`.
    */
   aiMetrics: AgentMetricsRegistry | null;
+  /**
+   * The fleet (every instance's last heartbeat) on a control plane or a standalone app, or `null`
+   * (a tenant, or `fleet: false`). The console, the CLI, the MCP tool and the alerts read it here.
+   */
+  fleet: FleetRegistry | null;
+  /** This process's health checks (`checks` in `config/telescope.ts`), or `null` when none. */
+  healthChecks: HealthChecks | null;
+  /** This process's heartbeat, or `null` when the fleet is off. */
+  reporter: InstanceReporter | null;
+  /** The unauthenticated probe routes (`health.readiness`/`liveness`): never recorded as requests. */
+  probePaths: Set<string>;
 }
 
 const RUNTIME_KEY = Symbol.for('@agora/telescope:runtime');
@@ -121,7 +134,16 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   cpuProfiler: null,
   queueManager: null,
   aiMetrics: null,
+  fleet: null,
+  healthChecks: null,
+  reporter: null,
+  probePaths: new Set<string>(),
 };
+// A runtime published by an older copy of this module has no fleet slots yet.
+runtime.fleet ??= null;
+runtime.healthChecks ??= null;
+runtime.reporter ??= null;
+runtime.probePaths ??= new Set<string>();
 globalStore[RUNTIME_KEY] = runtime;
 
 /** The shared runtime handle. */
@@ -217,6 +239,17 @@ export function setTelescopeRecordHeartbeat(record: boolean): void {
   runtime.recordHeartbeat = record;
 }
 
+/** Publish (or clear) the fleet, the health checks and this process's heartbeat. */
+export function setTelescopeFleet(handles: {
+  fleet: FleetRegistry | null;
+  healthChecks: HealthChecks | null;
+  reporter: InstanceReporter | null;
+}): void {
+  runtime.fleet = handles.fleet;
+  runtime.healthChecks = handles.healthChecks;
+  runtime.reporter = handles.reporter;
+}
+
 /** Tear down the runtime (called by the provider at shutdown). */
 export function resetTelescopeRuntime(): void {
   runtime.store = null;
@@ -233,4 +266,8 @@ export function resetTelescopeRuntime(): void {
   runtime.cpuProfiler = null;
   runtime.queueManager = null;
   runtime.aiMetrics = null;
+  runtime.fleet = null;
+  runtime.healthChecks = null;
+  runtime.reporter = null;
+  runtime.probePaths.clear();
 }
