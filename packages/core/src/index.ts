@@ -70,7 +70,15 @@ export {
 } from './diagnostics_watcher.js';
 export type { BatchOrigin, BuiltinEntryType, Entry, RecordInput } from './entry.js';
 // — entry model —
-export { EntryType, EXCEPTION_ENTRY_TYPES, isBatchOrigin, isExceptionType } from './entry.js';
+export {
+  EntryType,
+  EXCEPTION_ENTRY_TYPES,
+  isBatchOrigin,
+  isExceptionType,
+  MAX_FUTURE_SKEW_MS,
+  resolveCreatedAt,
+  resolveEntryId,
+} from './entry.js';
 export type { ExceptionFamilyParts } from './exception_family_hash.js';
 export { exceptionFamilyHash } from './exception_family_hash.js';
 export type {

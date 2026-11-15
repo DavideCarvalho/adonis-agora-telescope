@@ -1,6 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
-import { type BatchOrigin, type Entry, isBatchOrigin, type RecordInput } from '../entry.js';
+import {
+  type BatchOrigin,
+  type Entry,
+  isBatchOrigin,
+  type RecordInput,
+  resolveCreatedAt,
+  resolveEntryId,
+} from '../entry.js';
 import { resolveOrigin } from '../origin_scope.js';
 import { runAsTelescopeWork } from '../self_scope.js';
 import type {
@@ -428,7 +435,7 @@ export class LucidTelescopeStore implements TelescopeStore {
     const traceId = input.traceId !== undefined ? input.traceId : currentTraceId();
     const origin: BatchOrigin = resolveOrigin(input.origin);
     const entry: Entry<TContent> = {
-      id: randomUUID(),
+      id: input.id !== undefined ? resolveEntryId(input.id) : randomUUID(),
       type: input.type,
       familyHash: input.familyHash ?? null,
       content: input.content,
@@ -441,7 +448,7 @@ export class LucidTelescopeStore implements TelescopeStore {
       durationMs: input.durationMs != null ? Math.round(input.durationMs) : null,
       origin,
       traceId,
-      createdAt: new Date(),
+      createdAt: input.createdAt !== undefined ? resolveCreatedAt(input.createdAt) : new Date(),
     };
 
     const row: TelescopeColumns = {
@@ -469,15 +476,21 @@ export class LucidTelescopeStore implements TelescopeStore {
       return entry;
     }
 
-    await new Promise<void>((resolve, reject) => {
-      this.pending.push({
-        row,
-        bytes: row.content.length + row.tags.length,
-        resolve,
-        reject,
+    try {
+      await new Promise<void>((resolve, reject) => {
+        this.pending.push({
+          row,
+          bytes: row.content.length + row.tags.length,
+          resolve,
+          reject,
+        });
+        this.scheduleDrain();
       });
-      this.scheduleDrain();
-    });
+    } catch (error) {
+      // A given id already stored: the same entry again (a retried send), stored once.
+      if (input.id !== undefined && isDuplicateKey(error)) return entry;
+      throw error;
+    }
     return entry;
   }
 
