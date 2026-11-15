@@ -1,4 +1,4 @@
-import type { AlertPayload } from './alert_rule.js';
+import type { AlertPayload, AlertSeverity } from './alert_rule.js';
 import { formatSlackMessage, type SlackChannelOptions } from './slack_format.js';
 
 /**
@@ -17,6 +17,11 @@ export interface AlertChannel {
   name: string;
   /** Deliver the payload. Rejecting is fine — the alerter isolates + logs it. */
   send(alert: AlertPayload): Promise<void>;
+  /**
+   * Only alerts at or above this severity are sent here (e.g. `'critical'` on a
+   * paging channel). Omit to receive every alert.
+   */
+  minSeverity?: AlertSeverity;
 }
 
 /**

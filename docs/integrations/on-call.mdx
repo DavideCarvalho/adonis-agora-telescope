@@ -1,0 +1,93 @@
+---
+title: On-call
+icon: Siren
+description: Page through PagerDuty, Opsgenie, Better Stack, incident.io or Grafana OnCall, with incidents that open and resolve with the alert.
+---
+
+Every on-call channel accepts `name`, `minSeverity`, `retries`, `backoffMs` and `timeoutMs`
+(see [Routing](/docs/telescope/integrations#routing-alerts) and
+[Delivery](/docs/telescope/integrations#delivery)). Each one is also a function
+(`pagerDutyChannel(options)`, …) you can put in `channels` directly.
+
+## PagerDuty
+
+Create an **Events API v2** integration on a service and copy its integration key.
+
+```ts title="config/telescope_alerts.ts"
+channels: [
+  {
+    type: 'pagerduty',
+    routingKey: env.get('PAGERDUTY_ROUTING_KEY'),
+    minSeverity: 'error',
+  },
+],
+```
+
+Sends `event_action: 'trigger'` with `dedup_key`, `payload.summary` (the alert title),
+`payload.severity`, `payload.source` (the app), `payload.class`, `payload.custom_details`
+(rule, value, threshold, route, status code, occurrences, stack, AI diagnosis) and a link to
+the entry when `dashboardUrl` is set. A resolved alert sends `event_action: 'resolve'` with the
+same `dedup_key`.
+
+| Option | Default | |
+| --- | --- | --- |
+| `routingKey` | — | Integration key. |
+| `url` | `https://events.pagerduty.com/v2/enqueue` | Use `https://events.eu.pagerduty.com/v2/enqueue` for EU accounts. |
+| `source` | the app | `payload.source`. |
+| `component`, `group` | — | `payload.component`, `payload.group`. |
+
+## Opsgenie
+
+Create an **API** integration and copy its key.
+
+```ts
+{ type: 'opsgenie', apiKey: env.get('OPSGENIE_API_KEY'), region: 'eu', responders: [{ type: 'team', name: 'backend' }] }
+```
+
+Creates an alert with `message` (the title), `alias` (the incident key, so a repeat joins
+the open alert), `priority` (`P1`–`P5`), `description`, `details`, `tags`
+(`telescope` + severity + your `tags`) and `responders`. A resolved alert closes it by alias.
+
+## Better Stack
+
+Better Stack Uptime incidents. Copy an Uptime API token.
+
+```ts
+{
+  type: 'betterstack',
+  apiToken: env.get('BETTERSTACK_API_TOKEN'),
+  requesterEmail: 'alerts@example.com',
+  teamName: 'Backend',
+}
+```
+
+Creates an incident with `name`, `summary`, `description` and notification flags (call and
+SMS for `critical`, email and push always; change it with `notify: (severity) => ({ call, sms, email, push })`).
+A resolved alert resolves that incident. While the incident is open, the same alert does not
+open a second one. After a restart, incidents opened before it are resolved by hand.
+
+## incident.io
+
+Add an **HTTP** alert source. Its URL ends in the config id; copy the bearer token too.
+
+```ts
+{
+  type: 'incident-io',
+  alertSourceConfigId: env.get('INCIDENT_IO_ALERT_SOURCE_ID'),
+  token: env.get('INCIDENT_IO_ALERT_SOURCE_TOKEN'),
+}
+```
+
+Sends `title`, `description`, `status` (`firing` / `resolved`), `deduplication_key`,
+`source_url` and `metadata` (the same details as PagerDuty).
+
+## Grafana OnCall
+
+Add a **Formatted webhook** integration and copy its URL.
+
+```ts
+{ type: 'grafana-oncall', url: env.get('GRAFANA_ONCALL_WEBHOOK_URL') }
+```
+
+Sends `alert_uid` (the incident key), `title`, `message`, `state` (`alerting` / `ok`),
+`link_to_upstream_details` and `severity`.

@@ -1,0 +1,61 @@
+---
+title: Health endpoint
+icon: Activity
+description: Expose the check states on a route that UptimeRobot, Better Stack or Uptime Kuma HTTP monitors can poll.
+---
+
+For one app, the `health.readiness` route from
+[health checks](/docs/telescope/concepts/health-checks) already works with uptime monitors:
+503 while a critical check is down, 200 otherwise. Use `uptimeEndpoint()` when you want a
+token, the check messages, or one URL per app on a control plane.
+
+`uptimeEndpoint()` turns the check states (see [What "healthy" means](/docs/telescope/integrations/heartbeats#what-healthy-means))
+into a route handler:
+
+```ts title="start/routes.ts"
+import env from '#start/env'
+import router from '@adonisjs/core/services/router'
+import { uptimeEndpoint } from '@adonis-agora/telescope/alerts'
+
+router.get('/uptime', uptimeEndpoint({ token: env.get('UPTIME_TOKEN') }))
+```
+
+## Responses
+
+| Checks | Status code | Body `status` |
+| --- | --- | --- |
+| all `ok` (or none) | `200` | `up` |
+| some `warn`, none `down` | `200` (`degradedStatusCode` changes it) | `degraded` |
+| any `down`, or the source failed | `503` | `down` |
+
+Checks with `critical: false` and checks still `unknown` don't change the answer.
+| wrong or missing token | `401` | `unauthorized` |
+
+```json
+{ "status": "up", "checks": [{ "name": "redis", "status": "ok" }], "checkedAt": "2026-11-15T12:00:00.000Z" }
+```
+
+`checks` is in the body only when a `token` is set (or with `details: true`). Responses are
+sent with `cache-control: no-store`.
+
+On a control plane, `?app=checkout` answers for that app alone. An app with no live instance, or one the fleet doesn't know, is `down`.
+
+## Options
+
+| Option | Default | |
+| --- | --- | --- |
+| `source` | the published source | Where check states come from. |
+| `token` | — | Required on every request when set. |
+| `tokenQuery` | `'token'` | Query parameter carrying the token. |
+| `tokenHeader` | `'x-telescope-health-token'` | Header carrying the token. |
+| `degradedStatusCode` | `200` | Status code for `degraded`. |
+| `details` | `true` with a token | Include `checks`. |
+
+## Monitor setup
+
+- **UptimeRobot**: HTTP(s) monitor on `https://app.example.com/uptime?token=…`. For a keyword
+  monitor, alert when `"status":"up"` is **not** present.
+- **Better Stack**: monitor type "Becomes unavailable" on the same URL, or "Doesn't contain
+  keyword" with `"status":"up"`. You can send the token as the `x-telescope-health-token` request header instead.
+- **Uptime Kuma**: HTTP(s) monitor, or HTTP(s) – Keyword with `"status":"up"`; put the token
+  in a header under Headers.

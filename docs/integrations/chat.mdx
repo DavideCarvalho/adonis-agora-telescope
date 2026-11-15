@@ -1,0 +1,77 @@
+---
+title: Chat and email
+icon: MessageSquare
+description: Post alerts to Discord, Microsoft Teams, Telegram or Google Chat, or mail them with @adonisjs/mail.
+---
+
+A chat channel posts one message per alert, and another when a `metric-threshold` alert
+resolves. The alert's `cooldown` limits repeats. Every chat channel accepts `name`,
+`minSeverity`, `retries`, `backoffMs` and `timeoutMs`.
+
+Each message has the title, the app, rule, severity and status, the route, status code,
+occurrences and user for exceptions (value and threshold for metrics), the stack, the AI
+probable cause when there is one, and a link to the entry when `dashboardUrl` is set.
+
+## Discord
+
+```ts
+{ type: 'discord', url: env.get('DISCORD_WEBHOOK_URL'), username: 'Telescope' }
+```
+
+One embed, coloured by severity (green when resolved), with fields and the stack. Mentions
+are turned off. The `slack` channel pointed at Discord's `/slack` URL keeps working.
+
+## Microsoft Teams
+
+In Teams, create a Workflow from the **"Post to a channel when a webhook request is received"**
+template and copy its URL.
+
+```ts
+{ type: 'teams', url: env.get('TEAMS_WORKFLOW_URL') }
+```
+
+An Adaptive Card with the title, a fact set, the stack and an **Open in Telescope** button.
+
+## Telegram
+
+Create a bot with @BotFather and add it to the chat.
+
+```ts
+{
+  type: 'telegram',
+  botToken: env.get('TELEGRAM_BOT_TOKEN'),
+  chatId: env.get('TELEGRAM_CHAT_ID'),
+  messageThreadId: 12, // forum topic, optional
+}
+```
+
+`sendMessage` with HTML formatting and link previews off.
+
+## Google Chat
+
+Add an incoming webhook to the space.
+
+```ts
+{ type: 'google-chat', url: env.get('GOOGLE_CHAT_WEBHOOK_URL') }
+```
+
+A card per alert. Alerts of the same app and rule go to one thread; set `threaded: false`
+to post each one on its own.
+
+## Email
+
+Needs [`@adonisjs/mail`](https://docs.adonisjs.com/guides/digging-deeper/mail) installed and
+configured.
+
+```ts
+{
+  type: 'email',
+  to: ['oncall@example.com'],
+  from: 'telescope@example.com',
+  mailer: 'smtp',
+  minSeverity: 'error',
+}
+```
+
+Subject `[Telescope] <title>` (change the prefix with `subjectPrefix`), with a plain-text and
+an HTML body. Mail fakes (`mail.fake()`) apply.

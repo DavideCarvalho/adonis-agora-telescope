@@ -4,6 +4,9 @@ import { Alerter } from '../src/alerts/alerter.js';
 import { AlerterService, isFleetRule } from '../src/alerts/alerter_service.js';
 import { resolveConfig, type TelescopeAlertsConfig } from '../src/alerts/define_config.js';
 import { ExceptionPoller } from '../src/alerts/exception_source.js';
+import { type CheckStateSource, publishedCheckStates } from '../src/alerts/integrations/health.js';
+import { HeartbeatMonitor } from '../src/alerts/integrations/heartbeats.js';
+import { StatusPageSync } from '../src/alerts/integrations/status_pages.js';
 import type { Entry } from '../src/entry.js';
 import { MetricsService } from '../src/metrics/metrics_service.js';
 import { getTelescopeRuntime } from '../src/registry.js';
@@ -25,6 +28,8 @@ import type { TelescopeStore } from '../src/store.js';
 export default class TelescopeAlertsProvider {
   private poller: ExceptionPoller | null = null;
   private alerterService: AlerterService | null = null;
+  private heartbeats: HeartbeatMonitor | null = null;
+  private statusPages: StatusPageSync | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -45,6 +50,9 @@ export default class TelescopeAlertsProvider {
   async boot() {
     const config = this.resolve();
     if (!config.enabled) return;
+
+    // Uptime integrations need no store: they read check states, not entries.
+    this.startUptime(config.heartbeats ?? [], config.statusPages ?? [], config.checkStates ?? null);
 
     let store: TelescopeStore | null;
     try {
@@ -109,7 +117,44 @@ export default class TelescopeAlertsProvider {
     }
   }
 
+  /**
+   * Start heartbeats and status page sync. The check-state source is the config's
+   * `checkStates`, else the one published at runtime (looked up on every read, so
+   * a source published after this boot is picked up).
+   */
+  private startUptime(
+    heartbeats: NonNullable<ReturnType<typeof resolveConfig>['heartbeats']>,
+    statusPages: NonNullable<ReturnType<typeof resolveConfig>['statusPages']>,
+    configured: CheckStateSource | null,
+  ): void {
+    // With no source anywhere, `live` returns no states: an app-wide heartbeat
+    // is then a plain dead man's switch (healthy while the process runs).
+    const source: CheckStateSource = configured ?? live;
+    try {
+      if (heartbeats.length > 0) {
+        this.heartbeats = new HeartbeatMonitor({ heartbeats, source });
+        this.heartbeats.start();
+      }
+      if (statusPages.length > 0) {
+        this.statusPages = new StatusPageSync({ statusPages, source });
+        this.statusPages.start();
+      }
+    } catch (err) {
+      console.error(
+        `TelescopeAlertsProvider: failed to start uptime integrations: ${asMessage(err)}`,
+      );
+    }
+  }
+
   async shutdown() {
+    try {
+      this.heartbeats?.stop();
+      this.statusPages?.stop();
+    } catch {
+      // never throw out of shutdown
+    }
+    this.heartbeats = null;
+    this.statusPages = null;
     try {
       this.poller?.stop();
     } catch {
@@ -123,6 +168,12 @@ export default class TelescopeAlertsProvider {
     this.poller = null;
     this.alerterService = null;
   }
+}
+
+/** The published source, read now; no states when none is published. */
+function live(): ReturnType<CheckStateSource> {
+  const published = publishedCheckStates();
+  return published === null ? [] : published();
 }
 
 function asMessage(err: unknown): string {

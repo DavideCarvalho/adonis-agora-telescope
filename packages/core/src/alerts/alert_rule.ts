@@ -1,4 +1,7 @@
 import type { AlertChannel } from './alert_channel.js';
+import type { CheckStateSource } from './integrations/health.js';
+import type { HeartbeatConfig } from './integrations/heartbeats.js';
+import type { StatusPageConfig } from './integrations/status_pages.js';
 
 /**
  * A single alerting rule. Ported (trimmed) from the aviary telescope core.
@@ -34,29 +37,31 @@ import type { AlertChannel } from './alert_channel.js';
  *   "request p99 > 800ms" (a slow endpoint), "cache hit-rate < 0.8", or an
  *   exception spike (`exception-count >= N`).
  */
-export type AlertRule =
-  | { type: 'new-exception'; window: string }
-  | { type: 'every-exception'; window?: string }
-  | { type: 'exception-rate'; window: string; threshold: number }
-  | {
-      type: 'metric-threshold';
-      /** The computed metric to evaluate (see {@link AlertMetric}). */
-      metric: AlertMetric;
-      /** Trailing window to aggregate over (e.g. `'5m'`). */
-      window: string;
-      /** `gte` fires when value >= threshold; `lte` when value <= threshold. */
-      comparator: 'gte' | 'lte';
-      /** The threshold the metric is compared against. */
-      threshold: number;
-      /**
-       * Minimum samples in the window before a percentile/ratio rule can fire —
-       * guards a p99 page against a single slow request on a quiet host. Default
-       * 1. Ignored for `exception-count` (a count of 0 is a meaningful value that
-       * must be able to auto-resolve a firing spike).
-       */
-      minSamples?: number;
-    }
-  | FleetAlertRule;
+export type AlertRule = AlertRuleRouting &
+  (
+    | { type: 'new-exception'; window: string }
+    | { type: 'every-exception'; window?: string }
+    | { type: 'exception-rate'; window: string; threshold: number }
+    | {
+        type: 'metric-threshold';
+        /** The computed metric to evaluate (see {@link AlertMetric}). */
+        metric: AlertMetric;
+        /** Trailing window to aggregate over (e.g. `'5m'`). */
+        window: string;
+        /** `gte` fires when value >= threshold; `lte` when value <= threshold. */
+        comparator: 'gte' | 'lte';
+        /** The threshold the metric is compared against. */
+        threshold: number;
+        /**
+         * Minimum samples in the window before a percentile/ratio rule can fire —
+         * guards a p99 page against a single slow request on a quiet host. Default
+         * 1. Ignored for `exception-count` (a count of 0 is a meaningful value that
+         * must be able to auto-resolve a firing spike).
+         */
+        minSamples?: number;
+      }
+    | FleetAlertRule
+  );
 
 /**
  * Rules over the fleet (the instances' heartbeats), evaluated with the `metric-threshold` rules:
@@ -88,6 +93,26 @@ export interface FleetAlertContext {
   host?: string;
   /** One line: "Redis down for 12 min on 3 of 3 instances". */
   detail: string;
+}
+
+/**
+ * How urgent an alert is. Paging channels map it to their own scale (PagerDuty
+ * `severity`, Opsgenie `P1`–`P5`, …) and a channel's `minSeverity` filters on it.
+ * Ordered `info` < `warning` < `error` < `critical`.
+ */
+export type AlertSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+/**
+ * Optional routing fields every rule accepts.
+ *
+ * - `severity` overrides the rule kind's default (see `defaultSeverity`).
+ * - `channels` sends this rule's alerts ONLY to the channels with these names
+ *   (a channel's name is its `type`, or the `name` you gave it). Omit to send
+ *   to every channel — that's the default.
+ */
+export interface AlertRuleRouting {
+  severity?: AlertSeverity;
+  channels?: string[];
 }
 
 /**
@@ -274,4 +299,10 @@ export interface ResolvedAlerts {
   rules: AlertRule[];
   /** Host IP→geo resolver, or `null` when unconfigured. */
   geoLookup: GeoLookup | null;
+  /** Push uptime monitors (validated). Empty/absent when none are configured. */
+  heartbeats?: HeartbeatConfig[];
+  /** Status page sync targets (validated). Empty/absent when none are configured. */
+  statusPages?: StatusPageConfig[];
+  /** Where heartbeats and status pages read check states from, or `null`. */
+  checkStates?: CheckStateSource | null;
 }
