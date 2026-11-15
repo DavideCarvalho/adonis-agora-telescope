@@ -20,7 +20,7 @@ import {
 import { AsyncBlock, clickable, PageHeader, Panel, SectionTitle, ShareBar } from './ui.js';
 import { useFleet } from './use-telescope.js';
 
-/** How often the page re-reads the fleet (the default heartbeat interval; a poll cadence, not a claim about the server's config). */
+/** How often the page re-reads the fleet: a fixed poll cadence, independent of the server's heartbeat interval. */
 const REFRESH_MS = 15_000;
 
 /** `ms` as `3d 4h`, `12 min`, `40 s`. */
@@ -168,10 +168,10 @@ function DeployTimeline({ app, now }: { app: FleetApp; now: number }) {
             <span className="text-muted-foreground">
               {humanDuration(now - deploy.startedAt)} ago
             </span>
-            {deploy.complete ? (
-              <Badge variant="good">complete</Badge>
-            ) : deploy.total === 0 ? (
+            {deploy.total === 0 ? (
               <Badge variant="neutral">no live instances</Badge>
+            ) : deploy.complete ? (
+              <Badge variant="good">complete</Badge>
             ) : (
               <Badge variant="info">
                 {deploy.live}/{deploy.total} live
@@ -307,7 +307,7 @@ export function FleetSection({ onOpenEntry }: { onOpenEntry: (id: string) => voi
       <AsyncBlock
         state={state}
         isEmpty={(view: FleetView) => view.notice === null && view.apps.length === 0}
-        empty="No instance has sent a heartbeat yet. Each instance sends one on its `fleet.interval` once it boots."
+        empty="No instance has sent a heartbeat yet. Each instance sends them on its heartbeat interval once it boots."
       >
         {(view) =>
           view.notice !== null ? (
