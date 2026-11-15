@@ -276,6 +276,24 @@ export default defineConfig({
 
 An `authorize` hook that already wrote a redirect still wins, with or without `accessDenied`.
 
+## When authkit runs on another server
+
+The console needs nothing from authkit-server in its own process. On an app that signs in against a
+remote authkit with `@adonis-agora/authkit-client`:
+
+```ts title="config/telescope_ui.ts"
+import { authkitDashboardAuthorize } from '@adonis-agora/authkit-client'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: authkitDashboardAuthorize(),
+})
+```
+
+The footer gets the sign-out that `registerOidcClient` announces (`POST /auth/logout`), so leave
+`signOut` unset. Telescope records the app it runs in: each server keeps its own store and its own
+console.
+
 ## Security notes
 
 - **Set `authorize` before you deploy.** Without it the production console answers `403` to
