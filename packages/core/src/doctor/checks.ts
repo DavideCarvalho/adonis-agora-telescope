@@ -1,4 +1,5 @@
 import type { ApplicationService } from '@adonisjs/core/types';
+import { topologyDoctorChecks } from '../topology/doctor.js';
 import {
   type AgoraDoctorCheck,
   type AgoraDoctorResult,
@@ -363,4 +364,5 @@ export const telescopeDoctorChecks: AgoraDoctorCheck[] = [
     title: 'Entries are pruned in production',
     run: (app) => checkRetention(get(app, 'telescope'), app.inProduction),
   },
+  ...topologyDoctorChecks,
 ];

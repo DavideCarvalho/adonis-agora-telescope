@@ -97,6 +97,7 @@ node ace telescope:entries:prune --older-than 7d --dry-run
 | `telescope:profiles:show <id>` | One profile; `--json` prints the whole V8 profile. |
 | `telescope:tenants:list` | The organizations Telescope has entries for. |
 | `telescope:apps:list` | The apps Telescope has entries for (entries tagged `app:<id>`). |
+| `telescope:server:status` | [Central server](/docs/telescope/concepts/central-server): on an app, whether the server accepts its token and as which app; on the server, the ingest route and the apps it has entries for. Exit code `1` when refused. |
 | `telescope:meta:show` | Which features are on, the running watchers, what extensions contribute. |
 | `telescope:ext:data <ext> <provider>` | An extension's dashboard data, with `--param key=value`. |
 

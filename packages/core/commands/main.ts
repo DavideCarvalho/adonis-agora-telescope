@@ -39,6 +39,7 @@ import {
   TelescopeSchedulesList,
   TelescopeTenantsList,
 } from './telescope_ops.js';
+import { TelescopeServerStatus } from './telescope_server.js';
 
 /** Every `telescope:*` command that mirrors the console. Exported for tests. */
 export const consoleCommands = [
@@ -77,11 +78,17 @@ export const consoleCommands = [
 ];
 
 /**
- * The commands barrel for `@adonis-agora/telescope`: `agora:doctor`, `telescope:doctor` and the
+ * The commands barrel for `@adonis-agora/telescope`: `agora:doctor`, `telescope:doctor`,
+ * `telescope:server:status` and the
  * `telescope:<noun>:<verb>` console commands. Registered in an app's `adonisrc` via
  * `rcFile.addCommand('@adonis-agora/telescope/commands')`, which this package's `configure` does.
  */
-const loader = new ListLoader([AgoraDoctor, TelescopeDoctor, ...consoleCommands]);
+const loader = new ListLoader([
+  AgoraDoctor,
+  TelescopeDoctor,
+  TelescopeServerStatus,
+  ...consoleCommands,
+]);
 
 export const getMetaData = loader.getMetaData.bind(loader);
 export const getCommand = loader.getCommand.bind(loader);

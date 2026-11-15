@@ -53,6 +53,10 @@ export default defineConfig({
 | `clientErrors` | `ClientErrorsConfig`           | _disabled_                    | Public [client-error ingestion](/docs/telescope/packages/client-errors) endpoint (opt-in). |
 | `otel`       | `false \| OtelConfig`           | _on with `@adonisjs/otel`_    | What Telescope sends through [`@adonisjs/otel`](/docs/telescope/packages/otel) when the app runs it: `entryTypes` (default: the types OpenTelemetry does not already trace) and `metrics` (AI-usage metrics, default `true`). `false` sends nothing. Endpoint and headers live in `config/otel.ts`. |
 | `prometheus` | `{ enabled?, maxSeriesPerMetric? }` | `{ enabled: false }`      | Serves the [AI metrics](/docs/telescope/packages/ai-metrics#prometheus-scrape-pull) at `GET <ui path>/metrics`, behind the API guard. |
+| `topology`   | `'standalone' \| 'control-plane' \| 'tenant'` | `'standalone'`   | [Central server](/docs/telescope/concepts/central-server): keep entries here, receive other apps' entries, or send this app's entries to a server. |
+| `verifyTenant` | `TenantVerifier`               | —                             | Control plane only, required: checks each app's token (`authkitTenantVerifier`, `sharedSecretVerifier`, a class instance or a lazy import). |
+| `ingest`     | `{ path?, maxEntries?, maxBodyBytes?, maxEntryBytes?, dedupeWindow? }` | `/_telescope/v1`, 1000, 2 MB, 256 KB, 100,000 | Control plane only: the ingest route and its limits. |
+| `tenant`     | `{ url, partition, token, local?, buffer? }` | —                | Tenant only, required: the server, this app's name, its token, an optional local store and the send buffer. |
 
 <Callout type="warn">
 Redaction is **on by default**. Every entry's `content` is scrubbed at the store boundary —

@@ -57,6 +57,10 @@ describe('telescope doctor checks', () => {
       'telescope.client-errors-csrf',
       'telescope.otel',
       'telescope.retention',
+      'telescope.topology',
+      'telescope.topology-store',
+      'telescope.ingest-csrf',
+      'telescope.server-reachable',
     ]);
     expect(agoraDoctorChecks).toBe(telescopeDoctorChecks);
     expect(new Set(telescopeDoctorChecks.map((c) => c.lib))).toEqual(new Set(['telescope']));

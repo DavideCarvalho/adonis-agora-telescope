@@ -51,6 +51,9 @@ import { EntryEvents } from '../src/stream/entry_events.js';
 import { StreamingTelescopeStore } from '../src/stream/streaming_store.js';
 import { tenancySlot } from '../src/tenancy.js';
 import { TenantTaggingStore } from '../src/tenancy_store.js';
+import { createIngestHandler } from '../src/topology/ingest.js';
+import { activeRemoteStores, RemoteTelescopeStore } from '../src/topology/remote_store.js';
+import { type IngestRouter, registerIngestRoutes } from '../src/topology/routes.js';
 import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 
 /**
@@ -71,6 +74,7 @@ import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
  */
 export default class TelescopeProvider {
   private store: TelescopeStore | null = null;
+  private remote: RemoteTelescopeStore | null = null;
   private diagnosticsWatcher: DiagnosticsWatcher | null = null;
   private logsWatcher: LogsWatcher | null = null;
   private entryEvents: EntryEvents | null = null;
@@ -101,8 +105,9 @@ export default class TelescopeProvider {
     // which AdonisJS does not await; before the `enabled` check so a disabled telescope is checked too.
     await registerDoctorChecks(this.app.container, telescopeDoctorChecks).catch(() => {});
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
-    const built = await this.buildStore(config);
-    await this.registerSchemaCheck(built);
+    const local = await this.buildStore(config);
+    await this.registerSchemaCheck(local);
+    const built = this.applyTopology(local, config);
     const sampled = this.applySampling(this.applyRedaction(built, config), config);
     // Outermost: the tenant tags are on the entry before redaction, sampling, OTel and the stream
     // see it. Only when @adonis-agora/context publishes tenancy and telescope did not opt out.
@@ -180,6 +185,54 @@ export default class TelescopeProvider {
     if (config.clientErrors.enabled) {
       await this.registerClientErrors(store, config);
     }
+
+    // Central server: a tenant starts sending; a control plane mounts the ingest routes.
+    this.remote?.start();
+    if (config.topology.topology === 'control-plane') await this.registerIngest(config);
+  }
+
+  /**
+   * `topology: 'tenant'`: entries go to the control plane through a {@link RemoteTelescopeStore}
+   * (the innermost store, so redaction, sampling and tenant tags apply before an entry is sent).
+   * With `tenant.local` they are also kept in that local store, which the app's console reads.
+   */
+  private applyTopology(
+    local: TelescopeStore | null,
+    config: ResolvedTelescopeConfig,
+  ): TelescopeStore {
+    if (config.topology.topology !== 'tenant') return local ?? new InMemoryTelescopeStore();
+    const { tenant, buffer } = config.topology;
+    this.remote = new RemoteTelescopeStore({
+      url: tenant.url,
+      partition: tenant.partition,
+      token: tenant.token,
+      buffer,
+      tee: local,
+    });
+    return this.remote;
+  }
+
+  /** `topology: 'control-plane'`: `POST <path>/ingest` and `GET <path>/whoami`. */
+  private async registerIngest(config: ResolvedTelescopeConfig): Promise<void> {
+    if (config.topology.topology !== 'control-plane') return;
+    const { verifyTenant, ingest } = config.topology;
+    let logger: { warn(message: string): void } | null = null;
+    try {
+      logger = (await this.app.container.make('logger')) as { warn(message: string): void };
+    } catch {
+      // No logger: refusals are not logged.
+    }
+    const handler = createIngestHandler({
+      verifyTenant,
+      store: () => getTelescopeRuntime().store,
+      limits: ingest,
+      onRefused: (reason, verified) =>
+        logger?.warn(
+          `[@adonis-agora/telescope] ingest refused (${reason})${verified ? ` for app ${JSON.stringify(verified.partition)}` : ''}`,
+        ),
+    });
+    const router = (await this.app.container.make('router')) as unknown as IngestRouter;
+    registerIngestRoutes(router, handler, ingest);
   }
 
   /**
@@ -206,7 +259,8 @@ export default class TelescopeProvider {
    * With a SQL store (alone or as a tiered store's hot tier) that has a `schema`, add the
    * deep `telescope.db-schema` doctor check for it. Without a schema nothing is added.
    */
-  private async registerSchemaCheck(store: TelescopeStore): Promise<void> {
+  private async registerSchemaCheck(store: TelescopeStore | null): Promise<void> {
+    if (store === null) return;
     const hot = (store as { hot?: unknown }).hot;
     const candidate = (hot ?? store) as Partial<SchemaInspectable> & { schema?: unknown };
     if (typeof candidate.inspectSchema !== 'function' || typeof candidate.schema !== 'string') {
@@ -223,18 +277,30 @@ export default class TelescopeProvider {
    * thunk. The bare `'memory'` shorthand (no matching driver) falls back to the built-in
    * ring buffer so `node ace configure`'s zero-config default just works.
    */
-  private async buildStore(config: ResolvedTelescopeConfig): Promise<TelescopeStore> {
+  private async buildStore(config: ResolvedTelescopeConfig): Promise<TelescopeStore | null> {
+    // A tenant keeps entries locally only when `tenant.local` names a store.
+    if (config.topology.topology === 'tenant') {
+      const local = config.topology.tenant.local;
+      return local === undefined ? null : this.buildNamedStore(local, config);
+    }
     if (typeof config.store !== 'string') return config.store;
+    return this.buildNamedStore(config.store, config);
+  }
 
-    const provider = config.stores[config.store];
+  private async buildNamedStore(
+    name: string,
+    config: ResolvedTelescopeConfig,
+  ): Promise<TelescopeStore> {
+    const provider = config.stores[name];
     if (provider) return provider({ app: this.app });
 
-    if (config.store === 'memory') {
+    if (name === 'memory') {
       return new InMemoryTelescopeStore({ maxEntries: config.maxEntries });
     }
 
+    const key = config.topology.topology === 'tenant' ? 'tenant.local' : 'config.store';
     throw new Error(
-      `@adonis-agora/telescope: config.store is "${config.store}", but config.stores.${config.store} is not defined`,
+      `@adonis-agora/telescope: ${key} is "${name}", but config.stores.${name} is not defined`,
     );
   }
 
@@ -383,6 +449,7 @@ export default class TelescopeProvider {
   }
 
   async shutdown() {
+    await this.flushRemote();
     this.overloadGuard?.stop();
     this.overloadGuard = null;
     this.pruner?.stop();
@@ -403,6 +470,18 @@ export default class TelescopeProvider {
     this.otelMetricsExporter?.shutdown();
     this.otelMetricsExporter = null;
     resetTelescopeRuntime();
+  }
+
+  /** A tenant sends what is still buffered before the process exits (best effort, 5 s at most). */
+  private async flushRemote(): Promise<void> {
+    const stores = [...activeRemoteStores];
+    if (stores.length === 0) return;
+    await Promise.race([
+      Promise.allSettled(stores.map((store) => store.flush())),
+      new Promise((resolve) => setTimeout(resolve, 5000).unref()),
+    ]);
+    for (const store of stores) store.stop();
+    this.remote = null;
   }
 }
 
