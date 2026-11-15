@@ -31,6 +31,9 @@ export default defineConfig({
 | `failUrl` | — | `url` provider only: the URL to call when unhealthy. |
 | `name` | the provider | Name in logs. |
 
+A missing or malformed `url` (or app URL) turns that heartbeat (or app) off at boot with a
+warning; the URL itself is never logged.
+
 ## What "healthy" means
 
 The app is healthy when no check is `down`. A check is `ok`, `warn` (degraded, still
@@ -68,7 +71,7 @@ as unhealthy.
 | Provider | Ping URL | Healthy | Unhealthy | Start |
 | --- | --- | --- | --- | --- |
 | `healthchecks` | `https://hc-ping.com/<uuid>` | `POST <url>` | `POST <url>/fail` with the failing checks as the body | `POST <url>/start` |
-| `betterstack` | `https://uptime.betterstack.com/api/v1/heartbeat/<token>` | `GET <url>` | `POST <url>/fail` | — |
+| `betterstack` | `https://incidents.betterstack.com/api/v1/heartbeat/<token>` | `GET <url>` | `POST <url>/fail` | — |
 | `cronitor` | `https://cronitor.link/p/<api-key>/<monitor>` | `?state=complete` | `?state=fail&message=…` | `?state=run` |
 | `uptime-kuma` | `https://kuma.example.com/api/push/<token>` | `?status=up&msg=OK` | `?status=down&msg=…` | — |
 | `uptimerobot` | `https://heartbeat.uptimerobot.com/<id>` | `GET <url>` | no ping | — |

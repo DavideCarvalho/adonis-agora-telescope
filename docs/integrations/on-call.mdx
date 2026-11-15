@@ -50,7 +50,7 @@ the open alert), `priority` (`P1`–`P5`), `description`, `details`, `tags`
 
 ## Better Stack
 
-Better Stack Uptime incidents. Copy an Uptime API token.
+Better Stack Uptime incidents (`incidents.betterstack.com/api/v3`). Copy an Uptime API token.
 
 ```ts
 {
@@ -89,5 +89,6 @@ Add a **Formatted webhook** integration and copy its URL.
 { type: 'grafana-oncall', url: env.get('GRAFANA_ONCALL_WEBHOOK_URL') }
 ```
 
-Sends `alert_uid` (the incident key), `title`, `message`, `state` (`alerting` / `ok`),
-`link_to_upstream_details` and `severity`.
+Sends `alert_uid` (the incident key), `title`, `message`, `state` (`alerting` / `ok`)
+and `link_to_upstream_details`. The formatted webhook has no severity field, so the title
+starts with it (`[critical] checkout: …`); match on it in the integration's routes.

@@ -68,7 +68,7 @@ components like any other.
 { provider: 'instatus', apiKey: env.get('INSTATUS_API_KEY'), pageId: '…', components: { … }, incidents: true }
 ```
 
-`PUT /v1/:page/components/:id` per change. With `incidents`, creates an `INVESTIGATING`
+`PUT /v2/:page/components/:id` per change. With `incidents`, creates an `INVESTIGATING`
 incident and later posts a `RESOLVED` update.
 
 ## Better Stack

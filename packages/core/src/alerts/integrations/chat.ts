@@ -1,5 +1,6 @@
 import type { AlertChannel } from '../alert_channel.js';
 import type { AlertPayload, AlertSeverity } from '../alert_rule.js';
+import { escapeHtml } from './html.js';
 import { deliver } from './http.js';
 import { appOf, clip, linkOf, severityOf, statusOf, summaryLines, titleOf } from './incident.js';
 import type { OnCallOptions } from './on_call.js';
@@ -190,10 +191,6 @@ export interface TelegramOptions extends ChatOptions {
   messageThreadId?: number;
   /** Bot API base. Default `https://api.telegram.org`. */
   baseUrl?: string;
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /** The `sendMessage` body (HTML parse mode). */

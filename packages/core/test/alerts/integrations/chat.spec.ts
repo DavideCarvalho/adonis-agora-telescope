@@ -63,6 +63,14 @@ describe('telegramChannel', () => {
     expect(body.text).toContain('cannot read &lt;x&gt; &amp; y');
   });
 
+  it('escapes quotes so a dashboard URL cannot break the href', async () => {
+    const { fetch, calls } = mockFetch();
+    const alert = { ...exceptionAlert(), dashboardUrl: 'https://t.example/"><b>x' };
+    await telegramChannel({ botToken: 't', chatId: 1, fetch }).send(alert);
+    const text = (calls[0]!.json as any).text as string;
+    expect(text).toContain('<a href="https://t.example/&quot;&gt;&lt;b&gt;x#/entries/view/ex-1">');
+  });
+
   it('never leaks the bot token in a failure', async () => {
     const { fetch } = mockFetch([new Error('getaddrinfo api.telegram.org/bot123:ABC')]);
     const { sleep } = fakeSleep();
@@ -121,6 +129,26 @@ describe('emailChannel', () => {
     expect(sent[0]?.subject).toMatch(/^\[Telescope\] \[error\] web-1: TypeError/);
     expect(sent[0]?.text).toContain('Occurrences in window: 3');
     expect(sent[0]?.html).toContain('cannot read &lt;x&gt; &amp; y');
+  });
+
+  it('escapes quotes in the HTML link with the same helper as Telegram', async () => {
+    let html = '';
+    const mail = {
+      async send(compose: (message: MailMessageLike) => void) {
+        compose({
+          to: () => {},
+          from: () => {},
+          subject: () => {},
+          text: () => {},
+          html: (h) => (html = h),
+        });
+      },
+    };
+    await emailChannel({ to: 'a@b.c', mail }).send({
+      ...metricAlert(),
+      dashboardUrl: 'https://t.example/"x',
+    });
+    expect(html).toContain('<a href="https://t.example/&quot;x">');
   });
 
   it('rejects clearly when @adonisjs/mail is not installed', async () => {

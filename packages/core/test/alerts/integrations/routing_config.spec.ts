@@ -148,11 +148,32 @@ describe('resolveConfig — integration specs', () => {
     expect(warnings).toEqual([
       "Telescope alert channel 'pagerduty' is disabled: missing routingKey",
       "Telescope alert channel 'telegram' is disabled: missing chatId",
-      "Telescope heartbeat 'healthchecks' is disabled: missing url",
+      "Telescope heartbeat 'healthchecks' is disabled: missing or invalid url",
       "Telescope heartbeat 'uptimerobot' skips app 'b': missing url",
       "Telescope status page 'statuspage' is disabled: missing apiKey",
     ]);
     expect(warnings.join()).not.toContain('PRESENT-TOKEN');
+  });
+
+  it('drops a malformed heartbeat URL at boot with a warning that does not echo it', () => {
+    const warnings: string[] = [];
+    const resolved = resolveConfig(
+      {
+        heartbeats: [
+          { provider: 'cronitor', url: 'htp//broken' },
+          { provider: 'uptime-kuma', apps: { a: 'nope', b: 'https://k.example/api/push/T' } },
+        ],
+      },
+      (m) => warnings.push(m),
+    );
+    expect(resolved.heartbeats).toEqual([
+      { provider: 'uptime-kuma', apps: { b: 'https://k.example/api/push/T' } },
+    ]);
+    expect(warnings).toEqual([
+      "Telescope heartbeat 'cronitor' ignores its url: invalid url",
+      "Telescope heartbeat 'cronitor' is disabled: missing or invalid url",
+      "Telescope heartbeat 'uptime-kuma' skips app 'a': invalid url",
+    ]);
   });
 
   it('fails closed on a bad heartbeat cadence', () => {

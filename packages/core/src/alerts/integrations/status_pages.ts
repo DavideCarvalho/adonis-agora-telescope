@@ -68,7 +68,7 @@ export interface BetterStackStatusPageConfig extends StatusPageBase {
   /** Better Stack Uptime API token. */
   apiToken: string;
   statusPageId: string;
-  /** Default `https://uptime.betterstack.com`. */
+  /** Default `https://incidents.betterstack.com`. */
   baseUrl?: string;
 }
 
@@ -198,7 +198,8 @@ export const statusPageRequests = {
     component(config: InstatusConfig, id: string, status: HealthStatus): HttpRequest {
       return {
         method: 'PUT',
-        url: `${base(config.baseUrl, 'https://api.instatus.com')}/v1/${enc(config.pageId)}/components/${enc(id)}`,
+        // Component updates are on Instatus API v2; incidents stay on v1.
+        url: `${base(config.baseUrl, 'https://api.instatus.com')}/v2/${enc(config.pageId)}/components/${enc(id)}`,
         headers: { authorization: `Bearer ${config.apiKey}` },
         body: { status: INSTATUS_STATUS[status] },
       };
@@ -253,7 +254,7 @@ export const statusPageRequests = {
     ): HttpRequest {
       return {
         method: 'POST',
-        url: `${base(config.baseUrl, 'https://uptime.betterstack.com')}/api/v2/status-pages/${enc(config.statusPageId)}/status-reports`,
+        url: `${base(config.baseUrl, 'https://incidents.betterstack.com')}/api/v2/status-pages/${enc(config.statusPageId)}/status-reports`,
         headers: { authorization: `Bearer ${config.apiToken}` },
         body: {
           title: config.incidentName ?? 'Service disruption',
@@ -274,7 +275,7 @@ export const statusPageRequests = {
     ): HttpRequest {
       return {
         method: 'POST',
-        url: `${base(config.baseUrl, 'https://uptime.betterstack.com')}/api/v2/status-pages/${enc(config.statusPageId)}/status-reports/${enc(reportId)}/status-updates`,
+        url: `${base(config.baseUrl, 'https://incidents.betterstack.com')}/api/v2/status-pages/${enc(config.statusPageId)}/status-reports/${enc(reportId)}/status-updates`,
         headers: { authorization: `Bearer ${config.apiToken}` },
         body: {
           message,
@@ -354,9 +355,14 @@ export class StatusPageSync {
 
   start(): void {
     if (this.timer !== null || this.pages.length === 0) return;
-    void this.tick();
+    const run = () => {
+      this.tick().catch((error: unknown) =>
+        this.logger(`Telescope status page sync failed: ${String(error)}`),
+      );
+    };
+    run();
     const period = this.pages.reduce((min, page) => Math.min(min, page.everyMs), 60_000);
-    this.timer = setInterval(() => void this.tick(), Math.min(period, 15_000));
+    this.timer = setInterval(run, Math.min(period, 15_000));
     this.timer.unref?.();
   }
 
@@ -376,9 +382,11 @@ export class StatusPageSync {
       const states = await readStates(this.deps.source, this.logger);
       if (states === null) return; // unknown health: leave the pages as they are
       for (const page of due) {
-        page.lastAt = nowMs;
         try {
           await this.syncPage(page, states, nowMs);
+          // Stamped only on success: a failed sync is retried on the next timer
+          // tick (at most 15s later), not a full `every` later.
+          page.lastAt = nowMs;
           this.failing.delete(page.label);
         } catch (error: unknown) {
           if (!this.failing.has(page.label)) {

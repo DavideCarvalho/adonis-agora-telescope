@@ -39,11 +39,11 @@ describe('heartbeat provider URLs', () => {
   it('Better Stack: GET ping, POST /fail', () => {
     const r = heartbeatRequests(
       'betterstack',
-      'https://uptime.betterstack.com/api/v1/heartbeat/T',
+      'https://incidents.betterstack.com/api/v1/heartbeat/T',
       'x',
     );
     expect(r.ok).toMatchObject({ method: 'GET' });
-    expect(r.fail?.url).toBe('https://uptime.betterstack.com/api/v1/heartbeat/T/fail');
+    expect(r.fail?.url).toBe('https://incidents.betterstack.com/api/v1/heartbeat/T/fail');
   });
 
   it('Cronitor: state=complete|fail|run', () => {
@@ -171,6 +171,28 @@ describe('HeartbeatMonitor', () => {
       '/api/push/B': 'down',
       '/api/push/C': 'down',
     });
+  });
+
+  it("a malformed URL is that target's error: tick() resolves and the others still ping", async () => {
+    const { fetch, calls } = mockFetch();
+    const logs: string[] = [];
+    const monitor = new HeartbeatMonitor({
+      heartbeats: [
+        { provider: 'cronitor', url: 'not a url', name: 'bad', signalStart: true },
+        { provider: 'uptime-kuma', apps: { a: '::nope::' }, name: 'kuma' },
+        { provider: 'healthchecks', url: 'https://hc-ping.com/good', name: 'good' },
+      ],
+      source: () => [],
+      fetch,
+      logger: (m) => logs.push(m),
+    });
+    await expect(monitor.tick(0)).resolves.toEqual({ bad: 'error', 'kuma:a': 'error', good: 'ok' });
+    expect(calls.map((c) => c.url)).toEqual(['https://hc-ping.com/good']);
+    expect(logs).toEqual([
+      "Telescope heartbeat 'bad' failed: invalid ping URL",
+      "Telescope heartbeat 'kuma:a' failed: invalid ping URL",
+    ]);
+    expect(logs.join()).not.toContain('not a url');
   });
 
   it('`checks` limits which checks count', async () => {
@@ -320,7 +342,7 @@ describe('StatusPageSync', () => {
     await sync.tick();
     expect(calls[0]).toMatchObject({
       method: 'PUT',
-      url: 'https://api.instatus.com/v1/P/components/cmp',
+      url: 'https://api.instatus.com/v2/P/components/cmp',
     });
     expect(calls[0]?.json).toEqual({ status: 'MAJOROUTAGE' });
     expect(calls[1]?.url).toBe('https://api.instatus.com/v1/P/incidents');
@@ -361,7 +383,7 @@ describe('StatusPageSync', () => {
     states = [down('redis')];
     await sync.tick();
     expect(calls[0]?.url).toBe(
-      'https://uptime.betterstack.com/api/v2/status-pages/SP/status-reports',
+      'https://incidents.betterstack.com/api/v2/status-pages/SP/status-reports',
     );
     expect(calls[0]?.json).toMatchObject({
       report_type: 'manual',
@@ -376,11 +398,39 @@ describe('StatusPageSync', () => {
     states = [up('redis')];
     await sync.tick();
     expect(calls[1]?.url).toBe(
-      'https://uptime.betterstack.com/api/v2/status-pages/SP/status-reports/55/status-updates',
+      'https://incidents.betterstack.com/api/v2/status-pages/SP/status-reports/55/status-updates',
     );
     expect(calls[1]?.json).toMatchObject({
       affected_resources: [{ status_page_resource_id: '777', status: 'resolved' }],
     });
+  });
+
+  it('a failed sync retries on the next timer tick, a successful one waits a full `every`', async () => {
+    const { fetch, calls } = mockFetch([{ status: 500 }, { status: 200 }]);
+    let now = 0;
+    const sync = new StatusPageSync({
+      statusPages: [
+        {
+          provider: 'statuspage',
+          apiKey: 'K',
+          pageId: 'P',
+          components: { redis: 'c' },
+          every: '60s',
+        },
+      ],
+      source: () => [down('redis')],
+      fetch,
+      retries: 0,
+      now: () => now,
+      logger: () => {},
+    });
+    await sync.tick(); // 500
+    now = 15_000; // next timer tick, well before `every`
+    await sync.tick(); // retried → 200
+    expect(calls).toHaveLength(2);
+    now = 30_000;
+    await sync.tick(); // synced 15s ago: not due
+    expect(calls).toHaveLength(2);
   });
 
   it('leaves pages alone when health is unknown, and retries a failed update next tick', async () => {

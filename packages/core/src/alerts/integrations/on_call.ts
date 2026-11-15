@@ -178,6 +178,9 @@ export function opsgenieChannel(options: OpsgenieOptions): AlertChannel {
 // Better Stack — Uptime incidents API
 // ---------------------------------------------------------------------------
 
+/** Better Stack's API host (Uptime incidents, heartbeats, status pages). */
+export const BETTER_STACK_API = 'https://incidents.betterstack.com';
+
 export interface BetterStackIncidentOptions extends OnCallOptions {
   /** Better Stack Uptime API token. */
   apiToken: string;
@@ -185,7 +188,7 @@ export interface BetterStackIncidentOptions extends OnCallOptions {
   requesterEmail: string;
   /** Escalate to this team. */
   teamName?: string;
-  /** API base. Default `https://uptime.betterstack.com`. */
+  /** API base. Default `https://incidents.betterstack.com` (Uptime API v3). */
   baseUrl?: string;
   /**
    * Which notification methods to use. Default: email + push always, call + SMS
@@ -236,7 +239,7 @@ function readIncidentId(json: unknown): string | null {
  * memory is per process: after a restart, an open incident is resolved by hand.
  */
 export function betterStackIncidentChannel(options: BetterStackIncidentOptions): AlertChannel {
-  const base = (options.baseUrl ?? 'https://uptime.betterstack.com').replace(/\/+$/, '');
+  const base = (options.baseUrl ?? BETTER_STACK_API).replace(/\/+$/, '');
   const headers = { authorization: `Bearer ${options.apiToken}` };
   const maxOpen = options.maxOpen ?? 1000;
   const open = new Map<string, string>();
@@ -248,7 +251,7 @@ export function betterStackIncidentChannel(options: BetterStackIncidentOptions):
       if (id === undefined) return;
       await deliver(
         {
-          url: `${base}/api/v2/incidents/${encodeURIComponent(id)}/resolve`,
+          url: `${base}/api/v3/incidents/${encodeURIComponent(id)}/resolve`,
           headers,
           body: { resolved_by: 'Telescope' },
         },
@@ -261,7 +264,7 @@ export function betterStackIncidentChannel(options: BetterStackIncidentOptions):
     pending.add(key);
     try {
       const result = await deliver(
-        { url: `${base}/api/v2/incidents`, headers, body: betterStackIncident(alert, options) },
+        { url: `${base}/api/v3/incidents`, headers, body: betterStackIncident(alert, options) },
         options,
       );
       const id = readIncidentId(result.json);
@@ -323,7 +326,12 @@ export interface GrafanaOnCallOptions extends OnCallOptions {
   url: string;
 }
 
-/** The formatted-webhook body for an alert. */
+/**
+ * The formatted-webhook body for an alert: exactly the fields Grafana OnCall's
+ * Formatted Webhook reads (`alert_uid`, `title`, `state`, `message`,
+ * `link_to_upstream_details`). It has no severity field, so the severity is in
+ * the title (`[critical] …`); route on it with the integration's templates.
+ */
 export function grafanaOnCallEvent(alert: AlertPayload): Record<string, unknown> {
   const link = linkOf(alert);
   return {
@@ -332,7 +340,6 @@ export function grafanaOnCallEvent(alert: AlertPayload): Record<string, unknown>
     state: statusOf(alert) === 'resolved' ? 'ok' : 'alerting',
     message: summaryLines(alert).join('\n'),
     ...(link !== null ? { link_to_upstream_details: link } : {}),
-    severity: severityOf(alert),
   };
 }
 

@@ -1,6 +1,7 @@
 import type { AlertChannel } from '../alert_channel.js';
 import type { AlertPayload } from '../alert_rule.js';
 import { plainText } from './chat.js';
+import { escapeHtml } from './html.js';
 import { type ChannelRouting, clip, linkOf, titleOf } from './incident.js';
 
 /**
@@ -43,14 +44,6 @@ async function loadMail(): Promise<MailerLike> {
   } catch {
     throw new Error('the email channel needs @adonisjs/mail installed and configured');
   }
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 /** The subject, text and HTML bodies for an alert email. */

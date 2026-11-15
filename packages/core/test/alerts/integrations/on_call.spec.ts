@@ -139,7 +139,7 @@ describe('betterStackIncidentChannel', () => {
     await channel.send({ ...critical, status: 'resolved' });
 
     expect(calls).toHaveLength(2);
-    expect(calls[0]?.url).toBe('https://uptime.betterstack.com/api/v2/incidents');
+    expect(calls[0]?.url).toBe('https://incidents.betterstack.com/api/v3/incidents');
     expect(calls[0]?.headers.authorization).toBe('Bearer BST');
     expect(calls[0]?.json).toMatchObject({
       requester_email: 'ops@example.com',
@@ -147,7 +147,7 @@ describe('betterStackIncidentChannel', () => {
       sms: true,
       email: true,
     });
-    expect(calls[1]?.url).toBe('https://uptime.betterstack.com/api/v2/incidents/987/resolve');
+    expect(calls[1]?.url).toBe('https://incidents.betterstack.com/api/v3/incidents/987/resolve');
   });
 
   it('skips a resolve it has no incident for', async () => {
@@ -189,6 +189,15 @@ describe('grafanaOnCallChannel', () => {
     expect(a?.state).toBe('alerting');
     expect(b?.state).toBe('ok');
     expect(a?.alert_uid).toBe(b?.alert_uid);
+    // Only the fields the Formatted Webhook reads; severity rides in the title.
+    expect(Object.keys(a ?? {}).sort()).toEqual([
+      'alert_uid',
+      'link_to_upstream_details',
+      'message',
+      'state',
+      'title',
+    ]);
+    expect(a?.title).toMatch(/^\[warning\] /);
   });
 });
 

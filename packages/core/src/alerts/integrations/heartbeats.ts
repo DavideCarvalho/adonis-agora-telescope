@@ -88,7 +88,7 @@ export function heartbeatRequests(
         start: { method: 'POST', url: withSuffix(url, 'start'), body: 'telescope started' },
       };
     case 'betterstack':
-      // https://uptime.betterstack.com/api/v1/heartbeat/<token>
+      // https://incidents.betterstack.com/api/v1/heartbeat/<token>
       return {
         ok: { method: 'GET', url },
         fail: { method: 'POST', url: withSuffix(url, 'fail'), body: message },
@@ -181,8 +181,13 @@ export class HeartbeatMonitor {
 
   start(): void {
     if (this.timer !== null || this.targets.length === 0) return;
-    void this.tick();
-    this.timer = setInterval(() => void this.tick(), Math.min(this.periodMs, 15_000));
+    const run = () => {
+      this.tick().catch((error: unknown) =>
+        this.logger(`Telescope heartbeat tick failed: ${String(error)}`),
+      );
+    };
+    run();
+    this.timer = setInterval(run, Math.min(this.periodMs, 15_000));
     this.timer.unref?.();
   }
 
@@ -222,9 +227,14 @@ export class HeartbeatMonitor {
       this.targets
         .filter((target) => target.config.signalStart === true)
         .map(async (target) => {
-          const start = heartbeatRequests(target.config.provider, target.url, '').start;
-          if (start === null) return;
           try {
+            let start: HttpRequest | null;
+            try {
+              start = heartbeatRequests(target.config.provider, target.url, '').start;
+            } catch {
+              throw new Error('invalid ping URL');
+            }
+            if (start === null) return;
             await deliver(start, { ...this.deps, retries: 1 });
           } catch (error: unknown) {
             this.warn(target, error);
@@ -256,7 +266,15 @@ export class HeartbeatMonitor {
         : relevant.length === 0
           ? `${target.app ?? 'app'} is not reporting`
           : describeProblems(relevant);
-    const requests = heartbeatRequests(config.provider, target.url, message, config.failUrl);
+    // Building the requests parses the URL (Cronitor, Uptime Kuma): a malformed
+    // one is this target's error, never a rejected tick.
+    let requests: HeartbeatRequests;
+    try {
+      requests = heartbeatRequests(config.provider, target.url, message, config.failUrl);
+    } catch {
+      this.warn(target, new Error('invalid ping URL'));
+      return 'error';
+    }
     let request: HttpRequest | null;
     let outcome: HeartbeatOutcome;
     if (healthy) {

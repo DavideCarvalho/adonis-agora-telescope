@@ -344,13 +344,20 @@ function resolveHeartbeats(
     const label = heartbeat.name ?? heartbeat.provider;
     const apps: Record<string, string> = {};
     for (const [app, appUrl] of Object.entries(heartbeat.apps ?? {})) {
-      if (typeof appUrl === 'string' && !isMissing(appUrl)) apps[app] = appUrl;
-      else warn(`Telescope heartbeat '${label}' skips app '${app}': missing url`);
+      if (typeof appUrl !== 'string' || isMissing(appUrl)) {
+        warn(`Telescope heartbeat '${label}' skips app '${app}': missing url`);
+      } else if (!URL.canParse(appUrl)) {
+        warn(`Telescope heartbeat '${label}' skips app '${app}': invalid url`);
+      } else apps[app] = appUrl;
     }
-    const url =
+    let url =
       typeof heartbeat.url === 'string' && !isMissing(heartbeat.url) ? heartbeat.url : undefined;
+    if (url !== undefined && !URL.canParse(url)) {
+      warn(`Telescope heartbeat '${label}' ignores its url: invalid url`);
+      url = undefined;
+    }
     if (url === undefined && Object.keys(apps).length === 0) {
-      warn(`Telescope heartbeat '${label}' is disabled: missing url`);
+      warn(`Telescope heartbeat '${label}' is disabled: missing or invalid url`);
       continue;
     }
     const { url: _url, apps: _apps, ...rest } = heartbeat;
