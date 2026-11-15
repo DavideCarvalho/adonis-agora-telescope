@@ -102,19 +102,34 @@ export class DiscoveryPublisher {
 
   /**
    * The map for `environment`: at once when its version is not `since`, else when it changes, or
-   * after `waitMs` (the same version again).
+   * after `waitMs` (the same version again). `signal` aborts the wait (the caller hung up).
    */
   async wait(
     environment: string | null,
     since: string | null,
     waitMs: number,
+    signal?: AbortSignal,
   ): Promise<DiscoveryMap> {
     const map = await this.current(environment);
-    if (since === null || map.version !== since || waitMs <= 0) return map;
+    if (since === null || map.version !== since || waitMs <= 0 || signal?.aborted) return map;
     return new Promise<DiscoveryMap>((resolve) => {
-      this.waiters.add({ environment, since, deadline: this.now() + waitMs, resolve });
+      const waiter: Waiter = { environment, since, deadline: this.now() + waitMs, resolve };
+      this.waiters.add(waiter);
+      // The caller hung up: stop holding (and re-checking) its request.
+      signal?.addEventListener(
+        'abort',
+        () => {
+          if (this.waiters.delete(waiter)) resolve(map);
+        },
+        { once: true },
+      );
       this.ensureTimer();
     });
+  }
+
+  /** Callers being held right now. */
+  get pending(): number {
+    return this.waiters.size;
   }
 
   /** Re-check the waiting callers now (a heartbeat arrived). */

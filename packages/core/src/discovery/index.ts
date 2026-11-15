@@ -1,6 +1,6 @@
 import { type ResolvedTopology, serverPrefix } from '../topology/config.js';
 import { DiscoveryClient } from './client.js';
-import type { ResolvedDiscoveryConfig } from './config.js';
+import { defaultSnapshotPath, type ResolvedDiscoveryConfig } from './config.js';
 import { publishDirectory, ServiceDirectory } from './directory.js';
 import { installFetchRewrite, installNodeHttpRewrite } from './rewrite.js';
 
@@ -52,7 +52,7 @@ export async function startDiscovery(options: {
   const prefix = tenantPrefix(config, topology);
   if (Object.keys(config.apps).length === 0 && prefix === null) return null;
 
-  const directory = new ServiceDirectory(config.apps);
+  const directory = new ServiceDirectory(config.apps, { failFast: config.failFast });
   const client =
     prefix !== null && topology.topology === 'tenant'
       ? new DiscoveryClient({
@@ -60,7 +60,7 @@ export async function startDiscovery(options: {
           token: topology.tenant.token,
           partition: topology.tenant.partition,
           directory,
-          snapshotPath: config.snapshotPath,
+          snapshotPath: config.snapshotPath ?? defaultSnapshotPath(topology.tenant.partition),
           ...(options.onError !== undefined ? { onError: options.onError } : {}),
         })
       : null;

@@ -28,7 +28,11 @@ export interface DiscoveryMap {
  * call goes to, without depending on telescope.
  */
 export interface DiscoveryContract {
-  /** The base URL of app `name` (case-insensitive), or `undefined` when it is not resolvable. */
+  /**
+   * The base URL a call to app `name` (case-insensitive) goes to, exactly as the rewrite sends it,
+   * or `undefined` when such a call would fail (an unknown app; with `failFast`, one with no live
+   * instance).
+   */
   resolve(name: string): string | undefined;
   /** The app an origin (`https://billing.internal`) belongs to, or `undefined`. */
   appOf(origin: string): string | undefined;
@@ -60,7 +64,15 @@ export class ServiceDirectory implements DiscoveryContract {
   private registryVersion: string | null = null;
   private byOrigin = new Map<string, string>();
 
-  constructor(private readonly staticApps: Record<string, string> = {}) {
+  /**
+   * @param staticApps the `discovery` map of `config/telescope.ts` (lowercase names).
+   * @param options.failFast whether an app with no live instance resolves to nothing (else to
+   * the last URL its instances sent), the same rule the rewrite applies.
+   */
+  constructor(
+    private readonly staticApps: Record<string, string> = {},
+    private readonly options: { failFast?: boolean } = {},
+  ) {
     this.reindex();
   }
 
@@ -82,8 +94,9 @@ export class ServiceDirectory implements DiscoveryContract {
   }
 
   /**
-   * Replace the central server's map. A name that disappeared keeps its last URL as `down`, so a
-   * call to it still has somewhere to go (unless `failFast`).
+   * Replace the central server's map with `map`, as is. The server itself keeps an app whose
+   * instances are all gone (`live: 0`, with its last URL) for the fleet's retention, then drops it;
+   * the directory mirrors that rather than keeping names of its own.
    */
   update(map: DiscoveryMap): void {
     if (map.version === this.registryVersion) return;
@@ -92,9 +105,6 @@ export class ServiceDirectory implements DiscoveryContract {
       if (app !== null && typeof app === 'object' && typeof app.url === 'string') {
         next[name.toLowerCase()] = { url: app.url, live: Math.max(0, Number(app.live) || 0) };
       }
-    }
-    for (const [name, previous] of Object.entries(this.registry)) {
-      if (!(name in next)) next[name] = { url: previous.url, live: 0 };
     }
     this.registry = next;
     this.registryVersion = map.version;
@@ -118,9 +128,15 @@ export class ServiceDirectory implements DiscoveryContract {
     return app.live > 0 ? { kind: 'url', url: app.url } : { kind: 'down', url: app.url };
   }
 
+  /**
+   * Where a call to `name` goes: the same answer the rewrite gives. An app with no live instance
+   * resolves to its last URL, or to nothing with `failFast`.
+   */
   resolve(name: string): string | undefined {
     const found = this.lookup(name);
-    return found.kind === 'url' ? found.url : undefined;
+    if (found.kind === 'url') return found.url;
+    if (found.kind === 'down' && this.options.failFast !== true) return found.url;
+    return undefined;
   }
 
   appOf(origin: string): string | undefined {

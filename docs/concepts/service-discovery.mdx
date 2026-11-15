@@ -41,8 +41,8 @@ and hear about changes as they happen: a new deploy at another URL, the last ins
   can be written as a host.
 
 <Callout type="info" title="When the central server is down">
-Each app keeps the last map in memory and in a file (`discovery.snapshotPath`, by default in the
-OS temp directory). Calls keep resolving while the server is unreachable, and after a restart.
+Each app keeps the last map in memory and in a file (`discovery.snapshotPath`, by default
+`telescope-discovery-<app>.json` in the OS temp directory). Calls keep resolving while the server is unreachable, and after a restart.
 </Callout>
 
 A tenant whose `transport` is a broker (queue, BullMQ, Redis, durable) reads the map over HTTP. Give
@@ -83,7 +83,7 @@ Only hosts that are a single name: `http://billing/…`, `https://search/…`.
 | Option | Default | What it does |
 | --- | --- | --- |
 | `<app>: '<url>'` | | An app and its URL. Wins over the central server's map. |
-| `snapshotPath` | OS temp dir | Where a tenant saves the last map. |
+| `snapshotPath` | `<tmp>/telescope-discovery-<app>.json` | Where a tenant saves the last map. A snapshot written for another app or server is ignored. |
 | `failFast` | `false` | Fail a call to an app with no live instance, instead of using its last URL. |
 | `nodeHttp` | `false` | Also resolve names in `http.request` / `https.request` (axios, got). `fetch` is always covered. |
 | `passthrough` | `[]` | Single names that are hosts, not apps. |

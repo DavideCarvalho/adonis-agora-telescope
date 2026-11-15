@@ -23,10 +23,15 @@ export interface DiscoveryClientOptions {
   onError?: (message: string) => void;
 }
 
-/** A saved snapshot, or `null` when there is none (or it is unreadable). */
-export function readSnapshot(path: string): DiscoveryMap | null {
+/**
+ * A saved snapshot, or `null` when there is none, it is unreadable, or it was written for another
+ * scope (another app or server sharing the path).
+ */
+export function readSnapshot(path: string, scope?: string): DiscoveryMap | null {
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<DiscoveryMap>;
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<DiscoveryMap> & {
+      scope?: unknown;
+    };
     if (
       typeof parsed.version !== 'string' ||
       parsed.apps === null ||
@@ -34,17 +39,23 @@ export function readSnapshot(path: string): DiscoveryMap | null {
     ) {
       return null;
     }
+    if (scope !== undefined && parsed.scope !== scope) return null;
     return { version: parsed.version, apps: parsed.apps };
   } catch {
     return null;
   }
 }
 
-/** Save `map` atomically (a temp file renamed over the old one). */
-export async function writeSnapshot(path: string, map: DiscoveryMap): Promise<void> {
+/** Save `map` atomically (a temp file renamed over the old one), stamped with its scope. */
+export async function writeSnapshot(
+  path: string,
+  map: DiscoveryMap,
+  scope?: string,
+): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const temp = `${path}.${process.pid}.tmp`;
-  await writeFile(temp, JSON.stringify({ ...map, savedAt: new Date().toISOString() }));
+  const stamped = { ...map, ...(scope !== undefined ? { scope } : {}) };
+  await writeFile(temp, JSON.stringify({ ...stamped, savedAt: new Date().toISOString() }));
   await rename(temp, path);
 }
 
@@ -59,15 +70,19 @@ export class DiscoveryClient {
   private loop: Promise<void> | null = null;
   private readonly fetchImpl: typeof fetch;
 
+  /** Who the snapshot belongs to: this server and this app (whose token decides the scope). */
+  private readonly scope: string;
+
   constructor(private readonly options: DiscoveryClientOptions) {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
+    this.scope = `${options.prefix}#${options.partition}`;
   }
 
   /** Load the snapshot (synchronously, before the first request), then start polling. */
   start(): void {
     if (!this.stopped) return;
     this.stopped = false;
-    const saved = readSnapshot(this.options.snapshotPath);
+    const saved = readSnapshot(this.options.snapshotPath, this.scope);
     if (saved !== null) this.options.directory.update(saved);
     this.loop = this.run();
   }
@@ -110,7 +125,7 @@ export class DiscoveryClient {
       const map: DiscoveryMap = { version: body.version, apps: body.apps };
       if (map.version !== directory.version) {
         directory.update(map);
-        await writeSnapshot(this.options.snapshotPath, map).catch((error: unknown) =>
+        await writeSnapshot(this.options.snapshotPath, map, this.scope).catch((error: unknown) =>
           this.options.onError?.(
             `could not save the discovery snapshot: ${error instanceof Error ? error.message : String(error)}`,
           ),

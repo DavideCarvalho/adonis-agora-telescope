@@ -4,8 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DiscoveryClient, readSnapshot } from '../../src/discovery/client.js';
-import { resolveDiscovery } from '../../src/discovery/config.js';
+import { DiscoveryClient, readSnapshot, writeSnapshot } from '../../src/discovery/client.js';
+import { defaultSnapshotPath, resolveDiscovery } from '../../src/discovery/config.js';
 import {
   DISCOVERY_SLOT,
   type DiscoveryContract,
@@ -181,6 +181,15 @@ describe('fetch and http.request by app name (standalone, static map)', () => {
         .on('error', reject);
     });
     expect(body.path).toBe('/v1/reports?y=1');
+  });
+
+  it('an unknown app name in http.get is an error event, not a throw, and never hits DNS', async () => {
+    const error = await new Promise<unknown>((resolve) => {
+      const req = http.get('http://nope/x');
+      req.on('error', resolve);
+    });
+    expect(error).toBeInstanceOf(DiscoveryError);
+    expect((error as Error).message).toMatch(/app nope is not registered/);
   });
 
   it('publishes the contract other libraries read', () => {
@@ -447,5 +456,55 @@ describe('telescope’s own calls', () => {
     } finally {
       await discovery?.stop();
     }
+  });
+});
+
+describe('review follow-ups', () => {
+  it('mirrors the server map: a name the server dropped no longer resolves', () => {
+    const directory = new ServiceDirectory();
+    directory.update({ version: '1', apps: { billing: { url: 'https://b.internal', live: 1 } } });
+    directory.update({ version: '2', apps: {} });
+    expect(directory.lookup('billing')).toEqual({ kind: 'unknown' });
+  });
+
+  it('resolve() answers where the call goes, down apps included unless failFast', () => {
+    const map = { version: '1', apps: { mailer: { url: 'https://m.internal', live: 0 } } };
+    const lenient = new ServiceDirectory();
+    lenient.update(map);
+    expect(lenient.resolve('mailer')).toBe('https://m.internal');
+    const strict = new ServiceDirectory({}, { failFast: true });
+    strict.update(map);
+    expect(strict.resolve('mailer')).toBeUndefined();
+  });
+
+  it('a snapshot is read back only by the scope that wrote it, and each app has its own file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'telescope-snapshot-'));
+    try {
+      const path = join(dir, 'shared.json');
+      await writeSnapshot(path, { version: 'v', apps: {} }, 'https://cp/_telescope/v1#shop');
+      expect(readSnapshot(path, 'https://cp/_telescope/v1#billing')).toBeNull();
+      expect(readSnapshot(path, 'https://cp/_telescope/v1#shop')?.version).toBe('v');
+      expect(defaultSnapshotPath('shop')).not.toBe(defaultSnapshotPath('billing'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a held poll is dropped when the caller hangs up', async () => {
+    const fleet = new FleetRegistry(new MemoryFleetStore());
+    const publisher = new DiscoveryPublisher({
+      instances: () => fleet.instances(),
+      goneAfterIntervals: 3,
+      tickMs: 10_000,
+    });
+    const { version } = await publisher.current(null);
+    const hangUp = new AbortController();
+    const held = publisher.wait(null, version, 30_000, hangUp.signal);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(publisher.pending).toBe(1);
+    hangUp.abort();
+    expect((await held).version).toBe(version);
+    expect(publisher.pending).toBe(0);
+    await publisher.close();
   });
 });

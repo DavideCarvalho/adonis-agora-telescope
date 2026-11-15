@@ -204,6 +204,21 @@ function requestUrl(protocol: string, args: unknown[]): { url: URL; rest: unknow
   return null;
 }
 
+/** `http.request` arguments whose host lookup fails with `error` (an `error` event, no DNS). */
+function withLookupError(args: unknown[], error: unknown): unknown[] {
+  const lookup = (_host: string, _options: unknown, callback: (error: unknown) => void) => {
+    process.nextTick(() => callback(error));
+  };
+  const [first, ...rest] = args;
+  if (typeof first === 'string' || first instanceof URL) {
+    const hasOptions = rest[0] !== null && typeof rest[0] === 'object';
+    return hasOptions
+      ? [first, { ...(rest[0] as object), lookup }, ...rest.slice(1)]
+      : [first, { lookup }, ...rest];
+  }
+  return [{ ...(first as object), lookup }, ...rest];
+}
+
 /** Patch `http.request/get` and `https.request/get` to resolve app names. Returns the unpatch. */
 export function installNodeHttpRewrite(
   directory: ServiceDirectory,
@@ -231,7 +246,14 @@ export function installNodeHttpRewrite(
       };
       if (isTelescopeWork()) return call(protocol, args);
       const parsed = requestUrl(protocol, args);
-      const target = parsed === null ? null : rewriteTarget(directory, options, parsed.url);
+      let target: RewriteTarget | null;
+      try {
+        target = parsed === null ? null : rewriteTarget(directory, options, parsed.url);
+      } catch (error) {
+        // Fail the way Node's http fails: an `error` event on the returned request, not a throw.
+        // The lookup fails with the discovery error, so the bogus name never reaches DNS.
+        return call(protocol, withLookupError(args, error));
+      }
       if (parsed === null || target === null) return call(protocol, args);
       const to = new URL(target.origin);
       const proto = to.protocol as 'http:' | 'https:';

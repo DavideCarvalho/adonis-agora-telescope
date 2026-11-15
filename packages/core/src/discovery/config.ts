@@ -20,7 +20,8 @@ export interface DiscoveryConfig {
   enabled?: boolean;
   /**
    * Where a tenant keeps the last map the central server sent, so calls keep resolving while the
-   * server is down or the app restarts without it. Default a file in the OS temp directory.
+   * server is down or the app restarts without it. Default `telescope-discovery-<app>.json` in the
+   * OS temp directory. A snapshot written for another app or server is never read.
    */
   snapshotPath?: string;
   /**
@@ -59,7 +60,8 @@ export interface ResolvedDiscoveryConfig {
   enabled: boolean;
   /** The static map: lowercase app name → base URL. */
   apps: Record<string, string>;
-  snapshotPath: string;
+  /** `null`: the default, a file per app in the OS temp directory. */
+  snapshotPath: string | null;
   failFast: boolean;
   nodeHttp: boolean;
   passthrough: Set<string>;
@@ -68,6 +70,11 @@ export interface ResolvedDiscoveryConfig {
 
 const PREFIX = '[@adonis-agora/telescope]';
 const NAME_RE = /^[A-Za-z0-9_-]{1,63}$/;
+
+/** The default snapshot file of app `partition`. */
+export function defaultSnapshotPath(partition: string): string {
+  return join(tmpdir(), `telescope-discovery-${partition.replace(/[^A-Za-z0-9_.-]/g, '_')}.json`);
+}
 
 /** Resolve `discovery`. Throws on a malformed app URL or name. */
 export function resolveDiscovery(
@@ -100,9 +107,7 @@ export function resolveDiscovery(
     enabled: raw.enabled !== false,
     apps,
     snapshotPath:
-      typeof raw.snapshotPath === 'string' && raw.snapshotPath !== ''
-        ? raw.snapshotPath
-        : join(tmpdir(), 'telescope-discovery.json'),
+      typeof raw.snapshotPath === 'string' && raw.snapshotPath !== '' ? raw.snapshotPath : null,
     failFast: raw.failFast === true,
     nodeHttp: raw.nodeHttp === true,
     passthrough: new Set(['localhost', ...passthrough.map((h) => h.toLowerCase())]),

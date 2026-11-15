@@ -73,7 +73,16 @@ export function registerIngestRoutes(
         const qs = ctx.request.qs() as Record<string, unknown>;
         const since = typeof qs.since === 'string' && qs.since !== '' ? qs.since : null;
         const wait = Math.min(MAX_DISCOVERY_WAIT_S, Math.max(0, Number(qs.wait) || 0));
-        const map = await discovery.wait(caller.environment ?? null, since, wait * 1000);
+        // Abandon the held request when the tenant disconnects first.
+        const hangUp = new AbortController();
+        const raw = (ctx.response as unknown as { response?: NodeJS.EventEmitter }).response;
+        raw?.once?.('close', () => hangUp.abort());
+        const map = await discovery.wait(
+          caller.environment ?? null,
+          since,
+          wait * 1000,
+          hangUp.signal,
+        );
         return send(ctx, { status: 200, body: { ...map } });
       })
       .as('telescope.discovery');
