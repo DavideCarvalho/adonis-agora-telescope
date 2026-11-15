@@ -248,6 +248,7 @@ function SpendBars({ spend }: { spend: AiSpend }) {
       extraRows={spendExtraRows}
       ariaLabel="spend over time"
       empty="No priced calls in this window."
+      emptyWhenZero
       height={140}
     />
   );
