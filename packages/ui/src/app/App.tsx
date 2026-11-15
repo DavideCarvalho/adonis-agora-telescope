@@ -2,14 +2,12 @@ import { type CSSProperties, type ReactNode, Suspense, useEffect, useMemo } from
 import { ErrorBoundary } from '../agora-kit/blocks/error-boundary';
 import { MetricGridSkeleton } from '../agora-kit/blocks/metric-card';
 import { AppShell, type NavSection, PageBody } from '../agora-kit/shell/app-shell';
-import type { SearchCommand } from '../agora-kit/shell/console-search';
 import { readShellConfig } from '../agora-kit/shell-config';
 import { Skeleton } from '../agora-kit/ui/skeleton';
 import { CONFIG_ELEMENT_ID } from '../client/api-base.js';
 import type { DashboardSpec, ExtensionEntryType } from '../client/types.js';
 import { ENTRY_TYPES } from '../client/types.js';
 import { AppEmptyNotice, AppPicker } from './AppPicker.js';
-import { buildCommands, type CommandTarget } from './commands.js';
 import {
   AiIcon,
   ClockIcon,
@@ -138,10 +136,12 @@ function buildNav(
   dashboards: DashboardSpec[],
   watchers: { id: string; label: string; dot: string }[],
 ): NavSection[] {
-  const page = (key: SectionKey, label: string, icon: ReactNode) => ({
+  // `keywords`: more words ⌘K finds the page by (the kit lists every nav page in ⌘K).
+  const page = (key: SectionKey, label: string, icon: ReactNode, keywords: string[] = []) => ({
     id: key,
     label,
     icon,
+    keywords,
     href: formatHash({ name: key }),
     onSelect: () => go({ name: key }),
   });
@@ -149,26 +149,26 @@ function buildNav(
     {
       section: 'Monitor',
       items: [
-        page('overview', 'Overview', <OverviewIcon />),
-        page('pulse', 'Pulse', <PulseIcon />),
-        page('exceptions', 'Exceptions', <ExceptionIcon />),
+        page('overview', 'Overview', <OverviewIcon />, ['triage grid']),
+        page('pulse', 'Pulse', <PulseIcon />, ['health']),
+        page('exceptions', 'Exceptions', <ExceptionIcon />, ['errors', 'grouped by class']),
       ],
     },
     {
       section: 'Explore',
       items: [
-        page('entries', 'Entries', <EntriesIcon />),
-        page('traces', 'Traces', <TracesIcon />),
-        page('screens', 'Screens', <ScreensIcon />),
-        page('ai', 'AI', <AiIcon />),
-        page('profiles', 'Profiles', <FlameIcon />),
+        page('entries', 'Entries', <EntriesIcon />, ['live tail']),
+        page('traces', 'Traces', <TracesIcon />, ['waterfall', 'n+1']),
+        page('screens', 'Screens', <ScreensIcon />, ['routes', 'traffic']),
+        page('ai', 'AI', <AiIcon />, ['spend', 'agent runs']),
+        page('profiles', 'Profiles', <FlameIcon />, ['cpu profiles', 'flamegraphs']),
       ],
     },
     {
       section: 'Operations',
       items: [
-        page('queues', 'Queues', <QueueIcon />),
-        page('schedules', 'Schedules', <ClockIcon />),
+        page('queues', 'Queues', <QueueIcon />, ['queue manager', 'jobs']),
+        page('schedules', 'Schedules', <ClockIcon />, ['live schedules', 'cron']),
       ],
     },
     {
@@ -179,6 +179,7 @@ function buildNav(
           id: `dashboard:${d.id}`,
           label: d.label,
           icon: <DashboardIcon />,
+          keywords: ['dashboard'],
           href: formatHash(route),
           onSelect: () => go(route),
         };
@@ -193,12 +194,13 @@ function buildNav(
           id: `watcher:${w.id}`,
           label: w.label,
           icon: <Dot color={w.dot} />,
+          keywords: ['entries'],
           href: formatHash(route),
           onSelect: () => go(route),
         };
       }),
     },
-    { section: 'Data', items: [page('exports', 'Exports', <ExportIcon />)] },
+    { section: 'Data', items: [page('exports', 'Exports', <ExportIcon />, ['json', 'csv'])] },
   ];
 }
 
@@ -269,21 +271,6 @@ export function App() {
     [navigate, dashboards, watchers],
   );
 
-  // ⌘K: Telescope's own jumps (every page, every entry type, every contributed dashboard) above
-  // the cross-console search the provider announced.
-  const commands = useMemo<SearchCommand[]>(
-    () =>
-      buildCommands(dashboards).map((c) => ({
-        id: c.id,
-        label: c.label,
-        group: c.group,
-        hint: c.hint,
-        ...(c.dot ? { icon: <Dot color={c.dot} /> } : {}),
-        onSelect: () => navigate(routeFor(c.target)),
-      })),
-    [dashboards, navigate],
-  );
-
   const dashboardLabel =
     route.name === 'extensions'
       ? dashboards.find((d) => d.id === route.dashboardId)?.label
@@ -305,7 +292,6 @@ export function App() {
       activeId={activeNavId(route)}
       shell={shell}
       title={title}
-      commands={commands}
       searchPlaceholder={
         shell.search ? 'Jump to a page, or search entries, runs, users…' : 'Jump to a page…'
       }
@@ -379,11 +365,4 @@ export function App() {
       </PageBody>
     </AppShell>
   );
-}
-
-/** The route a ⌘K command lands on. */
-function routeFor(target: CommandTarget): TelescopeRoute {
-  if (target.kind === 'section') return { name: target.key };
-  if (target.kind === 'entryType') return { name: 'entries', type: target.type };
-  return { name: 'extensions', dashboardId: target.id };
 }

@@ -341,3 +341,40 @@ describe('sidebar — dashboards contribuídos', () => {
     );
   });
 });
+
+describe('⌘K', () => {
+  // jsdom has no ResizeObserver nor scrollIntoView; cmdk's list uses both.
+  beforeAll(() => {
+    Element.prototype.scrollIntoView ??= () => {};
+    globalThis.ResizeObserver ??= class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  });
+  const openSearch = async () => {
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    });
+    return screen.findByRole('combobox', { name: 'Search' });
+  };
+  const options = () => screen.queryAllByRole('option').map((o) => o.textContent ?? '');
+
+  it('lists each sidebar page once and jumps to it', async () => {
+    renderApp(fakeClient());
+    await waitFor(() => expect(window.location.hash).toBe('#/overview'));
+    const input = await openSearch();
+    expect(options().filter((o) => o.startsWith('Pulse'))).toEqual(['PulseMonitor']);
+    // Watchers are listed once something is typed, found by "entries" too.
+    expect(options().some((o) => o.startsWith('exception'))).toBe(false);
+    fireEvent.change(input, { target: { value: 'flamegraph' } });
+    expect(options()).toEqual(['ProfilesExplore']);
+    fireEvent.change(input, { target: { value: 'entries exception' } });
+    // The exact label ranks first ("client exception" matches too, below it).
+    expect(options()[0]).toBe('exceptionWatchers');
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+    expect(window.location.hash).toBe('#/entries?type=exception');
+  });
+});
