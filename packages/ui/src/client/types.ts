@@ -858,3 +858,103 @@ export interface TenantScope {
   /** The organizations the viewer may pick. */
   tenants: TenantOption[];
 }
+
+// ── fleet (`GET <base>/fleet`) ─────────────────────────────────────────────
+
+export type FleetCheckStatus = 'ok' | 'warn' | 'down' | 'unknown';
+export type FleetInstanceStatus = 'up' | 'starting' | 'draining' | 'gone';
+
+/** One health check's last state. */
+export interface FleetCheckState {
+  name: string;
+  status: FleetCheckStatus;
+  message: string | null;
+  /** Epoch ms since the check has been in this status. */
+  since: number;
+  checkedAt: number;
+  durationMs: number | null;
+  critical: boolean;
+}
+
+/** One instance of an app. */
+export interface FleetInstance {
+  app: string;
+  instanceId: string;
+  environment: string | null;
+  host: string;
+  pid: number;
+  version: string | null;
+  bootedAt: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  state: 'starting' | 'ready' | 'draining';
+  intervalMs: number;
+  checks: FleetCheckState[];
+  shipping: {
+    buffered: number;
+    dropped: number;
+    sent: number;
+    failures: number;
+    lagMs: number;
+    lastError: string | null;
+  } | null;
+  status: FleetInstanceStatus;
+  uptimeMs: number;
+  health: FleetCheckStatus;
+}
+
+export interface FleetDeploy {
+  version: string | null;
+  previous: string | null;
+  startedAt: number;
+  live: number;
+  total: number;
+  progress: number;
+  complete: boolean;
+}
+
+export interface FleetRestartLoop {
+  host: string;
+  restarts: number;
+  since: number;
+  lastBootAt: number;
+}
+
+export interface FleetRelatedException {
+  familyHash: string | null;
+  class: string;
+  message: string;
+  count: number;
+  entryId: string;
+}
+
+export interface FleetIncident {
+  name: string;
+  status: FleetCheckStatus;
+  since: number;
+  message: string | null;
+  affected: number;
+  of: number;
+  critical: boolean;
+  exceptions: FleetRelatedException[];
+}
+
+export interface FleetApp {
+  app: string;
+  counts: Record<FleetInstanceStatus, number>;
+  versions: Array<{ version: string | null; instances: number }>;
+  instances: FleetInstance[];
+  deploys: FleetDeploy[];
+  restartLoops: FleetRestartLoop[];
+  checks: FleetIncident[];
+  shipping: { buffered: number; dropped: number; maxLagMs: number } | null;
+}
+
+/** `GET <base>/fleet` payload. */
+export interface FleetView {
+  enabled: boolean;
+  notice: string | null;
+  now: number;
+  apps: FleetApp[];
+  self: { instanceId: string; state: string; checks: FleetCheckState[] } | null;
+}

@@ -16,6 +16,7 @@ import {
   ExceptionIcon,
   ExportIcon,
   FlameIcon,
+  FleetIcon,
   OverviewIcon,
   PulseIcon,
   QueueIcon,
@@ -41,6 +42,7 @@ const EntriesSection = lazySection(() => import('./EntriesSection.js'), 'Entries
 const EntryDetail = lazySection(() => import('./EntryDetail.js'), 'EntryDetail');
 const ExceptionsSection = lazySection(() => import('./ExceptionsSection.js'), 'ExceptionsSection');
 const ExportsSection = lazySection(() => import('./ExportsSection.js'), 'ExportsSection');
+const FleetSection = lazySection(() => import('./FleetSection.js'), 'FleetSection');
 const ExtensionsSection = lazySection(() => import('./ExtensionsSection.js'), 'ExtensionsSection');
 const ProfilesSection = lazySection(() => import('./ProfilesSection.js'), 'ProfilesSection');
 const PulseSection = lazySection(() => import('./PulseSection.js'), 'PulseSection');
@@ -59,6 +61,7 @@ const TracesSection = lazySection(() => import('./TracesSection.js'), 'TracesSec
 type SectionKey =
   | 'overview'
   | 'pulse'
+  | 'fleet'
   | 'entries'
   | 'traces'
   | 'screens'
@@ -73,6 +76,7 @@ type SectionKey =
 const TITLES: Record<TelescopeRoute['name'], string> = {
   overview: 'Overview',
   pulse: 'Pulse',
+  fleet: 'Fleet',
   exceptions: 'Exceptions',
   entries: 'Entries',
   entry: 'Entry',
@@ -127,7 +131,7 @@ function activeNavId(route: TelescopeRoute): string {
 }
 
 /**
- * The sidebar: MONITOR (Overview, Pulse, Exceptions) · EXPLORE (Entries, Traces, Screens, AI,
+ * The sidebar: MONITOR (Overview, Pulse, Fleet, Exceptions) · EXPLORE (Entries, Traces, Screens, AI,
  * Profiles) · OPERATIONS (Queues, Schedules) · DASHBOARDS (one item per contributed dashboard, under
  * its own name — never a generic "Extensions" entry) · WATCHERS (a collapsible dot list) · DATA.
  */
@@ -151,6 +155,12 @@ function buildNav(
       items: [
         page('overview', 'Overview', <OverviewIcon />, ['triage grid']),
         page('pulse', 'Pulse', <PulseIcon />, ['health']),
+        page('fleet', 'Fleet', <FleetIcon />, [
+          'instances',
+          'deploys',
+          'health checks',
+          'restart loop',
+        ]),
         page('exceptions', 'Exceptions', <ExceptionIcon />, ['errors', 'grouped by class']),
       ],
     },
@@ -330,6 +340,8 @@ export function App() {
               />
             ) : route.name === 'pulse' ? (
               <PulseSection onOpenTrace={openTrace} />
+            ) : route.name === 'fleet' ? (
+              <FleetSection onOpenEntry={openEntry} />
             ) : route.name === 'entries' ? (
               <EntriesSection
                 key={route.type ?? 'default'}
