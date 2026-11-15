@@ -61,6 +61,10 @@ In CI, fail the build on anything the doctor flags:
 | `telescope.client-errors-csrf` | with client error ingestion on, shield's CSRF lets `POST /telescope/client-errors` through (`csrf.exceptRoutes`) | warn |
 | `telescope.otel` | OpenTelemetry SDK packages are all on one line (stable `N.x` and experimental `0.Nxx` are the same line, so `core@3.1.1` and `sdk-node@0.301.1` are both SDK 3; `@adonisjs/otel` 2 uses SDK 3); one copy of `@opentelemetry/api` | error / warn |
 | `telescope.retention` | a database store has `prune` set in production | warn |
+| `telescope.topology` | `topology`, `verifyTenant` and `tenant` in `config/telescope.ts` are valid; where entries go or come in | error |
+| `telescope.topology-store` | control plane: Telescope runs here, so received entries are stored. Tenant: Telescope runs, so entries are sent | error / warn |
+| `telescope.ingest-csrf` | control plane: shield's CSRF lets `POST /_telescope/v1/ingest` through | error |
+| `telescope.server-reachable` | tenant, with `--deep`: the [central server](/docs/telescope/concepts/central-server) accepts this app's token | error / warn |
 | `telescope.peers` | every peer dependency is installed and in range | error |
 | `telescope.agora-siblings` | the other `@adonis-agora` libs are on the same release line | warn |
 

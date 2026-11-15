@@ -16,6 +16,11 @@ import {
   resolveTenancy,
   type TelescopeTenancyConfig,
 } from './tenancy.js';
+import {
+  type ResolvedTopology,
+  resolveTopology,
+  type TelescopeTopologyConfig,
+} from './topology/config.js';
 import type { LogLevel, LogsWatcherOptions } from './watchers/logs_watcher.js';
 
 /** Default retention age for the pruner when `prune.after` is omitted. */
@@ -77,7 +82,7 @@ export type WatcherName = 'request' | 'diagnostics' | 'logs';
  * The shape of `config/telescope.ts`. Everything is optional with sane defaults:
  * the in-memory store, both shipped watchers enabled, a 1000-entry cap.
  */
-export interface TelescopeConfig {
+export interface TelescopeConfig extends TelescopeTopologyConfig {
   /**
    * Master switch. When `false`, the provider records nothing and both watchers
    * stay dormant (zero overhead). Default `true`.
@@ -389,6 +394,11 @@ export interface StreamConfig {
 /** The fully-resolved config the provider acts on (no optionals). */
 export interface ResolvedTelescopeConfig {
   enabled: boolean;
+  /**
+   * Where this telescope sits: `standalone` (default), a `control-plane` receiving other apps'
+   * entries, or a `tenant` sending its entries to one.
+   */
+  topology: ResolvedTopology;
   store: string | TelescopeStore;
   stores: Record<string, StoreProvider>;
   maxEntries: number;
@@ -472,6 +482,8 @@ export interface ResolvedOtelConfig {
  * ```
  */
 export function defineConfig(config: TelescopeConfig): TelescopeConfig {
+  // A misconfigured control plane or tenant fails when the config file loads.
+  resolveTopology(config);
   return config;
 }
 
@@ -480,6 +492,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
   const watchers = config.watchers ?? ['request', 'diagnostics'];
   return {
     enabled: config.enabled ?? true,
+    topology: resolveTopology(config),
     store: config.store ?? 'memory',
     stores: config.stores ?? {},
     maxEntries: config.maxEntries ?? 1000,

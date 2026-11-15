@@ -1,0 +1,219 @@
+---
+title: Central Server
+icon: Network
+description: One Telescope server many apps send their entries to — topology, tenant tokens with authkit, buffering and limits.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+With several apps, run one Telescope for all of them. The **control-plane** stores every app's
+entries and hosts the console. Each app is a **tenant**: it records as usual and sends its entries
+to the control-plane in the background. `topology` takes the same values as in
+`@adonis-agora/durable` and `@adonis-agora/flags`.
+
+An app that sets no `topology` is `standalone`: it keeps its own entries, exactly as before.
+
+## The control-plane
+
+```ts title="config/telescope.ts (telescope server)"
+import env from '#start/env'
+import { authkitTenantVerifier } from '@adonis-agora/authkit-client'
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  topology: 'control-plane',
+  verifyTenant: authkitTenantVerifier({
+    issuer: env.get('AUTHKIT_ISSUER'),
+    resource: 'urn:agora:telescope',
+  }),
+  store: 'lucid',
+  stores: { lucid: storage.lucid() },
+  // This server receives entries and serves the console: its own requests are noise.
+  watchers: ['diagnostics'],
+  prune: { after: '7d' },
+})
+```
+
+Apps post with a token, not a cookie: exempt the ingest routes from `@adonisjs/shield`'s CSRF
+check, or every app's entries are refused.
+
+```ts title="config/shield.ts (telescope server)"
+import { telescopeCsrfExceptions } from '@adonis-agora/telescope'
+
+csrf: { enabled: true, exceptRoutes: (ctx) => telescopeCsrfExceptions(ctx.request.url()) },
+```
+
+It serves, under `/_telescope/v1`:
+
+- `POST /ingest`: a batch of entries from an app;
+- `GET /whoami`: which app the server takes a token for.
+
+Each entry goes into the store of `config/telescope.ts` tagged `app:<name>`, and
+`env:<environment>` when the token has one. Both come from the token, never from the request:
+`app:` and `env:` tags an app puts on its entries are replaced. The console then gets an
+[App picker](/docs/telescope/concepts/apps).
+
+| Answer | When |
+| --- | --- |
+| `202 { accepted, duplicates, rejected }` | the batch was read; invalid entries are counted in `rejected` |
+| `401` | no token, or a token that does not verify |
+| `403` | a valid token without the `telescope:ingest` capability |
+| `413` | more entries or bytes than the limits allow |
+| `503` | Telescope is not running, or the issuer cannot be reached |
+
+Entries keep the time the app recorded them; a time more than five minutes ahead of the server's
+clock is taken as now. A batch sent twice is stored once: each entry is stored as `<app>:<id>`,
+and an id the store already holds is skipped, even after a restart.
+
+### Limits
+
+```ts title="config/telescope.ts (telescope server)"
+ingest: {
+  path: '/_telescope/v1',  // the routes are <path>/ingest and <path>/whoami
+  maxEntries: 1000,        // per batch
+  maxBodyBytes: 2_000_000, // per request
+  maxEntryBytes: 256_000,  // per entry; larger ones are rejected
+  dedupeWindow: 100_000,   // recent entry ids remembered per app
+},
+```
+
+Keep `bodyparser.json.limit` in `config/bodyparser.ts` at least as large as `maxBodyBytes`.
+
+## A tenant
+
+```ts title="config/telescope.ts (an app)"
+import env from '#start/env'
+import { authkitTenantToken } from '@adonis-agora/authkit-client'
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  topology: 'tenant',
+  tenant: {
+    url: env.get('TELESCOPE_SERVER_URL'), // https://telescope.example.com
+    partition: 'shop',                    // this app's name
+    token: authkitTenantToken({
+      issuer: env.get('AUTHKIT_ISSUER'),
+      clientId: env.get('TELESCOPE_CLIENT_ID'),
+      clientSecret: env.get('TELESCOPE_CLIENT_SECRET'),
+      resource: 'urn:agora:telescope',
+    }),
+    // Keep the last 500 entries here too, for this app's own console.
+    local: 'memory',
+  },
+  stores: { memory: storage.memory({ maxEntries: 500 }) },
+})
+```
+
+- `url` is the server's origin. If the server changed `ingest.path`, give the full prefix
+  (`https://telescope.example.com/observability`).
+- `token` is `authkitTenantToken(...)`, the app's shared secret, or any `() => Promise<string>`.
+- `partition` names the app. With authkit the token decides the name; with a shared secret it
+  picks which secret the server checks.
+- `local` names a store in `stores` (or `'memory'`) that keeps every entry as well. Without it
+  the app's own console is empty: look at the server's.
+
+Watchers, redaction, sampling and tenancy tags all run in the app, before an entry is sent.
+
+### Buffering and retries
+
+Recording never waits on the network. Entries go into a buffer sent every second, in batches. If
+the server is unreachable, sends are retried with a growing delay. When the buffer is full, the
+oldest entries are dropped and counted. At shutdown the app sends what is left (five seconds at
+most).
+
+```ts title="config/telescope.ts (an app)"
+tenant: {
+  url, partition, token,
+  buffer: {
+    maxEntries: 10_000,     // kept while the server is down
+    batchSize: 200,         // entries per request
+    maxBatchBytes: 512_000, // bytes per request; a 413 halves the batch
+    flushIntervalMs: 1000,
+    timeoutMs: 10_000,
+    retry: { baseMs: 1000, maxMs: 60_000 },
+  },
+},
+```
+
+Entries the server refuses as invalid are dropped, not retried. A `401` or `403` asks the token
+source for a fresh token and retries later.
+
+## Authentication
+
+**With authkit** (recommended): declare the resource on the authkit server and create one
+service-tenant client per app. The `partition` is the app name the console shows.
+
+```ts title="config/authkit.ts (authkit server)"
+serviceTenants: {
+  resources: { 'urn:agora:telescope': {} },
+},
+```
+
+```sh
+node ace authkit:client create --client-id=shop --partition=shop --capability=telescope:ingest
+node ace authkit:client create --client-id=billing --partition=billing --capability=telescope:ingest
+```
+
+A client that already holds other resources (`urn:agora:flags`, `urn:agora:durable`) can take this
+one too: one client per app, not per product. The control-plane verifies each token against the
+issuer's JWKS. Revoking the client cuts the app off.
+
+**Without authkit:** a secret per app.
+
+```ts title="config/telescope.ts (telescope server)"
+import { sharedSecretVerifier } from '@adonis-agora/telescope'
+
+verifyTenant: sharedSecretVerifier({
+  partitions: {
+    shop: env.get('TELESCOPE_SECRET_SHOP'),
+    billing: { secret: env.get('TELESCOPE_SECRET_BILLING'), environment: 'production' },
+  },
+}),
+```
+
+```ts title="config/telescope.ts (an app)"
+tenant: { url, partition: 'shop', token: env.get('TELESCOPE_SECRET_SHOP') }
+```
+
+**Your own:** `verifyTenant` also takes a class instance or a lazy import. It returns
+`{ partition, environment?, capabilities }` or `null`; sending needs `telescope:ingest` (or
+`telescope:*`).
+
+```ts
+verifyTenant: () => import('#auth/telescope_verifier'),
+```
+
+## Who sees which app
+
+The console is gated as usual. Return `apps` from its `authorize` to limit a viewer to some apps,
+and label them in `config/telescope_ui.ts`:
+
+```ts title="config/telescope_ui.ts (telescope server)"
+import { authkitDashboardAuthorize } from '@adonis-agora/authkit-client'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: authkitDashboardAuthorize(),
+  apps: { labels: { shop: 'Shop', billing: 'Billing' } },
+})
+```
+
+See [Apps](/docs/telescope/concepts/apps).
+
+## Checking the setup
+
+```sh
+node ace telescope:server:status
+# Server: https://telescope.example.com/_telescope/v1
+# App:    shop
+# ✔ The server accepts this app as "shop" (production).
+```
+
+On the server the same command lists the apps it has entries for. `--json` prints one object; the
+exit code is `1` when the server refuses the app or has no Telescope store.
+
+<Callout type="info">
+`node ace agora:doctor --deep` runs the same check with the others: `telescope.topology`,
+`telescope.topology-store`, `telescope.ingest-csrf` and `telescope.server-reachable`. See
+[Health check](/docs/telescope/reference/health-check).
+</Callout>

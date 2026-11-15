@@ -19,3 +19,5 @@ minimumReleaseAgeExclude:
   - '@adonisjs/otel@2.0.0'
   - '@adonis-agora/filter-client@1.0.0-rc.1'
   - '@adonis-agora/filter@1.0.0-rc.5'
+  - '@adonis-agora/authkit-client@1.0.0-rc.8'
+  - '@adonis-agora/authkit-core@1.0.0-rc.3'

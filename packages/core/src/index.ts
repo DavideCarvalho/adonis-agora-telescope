@@ -325,3 +325,5 @@ export { EntryEvents } from './stream/entry_events.js';
 export type { StreamOptions, StreamSession } from './stream/stream_handler.js';
 export { DEFAULT_HEARTBEAT_MS, streamEntries } from './stream/stream_handler.js';
 export { StreamingTelescopeStore } from './stream/streaming_store.js';
+// — topology: standalone, control plane (central server), tenant —
+export * from './topology/index.js';
