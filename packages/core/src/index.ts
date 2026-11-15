@@ -1,5 +1,5 @@
 /** Keep in sync with this package's `version` in package.json. */
-export const VERSION = '1.0.0-rc.18';
+export const VERSION = '1.0.0-rc.19';
 
 // Re-export the configure hook from the package root so `node ace configure` finds it
 export { configure } from '../configure.js';

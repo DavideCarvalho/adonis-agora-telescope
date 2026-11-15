@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.19
+
+### Minor Changes
+
+- [#341](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/341) [`74b924f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/74b924f018c0396c6563f08607ea178a1eb78eff) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Alert integrations: PagerDuty, Opsgenie, Better Stack, incident.io, Grafana OnCall, native Discord, Microsoft Teams, Telegram, Google Chat and email (`@adonisjs/mail`) channels, with incidents that open and resolve with the alert, retries with backoff, and per-rule routing (`severity`, `channels` on rules, `minSeverity` on channels). New `heartbeats` (healthchecks.io, Better Stack, Cronitor, Uptime Kuma, UptimeRobot, any URL) ping only while the app is healthy; `statusPages` keep Atlassian Statuspage, Instatus and Better Stack components in step with the checks; `uptimeEndpoint()` serves the check states to HTTP uptime monitors.
+
 ## 1.0.0-rc.18
 
 ### Patch Changes
