@@ -131,11 +131,18 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
   if (topology === 'tenant') {
     const tenant = config.tenant;
     if (!tenant || typeof tenant !== 'object') throw new Error(`${PREFIX} tenant is required`);
-    if (typeof tenant.url !== 'string' || !/^https?:\/\//.test(tenant.url)) {
+    if (
+      typeof tenant.url !== 'string' ||
+      !/^https?:\/\//.test(tenant.url) ||
+      !validUrl(tenant.url)
+    ) {
       throw new Error(`${PREFIX} tenant.url must be an absolute http(s) URL`);
     }
     if (typeof tenant.partition !== 'string' || tenant.partition === '') {
       throw new Error(`${PREFIX} tenant.partition is required`);
+    }
+    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(tenant.partition)) {
+      throw new Error(`${PREFIX} tenant.partition must be 1-64 of A-Z a-z 0-9 _ . -`);
     }
     if (tenant.token === undefined || tenant.token === null || tenant.token === '') {
       throw new Error(
@@ -150,6 +157,15 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
     return { topology, tenant, buffer: resolveBufferOptions(tenant.buffer) };
   }
   return { topology: 'standalone' };
+}
+
+function validUrl(url: string): boolean {
+  try {
+    serverPrefix(url);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The server's route prefix from a tenant `url` (an origin gets the default path). */

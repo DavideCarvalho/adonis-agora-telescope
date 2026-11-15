@@ -57,9 +57,9 @@ Each entry goes into the store of `config/telescope.ts` tagged `app:<name>`, and
 | --- | --- |
 | `202 { accepted, duplicates, rejected }` | the batch was read; invalid entries are counted in `rejected` |
 | `401` | no token, or a token that does not verify |
-| `403` | a valid token without the `telescope:ingest` capability |
+| `403` | a valid token without the `telescope:ingest` capability, or naming an invalid app |
 | `413` | more entries or bytes than the limits allow |
-| `503` | Telescope is not running, or the issuer cannot be reached |
+| `503` | Telescope is not running, the store cannot write, or the issuer cannot be reached |
 
 Entries keep the time the app recorded them; a time more than five minutes ahead of the server's
 clock is taken as now. A batch sent twice is stored once: each entry is stored as `<app>:<id>`,
@@ -107,8 +107,8 @@ export default defineConfig({
 - `url` is the server's origin. If the server changed `ingest.path`, give the full prefix
   (`https://telescope.example.com/observability`).
 - `token` is `authkitTenantToken(...)`, the app's shared secret, or any `() => Promise<string>`.
-- `partition` names the app. With authkit the token decides the name; with a shared secret it
-  picks which secret the server checks.
+- `partition` names the app (1-64 of `A-Z a-z 0-9 _ . -`). With authkit the token decides the
+  name; with a shared secret it picks which secret the server checks.
 - `local` names a store in `stores` (or `'memory'`) that keeps every entry as well. Without it
   the app's own console is empty: look at the server's.
 

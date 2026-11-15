@@ -29,6 +29,15 @@ describe('config', () => {
       defineConfig({ topology: 'tenant', tenant: { url: 'ftp://x', partition: 'a', token: 't' } }),
     ).toThrow(/absolute http/);
     expect(() =>
+      defineConfig({ topology: 'tenant', tenant: { url: 'http://', partition: 'a', token: 't' } }),
+    ).toThrow(/absolute http/);
+    expect(() =>
+      defineConfig({
+        topology: 'tenant',
+        tenant: { url: 'http://x', partition: 'a'.repeat(65), token: 't' },
+      }),
+    ).toThrow(/partition must be 1-64/);
+    expect(() =>
       defineConfig({ topology: 'tenant', tenant: { url: 'http://x', partition: '', token: 't' } }),
     ).toThrow(/partition is required/);
     expect(() =>

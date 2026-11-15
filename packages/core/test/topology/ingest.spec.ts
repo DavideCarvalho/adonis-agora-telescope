@@ -177,6 +177,35 @@ describe('server: ingest', () => {
     expect((await down.ingest({ token: 's', body: { entries: [] } })).status).toBe(503);
   });
 
+  it('caps a body without content-length, refuses an unsafe app name, answers 503 when the store throws', async () => {
+    const { handler } = setup({ limits: { maxBodyBytes: 500 } });
+    const big = { entries: [wire('a', { content: 'x'.repeat(600) })] };
+    expect((await handler.ingest({ token: 'shop-secret', app: 'shop', body: big })).status).toBe(
+      413,
+    );
+
+    const longName = createIngestHandler({
+      verifyTenant: () => ({ partition: 'a'.repeat(200), capabilities: ['telescope:ingest'] }),
+      store: () => new InMemoryTelescopeStore(),
+    });
+    expect((await longName.ingest({ token: 't', body: { entries: [wire('1')] } })).status).toBe(
+      403,
+    );
+
+    const failing = createIngestHandler({
+      verifyTenant: sharedSecretVerifier({ partitions: { shop: 's' } }),
+      store: () =>
+        ({
+          record: async () => {
+            throw new Error('disk full');
+          },
+        }) as never,
+    });
+    expect(
+      (await failing.ingest({ token: 's', app: 'shop', body: { entries: [wire('1')] } })).status,
+    ).toBe(503);
+  });
+
   it('refuses an expired token and answers whoami from the token', async () => {
     const handler = createIngestHandler({
       verifyTenant: ({ token }) =>

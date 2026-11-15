@@ -44,6 +44,8 @@ const TYPE_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 const ID_RE = /^[\x21-\x7e]{1,128}$/;
 /** Tags only the server sets: anything a sender puts there is dropped. */
 const RESERVED_TAG_RE = /^(app|env):/;
+/** An app name from a token: short and printable, so `<app>:<id>` fits the store's id limit. */
+export const PARTITION_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 
 /** A bounded set of recently stored ids per app (insertion order = eviction order). */
 class RecentIds {
@@ -164,6 +166,10 @@ export function createIngestHandler(options: IngestHandlerOptions) {
     if (verified.expiresAt !== undefined && verified.expiresAt <= Date.now()) {
       return deny(401, 'unauthenticated');
     }
+    if (!PARTITION_RE.test(verified.partition)) {
+      options.onRefused?.('the token names an invalid app (1-64 of A-Z a-z 0-9 _ . -)', verified);
+      return deny(403, 'forbidden');
+    }
     if (!canIngest(verified.capabilities)) {
       options.onRefused?.('missing the telescope:ingest capability', verified);
       return deny(403, 'forbidden');
@@ -190,6 +196,18 @@ export function createIngestHandler(options: IngestHandlerOptions) {
       if (body.version !== undefined && body.version !== 1) {
         return deny(400, `unsupported version ${String(body.version)}`);
       }
+      // Without a content-length (chunked), measure the parsed body against the same cap.
+      if (request.contentLength === undefined) {
+        let bytes: number;
+        try {
+          bytes = Buffer.byteLength(JSON.stringify(body));
+        } catch {
+          return deny(400, 'the body cannot be read as JSON');
+        }
+        if (bytes > limits.maxBodyBytes) {
+          return deny(413, `the body is over ${limits.maxBodyBytes} bytes`);
+        }
+      }
       if (body.entries.length > limits.maxEntries) {
         return deny(413, `at most ${limits.maxEntries} entries per batch`);
       }
@@ -215,7 +233,12 @@ export function createIngestHandler(options: IngestHandlerOptions) {
           id: `${verified.partition}:${entry.id}`,
         };
         // Telescope's own work: nothing the write causes (its INSERT) is recorded again.
-        await runAsTelescopeWork(() => store.record(input));
+        try {
+          await runAsTelescopeWork(() => store.record(input));
+        } catch {
+          // The store is down: the sender retries the batch, and what was stored is deduped.
+          return deny(503, 'the store could not write the entries right now');
+        }
         recent.add(key);
         result.accepted += 1;
       }
