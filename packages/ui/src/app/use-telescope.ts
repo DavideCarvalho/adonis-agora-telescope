@@ -252,6 +252,11 @@ export function useQueueJob(queue: string | null, id: string | null) {
 
 // ── live schedules ───────────────────────────────────────────────────────
 
+export function useFleet() {
+  const client = useTelescopeClient();
+  return useTelescopeQuery(['fleet'], () => client.fleet());
+}
+
 export function useLiveSchedules() {
   const client = useTelescopeClient();
   return useTelescopeQuery(['live-schedules'], () => client.liveSchedules());

@@ -99,6 +99,15 @@ export const DashboardIcon = stroke(
     <path d="M5 11V8.5M8 11V5.5M11 11V7" />
   </>,
 );
+/** Three stacked servers: the fleet. */
+export const FleetIcon = stroke(
+  <>
+    <rect x="2.5" y="2" width="11" height="3.4" rx="1" />
+    <rect x="2.5" y="6.3" width="11" height="3.4" rx="1" />
+    <rect x="2.5" y="10.6" width="11" height="3.4" rx="1" />
+    <path d="M5 3.7h.01M5 8h.01M5 12.3h.01" />
+  </>,
+);
 export const PlayIcon = stroke(<path d="M4.5 2.8v10.4L13 8z" />);
 export const ArrowLeftIcon = stroke(<path d="M13 8H3M7 4 3 8l4 4" />);
 export const ExternalIcon = stroke(

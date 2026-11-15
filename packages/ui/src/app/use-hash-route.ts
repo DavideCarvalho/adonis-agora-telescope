@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 export type TelescopeRoute =
   | { name: 'overview' }
   | { name: 'pulse' }
+  | { name: 'fleet' }
   | { name: 'entries'; type?: string }
   | { name: 'entry'; id: string }
   | { name: 'traces' }
@@ -47,6 +48,8 @@ export function parseHash(hash: string): TelescopeRoute {
       return { name: 'overview' };
     case 'pulse':
       return { name: 'pulse' };
+    case 'fleet':
+      return { name: 'fleet' };
     case 'traces': {
       const traceId = parts[1];
       return traceId === undefined
