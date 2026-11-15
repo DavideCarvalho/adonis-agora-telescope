@@ -238,7 +238,13 @@ function StatPanel({ ext, panel }: { ext: string; panel: Extract<Panel, { kind: 
               </div>
             )}
             {panel.spark && data.spark && data.spark.length > 0 && (
-              <Sparkline values={data.spark} width={220} height={32} />
+              <Sparkline
+                values={data.spark}
+                height={32}
+                label={panel.title}
+                ariaLabel={`${panel.title} trend`}
+                formatValue={(v) => formatByKind(v, panel.format)}
+              />
             )}
           </div>
         )}

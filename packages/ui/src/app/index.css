@@ -155,12 +155,6 @@
   flex: none;
 }
 
-.chart-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
 /* A per-entry-type hue (`--type`, set inline from `TYPE_COLORS`) used as TEXT: bright in dark mode,
  * darkened in light mode just enough to stay readable on white (like the kit's `.agora-tile`). */
 .type-ink {
