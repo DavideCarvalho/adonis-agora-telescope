@@ -1,7 +1,15 @@
-import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useMemo,
+} from 'react';
 import { ErrorBoundary, RegionError } from '../agora-kit/blocks/error-boundary';
+import { Sparkline as KitSparkline } from '../agora-kit/charts/sparkline';
 import { InboxIcon } from '../agora-kit/icons';
 import { Skeleton as KitSkeleton } from '../agora-kit/ui/skeleton';
+import { formatCount } from '../client/format.js';
 import { cn } from './primitives/cn.js';
 
 /**
@@ -224,41 +232,48 @@ export function ShareBar({ fraction, color }: { fraction: number; color?: string
 }
 
 /**
- * A dependency-free SVG sparkline over a numeric series. Renders a filled area under a stroked line;
- * an all-zero / empty series renders a flat baseline. `color` defaults to the brand accent.
+ * A sparkline over a bare numeric series (the kit's `Sparkline` on TanStack Charts). The series has
+ * no timestamps, so the tooltip titles a point by its position ("bucket 3 of 12"). `color` defaults
+ * to the brand accent; an empty series draws a flat baseline.
  */
 export function Sparkline({
   values,
-  width = 320,
+  label,
+  ariaLabel,
   height = 40,
   color = 'var(--agora-accent-ink)',
+  formatValue = formatCount,
 }: {
   values: number[];
-  width?: number;
+  /** The value's name in the tooltip ("occurrences"). */
+  label: string;
+  ariaLabel: string;
   height?: number;
   color?: string;
+  formatValue?: (value: number) => string;
 }) {
-  const n = values.length;
-  if (n === 0) return <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" />;
-  const max = Math.max(1, ...values);
-  const stepX = n > 1 ? width / (n - 1) : 0;
-  const y = (v: number) => height - (v / max) * (height - 2) - 1;
-  const points = values.map((v, i) => `${(i * stepX).toFixed(1)},${y(v).toFixed(1)}`);
-  const line = `M${points.join(' L')}`;
-  const area = `${line} L${width},${height} L0,${height} Z`;
+  const points = useMemo(() => values.map((value, index) => ({ index, value })), [values]);
+  const formatX = useCallback(
+    (x: string) => `bucket ${Number(x) + 1} of ${values.length}`,
+    [values.length],
+  );
   return (
-    <svg
-      className="chart-svg"
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
-      role="img"
-      aria-label="sparkline"
-    >
-      <path d={area} fill={color} opacity={0.14} />
-      <path d={line} fill="none" stroke={color} strokeWidth={1.5} />
-    </svg>
+    <KitSparkline
+      data={points}
+      x={pointIndex}
+      value={pointValue}
+      label={label}
+      ariaLabel={ariaLabel}
+      formatValue={formatValue}
+      formatX={formatX}
+      color={color}
+      height={height}
+    />
   );
 }
+
+const pointIndex = (p: { index: number }) => String(p.index);
+const pointValue = (p: { value: number }) => p.value;
 
 /** Shaped placeholder lines for a panel body while its data loads (kit `Skeleton`). */
 export function Skeleton({ rows = 4 }: { rows?: number | undefined }) {

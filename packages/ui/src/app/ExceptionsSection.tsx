@@ -60,9 +60,10 @@ export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) =
         cell: ({ row }: { row: { original: ExceptionGroupStats } }) => (
           <Sparkline
             values={row.original.overTime}
-            width={140}
             height={26}
             color="var(--agora-bad)"
+            label="occurrences"
+            ariaLabel={`${row.original.class} over time`}
           />
         ),
       },

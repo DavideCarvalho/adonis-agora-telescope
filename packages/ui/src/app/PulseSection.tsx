@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { MetricGridSkeleton } from '../agora-kit/blocks/metric-card';
-import { formatCount, formatDuration, formatPercent } from '../client/format.js';
-import type { PulseSummary } from '../client/types.js';
+import { Sparkline as KitSparkline } from '../agora-kit/charts/sparkline';
+import { formatCount, formatDuration, formatPercent, formatTime } from '../client/format.js';
+import type { PulseSummary, TimeseriesBucket } from '../client/types.js';
 import { cn } from './primitives/cn.js';
 import { Table, TableBody, TableCell, TableRow } from './primitives/table.js';
 import {
@@ -13,7 +14,6 @@ import {
   SectionTitle,
   ShareBar,
   Skeleton,
-  Sparkline,
   Stat,
   StatGrid,
   typeLabel,
@@ -63,7 +63,6 @@ function PulseBody({
       : pulse.requests.errorRate > 0
         ? 'text-warn'
         : 'text-good';
-  const throughputSeries = pulse.throughput.overTime.buckets.map((b) => b.total);
 
   return (
     <div className="flex flex-col gap-4">
@@ -91,8 +90,20 @@ function PulseBody({
       </StatGrid>
 
       <Panel>
-        <SectionTitle title="Throughput by type" hint={`${throughputSeries.length} buckets`} />
-        <Sparkline values={throughputSeries} width={1180} height={64} />
+        <SectionTitle
+          title="Throughput by type"
+          hint={`${pulse.throughput.overTime.buckets.length} buckets`}
+        />
+        <KitSparkline
+          data={pulse.throughput.overTime.buckets}
+          x={bucketStart}
+          value={bucketTotal}
+          label="entries"
+          ariaLabel="throughput over time"
+          formatX={formatTime}
+          formatValue={formatCount}
+          height={64}
+        />
       </Panel>
 
       <Panel>
@@ -312,3 +323,6 @@ function PulseSkeleton() {
     </div>
   );
 }
+
+const bucketStart = (b: TimeseriesBucket) => b.t;
+const bucketTotal = (b: TimeseriesBucket) => b.total;

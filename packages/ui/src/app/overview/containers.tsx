@@ -1,6 +1,7 @@
+import { Sparkline as KitSparkline } from '../../agora-kit/charts/sparkline';
 import { Skeleton } from '../../agora-kit/ui/skeleton';
-import { formatCount, formatDuration, formatPercent } from '../../client/format.js';
-import type { QueueSummary, TimeseriesReport } from '../../client/types.js';
+import { formatCount, formatDuration, formatPercent, formatTime } from '../../client/format.js';
+import type { QueueSummary, TimeseriesBucket, TimeseriesReport } from '../../client/types.js';
 import { cn } from '../primitives/cn.js';
 import {
   AsyncBlock,
@@ -9,7 +10,6 @@ import {
   Panel,
   SectionTitle,
   ShareBar,
-  Sparkline,
   Stat,
   typeColor,
   typeLabel,
@@ -421,7 +421,16 @@ export function ThroughputPanel({ windowMs }: { windowMs: number }) {
       <SectionTitle title="Throughput" hint={`${state.data?.buckets.length ?? 0} buckets`} />
       <AsyncBlock state={state} empty="No data in this window." skeletonRows={2}>
         {(series) => (
-          <Sparkline values={series.buckets.map((b) => b.total)} width={560} height={64} />
+          <KitSparkline
+            data={series.buckets}
+            x={bucketStart}
+            value={bucketTotal}
+            label="entries"
+            ariaLabel="throughput over time"
+            formatX={formatTime}
+            formatValue={formatCount}
+            height={64}
+          />
         )}
       </AsyncBlock>
     </Panel>
@@ -507,3 +516,6 @@ export function formatRetentionWindow(ms: number): string {
   if (hours < 24) return `${Math.round(hours)}h`;
   return `${Math.round(hours / 24)}d`;
 }
+
+const bucketStart = (b: TimeseriesBucket) => b.t;
+const bucketTotal = (b: TimeseriesBucket) => b.total;

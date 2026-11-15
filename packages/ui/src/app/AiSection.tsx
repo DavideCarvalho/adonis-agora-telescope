@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { BarChart } from '../agora-kit/charts/bar-chart';
 import { Badge } from '../agora-kit/ui/badge';
 import { Button } from '../agora-kit/ui/button';
 import {
@@ -12,6 +13,7 @@ import type {
   AiCoverage,
   AiRunRow,
   AiSpend,
+  AiSpendBucket,
   AiSpendRow,
   AiUnpricedRow,
   AiUsageSummary,
@@ -185,7 +187,7 @@ function SpendPanel({ spend, coverage }: { spend: AiSpend; coverage: AiCoverage 
           hint={
             <span className="flex items-center gap-3">
               <Legend color="var(--agora-accent-ink)" label="users" />
-              <Legend color="#a1a1aa" label="platform" />
+              <Legend color={PLATFORM_COLOR} label="platform" />
             </span>
           }
         />
@@ -209,63 +211,46 @@ function Legend({ color, label }: { color: string; label: string }) {
   );
 }
 
-/** Stacked bars per bucket: what users' calls cost, with the platform's share on top. */
+const PLATFORM_COLOR = '#a1a1aa';
+const SPEND_SERIES = [
+  {
+    key: 'users',
+    label: 'users',
+    value: (b: AiSpendBucket) => Math.max(0, b.costUsd - b.platformUsd),
+    color: 'var(--agora-accent-ink)',
+  },
+  {
+    key: 'platform',
+    label: 'platform',
+    value: (b: AiSpendBucket) => b.platformUsd,
+    color: PLATFORM_COLOR,
+  },
+];
+const bucketStart = (b: AiSpendBucket) => b.start;
+const spendExtraRows = (b: AiSpendBucket) => [
+  { label: 'total', value: formatUsd(b.costUsd) },
+  { label: 'calls', value: formatCount(b.calls) },
+];
+
+/**
+ * Stacked bars per bucket (the kit's `BarChart`): what users' calls cost, with the platform's share
+ * on top. Hovering or focusing a bucket shows both parts, the total and the call count.
+ */
 function SpendBars({ spend }: { spend: AiSpend }) {
-  const width = 1180;
-  const height = 96;
-  const buckets = spend.buckets;
-  const max = Math.max(0, ...buckets.map((b) => b.costUsd));
-  if (buckets.length === 0 || max === 0) {
-    return <Empty>No priced calls in this window.</Empty>;
-  }
-  const slot = width / buckets.length;
-  const bar = Math.max(1, slot * 0.7);
-  const y = (v: number) => (v / max) * (height - 4);
-  const first = buckets[0];
-  const last = buckets[buckets.length - 1];
   return (
-    <div>
-      <svg
-        className="chart-svg"
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="spend over time"
-      >
-        {buckets.map((b, i) => {
-          const userUsd = Math.max(0, b.costUsd - b.platformUsd);
-          const x = i * slot + (slot - bar) / 2;
-          const hUser = y(userUsd);
-          const hPlatform = y(b.platformUsd);
-          return (
-            <g key={b.start}>
-              <title>{`${formatTime(b.start)} · ${formatUsd(b.costUsd)} (${formatUsd(
-                b.platformUsd,
-              )} platform) · ${formatCount(b.calls)} calls`}</title>
-              <rect
-                x={x}
-                y={height - hUser}
-                width={bar}
-                height={hUser}
-                fill="var(--agora-accent-ink)"
-              />
-              <rect
-                x={x}
-                y={height - hUser - hPlatform}
-                width={bar}
-                height={hPlatform}
-                fill="#a1a1aa"
-              />
-            </g>
-          );
-        })}
-      </svg>
-      <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-        <span>{first ? formatTime(first.start) : ''}</span>
-        <span>peak {formatUsd(max)}</span>
-        <span>{last ? formatTime(last.start) : ''}</span>
-      </div>
-    </div>
+    <BarChart
+      data={spend.buckets}
+      x={bucketStart}
+      series={SPEND_SERIES}
+      layout="stacked"
+      formatX={formatTime}
+      formatValue={formatUsd}
+      extraRows={spendExtraRows}
+      ariaLabel="spend over time"
+      empty="No priced calls in this window."
+      emptyWhenZero
+      height={140}
+    />
   );
 }
 
