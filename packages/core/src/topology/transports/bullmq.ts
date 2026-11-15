@@ -1,3 +1,4 @@
+import { withoutToken } from './redis.js';
 import {
   type ControlPlaneChannel,
   encodeEnvelope,
@@ -35,7 +36,12 @@ export interface BullmqModule {
   };
   Worker: new (
     name: string,
-    processor: (job: { data: unknown; attemptsMade: number }) => Promise<unknown>,
+    processor: (job: {
+      data: unknown;
+      attemptsMade: number;
+      opts?: { attempts?: number };
+      updateData?(data: unknown): Promise<void>;
+    }) => Promise<unknown>,
     options: Record<string, unknown>,
   ) => {
     close(): Promise<void>;
@@ -116,9 +122,14 @@ export class BullmqControlPlaneChannel implements ControlPlaneChannel {
         const data = job.data as { m?: unknown } | null;
         const raw = typeof data?.m === 'string' ? data.m : '';
         const outcome = await handler(raw);
+        if (outcome.kind === 'ok') return null;
+        const last = job.attemptsMade + 1 >= (job.opts?.attempts ?? 1);
+        // What stays in the failed set keeps no bearer token.
+        if (outcome.kind === 'dead' || last) {
+          await job.updateData?.({ m: withoutToken(raw) }).catch(() => {});
+        }
         if (outcome.kind === 'dead') throw new UnrecoverableError(outcome.reason);
-        if (outcome.kind === 'retry') throw new Error(outcome.reason);
-        return null;
+        throw new Error(outcome.reason);
       },
       {
         connection: this.options.connection,

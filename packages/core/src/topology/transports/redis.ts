@@ -44,6 +44,20 @@ export interface RedisTransportOptions {
 
 const FIELD = 'm';
 
+/** The envelope without its bearer token: what a dead-letter copy keeps. */
+export function withoutToken(raw: string): string {
+  try {
+    const envelope = JSON.parse(raw) as Record<string, unknown>;
+    if (envelope !== null && typeof envelope === 'object' && 'token' in envelope) {
+      envelope.token = '[redacted]';
+      return JSON.stringify(envelope);
+    }
+  } catch {
+    // Not JSON: nothing to redact.
+  }
+  return raw;
+}
+
 async function resolveClient(
   options: RedisTransportOptions,
   ctx: TransportContext,
@@ -142,6 +156,7 @@ export class RedisControlPlaneChannel implements ControlPlaneChannel {
   }
 
   private groupReady = false;
+  private lastReclaim = Date.now();
 
   private async ensureGroup(): Promise<void> {
     if (this.groupReady) return;
@@ -172,8 +187,13 @@ export class RedisControlPlaneChannel implements ControlPlaneChannel {
       found = true;
       await this.handle(handler, String(id), fields, 1);
     }
-    // Nothing new: take over what a dead consumer (or a failed attempt) left pending.
-    if (!found) found = await this.reclaim(handler, this.options.claimIdleMs ?? 60_000);
+    // Take over what a dead consumer (or a failed attempt) left pending: whenever the stream is
+    // quiet, and at least every few seconds under constant traffic.
+    const claimIdle = this.options.claimIdleMs ?? 60_000;
+    if (!found || Date.now() - this.lastReclaim >= Math.min(claimIdle, 5000)) {
+      this.lastReclaim = Date.now();
+      found = (await this.reclaim(handler, claimIdle)) || found;
+    }
     return found;
   }
 
@@ -234,7 +254,7 @@ export class RedisControlPlaneChannel implements ControlPlaneChannel {
         10_000,
         '*',
         FIELD,
-        raw,
+        withoutToken(raw),
         'reason',
         reason,
         'id',

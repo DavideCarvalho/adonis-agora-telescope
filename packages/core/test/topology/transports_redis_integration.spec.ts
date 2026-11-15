@@ -99,6 +99,25 @@ describe.skipIf(!url)('transports against a real Redis', () => {
     const [failed] = await queue.getFailed();
     // Dead on the first attempt: never retried.
     expect(failed?.attemptsMade).toBe(1);
+
+    // A refused token: failed at once, and the failed job keeps no token.
+    await queue.add(
+      'telescope.ingest',
+      {
+        m: JSON.stringify({
+          v: 1,
+          id: 'y',
+          app: 'shop',
+          token: 'leaked-secret',
+          sentAt: '',
+          batch: {},
+        }),
+      },
+      { attempts: 5 },
+    );
+    await vi.waitFor(async () => expect(await queue.getFailedCount()).toBe(2), { timeout: 10_000 });
+    const all = await queue.getFailed();
+    expect(JSON.stringify(all.map((j) => j.data))).not.toContain('leaked-secret');
     await queue.obliterate({ force: true });
   });
 });

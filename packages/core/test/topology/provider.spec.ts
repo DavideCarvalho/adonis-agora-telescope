@@ -183,6 +183,22 @@ describe('provider', () => {
     expect(redis.streams.get('telescope:ingest')).toHaveLength(1);
   });
 
+  it('a control plane whose broker cannot be built still boots and serves HTTP', async () => {
+    const { routes } = await boot({
+      telescope: defineConfig({
+        ...quiet,
+        topology: 'control-plane',
+        verifyTenant: sharedSecretVerifier({ partitions: { shop: 'shop-secret' } }),
+        // No @adonisjs/redis in this app.
+        transport: transports.redis({ connection: 'missing' }),
+      }),
+    });
+    expect(routes.map((r) => `${r.method} ${r.pattern}`)).toEqual([
+      'POST /_telescope/v1/ingest',
+      'GET /_telescope/v1/whoami',
+    ]);
+  });
+
   it('reads an XREADGROUP reply in RESP2 and in RESP3 (flattened map) shape', () => {
     const messages = [['1-0', ['m', '{}']]];
     expect(streamMessages([['s', messages]])).toEqual(messages);

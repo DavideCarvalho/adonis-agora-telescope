@@ -287,6 +287,9 @@ describe('redis: pending messages', () => {
     const dead = redis.streams.get('telescope:ingest:dead') ?? [];
     expect(dead).toHaveLength(1);
     expect(dead[0]?.fields).toContain('reason');
+    // The dead-letter copy keeps no bearer token.
+    expect(dead[0]?.fields.join(' ')).not.toContain('shop-secret');
+    expect(dead[0]?.fields.join(' ')).toContain('[redacted]');
   });
 });
 

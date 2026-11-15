@@ -253,20 +253,21 @@ export default class TelescopeProvider {
     registerIngestRoutes(router, handler, ingest);
     const transport = config.topology.transport;
     if (transport !== null) {
-      const consumer = await transport.controlPlane({
-        app: this.app as unknown as NonNullable<TransportContext['app']>,
-        ...(logger ? { logger } : {}),
-      });
-      if (consumer !== null) {
-        try {
-          await consumer.start((raw) => handler.message(raw));
-        } catch (error) {
-          logger?.warn(
-            `[@adonis-agora/telescope] the ${transport.describe()} consumer did not start: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-        this.consumer = consumer;
+      // A broker that cannot be reached or built (a missing package, a bad connection name) is
+      // logged, never fatal: the HTTP routes above keep serving HTTP tenants and the console.
+      let consumer: ControlPlaneChannel | null = null;
+      try {
+        consumer = await transport.controlPlane({
+          app: this.app as unknown as NonNullable<TransportContext['app']>,
+          ...(logger ? { logger } : {}),
+        });
+        await consumer?.start((raw) => handler.message(raw));
+      } catch (error) {
+        logger?.warn(
+          `[@adonis-agora/telescope] the ${transport.describe()} consumer did not start: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
+      this.consumer = consumer;
     }
   }
 

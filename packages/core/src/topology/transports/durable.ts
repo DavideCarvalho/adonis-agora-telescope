@@ -87,7 +87,8 @@ export class DurableTenantChannel implements TenantChannel {
   private seq = 0;
 
   constructor(private readonly transport: DurableTransportLike) {
-    // A tenant only produces: it never competes for durable's queues.
+    // Telescope's own instance, built from the factory (the app's durable engine has another):
+    // it only produces, so it never consumes from durable's queues.
     transport.deferConsumers?.();
   }
 

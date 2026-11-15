@@ -147,6 +147,9 @@ export default defineConfig({
 The server retries a failing step itself (`maxAttempts`, default `5`). A message it cannot use is
 logged and dropped, not redelivered. Run durable on the server too: it reads the step results.
 
+Telescope builds its own instance of that durable transport, so it never pauses or competes with
+your app's own steps.
+
 ## What stays the same
 
 - **Every message carries the app's token.** The server checks it on every message with
@@ -161,6 +164,13 @@ logged and dropped, not redelivered. Run durable on the server too: it reads the
 - **Bad messages are not retried forever.** Malformed or oversized messages, or ones with a token
   the server refuses, are dead-lettered at once. A message that keeps failing (the store is down)
   is dead-lettered after `maxAttempts`.
+
+<Callout type="warn" title="Who can read the broker">
+Messages carry the app's token while they wait in the broker, so anyone who can read the queue or
+stream can read the token. Limit broker access to the apps and the server, as you would for the
+secret itself. Dead-letter copies in Redis streams and BullMQ's failed set have the token removed.
+`@adonisjs/queue` keeps a failed job's payload as it was.
+</Callout>
 
 <Callout type="warn" title="Token lifetime">
 A message waits in the broker while the server is down. If its token has expired by the time the
