@@ -18,6 +18,11 @@ export type ConsoleAuthorizeResult =
        * plus entries recorded with none. Omitted: the viewer's own active tenant.
        */
       tenants?: '*' | string[];
+      /**
+       * On a server that collects entries from several apps: the apps this viewer may see (entries
+       * tagged `app:<id>`). `'*'` is every app, plus entries recorded with none. Omitted: every app.
+       */
+      apps?: '*' | string[];
     }
   | { allowed: false; reason?: 'unauthenticated' | 'forbidden' }
   | { redirectTo: string };
@@ -44,7 +49,7 @@ export type ConsoleAuthorize =
 
 /** The single shape {@link resolveConsoleAuthorize} answers with. */
 export type NormalizedDecision =
-  | { allowed: true; tenants?: '*' | string[] }
+  | { allowed: true; tenants?: '*' | string[]; apps?: '*' | string[] }
   | { allowed: false; reason: 'unauthenticated' | 'forbidden'; redirectTo?: string };
 
 /** Whether `value` is a {@link ConsoleAuthorizer} class (a constructor with `authorize` on its prototype). */
@@ -77,21 +82,25 @@ export function normalizeConsoleDecision(result: unknown): NormalizedDecision {
       return { allowed: false, reason: 'unauthenticated', redirectTo: r.redirectTo };
     }
     if (r.allowed === true) {
-      const tenants = (result as { tenants?: unknown }).tenants;
-      if (tenants === '*') return { allowed: true, tenants: '*' };
-      if (Array.isArray(tenants)) {
-        return {
-          allowed: true,
-          tenants: tenants
-            .filter((t) => typeof t === 'string' || typeof t === 'number')
-            .map(String),
-        };
-      }
-      return { allowed: true };
+      const decision: { allowed: true; tenants?: '*' | string[]; apps?: '*' | string[] } = {
+        allowed: true,
+      };
+      const tenants = scopeList((result as { tenants?: unknown }).tenants);
+      if (tenants !== undefined) decision.tenants = tenants;
+      const apps = scopeList((result as { apps?: unknown }).apps);
+      if (apps !== undefined) decision.apps = apps;
+      return decision;
     }
     if (r.reason === 'unauthenticated') return { allowed: false, reason: 'unauthenticated' };
   }
   return { allowed: false, reason: 'forbidden' };
+}
+
+/** A `tenants`/`apps` grant: `'*'`, a list of ids (numbers become strings), or `undefined`. */
+function scopeList(value: unknown): '*' | string[] | undefined {
+  if (value === '*') return '*';
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((t) => typeof t === 'string' || typeof t === 'number').map(String);
 }
 
 /**
@@ -138,6 +147,11 @@ export interface AuthorizeByTokenOptions {
    * signed-in organization, so without this it sees none.
    */
   tenants?: '*' | string[];
+  /**
+   * On a server that collects entries from several apps: the apps a token holder may see
+   * (`'*'` = all, the default).
+   */
+  apps?: '*' | string[];
 }
 
 function digest(value: string): Buffer {
@@ -160,8 +174,11 @@ export function authorizeByToken(options: AuthorizeByTokenOptions): ConsoleAutho
     throw new Error('authorizeByToken: `token` must be a non-empty string');
   }
   const expected = digest(token);
-  const allowed: ConsoleAuthorizeResult =
-    options.tenants !== undefined ? { allowed: true, tenants: options.tenants } : { allowed: true };
+  const allowed: ConsoleAuthorizeResult = {
+    allowed: true,
+    ...(options.tenants !== undefined ? { tenants: options.tenants } : {}),
+    ...(options.apps !== undefined ? { apps: options.apps } : {}),
+  };
   return (ctx: HttpContext): ConsoleAuthorizeResult => {
     const header = ctx.request.header('authorization');
     const match = typeof header === 'string' ? /^Bearer\s+(.+)$/i.exec(header.trim()) : null;

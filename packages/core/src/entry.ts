@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 /**
  * The built-in Telescope entry types shipped by `@adonis-agora/telescope`. Adapted from
  * the NestJS `nestjs-telescope` core, trimmed to the headless slice this package
@@ -124,7 +125,8 @@ export interface Entry<TContent = unknown> {
 /**
  * What a watcher hands to {@link TelescopeStore.record}. The store fills in `id`,
  * `sequence`, `createdAt`, and resolves `traceId`/`origin` from the ambient
- * context when the caller omits them.
+ * context when the caller omits them. `id` and `createdAt` may be given (an entry recorded
+ * elsewhere and stored here later); see {@link resolveEntryId} and {@link resolveCreatedAt}.
  */
 export interface RecordInput<TContent = unknown> {
   type: string;
@@ -136,4 +138,33 @@ export interface RecordInput<TContent = unknown> {
   traceId?: string | null;
   /** Override the batch origin; defaults to `http` when a request is active. */
   origin?: BatchOrigin;
+  /**
+   * When the entry happened, for an entry recorded elsewhere and stored later. Defaults to now.
+   * A time more than {@link MAX_FUTURE_SKEW_MS} ahead, or an invalid one, becomes now.
+   */
+  createdAt?: Date | string;
+  /**
+   * The entry's id, for an entry recorded elsewhere. Recording an id the store already holds
+   * stores nothing new. Defaults to a fresh UUID; an id that is not 1–255 printable characters is
+   * replaced by one.
+   */
+  id?: string;
+}
+
+/** How far ahead of the clock a given `createdAt` may be before it is taken as now. */
+export const MAX_FUTURE_SKEW_MS = 5 * 60_000;
+
+/** The `createdAt` of a recorded entry: the given time when sane, else now. */
+export function resolveCreatedAt(value: Date | string | undefined, now: number = Date.now()): Date {
+  if (value === undefined) return new Date(now);
+  const at = value instanceof Date ? value.getTime() : Date.parse(value);
+  if (!Number.isFinite(at) || at < 0 || at > now + MAX_FUTURE_SKEW_MS) return new Date(now);
+  return new Date(at);
+}
+
+const ENTRY_ID_RE = /^[\x21-\x7e]{1,255}$/;
+
+/** The id of a recorded entry: the given one when it is 1–255 printable ASCII characters, else a UUID. */
+export function resolveEntryId(value: unknown): string {
+  return typeof value === 'string' && ENTRY_ID_RE.test(value) ? value : randomUUID();
 }

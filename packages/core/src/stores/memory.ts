@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
-import { type BatchOrigin, type Entry, type RecordInput } from '../entry.js';
+import {
+  type BatchOrigin,
+  type Entry,
+  type RecordInput,
+  resolveCreatedAt,
+  resolveEntryId,
+} from '../entry.js';
 import { resolveOrigin } from '../origin_scope.js';
 import type {
   BucketCountQuery,
@@ -49,10 +55,15 @@ export class InMemoryTelescopeStore implements TelescopeStore {
   }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
+    // A given id already stored: the same entry again (a retried send), stored once.
+    if (input.id !== undefined) {
+      const existing = this.byId.get(input.id);
+      if (existing !== undefined) return existing as Entry<TContent>;
+    }
     const traceId = input.traceId !== undefined ? input.traceId : currentTraceId();
     const origin: BatchOrigin = resolveOrigin(input.origin);
     const entry: Entry<TContent> = {
-      id: randomUUID(),
+      id: input.id !== undefined ? resolveEntryId(input.id) : randomUUID(),
       type: input.type,
       familyHash: input.familyHash ?? null,
       content: input.content,
@@ -61,10 +72,10 @@ export class InMemoryTelescopeStore implements TelescopeStore {
       durationMs: input.durationMs ?? null,
       origin,
       traceId,
-      createdAt: new Date(),
+      createdAt: input.createdAt !== undefined ? resolveCreatedAt(input.createdAt) : new Date(),
     };
 
-    this.slots.push(entry as Entry);
+    this.insertInOrder(entry as Entry);
     this.byId.set(entry.id, entry as Entry);
     this.evictOverflow();
     return entry;
@@ -212,6 +223,32 @@ export class InMemoryTelescopeStore implements TelescopeStore {
       const entry = this.slots[i];
       if (entry !== undefined) yield entry;
     }
+  }
+
+  /**
+   * Keep {@link slots} ordered by `createdAt` (oldest-first): an entry recorded now goes at the
+   * end; one recorded with an earlier `createdAt` is placed after every entry not newer than it.
+   */
+  private insertInOrder(entry: Entry): void {
+    const last = this.slots[this.slots.length - 1];
+    if (
+      last === undefined ||
+      this.slots.length === this.head ||
+      last.createdAt <= entry.createdAt
+    ) {
+      this.slots.push(entry);
+      return;
+    }
+    const at = entry.createdAt.getTime();
+    let low = this.head;
+    let high = this.slots.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      const slot = this.slots[mid];
+      if (slot !== undefined && slot.createdAt.getTime() <= at) low = mid + 1;
+      else high = mid;
+    }
+    this.slots.splice(low, 0, entry);
   }
 
   private evictOverflow(): void {

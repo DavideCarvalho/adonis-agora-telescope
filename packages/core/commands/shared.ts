@@ -6,7 +6,8 @@ import { type ResolvedTelescopeConfig, resolveConfig } from '../src/define_confi
 import { buildTelescopeTools, type TelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import { getTelescopeRuntime } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
-import { TenantScopedStore } from '../src/tenancy_store.js';
+import { scopedStore } from '../src/tenancy_store.js';
+import { consoleAppScope, selectAppScope } from '../src/ui/app_scope.js';
 import {
   buildConsoleApis,
   type ConsoleApis,
@@ -51,9 +52,9 @@ export class ConsoleRefusal extends CliUsageError {
 export interface TelescopeConsole {
   /** The whole store (global actions: prune, clear). */
   store: TelescopeStore;
-  /** The store the reads see: the whole store, or one organization's slice (`--tenant`). */
+  /** The store the reads see: the whole store, or one organization's / app's slice (`--tenant`, `--app`). */
   source: TelescopeStore;
-  /** Whether `--tenant` narrowed the reads. */
+  /** Whether `--tenant` or `--app` narrowed the reads. */
   scoped: boolean;
   apis: ConsoleApis;
   tools: TelescopeTools;
@@ -65,13 +66,17 @@ export interface TelescopeConsole {
  * Base for every `telescope:*` command. Boots the app (no server, no workers), then runs the SAME
  * handlers the console's `<path>/api/*` routes run (and the `telescope_*` dev tools), so the gates
  * (`replay.enabled`, `queueActions.enabled`, …), validation and audit are the console's. A shell on
- * the host is trusted like a console viewer allowed every organization; `--tenant` narrows to one.
+ * the host is trusted like a console viewer allowed every organization and app; `--tenant` and
+ * `--app` narrow to one.
  */
 export abstract class TelescopeCommand extends BaseCommand {
   static override options: CommandOptions = { startApp: true };
 
   @flags.string({ description: 'Only this organization (when tenancy is on)' })
   declare tenant?: string;
+
+  @flags.string({ flagName: 'app', description: 'Only this app (entries tagged app:<id>)' })
+  declare appId?: string;
 
   @flags.boolean({ description: 'Print JSON' })
   declare json?: boolean;
@@ -92,7 +97,7 @@ export abstract class TelescopeCommand extends BaseCommand {
 
   private resolved: TelescopeConsole | undefined;
 
-  /** The console over the booted store, scoped by `--tenant`. */
+  /** The console over the booted store, scoped by `--tenant` and `--app`. */
   protected async console(): Promise<TelescopeConsole> {
     if (this.resolved !== undefined) return this.resolved;
     const store = getTelescopeRuntime().store;
@@ -106,17 +111,18 @@ export abstract class TelescopeCommand extends BaseCommand {
       this.app.config.get<TelescopeUiConfig | undefined>('telescope_ui', undefined),
       { inProduction: this.app.inProduction === true },
     );
-    let source = store;
-    let scoped = false;
+    let tenantTags: string[] | null = null;
     if (this.tenant !== undefined && this.tenant !== '') {
       const scope = consoleTenantScope({ tenants: '*' }, coreConfig.tenancy);
       if (scope === null) throw new CliUsageError('--tenant needs tenancy (it is off in this app)');
-      const { tags } = selectTenantScope(scope, this.tenant, coreConfig.tenancy);
-      if (tags !== null) {
-        source = new TenantScopedStore(store, tags);
-        scoped = true;
-      }
+      tenantTags = selectTenantScope(scope, this.tenant, coreConfig.tenancy).tags;
     }
+    const appTags =
+      this.appId !== undefined && this.appId !== ''
+        ? selectAppScope(consoleAppScope({ apps: '*' }), this.appId).tags
+        : null;
+    const source = scopedStore(store, tenantTags, appTags);
+    const scoped = source !== store;
     const logger = await this.app.container.make('logger').catch(() => null);
     const apis = buildConsoleApis(source, {
       coreConfig,
@@ -161,10 +167,13 @@ export abstract class TelescopeCommand extends BaseCommand {
     return body;
   }
 
-  /** Refuse an action that reaches every organization when `--tenant` narrowed the command. */
+  /** Refuse an action that reaches every organization/app when `--tenant`/`--app` narrowed it. */
   protected refuseScoped(what: string): void {
     if (this.tenant !== undefined && this.tenant !== '') {
       throw new CliUsageError(`${what} reaches every organization: run it without --tenant`);
+    }
+    if (this.appId !== undefined && this.appId !== '') {
+      throw new CliUsageError(`${what} reaches every app: run it without --app`);
     }
   }
 

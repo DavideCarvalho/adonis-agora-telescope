@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { getTelescopeRuntime } from '@adonis-agora/telescope';
+import { getTelescopeRuntime, resolveConfig as resolveCoreConfig } from '@adonis-agora/telescope';
 import {
   type AuthorizeHook,
   enforceGuard,
@@ -9,6 +9,7 @@ import {
   runGuard,
   type TelescopeUiConfig,
   type UiHttpContext,
+  viewerStore,
 } from '@adonis-agora/telescope/ui';
 import type { HttpContext } from '@adonisjs/core/http';
 import type { ApplicationService } from '@adonisjs/core/types';
@@ -171,10 +172,15 @@ export default class TelescopeUiDashboardProvider {
           path: mount,
           order: 20,
           authorize,
-          search: telescopeConsoleSearch(
-            () => (getTelescopeRuntime().store as SearchableStore | null) ?? null,
-            mount,
-          ),
+          search: telescopeConsoleSearch(async (ctx) => {
+            const store = getTelescopeRuntime().store;
+            if (store === null) return null;
+            // Only what this viewer may read: its organizations and apps.
+            const decision = await runGuard(ctx as UiHttpContext, guard);
+            if (!decision.allowed) return null;
+            const tenancy = resolveCoreConfig(this.app.config.get('telescope', {})).tenancy;
+            return viewerStore(store, decision, tenancy) as unknown as SearchableStore;
+          }, mount),
         },
         logger,
       );

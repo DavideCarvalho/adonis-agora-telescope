@@ -46,16 +46,17 @@ function subtitle(entry: SearchableEntry): string {
 
 /**
  * Telescope's search provider for the console switcher: an entry id or a trace id opens it
- * directly; anything else searches entry content and tags (newest first).
+ * directly; anything else searches entry content and tags (newest first). `getStore` answers the
+ * store this viewer may read (its organizations and apps), or `null` for nothing.
  */
 export function telescopeConsoleSearch(
-  getStore: () => SearchableStore | null,
+  getStore: (ctx: unknown) => SearchableStore | null | Promise<SearchableStore | null>,
   mount: string,
 ): (ctx: unknown, query: string, limit: number) => Promise<AgoraConsoleSearchHit[]> {
   const shell = mount === '/' ? '/' : mount;
   const entryHref = (id: string) => `${shell}#/entries/${encodeURIComponent(id)}`;
-  return async (_ctx, query, limit) => {
-    const store = getStore();
+  return async (ctx, query, limit) => {
+    const store = await getStore(ctx);
     if (store === null) return [];
     const q = query.trim();
     const hits: AgoraConsoleSearchHit[] = [];

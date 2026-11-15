@@ -38,7 +38,7 @@ import { randomUUID } from 'node:crypto'
 import type { Collection } from 'mongodb'
 import {
   type TelescopeStore, type Entry, type RecordInput, type EntryQuery,
-  type BatchOrigin, currentTraceId, isBatchOrigin,
+  type BatchOrigin, currentTraceId, isBatchOrigin, resolveCreatedAt, resolveEntryId,
 } from '@adonis-agora/telescope'
 
 export class MongoTelescopeStore implements TelescopeStore {
@@ -46,10 +46,14 @@ export class MongoTelescopeStore implements TelescopeStore {
   constructor(private readonly col: Collection) {}
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
+    if (input.id !== undefined) {
+      const existing = await this.get(input.id)
+      if (existing) return existing as Entry<TContent>
+    }
     const traceId = input.traceId !== undefined ? input.traceId : currentTraceId()
     const origin: BatchOrigin = isBatchOrigin(input.origin) ? input.origin : 'manual'
     const entry: Entry<TContent> = {
-      id: randomUUID(),
+      id: input.id !== undefined ? resolveEntryId(input.id) : randomUUID(),
       type: input.type,
       familyHash: input.familyHash ?? null,
       content: input.content,
@@ -58,7 +62,7 @@ export class MongoTelescopeStore implements TelescopeStore {
       durationMs: input.durationMs ?? null,
       origin,
       traceId,
-      createdAt: new Date(),
+      createdAt: resolveCreatedAt(input.createdAt),
     }
     await this.col.insertOne({ ...entry, createdAtMs: entry.createdAt.getTime() })
     return entry
@@ -131,6 +135,10 @@ function escapeRegExp(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/
   `input.traceId !== undefined ? input.traceId : currentTraceId()` (so an explicit `null`
   is respected, and an omitted one reads context), and `isBatchOrigin(input.origin) ? ... :
   'manual'`. Skip this and trace correlation silently breaks.
+- **`id` and `createdAt` from the input**: an entry recorded on another machine and stored
+  later (a central Telescope server) brings its own. `resolveCreatedAt` keeps a sane time and
+  takes a missing, invalid or far-future one as now. `resolveEntryId` keeps a valid id. An id
+  already stored returns the stored entry, so a retried send is stored once.
 - **`createdAtMs` as an integer** makes `before`/`after`/`prune` integer comparisons and the
   newest-first sort stable — the same choice the Lucid store makes. Sorting by
   `createdAtMs desc, sequence desc` gives a deterministic order even when two entries share a

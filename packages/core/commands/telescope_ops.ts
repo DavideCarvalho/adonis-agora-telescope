@@ -1,7 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { args, flags } from '@adonisjs/core/ace';
+import { scopedStore } from '../src/tenancy_store.js';
+import { consoleAppScope, describeAppScope } from '../src/ui/app_scope.js';
 import { consoleMeta, QUEUE_ACTIONS_DISABLED } from '../src/ui/console_apis.js';
-import { consoleTenantScope, describeTenantScope } from '../src/ui/tenant_scope.js';
+import {
+  consoleTenantScope,
+  describeTenantScope,
+  selectTenantScope,
+} from '../src/ui/tenant_scope.js';
 import {
   CliUsageError,
   ConsoleRefusal,
@@ -256,6 +262,34 @@ export class TelescopeTenantsList extends TelescopeCommand {
       return;
     }
     this.table(data.tenants as unknown as Array<Record<string, unknown>>, ['id', 'label']);
+  }
+}
+
+/** `telescope:apps:list`: the apps the console's App picker offers. */
+export class TelescopeAppsList extends TelescopeCommand {
+  static override commandName = 'telescope:apps:list';
+  static override description = 'Apps telescope has entries for (entries tagged app:<id>)';
+
+  override async run() {
+    const { store, coreConfig, uiConfig } = await this.console();
+    // `--tenant` narrows which apps are listed; `--app` does not apply to this list.
+    let tenantTags: string[] | null = null;
+    if (this.tenant !== undefined && this.tenant !== '') {
+      const scope = consoleTenantScope({ tenants: '*' }, coreConfig.tenancy);
+      if (scope !== null)
+        tenantTags = selectTenantScope(scope, this.tenant, coreConfig.tenancy).tags;
+    }
+    const data = await describeAppScope(
+      consoleAppScope({ apps: '*' }),
+      scopedStore(store, tenantTags, null),
+      uiConfig.apps.labels,
+    );
+    if (this.json) return this.printJson({ data });
+    if (!data.enabled) {
+      this.logger.info('no entry carries an app tag: this telescope records a single app');
+      return;
+    }
+    this.table(data.apps as unknown as Array<Record<string, unknown>>, ['id', 'label']);
   }
 }
 

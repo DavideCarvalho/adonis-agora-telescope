@@ -8,6 +8,7 @@ import { Skeleton } from '../agora-kit/ui/skeleton';
 import { CONFIG_ELEMENT_ID } from '../client/api-base.js';
 import type { DashboardSpec, ExtensionEntryType } from '../client/types.js';
 import { ENTRY_TYPES } from '../client/types.js';
+import { AppEmptyNotice, AppPicker } from './AppPicker.js';
 import { buildCommands, type CommandTarget } from './commands.js';
 import {
   AiIcon,
@@ -310,6 +311,7 @@ export function App() {
       }
       actions={
         <>
+          <AppPicker />
           <TenantPicker />
           <div className="hidden md:block">
             <RetentionIndicator />
@@ -319,6 +321,7 @@ export function App() {
       }
     >
       <PageBody>
+        <AppEmptyNotice />
         <TenantEmptyNotice />
         <ErrorBoundary label={TITLES[route.name]} resetKeys={[formatHash(route)]}>
           <Suspense fallback={<PageSkeleton />}>

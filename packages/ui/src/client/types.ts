@@ -819,6 +819,25 @@ export interface AiUsageSummary {
   truncated: boolean;
 }
 
+// ── apps (`GET <base>/apps`) ────────────────────────────────────────────────
+
+export interface AppOption {
+  id: string;
+  label: string;
+}
+
+/** The viewer's app scope, for the App picker (a server collecting entries from several apps). */
+export interface AppScope {
+  /** Entries carry app tags, or the viewer is limited to some apps (show the picker). */
+  enabled: boolean;
+  /** The tag prefix entries carry (`app` → `app:<id>`). */
+  tag?: string;
+  /** The viewer may see every app ("All apps"). */
+  all: boolean;
+  /** The apps the viewer may pick. */
+  apps: AppOption[];
+}
+
 // ── organizations (`GET <base>/tenants`) ─────────────────────────────────────
 
 export interface TenantOption {

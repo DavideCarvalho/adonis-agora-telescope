@@ -25,6 +25,7 @@ import {
   TelescopeTracesWaterfall,
 } from '../commands/telescope_metrics.js';
 import {
+  TelescopeAppsList,
   TelescopeExtAction,
   TelescopeJobsRetry,
   TelescopeMetaShow,
@@ -277,6 +278,28 @@ describe('console commands', () => {
     const tenant = await run(TelescopeEntriesList, ['--tenant', 'acme']);
     tenant.assertFailed();
     expect(logs(tenant)).toContain('--tenant needs tenancy');
+  });
+
+  it('lists the apps and narrows any read with --app; global actions refuse --app', async () => {
+    expect((await json(TelescopeAppsList)).data).toEqual({
+      enabled: false,
+      tag: 'app',
+      all: true,
+      apps: [],
+    });
+    await store().record({ type: 'log', content: { message: 'from-a' }, tags: ['app:a'] });
+    await store().record({ type: 'log', content: { message: 'from-b' }, tags: ['app:b'] });
+    const apps = (await json(TelescopeAppsList)).data;
+    expect(apps.enabled).toBe(true);
+    expect(apps.apps.map((a: { id: string }) => a.id).sort()).toEqual(['a', 'b']);
+    const onlyA = JSON.stringify(await json(TelescopeEntriesList, ['--app', 'a']));
+    expect(onlyA).toContain('from-a');
+    expect(onlyA).not.toContain('from-b');
+    // --app does not narrow the list of apps itself.
+    expect((await json(TelescopeAppsList, ['--app', 'a'])).data.apps).toHaveLength(2);
+    const clear = await run(TelescopeEntriesClear, ['--app', 'a', '--force']);
+    clear.assertFailed();
+    expect(await store().count()).toBe(2);
   });
 
   it('prunes: --dry-run counts, no --force refuses without a terminal, --force deletes', async () => {

@@ -27,6 +27,7 @@ commands: [() => import('@adonis-agora/telescope/commands')]
 |---|---|
 | `--json` | Print JSON instead of a table. Lists print the console's envelope: `{ data, meta }`. |
 | `--tenant <id>` | Only that organization's entries (tenancy on). Actions that reach every organization refuse it. |
+| `--app <id>` | Only that app's entries (a server collecting several apps). Actions that reach every app refuse it. |
 | `--window <duration>` | Trailing window for the analytics commands: `15m`, `1h`, `1d`. |
 | `--force` | Skip the confirmation of a destructive action. Without a terminal (CI, a pipe) these actions refuse unless `--force`. |
 
@@ -95,6 +96,7 @@ node ace telescope:entries:prune --older-than 7d --dry-run
 | `telescope:profiles:list` | Captured CPU profiles. `--first`, `--after`. |
 | `telescope:profiles:show <id>` | One profile; `--json` prints the whole V8 profile. |
 | `telescope:tenants:list` | The organizations Telescope has entries for. |
+| `telescope:apps:list` | The apps Telescope has entries for (entries tagged `app:<id>`). |
 | `telescope:meta:show` | Which features are on, the running watchers, what extensions contribute. |
 | `telescope:ext:data <ext> <provider>` | An extension's dashboard data, with `--param key=value`. |
 

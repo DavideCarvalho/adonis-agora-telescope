@@ -4,8 +4,9 @@ import { RefreshIcon, SearchIcon, XIcon } from '../agora-kit/icons';
 import { Badge } from '../agora-kit/ui/badge';
 import { Button } from '../agora-kit/ui/button';
 import { formatDuration, formatRelative, formatTime } from '../client/format.js';
-import { selectedTenant } from '../client/telescope-client.js';
+import { selectedApp, selectedTenant } from '../client/telescope-client.js';
 import { ENTRY_TYPES, type EntriesQuery, type EntrySummary } from '../client/types.js';
+import { appLabel } from './AppPicker.js';
 import { cn } from './primitives/cn.js';
 import { DataTable } from './primitives/data_table.js';
 import { InputField } from './primitives/input.js';
@@ -18,7 +19,13 @@ import {
 } from './primitives/select.js';
 import { tenantLabel } from './TenantPicker.js';
 import { AsyncBlock, PageHeader, Panel, SectionTitle, TypeBadge, typeLabel } from './ui.js';
-import { useCursorPager, useEntriesPage, useLiveTail, useTenants } from './use-telescope.js';
+import {
+  useApps,
+  useCursorPager,
+  useEntriesPage,
+  useLiveTail,
+  useTenants,
+} from './use-telescope.js';
 
 /** Rows per page. The list is scanned, not read in bulk. */
 const PAGE_SIZE = 50;
@@ -103,6 +110,12 @@ export function EntriesSection({
     tenants.data?.enabled === true &&
     (tenants.data.all || tenants.data.tenants.length > 1) &&
     selectedTenant() === undefined;
+  // Same for apps, on a server collecting entries from several apps.
+  const apps = useApps();
+  const showApp =
+    apps.data?.enabled === true &&
+    (apps.data.all || apps.data.apps.length > 1) &&
+    selectedApp() === undefined;
 
   const columns = useMemo(
     () => [
@@ -137,6 +150,23 @@ export function EntriesSection({
           <span className="tnum block text-right">{formatDuration(row.original.durationMs)}</span>
         ),
       },
+      ...(showApp
+        ? [
+            {
+              id: 'app',
+              header: 'App',
+              cell: ({ row }: { row: { original: EntrySummary } }) => {
+                const prefix = `${apps.data?.tag ?? 'app'}:`;
+                const tag = row.original.tags.find((t) => t.startsWith(prefix));
+                return (
+                  <span className="text-muted-foreground">
+                    {tag ? appLabel(apps.data, tag.slice(prefix.length)) : '—'}
+                  </span>
+                );
+              },
+            },
+          ]
+        : []),
       ...(showOrganization
         ? [
             {
@@ -182,7 +212,7 @@ export function EntriesSection({
         ),
       },
     ],
-    [onOpenTrace, showOrganization, tenants.data],
+    [onOpenTrace, showOrganization, tenants.data, showApp, apps.data],
   );
 
   const commitSearch = () => changeSearch(draft.trim());

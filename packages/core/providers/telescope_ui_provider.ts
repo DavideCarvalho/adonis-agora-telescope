@@ -9,7 +9,8 @@ import type { Entry } from '../src/entry.js';
 import { getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
-import { TenantScopedStore } from '../src/tenancy_store.js';
+import { entryInScope, scopedStore, scopeKey } from '../src/tenancy_store.js';
+import { consoleAppScope, describeAppScope, selectAppScope } from '../src/ui/app_scope.js';
 import { callerOf } from '../src/ui/caller.js';
 import {
   buildConsoleApis,
@@ -135,12 +136,12 @@ export default class TelescopeUiProvider {
       });
     const shared = buildApis(store);
     const scopedApis = new Map<string, ReturnType<typeof buildApis>>();
-    const apisFor = (tags: string[] | null) => {
-      if (tags === null) return shared;
-      const key = [...tags].sort().join('\n');
+    const apisFor = (tenantTags: string[] | null, appTags: string[] | null) => {
+      const key = scopeKey(tenantTags, appTags);
+      if (key === null) return shared;
       let apis = scopedApis.get(key);
       if (apis === undefined) {
-        apis = buildApis(new TenantScopedStore(store, tags));
+        apis = buildApis(scopedStore(store, tenantTags, appTags));
         if (scopedApis.size >= 64) scopedApis.delete(scopedApis.keys().next().value as string);
         scopedApis.set(key, apis);
       }
@@ -167,25 +168,50 @@ export default class TelescopeUiProvider {
     const router = await this.app.container.make('router');
     const guard = config.authorize;
 
-    // The one gate every API route runs: `authorize` writes the 401/403 JSON on denial. With
-    // tenancy on it also decides which organizations this request reads (`?tenant=` narrows it),
-    // and hands back the APIs over that slice of the store.
+    // The one gate every API route runs: `authorize` writes the 401/403 JSON on denial. It also
+    // decides which organizations (tenancy on, `?tenant=` narrows) and which apps (`?app=` narrows)
+    // this request reads, and hands back the APIs over that slice of the store.
     const gate = async (ctx: UiHttpContext) => {
       const decision = await enforceGuardDecision(ctx, guard);
       if (decision === null) return null;
+      const qs = ctx.request.qs();
       const scope = consoleTenantScope(decision, coreConfig.tenancy);
-      const selected = selectTenantScope(scope, ctx.request.qs().tenant, coreConfig.tenancy);
-      if (selected.forged) {
+      const tenantSelected = selectTenantScope(scope, qs.tenant, coreConfig.tenancy);
+      if (tenantSelected.forged) {
         void this.warnLog(
-          `[@adonis-agora/telescope] console request for organization ${JSON.stringify(String(ctx.request.qs().tenant))} outside the viewer's scope (${callerOf(ctx).id}); answered empty.`,
+          `[@adonis-agora/telescope] console request for organization ${JSON.stringify(String(qs.tenant))} outside the viewer's scope (${callerOf(ctx).id}); answered empty.`,
         );
       }
-      return { ...apisFor(selected.tags), scope, selected };
+      const appScope = consoleAppScope(decision);
+      const appSelected = selectAppScope(appScope, qs.app);
+      if (appSelected.forged) {
+        void this.warnLog(
+          `[@adonis-agora/telescope] console request for app ${JSON.stringify(String(qs.app))} outside the viewer's scope (${callerOf(ctx).id}); answered empty.`,
+        );
+      }
+      const selected = {
+        tags: tenantSelected.tags,
+        appTags: appSelected.tags,
+        restricted: tenantSelected.restricted || appSelected.restricted,
+        forged: tenantSelected.forged || appSelected.forged,
+      };
+      return {
+        ...apisFor(tenantSelected.tags, appSelected.tags),
+        scope,
+        appScope,
+        selected,
+      };
     };
-    /** `403` for an action that reaches every organization, asked by a viewer limited to some. */
-    const refuseRestricted = (ctx: UiHttpContext) =>
+    /** `403` for an action that reaches every organization or app, asked by a viewer limited to some. */
+    const refuseRestricted = (
+      ctx: UiHttpContext,
+      a: { selected: { tags: string[] | null; appTags: string[] | null } } | null = null,
+    ) =>
       ctx.response.status(403).send({
-        error: 'This action reaches every organization: it needs access to all of them.',
+        error:
+          a !== null && a.selected.appTags !== null && a.selected.tags === null
+            ? 'This action reaches every app: it needs access to all of them.'
+            : 'This action reaches every organization: it needs access to all of them.',
       });
 
     // Dashboard page: served by the `@adonis-agora/telescope-ui` SPA provider (it mounts the built
@@ -288,7 +314,7 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/profiles/arm`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
-        if (a.selected.restricted) return refuseRestricted(ctx);
+        if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.cpuProfiling.armEnabled) {
           return ctx.response.status(403).send({
             error:
@@ -332,7 +358,7 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/queues/live/:queue/jobs/:id/retry`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
-        if (a.selected.restricted) return refuseRestricted(ctx);
+        if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
         return a.queueManagerApi.retry(ctx, String(ctx.params.queue), String(ctx.params.id));
       })
@@ -342,7 +368,7 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/queues/live/:queue/enqueue`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
-        if (a.selected.restricted) return refuseRestricted(ctx);
+        if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
         return a.queueManagerApi.enqueue(ctx, String(ctx.params.queue), bodyOf(ctx));
       })
@@ -415,7 +441,7 @@ export default class TelescopeUiProvider {
           const a = await gate(ctx);
           if (a === null) return;
           // Counters over every organization: not for a viewer limited to some.
-          if (a.selected.restricted) return refuseRestricted(ctx);
+          if (a.selected.restricted) return refuseRestricted(ctx, a);
           const registry = getTelescopeRuntime().aiMetrics ?? null;
           if (registry === null) {
             return ctx.response.status(404).send({ error: 'Prometheus metrics are not running.' });
@@ -461,12 +487,12 @@ export default class TelescopeUiProvider {
             write: (chunk) => raw.write(chunk),
             onClose: (handler) => ctx.request.request.on('close', handler),
           };
-          const tags = a.selected.tags;
+          const { tags, appTags } = a.selected;
           const session = streamEntries(
             entryEvents,
             sink,
-            tags !== null
-              ? { filter: (entry: Entry) => entry.tags.some((t) => tags.includes(t)) }
+            tags !== null || appTags !== null
+              ? { filter: (entry: Entry) => entryInScope(entry, tags, appTags) }
               : {},
           );
           // Hold the response open: never resolve/return a body. Cleanup runs on
@@ -491,7 +517,7 @@ export default class TelescopeUiProvider {
         .post(`${apiBase}/ext/:ext/actions/:action`, async (ctx: GuardedContext) => {
           const a = await gate(ctx);
           if (a === null) return;
-          if (a.selected.restricted) return refuseRestricted(ctx);
+          if (a.selected.restricted) return refuseRestricted(ctx, a);
           return a.extApi?.action(
             ctx,
             String(ctx.params.ext),
@@ -514,6 +540,20 @@ export default class TelescopeUiProvider {
           .send({ data: await describeTenantScope(a.scope, coreConfig.tenancy, store) });
       })
       .as('telescope_ui.tenants');
+
+    // `GET <path>/api/apps` — what the console's App picker shows: the apps this viewer may see
+    // (within the organizations it may see).
+    router
+      .get(`${apiBase}/apps`, async (ctx: GuardedContext) => {
+        const a = await gate(ctx);
+        if (a === null) return;
+        const source = scopedStore(store, a.selected.tags, null);
+        return ctx.response
+          .status(200)
+          .header('cache-control', 'private, no-store')
+          .send({ data: await describeAppScope(a.appScope, source, config.apps.labels) });
+      })
+      .as('telescope_ui.apps');
 
     // `GET <path>/api/meta` — always registered (unlike the extension-only routes above), because
     // the dashboard's `ai.enabled` flag lives here too. `entryTypes`/`dashboards` are empty when no

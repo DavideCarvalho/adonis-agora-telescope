@@ -3,6 +3,7 @@ import type {
   AccessDeniedOption as GenericAccessDeniedOption,
   AccessDeniedRenderer as GenericAccessDeniedRenderer,
 } from './access_denied_page.js';
+import type { AppLabels } from './app_scope.js';
 import {
   type ConsoleAuthorize,
   type ConsoleAuthorizeResult,
@@ -145,6 +146,11 @@ export interface TelescopeUiConfig {
    */
   queueActions?: { enabled?: boolean };
   /**
+   * On a server that collects entries from several apps (each tagged `app:<id>`): the names the
+   * console's App picker shows, as `{ id: label }` or a resolver given the ids. Default: the id.
+   */
+  apps?: { labels?: AppLabels };
+  /**
    * The console SPA's own block, read by `@adonis-agora/telescope-ui` (ignored without it): turn
    * the SPA off or re-mount it, and set the sidebar footer's signed-in user and sign-out.
    */
@@ -210,6 +216,8 @@ export interface ResolvedTelescopeUiConfig {
   cpuProfiling: { armEnabled: boolean };
   /** Resolved queue-console mutation gate (disabled by default). */
   queueActions: { enabled: boolean };
+  /** App picker labels (see {@link TelescopeUiConfig.apps}). */
+  apps: { labels?: AppLabels };
 }
 
 /**
@@ -288,5 +296,6 @@ export function resolveConfig(
       // Safe default: queue mutations are OFF unless the host explicitly enables them.
       enabled: config.queueActions?.enabled ?? false,
     },
+    apps: config.apps?.labels !== undefined ? { labels: config.apps.labels } : {},
   };
 }

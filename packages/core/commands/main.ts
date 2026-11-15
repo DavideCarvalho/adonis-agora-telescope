@@ -24,6 +24,7 @@ import {
   TelescopeTracesWaterfall,
 } from './telescope_metrics.js';
 import {
+  TelescopeAppsList,
   TelescopeExtAction,
   TelescopeExtData,
   TelescopeJobsEnqueue,
@@ -68,6 +69,7 @@ export const consoleCommands = [
   TelescopeProfilesStatus,
   TelescopeProfilesList,
   TelescopeProfilesShow,
+  TelescopeAppsList,
   TelescopeTenantsList,
   TelescopeMetaShow,
   TelescopeExtData,

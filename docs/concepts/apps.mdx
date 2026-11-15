@@ -1,0 +1,81 @@
+---
+title: Apps
+icon: Boxes
+description: One Telescope console for several apps. Each viewer sees only the apps its authorize grants, and an App picker chooses which one to look at.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+When one Telescope server stores entries from several apps (see
+[`@adonis-agora/telescope-server`](https://github.com/DavideCarvalho/adonis-agora-telescope-server)),
+each entry from app `shop` carries the tag `app:shop`. The console then works per app:
+
+- the header shows an **App** control. It is a fixed chip when the viewer sees one app, and a
+  searchable picker when it sees several or all of them, with **All apps** first;
+- the choice lives in the URL (`?app=shop`) and combines with `?tenant=`, so links keep both;
+- with all apps in view, the entries table gets an **App** column;
+- the console, the JSON API, the live tail, ⌘K search and the MCP tools on `/mcp/agora` show each
+  viewer only the apps it may see. Counts, exception groups, traces and Pulse are computed from
+  those entries only.
+
+An app that keeps its own entries has no `app:` tags. Its console has no App control and
+works as before.
+
+## Who sees what
+
+By default a viewer sees every app. Return `apps` from your console `authorize` to limit it: a
+list of app ids, or `'*'` for every app plus the entries recorded with none. It works next to
+`tenants`, and a viewer sees an entry only when both allow it:
+
+```ts title="app/policies/telescope_access.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import type { ConsoleAuthorizer } from '@adonis-agora/telescope/ui'
+
+export default class TelescopeAccess implements ConsoleAuthorizer {
+  async authorize(ctx: HttpContext) {
+    const user = ctx.auth.user
+    if (!user) return { redirectTo: '/login' }
+    if (user.isStaff) return { allowed: true, apps: '*' as const }
+    // The shop team sees the shop app only.
+    if (user.team === 'shop') return { allowed: true, apps: ['shop'] }
+    return false
+  }
+}
+```
+
+Token holders get their apps the same way:
+
+```ts title="config/telescope_ui.ts"
+import env from '#start/env'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN'), apps: ['shop'] }),
+})
+```
+
+<Callout type="info">
+A viewer limited to some apps cannot run actions that reach all of them: arming a CPU capture,
+queue retries and enqueues, extension actions and the Prometheus scrape answer `403`. A `?app=`
+outside the viewer's apps shows nothing.
+</Callout>
+
+## Labels
+
+The picker shows the app id unless you name it:
+
+```ts title="config/telescope_ui.ts"
+export default defineConfig({
+  apps: {
+    labels: { shop: 'Shop', billing: 'Billing' },
+    // or a resolver: labels: async (ids) => Object.fromEntries(ids.map((id) => [id, id.toUpperCase()])),
+  },
+})
+```
+
+## API and CLI
+
+- `GET <path>/api/apps` lists the apps this viewer may pick: `{ enabled, tag, all, apps: [{ id, label }] }`.
+- Every API route accepts `?app=<id>`.
+- `node ace telescope:apps:list` lists the apps Telescope has entries for, and every `telescope:*`
+  read accepts `--app <id>`.
