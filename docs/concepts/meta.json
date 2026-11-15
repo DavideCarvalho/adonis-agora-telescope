@@ -12,6 +12,7 @@
     "apps",
     "central-server",
     "transports",
+    "tracing-across-apps",
     "health-checks",
     "fleet"
   ]

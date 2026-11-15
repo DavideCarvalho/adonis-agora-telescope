@@ -66,6 +66,8 @@ export class TelescopeApi {
   private readonly replay: { enabled: boolean } & ReplayOptions;
   /** Retention/sampling posture (additive). Empty when the host configured neither. */
   private readonly retentionOptions: RetentionOptions;
+  /** For a viewer limited to some apps: counts a trace's spans in the apps it may not see. */
+  private readonly hiddenSpans: ((traceId: string) => Promise<number>) | undefined;
 
   constructor(
     private readonly service: TelescopeService,
@@ -73,11 +75,13 @@ export class TelescopeApi {
     replayOptions: ({ enabled?: boolean } & ReplayOptions) | undefined = undefined,
     pulseOptions: PulseServiceOptions = {},
     retentionOptions: RetentionOptions = {},
+    hiddenSpans?: (traceId: string) => Promise<number>,
   ) {
     this.metrics = new MetricsService(service.telescopeStore, metricsOptions);
     this.pulse = new PulseService(service.telescopeStore, pulseOptions);
     this.replay = { enabled: false, ...replayOptions };
     this.retentionOptions = retentionOptions;
+    this.hiddenSpans = hiddenSpans;
   }
 
   /**
@@ -274,11 +278,22 @@ export class TelescopeApi {
     }
   }
 
-  /** `GET <path>/api/metrics/waterfall/:traceId` — span waterfall for one trace, or 404. */
+  /**
+   * `GET <path>/api/metrics/waterfall/:traceId` — span waterfall for one trace, or 404. A trace the
+   * viewer sees none of is a 404, whatever other apps recorded in it. For a viewer limited to some
+   * apps, `hiddenSpans` counts the spans other apps recorded in it.
+   */
   async metricsWaterfall(ctx: UiHttpContext, traceId: string): Promise<unknown> {
     const data = await this.metrics.getWaterfall(traceId);
     if (data === null) {
       return ctx.response.status(404).send({ error: 'Trace not found' });
+    }
+    if (this.hiddenSpans !== undefined) {
+      try {
+        data.hiddenSpans = await this.hiddenSpans(traceId);
+      } catch {
+        // The count is a note: the waterfall shows without it.
+      }
     }
     return ctx.response
       .status(200)

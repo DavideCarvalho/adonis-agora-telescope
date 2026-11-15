@@ -1,4 +1,5 @@
 import { type Entry, EntryType } from '../entry.js';
+import { appOfEntry } from './waterfall.js';
 
 /** A per-trace summary row for the dashboard's trace list. */
 export interface TraceSummary {
@@ -17,6 +18,11 @@ export interface TraceSummary {
   rootLabel?: string;
   /** The request entry's user label (`email` ?? `id`), when the trace has one. */
   userLabel?: string;
+  /**
+   * The apps the trace crossed (their `app:<id>` tags), the one that started it first. Empty when no entry
+   * carries one (a single app recording for itself).
+   */
+  apps: string[];
 }
 
 export interface SummarizeTracesOptions {
@@ -55,6 +61,8 @@ interface TraceAccumulator {
   totalDurationMs: number;
   rootLabel?: string;
   userLabel?: string;
+  /** Each app's earliest entry (epoch ms): the list is ordered by it. */
+  apps: Map<string, number>;
 }
 
 /**
@@ -82,11 +90,18 @@ export function summarizeTraces(
         firstAt: entry.createdAt,
         lastAt: entry.createdAt,
         totalDurationMs: 0,
+        apps: new Map(),
       };
       byTrace.set(traceId, accumulator);
     }
 
     accumulator.entryCount += 1;
+    const app = appOfEntry(entry);
+    if (app !== undefined) {
+      const at = entry.createdAt.getTime() - (entry.durationMs ?? 0);
+      const seen = accumulator.apps.get(app);
+      if (seen === undefined || at < seen) accumulator.apps.set(app, at);
+    }
     accumulator.types.add(entry.type);
     if (entry.createdAt.getTime() < accumulator.firstAt.getTime()) {
       accumulator.firstAt = entry.createdAt;
@@ -116,6 +131,7 @@ export function summarizeTraces(
       firstAt: accumulator.firstAt,
       lastAt: accumulator.lastAt,
       totalDurationMs: accumulator.totalDurationMs,
+      apps: [...accumulator.apps].sort((a, b) => a[1] - b[1]).map(([app]) => app),
       ...(accumulator.rootLabel !== undefined ? { rootLabel: accumulator.rootLabel } : {}),
       ...(accumulator.userLabel !== undefined ? { userLabel: accumulator.userLabel } : {}),
     });

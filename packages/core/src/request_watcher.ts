@@ -1,6 +1,7 @@
 import { currentUserRef } from './context_accessor.js';
 import { type Entry, EntryType, type RecordInput } from './entry.js';
 import type { TelescopeStore } from './store.js';
+import { currentSpanIds } from './tracing/scope.js';
 
 /** The recorded body of a `request` entry. */
 export interface RequestEntryContent {
@@ -14,6 +15,16 @@ export interface RequestEntryContent {
   durationMs: number;
   /** The active trace id at request time, or `null`. */
   traceId: string | null;
+  /**
+   * This request's span id (the OpenTelemetry server span, or the one telescope keeps), when it
+   * runs in a trace. Calls and jobs it makes name it as their parent.
+   */
+  spanId?: string;
+  /**
+   * The caller's span id: the app (or the OpenTelemetry span) that called this one, when the
+   * request carried a `traceparent`. `null` when it started the trace.
+   */
+  parentSpanId?: string | null;
   /**
    * Host-supplied context for this request, from the {@link RequestEnrichment}
    * hook — e.g. which front-end screen issued the call. Absent when no hook is
@@ -502,6 +513,7 @@ export async function recordRequest(
       ? gateRequestBody(ctx.request, resolveRequestCapture(options.capture))
       : undefined;
 
+  const spans = currentSpanIds();
   const input: RecordInput<RequestEntryContent> = {
     type: EntryType.Request,
     content: {
@@ -510,6 +522,7 @@ export async function recordRequest(
       status,
       durationMs,
       traceId: options.traceId ?? null,
+      ...(spans !== null ? { spanId: spans.spanId, parentSpanId: spans.parentSpanId } : {}),
       kind,
       user,
       ...(enrichment.context !== undefined ? { context: enrichment.context } : {}),

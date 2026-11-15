@@ -23,6 +23,11 @@ import {
   resolveTopology,
   type TelescopeTopologyConfig,
 } from './topology/config.js';
+import {
+  type PropagationConfig,
+  type ResolvedPropagationConfig,
+  resolvePropagation,
+} from './tracing/config.js';
 import type { LogLevel, LogsWatcherOptions } from './watchers/logs_watcher.js';
 
 /** Default retention age for the pruner when `prune.after` is omitted. */
@@ -296,6 +301,13 @@ export interface TelescopeConfig extends TelescopeTopologyConfig {
    * the control plane, or a standalone app, derives from them. On by default; `false` turns it off.
    */
   fleet?: FleetConfig | false;
+
+  /**
+   * Tracing across apps: which outgoing calls carry the trace (`traceparent`), whether an incoming
+   * one is continued (default yes), and `@adonisjs/queue` jobs. Outgoing calls carry nothing until
+   * `targets` lists them. See {@link PropagationConfig}.
+   */
+  propagation?: PropagationConfig;
 }
 
 /** See {@link TelescopeConfig.health}. */
@@ -493,6 +505,10 @@ export interface ResolvedTelescopeConfig {
   health: { readiness: string | null; liveness: string | null };
   /** Resolved fleet settings. */
   fleet: ResolvedFleetConfig;
+  /** Resolved propagation settings. */
+  propagation: ResolvedPropagationConfig;
+  /** Whether the app set `propagation` (a request with no caller then starts a trace). */
+  propagationConfigured: boolean;
 }
 
 /** The resolved OTel settings (see {@link OtelConfig}). */
@@ -525,6 +541,7 @@ export function defineConfig(config: TelescopeConfig): TelescopeConfig {
   resolveChecks(config.checks);
   resolveHealthRoutes(config.health);
   resolveFleetConfig(config.fleet);
+  resolvePropagation(config.propagation);
   return config;
 }
 
@@ -587,6 +604,8 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     checks: resolveChecks(config.checks),
     health: resolveHealthRoutes(config.health),
     fleet: resolveFleetConfig(config.fleet),
+    propagation: resolvePropagation(config.propagation),
+    propagationConfigured: config.propagation !== undefined,
   };
 }
 

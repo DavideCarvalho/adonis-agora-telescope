@@ -61,6 +61,8 @@ import { createIngestHandler } from '../src/topology/ingest.js';
 import { activeRemoteStores, RemoteTelescopeStore } from '../src/topology/remote_store.js';
 import { type IngestRouter, registerIngestRoutes } from '../src/topology/routes.js';
 import type { ControlPlaneChannel, TransportContext } from '../src/topology/transports/types.js';
+import { installPropagation } from '../src/tracing/index.js';
+import { setOtelSpanReader } from '../src/tracing/scope.js';
 import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 
 /**
@@ -97,6 +99,7 @@ export default class TelescopeProvider {
   private fleet: FleetRegistry | null = null;
   private reporter: InstanceReporter | null = null;
   private healthChecks: HealthChecks | null = null;
+  private stopPropagation: (() => void) | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -145,6 +148,8 @@ export default class TelescopeProvider {
       config.requestEnrichment,
     );
     setTelescopeEntryEvents(this.entryEvents);
+    // Tracing across apps: incoming `traceparent`, outgoing calls to `propagation.targets`, jobs.
+    this.stopPropagation = installPropagation(config.propagation, config.propagationConfigured);
     setTelescopeRecordHeartbeat(config.recordHeartbeat);
 
     await this.startAiMetrics(config);
@@ -528,6 +533,7 @@ export default class TelescopeProvider {
     try {
       const otel = await import('../src/otel/global_emitter.js');
       setOtelTraceIdReader(otel.readActiveOtelTraceId);
+      setOtelSpanReader(otel.readActiveOtelSpan);
       setTelescopeWorkWrapper(otel.withoutTracing);
       this.otelReaderInstalled = true;
       if (!config.otel.enabled) return store;
@@ -614,6 +620,8 @@ export default class TelescopeProvider {
   }
 
   async shutdown() {
+    this.stopPropagation?.();
+    this.stopPropagation = null;
     // Draining first: a tenant's last heartbeat goes out with the final flush below.
     await this.reporter?.setState('draining').catch(() => {});
     this.reporter?.stop();
@@ -636,6 +644,7 @@ export default class TelescopeProvider {
     this.entryEvents = null;
     if (this.otelReaderInstalled) {
       setOtelTraceIdReader(null);
+      setOtelSpanReader(null);
       setTelescopeWorkWrapper(null);
     }
     this.otelReaderInstalled = false;
