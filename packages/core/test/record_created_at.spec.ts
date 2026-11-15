@@ -105,9 +105,9 @@ function contract(make: () => Promise<{ store: TelescopeStore; flush?: () => Pro
   it('recording an id it already holds stores nothing new', async () => {
     await store.record({ type: 'log', content: { n: 1 }, id: 'dup-1' });
     await flush();
-    await expect(
-      store.record({ type: 'log', content: { n: 2 }, id: 'dup-1' }),
-    ).resolves.toBeTruthy();
+    // The stored entry comes back, not the one just offered.
+    const again = await store.record({ type: 'log', content: { n: 2 }, id: 'dup-1' });
+    expect(again.content).toEqual({ n: 1 });
     await flush();
     expect(await store.count()).toBe(1);
     expect((await store.get('dup-1'))?.content).toEqual({ n: 1 });

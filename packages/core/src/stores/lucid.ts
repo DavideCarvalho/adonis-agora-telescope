@@ -488,7 +488,9 @@ export class LucidTelescopeStore implements TelescopeStore {
       });
     } catch (error) {
       // A given id already stored: the same entry again (a retried send), stored once.
-      if (input.id !== undefined && isDuplicateKey(error)) return entry;
+      if (input.id !== undefined && isDuplicateKey(error)) {
+        return ((await this.get(entry.id)) as Entry<TContent> | null) ?? entry;
+      }
       throw error;
     }
     return entry;
