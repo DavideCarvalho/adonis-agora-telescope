@@ -316,6 +316,13 @@ export function createIngestHandler(options: IngestHandlerOptions) {
       return { kind: 'ok' };
     },
 
+    /** The sender a request's token names, or the refusal to answer. */
+    async caller(
+      request: Pick<IngestRequest, 'token' | 'app'>,
+    ): Promise<VerifiedTenant | IngestResponse> {
+      return authenticate(request);
+    },
+
     /** `GET <path>/whoami`: who the token says the sender is. */
     async whoami(request: Pick<IngestRequest, 'token' | 'app'>): Promise<IngestResponse> {
       const auth = await authenticate(request);

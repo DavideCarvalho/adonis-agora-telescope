@@ -281,7 +281,8 @@ export class RemoteTelescopeStore implements TelescopeStore {
     let outcome: Awaited<ReturnType<TenantChannel['send']>>;
     try {
       const channel = await this.channel;
-      const token = await readToken(this.config.token);
+      // Telescope's own traffic too (an authkit token fetch): never recorded, never rewritten.
+      const token = await runAsTelescopeWork(() => readToken(this.config.token));
       // Telescope's own traffic: the request/redis/queue watchers do not record it.
       outcome = await runAsTelescopeWork(() =>
         channel.send({

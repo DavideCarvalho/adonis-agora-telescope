@@ -14,6 +14,8 @@ import {
   type TelescopeConfig,
 } from '../src/define_config.js';
 import { DiagnosticsWatcher } from '../src/diagnostics_watcher.js';
+import { type RunningDiscovery, startDiscovery } from '../src/discovery/index.js';
+import { DiscoveryPublisher } from '../src/discovery/server.js';
 import { registerDoctorChecks } from '../src/doctor/agora_doctor.js';
 import {
   dbSchemaDoctorCheck,
@@ -100,6 +102,8 @@ export default class TelescopeProvider {
   private reporter: InstanceReporter | null = null;
   private healthChecks: HealthChecks | null = null;
   private stopPropagation: (() => void) | null = null;
+  private discovery: RunningDiscovery | null = null;
+  private discoveryPublisher: DiscoveryPublisher | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -213,10 +217,20 @@ export default class TelescopeProvider {
     // Central server: a tenant starts sending; a control plane mounts the ingest routes.
     this.remote?.start();
     if (config.topology.topology === 'control-plane') await this.registerIngest(config);
+
+    // Service discovery: `fetch('http://billing/…')` reaches the app named billing.
+    this.discovery = await startDiscovery({
+      config: config.discovery,
+      topology: config.topology,
+      onError: (message) => void this.debug(`[@adonis-agora/telescope] discovery: ${message}`),
+    });
   }
 
   /** The app is serving: this instance is ready. */
   async ready() {
+    // Providers that composed onto the global dispatcher during boot (an auth token, an
+    // encryption envelope) now sit outside the rewrite: put it back on top, so they see real origins.
+    await this.discovery?.ready();
     await this.reporter?.setState('ready');
   }
 
@@ -257,6 +271,7 @@ export default class TelescopeProvider {
       this.reporter = new InstanceReporter({
         intervalMs: fleetConfig.intervalMs,
         host: fleetConfig.host,
+        url: fleetConfig.url,
         version: () => resolveVersion(fleetConfig.version, appRoot),
         checks: this.healthChecks,
         ...(remote !== null ? { shipping: () => remote.shippingStats() } : {}),
@@ -362,8 +377,10 @@ export default class TelescopeProvider {
       limits: ingest,
       ...(fleet !== null
         ? {
-            onHeartbeat: (verified, heartbeat) =>
-              fleet.beat(verified.partition, heartbeat, verified.environment ?? null),
+            onHeartbeat: async (verified, heartbeat) => {
+              await fleet.beat(verified.partition, heartbeat, verified.environment ?? null);
+              this.discoveryPublisher?.poke();
+            },
           }
         : {}),
       onRefused: (reason, verified) =>
@@ -374,7 +391,14 @@ export default class TelescopeProvider {
     // The HTTP routes stay mounted whatever the transport: tenants on HTTP and on a broker can
     // share this control plane, and `whoami` keeps answering.
     const router = (await this.app.container.make('router')) as unknown as IngestRouter;
-    registerIngestRoutes(router, handler, ingest);
+    this.discoveryPublisher =
+      fleet !== null
+        ? new DiscoveryPublisher({
+            instances: () => fleet.instances(),
+            goneAfterIntervals: fleet.deriveOptions.goneAfterIntervals,
+          })
+        : null;
+    registerIngestRoutes(router, handler, ingest, this.discoveryPublisher);
     const transport = config.topology.transport;
     if (transport !== null) {
       // A broker that cannot be reached or built (a missing package, a bad connection name) is
@@ -620,6 +644,10 @@ export default class TelescopeProvider {
   }
 
   async shutdown() {
+    await this.discovery?.stop();
+    this.discovery = null;
+    await this.discoveryPublisher?.close();
+    this.discoveryPublisher = null;
     this.stopPropagation?.();
     this.stopPropagation = null;
     // Draining first: a tenant's last heartbeat goes out with the final flush below.

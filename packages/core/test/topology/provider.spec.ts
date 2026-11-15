@@ -99,6 +99,7 @@ describe('provider', () => {
     expect(routes.map((r) => `${r.method} ${r.pattern}`)).toEqual([
       'POST /_telescope/v1/ingest',
       'GET /_telescope/v1/whoami',
+      'GET /_telescope/v1/discovery',
     ]);
     const ingest = routes[0]?.handler as Handler;
     const ok = ctx(
@@ -137,6 +138,7 @@ describe('provider', () => {
       'POST /telescope/client-errors',
       'POST /_telescope/v1/ingest',
       'GET /_telescope/v1/whoami',
+      'GET /_telescope/v1/discovery',
     ]);
     // An HTTP tenant...
     const viaHttp = ctx(
@@ -196,6 +198,7 @@ describe('provider', () => {
     expect(routes.map((r) => `${r.method} ${r.pattern}`)).toEqual([
       'POST /_telescope/v1/ingest',
       'GET /_telescope/v1/whoami',
+      'GET /_telescope/v1/discovery',
     ]);
   });
 

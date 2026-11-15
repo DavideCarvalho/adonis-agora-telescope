@@ -40,6 +40,12 @@ export interface FleetConfig {
    * too, briefly.
    */
   report?: Array<'web' | 'console' | 'repl' | 'test'>;
+  /**
+   * The URL other apps reach this one at (`https://billing.internal`), sent with each heartbeat so
+   * the control plane can tell other apps where `billing` is (service discovery). Default
+   * `APP_URL`; none when unset.
+   */
+  url?: string;
 }
 
 /** {@link FleetConfig} with defaults. */
@@ -54,6 +60,8 @@ export interface ResolvedFleetConfig {
   restartLoop: { restarts: number; withinMs: number };
   store: 'auto' | 'memory' | FleetStore;
   report: string[];
+  /** This app's URL (`fleet.url`, else `APP_URL`), or `null`. */
+  url: string | null;
 }
 
 const PREFIX = '[@adonis-agora/telescope]';
@@ -109,7 +117,31 @@ export function resolveFleetConfig(config: FleetConfig | false | undefined): Res
     },
     store,
     report: [...(fleet.report ?? ['web'])],
+    url: resolveAppUrl(fleet.url),
   };
+}
+
+/** An app's base URL: an absolute http(s) URL, without query, hash or trailing slash. */
+export function normalizeAppUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    if (url.username !== '' || url.password !== '') return null;
+    return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return null;
+  }
+}
+
+function resolveAppUrl(configured: string | undefined): string | null {
+  if (configured !== undefined) {
+    const url = normalizeAppUrl(configured);
+    if (url === null) throw new Error(`${PREFIX} fleet.url must be an absolute http(s) URL`);
+    return url;
+  }
+  // APP_URL is a convention, not a promise: a malformed one is ignored rather than fatal.
+  return normalizeAppUrl(process.env.APP_URL);
 }
 
 function safeHostname(): string {

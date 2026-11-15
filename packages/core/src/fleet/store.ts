@@ -105,6 +105,7 @@ interface Payload {
   intervalMs: number;
   checks: CheckState[];
   shipping: ShippingStats | null;
+  url?: string | null;
 }
 
 const toInt = (value: unknown) => (typeof value === 'number' ? value : Number(value ?? 0));
@@ -163,6 +164,7 @@ export class LucidFleetStore implements FleetStore {
       intervalMs: record.intervalMs,
       checks: record.checks,
       shipping: record.shipping,
+      url: record.url ?? null,
     };
     const row = {
       id,
@@ -221,6 +223,7 @@ export class LucidFleetStore implements FleetStore {
         intervalMs: payload.intervalMs ?? 15_000,
         checks: Array.isArray(payload.checks) ? payload.checks : [],
         shipping: payload.shipping ?? null,
+        url: payload.url ?? null,
       };
     });
   }

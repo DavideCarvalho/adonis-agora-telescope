@@ -4,6 +4,11 @@ import {
   type ResolvedClientErrorsConfig,
   resolveClientErrors,
 } from './client_errors/config.js';
+import {
+  type DiscoveryConfig,
+  type ResolvedDiscoveryConfig,
+  resolveDiscovery,
+} from './discovery/config.js';
 import type { TelescopeExtension } from './extension/types.js';
 import { isCheckInput, type TelescopeCheckInput } from './fleet/checks.js';
 import { type FleetConfig, type ResolvedFleetConfig, resolveFleetConfig } from './fleet/config.js';
@@ -308,6 +313,13 @@ export interface TelescopeConfig extends TelescopeTopologyConfig {
    * `targets` lists them. See {@link PropagationConfig}.
    */
   propagation?: PropagationConfig;
+
+  /**
+   * Service discovery: `fetch('http://billing/invoices/1')` reaches the app named `billing`. Apps
+   * listed here (`billing: 'http://localhost:3334'`) resolve first; a tenant also resolves the apps
+   * the central server knows from their heartbeats (`fleet.url`). See {@link DiscoveryConfig}.
+   */
+  discovery?: DiscoveryConfig | false;
 }
 
 /** See {@link TelescopeConfig.health}. */
@@ -509,6 +521,8 @@ export interface ResolvedTelescopeConfig {
   propagation: ResolvedPropagationConfig;
   /** Whether the app set `propagation` (a request with no caller then starts a trace). */
   propagationConfigured: boolean;
+  /** Resolved discovery settings. */
+  discovery: ResolvedDiscoveryConfig;
 }
 
 /** The resolved OTel settings (see {@link OtelConfig}). */
@@ -542,6 +556,7 @@ export function defineConfig(config: TelescopeConfig): TelescopeConfig {
   resolveHealthRoutes(config.health);
   resolveFleetConfig(config.fleet);
   resolvePropagation(config.propagation);
+  resolveDiscovery(config.discovery);
   return config;
 }
 
@@ -606,6 +621,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     fleet: resolveFleetConfig(config.fleet),
     propagation: resolvePropagation(config.propagation),
     propagationConfigured: config.propagation !== undefined,
+    discovery: resolveDiscovery(config.discovery),
   };
 }
 
