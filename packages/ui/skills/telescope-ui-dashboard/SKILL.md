@@ -3,8 +3,8 @@ name: telescope-ui-dashboard
 description: >-
   Mount and consume the @adonis-agora/telescope-ui observability console for
   @adonis-agora/telescope — register telescope_ui_dashboard_provider AFTER ui_provider
-  in adonisrc.ts, the pre-built React SPA's eleven sections (overview, entries + live
-  tail, traces/waterfall, AI spend + agent runs, Pulse, exception groups, live queues/schedules, exports,
+  in adonisrc.ts, the pre-built React SPA's twelve sections (overview, entries + live
+  tail, traces/waterfall, AI spend + agent runs, Pulse, Fleet, exception groups, live queues/schedules, exports,
   CPU profiles, extensions), the dependency-free TelescopeClient from /client,
   GET /api/meta capability discovery, mutation gates (replay/arm/retry/enqueue), and
   client-side JSON/CSV exports. Use for "show the dashboard", "telescope 404",
@@ -114,6 +114,7 @@ const next = await client.listEntriesPage({ type: 'exception', first: 50, after:
 const entry = await client.getEntry(entries[0].id)
 const story = await client.entriesByTrace(entry.traceId!)
 const pulse = await client.pulse(15 * 60_000)
+const fleet = await client.fleet()        // instances per app, deploys, restart loops, failing checks; follows App picker (?app=); needs core with fleet (GET <path>/api/fleet)
 const meta = await client.meta()          // capability discovery: ai / profiling / queueManager flags
 ```
 

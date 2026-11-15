@@ -13,6 +13,7 @@ import type {
   Entry,
   EntrySummary,
   Envelope,
+  FleetView,
   LiveQueues,
   LiveSchedules,
   NPlusOnePattern,
@@ -562,5 +563,12 @@ export class TelescopeClient {
 
   liveSchedules(): Promise<LiveSchedules> {
     return this.data<LiveSchedules>('/schedules/live');
+  }
+
+  // ── fleet ────────────────────────────────────────────────────────────────
+
+  /** The fleet: instances per app, deploys, restart loops, failing checks (`?app=` narrows). */
+  fleet(): Promise<FleetView> {
+    return this.data<FleetView>('/fleet');
   }
 }
