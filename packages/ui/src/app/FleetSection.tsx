@@ -20,7 +20,7 @@ import {
 import { AsyncBlock, clickable, PageHeader, Panel, SectionTitle, ShareBar } from './ui.js';
 import { useFleet } from './use-telescope.js';
 
-/** How often the page re-reads the fleet (one heartbeat interval). */
+/** How often the page re-reads the fleet (the default heartbeat interval; a poll cadence, not a claim about the server's config). */
 const REFRESH_MS = 15_000;
 
 /** `ms` as `3d 4h`, `12 min`, `40 s`. */
@@ -47,6 +47,14 @@ const HEALTH_VARIANT: Record<FleetCheckStatus, 'good' | 'warn' | 'destructive' |
   warn: 'warn',
   down: 'destructive',
   unknown: 'neutral',
+};
+
+/** Card tint per check status: `unknown` stays neutral, like its badge. */
+const INCIDENT_TONE: Record<FleetCheckStatus, string> = {
+  ok: 'border-border bg-panel-2',
+  warn: 'border-warn/30 bg-warn/5',
+  down: 'border-bad/30 bg-bad/5',
+  unknown: 'border-border bg-panel-2',
 };
 
 function shortVersion(version: string | null): string {
@@ -102,7 +110,7 @@ function IncidentCard({
   const label = incident.name.charAt(0).toUpperCase() + incident.name.slice(1);
   return (
     <div
-      className={`rounded-md border px-3 py-2.5 ${incident.status === 'down' ? 'border-bad/30 bg-bad/5' : 'border-warn/30 bg-warn/5'}`}
+      className={`rounded-md border px-3 py-2.5 ${INCIDENT_TONE[incident.status]}`}
       data-testid="fleet-incident"
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -162,6 +170,8 @@ function DeployTimeline({ app, now }: { app: FleetApp; now: number }) {
             </span>
             {deploy.complete ? (
               <Badge variant="good">complete</Badge>
+            ) : deploy.total === 0 ? (
+              <Badge variant="neutral">no live instances</Badge>
             ) : (
               <Badge variant="info">
                 {deploy.live}/{deploy.total} live
@@ -199,7 +209,7 @@ function AppPanel({
           <MetricCard
             label="Gone"
             value={counts.gone}
-            caption="no heartbeat for 3 intervals"
+            caption="missed several heartbeats in a row"
             tone="default"
           />
           {app.shipping !== null && (
@@ -297,7 +307,7 @@ export function FleetSection({ onOpenEntry }: { onOpenEntry: (id: string) => voi
       <AsyncBlock
         state={state}
         isEmpty={(view: FleetView) => view.notice === null && view.apps.length === 0}
-        empty="No instance has sent a heartbeat yet. Each instance sends one every 15 seconds once it boots."
+        empty="No instance has sent a heartbeat yet. Each instance sends one on its `fleet.interval` once it boots."
       >
         {(view) =>
           view.notice !== null ? (
