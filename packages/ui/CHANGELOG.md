@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.17
+
+### Patch Changes
+
+- [#343](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/343) [`89b3adb`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/89b3adb2ce33c4a83d7189fbc89e747965297452) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fleet page: no hardcoded heartbeat timings (the server's `fleet.interval`/`goneAfter` may differ), an `unknown` check card stays neutral like its badge, and a deploy with no live instances says so instead of `0/0 live`.
+
 ## 3.0.0-rc.16
 
 ### Minor Changes
