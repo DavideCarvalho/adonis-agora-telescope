@@ -16,6 +16,8 @@ export type {
   AlertMetric,
   AlertPayload,
   AlertRule,
+  AlertRuleRouting,
+  AlertSeverity,
   ExceptionAlertContext,
   FleetAlertContext,
   FleetAlertRule,
@@ -31,6 +33,7 @@ export { AlerterService, isFleetRule } from './alerter_service.js';
 export type {
   ChannelConfig,
   ChannelSpec,
+  SpecRouting,
   TelescopeAlertsConfig,
 } from './define_config.js';
 // — config —
@@ -40,9 +43,10 @@ export type { ExceptionPollerDeps } from './exception_source.js';
 export { ExceptionPoller } from './exception_source.js';
 export type { FleetOutcome, FleetSource } from './fleet_rules.js';
 export { FleetRuleEvaluator } from './fleet_rules.js';
+// — integrations: on-call, chat, email, heartbeats, status pages, uptime endpoint —
+export * from './integrations/index.js';
 // — new-exception dedupe —
 export { DEFAULT_MAX_FAMILIES, NewExceptionTracker } from './new_exception_tracker.js';
-
 // — duration helper —
 export { durationToMs } from './parse_duration.js';
 export type { SlackChannelOptions, SlackMessage } from './slack_format.js';

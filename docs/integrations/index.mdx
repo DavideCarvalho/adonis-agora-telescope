@@ -1,0 +1,100 @@
+---
+title: Integrations
+icon: Plug
+description: Send Telescope alerts to PagerDuty, Opsgenie, Better Stack, incident.io, Grafana OnCall, Discord, Teams, Telegram, Google Chat and email; feed heartbeat monitors; expose a health endpoint for uptime checkers; keep status pages up to date.
+---
+
+Everything here is configured in `config/telescope_alerts.ts` and needs the
+[alerts provider](/docs/telescope/packages/alerts). Secrets come from env: when one is
+missing, that integration is turned off at boot with a warning that names the missing
+field (never its value), and the app boots normally.
+
+| Integration | What it does | Config | Page |
+| --- | --- | --- | --- |
+| PagerDuty | Triggers and resolves incidents (Events API v2) | `{ type: 'pagerduty' }` | [On-call](/docs/telescope/integrations/on-call#pagerduty) |
+| Opsgenie | Creates and closes alerts | `{ type: 'opsgenie' }` | [On-call](/docs/telescope/integrations/on-call#opsgenie) |
+| Better Stack incidents | Creates and resolves incidents | `{ type: 'betterstack' }` | [On-call](/docs/telescope/integrations/on-call#better-stack) |
+| incident.io | Sends firing and resolved alert events | `{ type: 'incident-io' }` | [On-call](/docs/telescope/integrations/on-call#incidentio) |
+| Grafana OnCall | Sends alerting and ok events | `{ type: 'grafana-oncall' }` | [On-call](/docs/telescope/integrations/on-call#grafana-oncall) |
+| Discord | Embeds in a channel | `{ type: 'discord' }` | [Chat and email](/docs/telescope/integrations/chat#discord) |
+| Microsoft Teams | Adaptive Cards through a Workflows webhook | `{ type: 'teams' }` | [Chat and email](/docs/telescope/integrations/chat#microsoft-teams) |
+| Telegram | Bot messages | `{ type: 'telegram' }` | [Chat and email](/docs/telescope/integrations/chat#telegram) |
+| Google Chat | Cards in a space, one thread per rule | `{ type: 'google-chat' }` | [Chat and email](/docs/telescope/integrations/chat#google-chat) |
+| Email | Mails through `@adonisjs/mail` | `{ type: 'email' }` | [Chat and email](/docs/telescope/integrations/chat#email) |
+| Slack, webhook | Unchanged | `{ type: 'slack' }`, `{ type: 'webhook' }` | [Alerts](/docs/telescope/packages/alerts#channels) |
+| healthchecks.io, Better Stack, Cronitor, Uptime Kuma, UptimeRobot, any URL | Heartbeat pings while the app is healthy | `heartbeats: [...]` | [Heartbeats](/docs/telescope/integrations/heartbeats) |
+| UptimeRobot, Better Stack, Uptime Kuma (HTTP monitors) | Poll a health endpoint | `uptimeEndpoint()` | [Health endpoint](/docs/telescope/integrations/uptime-endpoint) |
+| Atlassian Statuspage, Instatus, Better Stack status pages | Component status, optional incidents | `statusPages: [...]` | [Status pages](/docs/telescope/integrations/status-pages) |
+
+## Routing alerts
+
+Every channel has a name: its `type`, or the `name` you give it. Two settings decide which
+channels get an alert:
+
+- `minSeverity` on a channel: only alerts at or above that severity reach it.
+- `channels` on a rule: that rule's alerts go only to the channels named there.
+
+```ts title="config/telescope_alerts.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
+
+export default defineConfig({
+  channels: [
+    { type: 'discord', url: env.get('DISCORD_WEBHOOK_URL') },
+    { type: 'pagerduty', routingKey: env.get('PAGERDUTY_ROUTING_KEY'), minSeverity: 'critical' },
+  ],
+  rules: [
+    { type: 'new-exception', window: '1h' },
+    { type: 'exception-rate', window: '5m', threshold: 500 },
+    {
+      type: 'metric-threshold',
+      metric: 'request-p99-ms',
+      window: '5m',
+      comparator: 'gte',
+      threshold: 2000,
+      severity: 'critical',
+      channels: ['pagerduty', 'discord'],
+    },
+  ],
+})
+```
+
+## Severity
+
+Severities are `info`, `warning`, `error` and `critical`. A rule's `severity` wins;
+otherwise it depends on the rule:
+
+| Rule | Default severity |
+| --- | --- |
+| `new-exception`, `every-exception` | `error` |
+| `exception-rate` | `critical` |
+| `metric-threshold`, `entries-dropped` | `warning` |
+| `instances-up`, `restart-loop`, `check-down` | `critical` |
+
+Each on-call provider gets the severity in its own terms:
+
+| Telescope | PagerDuty | Opsgenie | Better Stack |
+| --- | --- | --- | --- |
+| `critical` | `critical` | `P1` | call, SMS, email, push |
+| `error` | `error` | `P2` | email, push |
+| `warning` | `warning` | `P3` | email, push |
+| `info` | `info` | `P5` | email, push |
+
+## Firing and resolving
+
+`metric-threshold` and [fleet](/docs/telescope/concepts/fleet) rules (`instances-up`,
+`check-down`, …) fire, then resolve when the condition clears. On-call channels open
+an incident on the first and close the same incident on the second. They match the two by
+an incident key built from the app and the rule (plus the check or host for fleet rules, and
+the error family for exception rules), so an alert that fires again while its incident is still open does not page a second time.
+
+Exception rules (`new-exception`, `every-exception`, `exception-rate`) only fire. Resolve
+those incidents in the provider.
+
+## Delivery
+
+Each request has a 5 s timeout. Network errors, timeouts, 408, 425, 429 and 5xx are retried
+twice, waiting 0.5 s and then 1 s (or what `Retry-After` asks for, up to 30 s). Other 4xx are not
+retried. Change it per channel with `retries`, `backoffMs` and `timeoutMs`. Alerts are sent
+from a background timer, never from a request. Failures are logged once per channel, by name;
+URLs, keys and tokens never appear in the log.

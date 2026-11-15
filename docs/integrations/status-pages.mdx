@@ -1,0 +1,95 @@
+---
+title: Status pages
+icon: LayoutList
+description: Keep Atlassian Statuspage, Instatus or Better Stack status page components in step with your checks, and optionally open and resolve incidents.
+---
+
+Map checks (or apps) to status page components. Checks come from the same source as
+[heartbeats](/docs/telescope/integrations/heartbeats#what-healthy-means). Telescope sends a component's status only
+when it changes, and when `incidents: true`, opens an incident while something is not up and
+resolves it once everything is back.
+
+```ts title="config/telescope_alerts.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
+
+export default defineConfig({
+  statusPages: [
+    {
+      provider: 'statuspage',
+      apiKey: env.get('STATUSPAGE_API_KEY'),
+      pageId: env.get('STATUSPAGE_PAGE_ID'),
+      components: {
+        redis: 'k3b7x0z1m9qp',
+        'app:checkout': 'w2c8d4n6r1ty',
+      },
+      incidents: true,
+    },
+  ],
+})
+```
+
+## Mapping keys
+
+| Key | Means |
+| --- | --- |
+| `'redis'` | The check named `redis` (the worst of them across apps). |
+| `'app:checkout'` | Every check of app `checkout`. |
+| `'checkout/redis'` | The `redis` check of app `checkout`. |
+| `'*'` | Every check. |
+
+When several keys point at one component, the worst status wins. A key with no matching check
+is left alone. When the check source fails, nothing is sent.
+
+## Status mapping
+
+| Check | Statuspage | Instatus | Better Stack |
+| --- | --- | --- | --- |
+| `ok` | `operational` | `OPERATIONAL` | `resolved` |
+| `warn` | `degraded_performance` | `DEGRADEDPERFORMANCE` | `degraded` |
+| `down` | `major_outage` | `MAJOROUTAGE` | `downtime` |
+
+A check that is still `unknown` leaves its component alone. Checks with `critical: false` move
+components like any other.
+
+## Atlassian Statuspage
+
+```ts
+{ provider: 'statuspage', apiKey: env.get('STATUSPAGE_API_KEY'), pageId: '…', components: { … }, incidents: true }
+```
+
+`PATCH /v1/pages/:page/components/:id` per change. With `incidents`, creates an incident
+(`investigating`, the affected components and the failing checks in the body), then sets it to
+`resolved`.
+
+## Instatus
+
+```ts
+{ provider: 'instatus', apiKey: env.get('INSTATUS_API_KEY'), pageId: '…', components: { … }, incidents: true }
+```
+
+`PUT /v2/:page/components/:id` per change. With `incidents`, creates an `INVESTIGATING`
+incident and later posts a `RESOLVED` update.
+
+## Better Stack
+
+Component ids are status page **resource** ids.
+
+```ts
+{ provider: 'betterstack', apiToken: env.get('BETTERSTACK_API_TOKEN'), statusPageId: '…', components: { redis: '1234567' } }
+```
+
+Better Stack shows a resource's status through status reports, so Telescope opens a manual
+status report naming the affected resources, posts an update when they change, and a
+final update marking them `resolved`.
+
+## Options
+
+| Option | Default | |
+| --- | --- | --- |
+| `components` | — | Mapping key → component id. |
+| `incidents` | `false` | Open and resolve incidents (always on for Better Stack). |
+| `incidentName` | `'Service disruption'` | Incident title. |
+| `every` | `'60s'` | Sync cadence. |
+| `name` | the provider | Name in logs. |
+| `baseUrl` | the provider's API | Override the API host. |

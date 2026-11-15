@@ -1,0 +1,96 @@
+---
+title: Heartbeats
+icon: HeartPulse
+description: Ping healthchecks.io, Better Stack, Cronitor, Uptime Kuma, UptimeRobot or any URL while the app is healthy, so the monitor alerts when the app dies or a check goes down.
+---
+
+The monitor expects a ping every few minutes. Telescope sends it only while the app is
+healthy. When a check is down, Telescope sends the provider's fail signal (or stops pinging).
+When the process is gone, nothing pings. In both cases the monitor alerts.
+
+```ts title="config/telescope_alerts.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
+
+export default defineConfig({
+  heartbeats: [
+    { provider: 'healthchecks', url: env.get('HEALTHCHECKS_PING_URL'), every: '60s' },
+  ],
+})
+```
+
+| Option | Default | |
+| --- | --- | --- |
+| `provider` | — | `healthchecks`, `betterstack`, `cronitor`, `uptime-kuma`, `uptimerobot` or `url`. |
+| `url` | — | The ping URL. |
+| `apps` | — | Control plane: `{ appName: pingUrl }`, one monitor per app. |
+| `every` | `'60s'` | Keep it shorter than the monitor's period. |
+| `onUnhealthy` | `'fail'` | `'fail'` sends the fail signal right away; `'skip'` stops pinging until the grace period runs out. |
+| `signalStart` | `false` | Send the start signal once at boot (healthchecks.io, Cronitor). |
+| `checks` | all | Only these checks decide health. |
+| `failUrl` | — | `url` provider only: the URL to call when unhealthy. |
+| `name` | the provider | Name in logs. |
+
+A missing or malformed `url` (or app URL) turns that heartbeat (or app) off at boot with a
+warning; the URL itself is never logged.
+
+## What "healthy" means
+
+The app is healthy when no check is `down`. A check is `ok`, `warn` (degraded, still
+serving: it pings), `down` or `unknown` (not run yet: ignored). A check with
+`critical: false` never makes the app unhealthy.
+
+By default the checks are Telescope's [health checks](/docs/telescope/concepts/health-checks)
+(`checks` in `config/telescope.ts`). On a control plane, or a standalone app with the
+[fleet](/docs/telescope/concepts/fleet) on, they are every app's checks across its live
+instances, plus an `instances` check per app that is `down` when no instance is up.
+To use something else, set `checkStates`, or call `publishCheckStates()` at boot:
+
+```ts title="config/telescope_alerts.ts"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/alerts'
+import redis from '@adonisjs/redis/services/main'
+
+export default defineConfig({
+  checkStates: async () => [
+    {
+      name: 'redis',
+      status: (await redis.ping().then(() => true, () => false)) ? 'ok' : 'down',
+    },
+  ],
+  heartbeats: [{ provider: 'betterstack', url: env.get('BETTERSTACK_HEARTBEAT_URL') }],
+})
+```
+
+Keep the source cheap: it runs on every heartbeat and status page tick. With no checks at
+all, an app-wide heartbeat pings while the process runs. If the source throws, the app counts
+as unhealthy.
+
+## Providers
+
+| Provider | Ping URL | Healthy | Unhealthy | Start |
+| --- | --- | --- | --- | --- |
+| `healthchecks` | `https://hc-ping.com/<uuid>` | `POST <url>` | `POST <url>/fail` with the failing checks as the body | `POST <url>/start` |
+| `betterstack` | `https://incidents.betterstack.com/api/v1/heartbeat/<token>` | `GET <url>` | `POST <url>/fail` | — |
+| `cronitor` | `https://cronitor.link/p/<api-key>/<monitor>` | `?state=complete` | `?state=fail&message=…` | `?state=run` |
+| `uptime-kuma` | `https://kuma.example.com/api/push/<token>` | `?status=up&msg=OK` | `?status=down&msg=…` | — |
+| `uptimerobot` | `https://heartbeat.uptimerobot.com/<id>` | `GET <url>` | no ping | — |
+| `url` | anything | `GET <url>` | `GET <failUrl>`, or no ping | — |
+
+## One monitor per app on a control plane
+
+On a [central server](/docs/telescope/concepts/central-server), give each app its own monitor.
+An app is healthy while it has a live instance and none of its critical checks is down. An app
+the fleet doesn't know yet counts as unhealthy.
+
+```ts
+heartbeats: [
+  {
+    provider: 'healthchecks',
+    apps: {
+      checkout: env.get('HC_CHECKOUT_URL'),
+      billing: env.get('HC_BILLING_URL'),
+    },
+  },
+],
+```

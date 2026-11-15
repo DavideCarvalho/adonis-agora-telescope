@@ -116,6 +116,9 @@ export default defineConfig({
 | `cooldown`     | `'15m'`                  | Per-rule / per-family re-notify suppression.                          |
 | `instanceId`   | `'telescope'`            | Reporting instance id carried on every payload.                       |
 | `geoLookup`    | _unset_                  | Host IP→geo resolver for exception alerts — see [Geo-enrichment](#geo-enrichment). |
+| `heartbeats`   | _unset_                  | Heartbeat monitors — see [Heartbeats](/docs/telescope/integrations/heartbeats). |
+| `statusPages`  | _unset_                  | Status pages — see [Status pages](/docs/telescope/integrations/status-pages). |
+| `checkStates`  | the published source     | Check states read by heartbeats and status pages. |
 
 <Callout type="warn">
 Durations are normalized at boot and an unparseable one (`'15min'`, a typo) **throws** —
@@ -282,7 +285,10 @@ rather than thrown into the host.
 | `{ type: 'slack', url, options? }` | Block Kit JSON to a Slack incoming webhook — severity header with a **New / Recurring** badge, fielded context (route/method/status, UA, referer, duration, user, client IP, location, occurrences), a truncated stack, `client_exception` component-stack + `extra` blocks, and an "Open in Telescope" deep link when `dashboardUrl` is set. |
 | `{ type: 'webhook', url }`         | The raw `AlertPayload` as JSON.                                             |
 | `{ type: 'console' }`              | A one-line summary (the zero-config default).                              |
-| `customChannel(fn, name?)`         | An arbitrary async sink — email, PagerDuty, SNS, …                         |
+| `customChannel(fn, name?)`         | An arbitrary async sink — SNS, an internal API, …                          |
+
+PagerDuty, Opsgenie, Better Stack, incident.io, Grafana OnCall, Discord, Teams, Telegram,
+Google Chat and email have their own channels: see [Integrations](/docs/telescope/integrations).
 
 HTTP channels use the global `fetch`, race every request against a 5s abort timeout, and
 treat a non-2xx response as a failure.
@@ -294,7 +300,7 @@ import { defineConfig, slackChannel, customChannel } from '@adonis-agora/telesco
 export default defineConfig({
   channels: [
     slackChannel(env.get('TELESCOPE_SLACK_WEBHOOK'), { username: 'Telescope', iconEmoji: ':rotating_light:' }),
-    customChannel(async (alert) => { await pagerduty.trigger(alert) }, 'pagerduty'),
+    customChannel(async (alert) => { await sns.publish(alert) }, 'sns'),
   ],
 })
 ```

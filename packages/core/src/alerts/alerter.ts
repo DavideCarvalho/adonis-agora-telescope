@@ -8,6 +8,7 @@ import type {
   ExceptionAlertContext,
   ResolvedAlerts,
 } from './alert_rule.js';
+import { routesTo } from './integrations/incident.js';
 import { NewExceptionTracker } from './new_exception_tracker.js';
 import { durationToMs } from './parse_duration.js';
 
@@ -299,12 +300,12 @@ export class Alerter {
    * persistently-down destination doesn't flood the logs. Never rejects.
    */
   private async dispatch(payload: AlertPayload): Promise<void> {
-    const results = await Promise.allSettled(
-      this.deps.alerts.channels.map((channel) => channel.send(payload)),
-    );
+    // Per-rule `channels` and per-channel `minSeverity` pick the destinations.
+    const channels = this.deps.alerts.channels.filter((channel) => routesTo(payload, channel));
+    const results = await Promise.allSettled(channels.map((channel) => channel.send(payload)));
     results.forEach((result, index) => {
       if (result.status === 'rejected') {
-        this.warnChannelFailure(this.deps.alerts.channels[index], result.reason);
+        this.warnChannelFailure(channels[index], result.reason);
       }
     });
   }

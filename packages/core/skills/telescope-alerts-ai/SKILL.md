@@ -3,8 +3,10 @@ name: telescope-alerts-ai
 description: >-
   Alerting, AI diagnosis and client-error ingestion in @adonis-agora/telescope —
   config/telescope_alerts.ts with AlertRule types (new-exception, every-exception,
-  exception-rate, stateful metric-threshold), channel helpers (slackChannel,
-  webhookChannel, consoleChannel, customChannel), every/cooldown/instanceId/
+  exception-rate, stateful metric-threshold), channels (slack/webhook/console/custom
+  plus pagerduty/opsgenie/betterstack/incident-io/grafana-oncall/discord/teams/telegram/google-chat/email
+  specs with severity/channels/minSeverity routing and firing/resolved incidents),
+  heartbeats/statusPages/uptimeEndpoint, every/cooldown/instanceId/
   geoLookup; config/telescope_ai.ts + TelescopeAiDiagnoser Claude diagnosis cached
   by familyHash (keyless = disabled); clientErrors sendBeacon endpoint. Use for
   "Slack alert on new errors", "AI diagnose exceptions", "page on every error",
@@ -25,7 +27,8 @@ sources:
 # Alerting, AI diagnosis & client errors
 
 The alerter polls the store on an interval, evaluates rules over recorded
-`exception` entries, and fans each fire out to every configured channel. The AI
+`exception` entries, and fans each fire out to matching channels (per-rule `channels`,
+per-channel `minSeverity`). The AI
 subpath attaches a Claude root-cause diagnosis to an exception, cached by family.
 Client-error ingestion lets browsers report their own failures into the same
 pipeline. All three are subpaths of the one package — enable them via
@@ -83,7 +86,7 @@ rules: [
     threshold: 800,
     minSamples: 10,                          // guard percentiles against a single slow request
   },
-  // Fleet rules (control plane / standalone, need heartbeats): raise + resolve per app
+  // Fleet rules (control plane / standalone, need the fleet): raise + resolve per app
   // (restart-loop per host, check-down per check)
   { type: 'instances-up', app: 'shop', below: 2, for: '2m' },
   { type: 'restart-loop' },
