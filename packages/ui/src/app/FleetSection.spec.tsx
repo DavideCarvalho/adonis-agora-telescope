@@ -134,6 +134,47 @@ describe('Fleet page', () => {
     );
   });
 
+  it('keeps an unknown check neutral and never shows 0/0 live', async () => {
+    renderFleet({
+      enabled: true,
+      notice: null,
+      now: NOW,
+      apps: [
+        {
+          ...shop,
+          deploys: [
+            {
+              version: 'v3',
+              previous: 'v2',
+              startedAt: NOW - MIN,
+              live: 0,
+              total: 0,
+              progress: 1,
+              complete: true,
+            },
+          ],
+          checks: [{ ...shop.checks[0]!, name: 'stripe', status: 'unknown', exceptions: [] }],
+        },
+      ],
+      self: null,
+    });
+    expect(await screen.findByText('no live instances')).toBeTruthy();
+    expect(screen.queryByText('0/0 live')).toBeNull();
+    // What `deriveFleet` emits with nothing live: complete, yet it must not read as a finished rollout.
+    expect(screen.queryByText('complete')).toBeNull();
+    const incident = screen.getByTestId('fleet-incident');
+    expect(incident.className).not.toMatch(/warn/);
+    expect(incident.className).not.toMatch(/bad/);
+  });
+
+  it('states no heartbeat timing the server may have changed', async () => {
+    renderFleet({ enabled: true, notice: null, now: NOW, apps: [shop], self: null });
+    expect(await screen.findByText('shop')).toBeTruthy();
+    expect(screen.queryByText(/3 intervals/)).toBeNull();
+    expect(screen.queryByText(/15 seconds/)).toBeNull();
+    expect(screen.queryByText(/`/)).toBeNull();
+  });
+
   it('has its own route', () => {
     expect(parseHash('#/fleet')).toEqual({ name: 'fleet' });
     expect(formatHash({ name: 'fleet' })).toBe('#/fleet');
