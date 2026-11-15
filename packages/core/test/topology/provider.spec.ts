@@ -14,7 +14,10 @@ import { resolveTopology } from '../../src/topology/config.js';
 import { csrfExempts, telescopeCsrfExceptions } from '../../src/topology/doctor.js';
 import { activeRemoteStores, RemoteTelescopeStore } from '../../src/topology/remote_store.js';
 import { appsInStore, telescopeTopologyStatus } from '../../src/topology/status.js';
+import { transports } from '../../src/topology/transports/index.js';
+import { streamMessages } from '../../src/topology/transports/redis.js';
 import { sharedSecretVerifier } from '../../src/topology/verify.js';
+import { FakeRedis } from './transport_fakes.js';
 
 type Handler = (ctx: unknown) => unknown;
 
@@ -116,6 +119,75 @@ describe('provider', () => {
     const tooBig = ctx({ 'content-length': String(10 * 1024 * 1024) }, {});
     await ingest(tooBig.ctx);
     expect(tooBig.sent.status).toBe(413);
+  });
+
+  it('a control plane on a broker keeps every HTTP route and also consumes the broker (mixed fleet)', async () => {
+    const redis = new FakeRedis();
+    const { routes, provider } = await boot({
+      telescope: defineConfig({
+        ...quiet,
+        topology: 'control-plane',
+        verifyTenant: sharedSecretVerifier({ partitions: { shop: 'shop-secret', billing: 'b' } }),
+        transport: transports.redis({ client: redis, pollIntervalMs: 10 }),
+        clientErrors: { enabled: true },
+      }),
+    });
+    // Browser traffic and HTTP tenants are untouched by the transport.
+    expect(routes.map((r) => `${r.method} ${r.pattern}`)).toEqual([
+      'POST /telescope/client-errors',
+      'POST /_telescope/v1/ingest',
+      'GET /_telescope/v1/whoami',
+    ]);
+    // An HTTP tenant...
+    const viaHttp = ctx(
+      { authorization: 'Bearer b', 'x-telescope-app': 'billing' },
+      { version: 1, entries: [{ id: '1', type: 'log', content: {}, tags: [] }] },
+    );
+    const ingest = routes[1]?.handler as Handler;
+    await ingest(viaHttp.ctx);
+    expect(viaHttp.sent.status).toBe(202);
+    // ...and a broker tenant land in the same store.
+    const sender = new RemoteTelescopeStore({
+      channel: transports.redis({ client: redis }).tenant({}),
+      partition: 'shop',
+      token: 'shop-secret',
+    });
+    await sender.record({ type: 'log', content: {}, tags: [] });
+    await sender.flush();
+    const store = getTelescopeRuntime().store;
+    await vi.waitFor(async () => expect(await store?.count()).toBe(2));
+    expect((await store?.list())?.map((e) => e.tags).sort()).toEqual([
+      ['app:billing'],
+      ['app:shop'],
+    ]);
+    await provider.shutdown();
+    expect(redis.pending('telescope:ingest')).toBe(0);
+  });
+
+  it('a tenant on a broker keeps the client-error route and flushes into the broker at shutdown', async () => {
+    const redis = new FakeRedis();
+    const { routes, provider } = await boot({
+      telescope: defineConfig({
+        ...quiet,
+        topology: 'tenant',
+        transport: transports.redis({ client: redis }),
+        tenant: { partition: 'shop', token: 'shop-secret', buffer: { flushIntervalMs: 60_000 } },
+        clientErrors: { enabled: true },
+      }),
+    });
+    expect(routes.map((r) => `${r.method} ${r.pattern}`)).toEqual([
+      'POST /telescope/client-errors',
+    ]);
+    await getTelescopeRuntime().store?.record({ type: 'log', content: {}, tags: [] });
+    await provider.shutdown();
+    expect(redis.streams.get('telescope:ingest')).toHaveLength(1);
+  });
+
+  it('reads an XREADGROUP reply in RESP2 and in RESP3 (flattened map) shape', () => {
+    const messages = [['1-0', ['m', '{}']]];
+    expect(streamMessages([['s', messages]])).toEqual(messages);
+    expect(streamMessages(['s', messages])).toEqual(messages);
+    expect(streamMessages(null)).toEqual([]);
   });
 
   it('standalone (nothing configured) and tenant register no route', async () => {

@@ -20,7 +20,12 @@ export class TelescopeServerStatus extends BaseCommand {
 
   override async run(): Promise<void> {
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
-    const status = await telescopeTopologyStatus(config.topology, getTelescopeRuntime().store);
+    const status = await telescopeTopologyStatus(
+      config.topology,
+      getTelescopeRuntime().store,
+      globalThis.fetch,
+      this.app,
+    );
     const failed =
       (status.topology === 'tenant' && !status.accepted) ||
       (status.topology === 'control-plane' && !status.running);

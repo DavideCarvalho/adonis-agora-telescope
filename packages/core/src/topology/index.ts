@@ -27,7 +27,8 @@ export type { RemoteStoreStats, RemoteTelescopeStoreOptions } from './remote_sto
 export { activeRemoteStores, RemoteTelescopeStore } from './remote_store.js';
 export { type IngestRouter, registerIngestRoutes } from './routes.js';
 export type { TelescopeTopologyStatus } from './status.js';
-export { appsInStore, telescopeTopologyStatus, whoami } from './status.js';
+export { appsInStore, httpUrl, telescopeTopologyStatus, whoami } from './status.js';
+export * from './transports/index.js';
 export type {
   SharedSecretTenant,
   TenantAuthRequest,

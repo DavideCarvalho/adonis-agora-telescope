@@ -56,7 +56,8 @@ export default defineConfig({
 | `topology`   | `'standalone' \| 'control-plane' \| 'tenant'` | `'standalone'`   | [Central server](/docs/telescope/concepts/central-server): keep entries here, receive other apps' entries, or send this app's entries to a server. |
 | `verifyTenant` | `TenantVerifier`               | —                             | Control plane only, required: checks each app's token (`authkitTenantVerifier`, `sharedSecretVerifier`, a class instance or a lazy import). |
 | `ingest`     | `{ path?, maxEntries?, maxBodyBytes?, maxEntryBytes?, dedupeWindow? }` | `/_telescope/v1`, 1000, 2 MB, 256 KB, 100,000 | Control plane only: the ingest route and its limits. |
-| `tenant`     | `{ url, partition, token, local?, buffer? }` | —                | Tenant only, required: the server, this app's name, its token, an optional local store and the send buffer. |
+| `tenant`     | `{ url?, partition, token, local?, buffer? }` | —                | Tenant only, required: the server (`url`, unless `transport` is set), this app's name, its token, an optional local store and the send buffer. |
+| `transport`  | `transports.http/queue/bullmq/redis/durable(...)` | HTTP to `tenant.url` | Tenant and control-plane: how a tenant's entries reach the server, the same driver on both sides. See [Transports](/docs/telescope/concepts/transports). |
 
 <Callout type="warn">
 Redaction is **on by default**. Every entry's `content` is scrubbed at the store boundary —

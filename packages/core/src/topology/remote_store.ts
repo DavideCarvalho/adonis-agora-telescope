@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
 import { type Entry, type RecordInput, resolveCreatedAt, resolveEntryId } from '../entry.js';
 import { resolveOrigin } from '../origin_scope.js';
@@ -6,11 +7,12 @@ import type { EntryQuery, TelescopeStore } from '../store.js';
 import {
   type ResolvedBufferOptions,
   resolveBufferOptions,
-  serverPrefix,
   type TenantBufferOptions,
 } from './config.js';
+import { HttpTenantChannel } from './transports/http.js';
+import { errorMessage, type TenantChannel } from './transports/types.js';
 import { readToken, resetToken, type TenantTokenSource } from './verify.js';
-import { APP_HEADER, WIRE_VERSION, type WireEntry } from './wire.js';
+import { WIRE_VERSION, type WireEntry } from './wire.js';
 
 /** What a {@link RemoteTelescopeStore} has done so far. */
 export interface RemoteStoreStats {
@@ -34,13 +36,19 @@ export interface RemoteStoreStats {
 
 /** Options of a {@link RemoteTelescopeStore}. */
 export interface RemoteTelescopeStoreOptions {
-  url: string;
+  /** The control plane's URL, for the HTTP channel (when no `channel` is given). */
+  url?: string;
+  /**
+   * How batches are sent: a transport's tenant channel (or a promise of one, built at boot).
+   * Default HTTP to `url`.
+   */
+  channel?: TenantChannel | Promise<TenantChannel>;
   partition: string;
   token: TenantTokenSource;
   buffer?: TenantBufferOptions;
   /** Also record every entry here (and read from it), so the app's own console keeps working. */
   tee?: TelescopeStore | null;
-  /** Injectable `fetch` (tests). Defaults to the global. */
+  /** Injectable `fetch` for the default HTTP channel (tests). Defaults to the global. */
   fetch?: typeof fetch;
   /** Injectable clock (tests). */
   now?: () => number;
@@ -63,9 +71,8 @@ export const activeRemoteStores = new Set<RemoteTelescopeStore>();
  * (and counted). Reads answer from `tee` when one is set, else nothing.
  */
 export class RemoteTelescopeStore implements TelescopeStore {
-  private readonly prefix: string;
   private readonly options: ResolvedBufferOptions;
-  private readonly doFetch: typeof fetch;
+  private readonly channel: Promise<TenantChannel>;
   private readonly now: () => number;
   private readonly tee: TelescopeStore | null;
   private buffer: Pending[] = [];
@@ -84,10 +91,19 @@ export class RemoteTelescopeStore implements TelescopeStore {
   };
 
   constructor(private readonly config: RemoteTelescopeStoreOptions) {
-    this.prefix = serverPrefix(config.url);
     this.options = resolveBufferOptions(config.buffer);
     this.batchSize = this.options.batchSize;
-    this.doFetch = config.fetch ?? globalThis.fetch.bind(globalThis);
+    if (config.channel !== undefined) {
+      this.channel = Promise.resolve(config.channel);
+    } else if (typeof config.url === 'string') {
+      this.channel = Promise.resolve(
+        new HttpTenantChannel(config.url, this.options.timeoutMs, config.fetch),
+      );
+    } else {
+      throw new Error('[@adonis-agora/telescope] a remote store needs a `url` or a `channel`');
+    }
+    // A channel that fails to build (a missing peer) surfaces on each send, not as an unhandled rejection.
+    this.channel.catch(() => {});
     this.now = config.now ?? Date.now;
     this.tee = config.tee ?? null;
     if (this.tee !== null) {
@@ -115,6 +131,16 @@ export class RemoteTelescopeStore implements TelescopeStore {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
     activeRemoteStores.delete(this);
+  }
+
+  /** Stop and release the channel's connections (shutdown, after {@link flush}). */
+  async close(): Promise<void> {
+    this.stop();
+    try {
+      await (await this.channel).close?.();
+    } catch {
+      // Nothing to release.
+    }
   }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
@@ -211,29 +237,25 @@ export class RemoteTelescopeStore implements TelescopeStore {
     if (batch.length === 0) return true;
     const body = `{"version":${WIRE_VERSION},"entries":[${batch.map((p) => p.json).join(',')}]}`;
 
-    let status: number;
+    let outcome: Awaited<ReturnType<TenantChannel['send']>>;
     try {
+      const channel = await this.channel;
       const token = await readToken(this.config.token);
-      const response = await runAsTelescopeWork(() =>
-        this.doFetch(`${this.prefix}/ingest`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            accept: 'application/json',
-            authorization: `Bearer ${token}`,
-            [APP_HEADER]: this.config.partition,
-          },
+      // Telescope's own traffic: the request/redis/queue watchers do not record it.
+      outcome = await runAsTelescopeWork(() =>
+        channel.send({
+          id: randomUUID(),
           body,
-          signal: AbortSignal.timeout(this.options.timeoutMs),
+          entries: batch.length,
+          token,
+          partition: this.config.partition,
         }),
       );
-      status = response.status;
-      await response.body?.cancel().catch(() => {});
     } catch (error) {
-      return this.failed(batch, error instanceof Error ? error.message : String(error));
+      return this.failed(batch, errorMessage(error));
     }
 
-    if (status >= 200 && status < 300) {
+    if (outcome.kind === 'ok') {
       this.counters.sent += batch.length;
       this.counters.failures = 0;
       this.counters.lastError = null;
@@ -242,19 +264,22 @@ export class RemoteTelescopeStore implements TelescopeStore {
       this.batchSize = Math.min(this.options.batchSize, this.batchSize * 2);
       return true;
     }
-    if (status === 413 && batch.length > 1) {
+    if (outcome.kind === 'too-large' && batch.length > 1) {
       // Too big for the server: send smaller batches from now on.
       this.batchSize = Math.max(1, Math.floor(batch.length / 2));
       this.requeue(batch);
       return true;
     }
-    if (status === 400 || status === 413 || status === 422) {
+    if (outcome.kind === 'rejected' || outcome.kind === 'too-large') {
       this.counters.rejected += batch.length;
-      this.counters.lastError = `the server refused ${batch.length} entries (${status})`;
+      this.counters.lastError =
+        outcome.kind === 'rejected'
+          ? outcome.message
+          : `the server refused ${batch.length} entries (413)`;
       return true;
     }
-    if (status === 401 || status === 403) resetToken(this.config.token);
-    return this.failed(batch, `the server answered ${status}`);
+    if (outcome.auth) resetToken(this.config.token);
+    return this.failed(batch, outcome.message);
   }
 
   private requeue(batch: Pending[]): void {

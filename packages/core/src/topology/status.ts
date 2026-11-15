@@ -52,13 +52,33 @@ export async function telescopeTopologyStatus(
   config: ResolvedTopology,
   store: TelescopeStore | null,
   doFetch: typeof fetch = globalThis.fetch,
+  app?: unknown,
 ): Promise<TelescopeTopologyStatus> {
   if (config.topology === 'tenant') {
     const tenant = config.tenant;
-    const result = await whoami(tenant, doFetch);
+    const url = httpUrl(config);
+    if (url === null) {
+      // A broker carries the entries: report whether it answers.
+      let accepted = true;
+      let message: string;
+      try {
+        message = await config.transport.ping({ app: app as never });
+      } catch (error) {
+        accepted = false;
+        message = `The broker (${config.transport.describe()}) cannot be reached: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      return {
+        topology: 'tenant',
+        server: config.transport.describe(),
+        partition: tenant.partition,
+        accepted,
+        message,
+      };
+    }
+    const result = await whoami({ ...tenant, url }, doFetch);
     return {
       topology: 'tenant',
-      server: serverPrefix(tenant.url),
+      server: serverPrefix(url),
       partition: tenant.partition,
       accepted: result.status !== 'error',
       ...(result.partition !== undefined
@@ -75,7 +95,7 @@ export async function telescopeTopologyStatus(
   if (config.topology === 'control-plane') {
     return {
       topology: 'control-plane',
-      ingest: `POST ${config.ingest.path}/ingest`,
+      ingest: `POST ${config.ingest.path}/ingest${config.transport !== null ? ` + ${config.transport.describe()}` : ''}`,
       running: store !== null,
       apps: store !== null ? await appsInStore(store) : [],
     };
@@ -83,9 +103,16 @@ export async function telescopeTopologyStatus(
   return { topology: 'standalone' };
 }
 
+/** The control plane's URL when a tenant sends over HTTP, else `null` (a broker). */
+export function httpUrl(config: Extract<ResolvedTopology, { topology: 'tenant' }>): string | null {
+  if (config.transport.driver !== 'http') return null;
+  const options = (config.transport as { options?: { url?: unknown } }).options;
+  return typeof options?.url === 'string' ? options.url : (config.tenant.url ?? null);
+}
+
 /** Ask the control plane who it takes this app for. */
 export async function whoami(
-  tenant: Pick<TelescopeTenantOptions, 'url' | 'partition' | 'token'>,
+  tenant: Pick<TelescopeTenantOptions, 'partition' | 'token'> & { url: string },
   doFetch: typeof fetch = globalThis.fetch,
 ): Promise<AgoraDoctorResult & { partition?: string; environment?: string }> {
   const prefix = serverPrefix(tenant.url);
