@@ -330,7 +330,11 @@ describe('console routes: a viewer limited to app a never reads app b', () => {
       data: { enabled: true, tag: 'app', all: false, apps: [{ id: 'a', label: 'App A' }] },
     });
     const arm = routes.find((r) => r.pattern.endsWith('/profiles/arm')) as Route;
-    expect((await call(arm, {}, {})).status).toBe(403);
+    const refused = await call(arm, {}, {});
+    expect(refused.status).toBe(403);
+    expect(refused.body).toEqual({
+      error: 'This action reaches every app: it needs access to all of them.',
+    });
   });
 
   it('the live tail only forwards the granted app', async () => {

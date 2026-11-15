@@ -295,6 +295,8 @@ describe('console commands', () => {
     const onlyA = JSON.stringify(await json(TelescopeEntriesList, ['--app', 'a']));
     expect(onlyA).toContain('from-a');
     expect(onlyA).not.toContain('from-b');
+    // --app does not narrow the list of apps itself.
+    expect((await json(TelescopeAppsList, ['--app', 'a'])).data.apps).toHaveLength(2);
     const clear = await run(TelescopeEntriesClear, ['--app', 'a', '--force']);
     clear.assertFailed();
     expect(await store().count()).toBe(2);

@@ -3,7 +3,11 @@ import { args, flags } from '@adonisjs/core/ace';
 import { scopedStore } from '../src/tenancy_store.js';
 import { consoleAppScope, describeAppScope } from '../src/ui/app_scope.js';
 import { consoleMeta, QUEUE_ACTIONS_DISABLED } from '../src/ui/console_apis.js';
-import { consoleTenantScope, describeTenantScope } from '../src/ui/tenant_scope.js';
+import {
+  consoleTenantScope,
+  describeTenantScope,
+  selectTenantScope,
+} from '../src/ui/tenant_scope.js';
 import {
   CliUsageError,
   ConsoleRefusal,
@@ -267,11 +271,17 @@ export class TelescopeAppsList extends TelescopeCommand {
   static override description = 'Apps telescope has entries for (entries tagged app:<id>)';
 
   override async run() {
-    const { source, store, uiConfig } = await this.console();
-    // `--tenant` narrows which apps are listed; `--app` is ignored here.
+    const { store, coreConfig, uiConfig } = await this.console();
+    // `--tenant` narrows which apps are listed; `--app` does not apply to this list.
+    let tenantTags: string[] | null = null;
+    if (this.tenant !== undefined && this.tenant !== '') {
+      const scope = consoleTenantScope({ tenants: '*' }, coreConfig.tenancy);
+      if (scope !== null)
+        tenantTags = selectTenantScope(scope, this.tenant, coreConfig.tenancy).tags;
+    }
     const data = await describeAppScope(
       consoleAppScope({ apps: '*' }),
-      this.tenant !== undefined && this.tenant !== '' ? source : scopedStore(store, null, null),
+      scopedStore(store, tenantTags, null),
       uiConfig.apps.labels,
     );
     if (this.json) return this.printJson({ data });

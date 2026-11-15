@@ -202,10 +202,16 @@ export default class TelescopeUiProvider {
         selected,
       };
     };
-    /** `403` for an action that reaches every organization (and app), asked by a viewer limited to some. */
-    const refuseRestricted = (ctx: UiHttpContext) =>
+    /** `403` for an action that reaches every organization or app, asked by a viewer limited to some. */
+    const refuseRestricted = (
+      ctx: UiHttpContext,
+      a: { selected: { tags: string[] | null; appTags: string[] | null } } | null = null,
+    ) =>
       ctx.response.status(403).send({
-        error: 'This action reaches every organization: it needs access to all of them.',
+        error:
+          a !== null && a.selected.appTags !== null && a.selected.tags === null
+            ? 'This action reaches every app: it needs access to all of them.'
+            : 'This action reaches every organization: it needs access to all of them.',
       });
 
     // Dashboard page: served by the `@adonis-agora/telescope-ui` SPA provider (it mounts the built
@@ -308,7 +314,7 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/profiles/arm`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
-        if (a.selected.restricted) return refuseRestricted(ctx);
+        if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.cpuProfiling.armEnabled) {
           return ctx.response.status(403).send({
             error:
@@ -352,7 +358,7 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/queues/live/:queue/jobs/:id/retry`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
-        if (a.selected.restricted) return refuseRestricted(ctx);
+        if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
         return a.queueManagerApi.retry(ctx, String(ctx.params.queue), String(ctx.params.id));
       })
@@ -362,7 +368,7 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/queues/live/:queue/enqueue`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
-        if (a.selected.restricted) return refuseRestricted(ctx);
+        if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
         return a.queueManagerApi.enqueue(ctx, String(ctx.params.queue), bodyOf(ctx));
       })
@@ -435,7 +441,7 @@ export default class TelescopeUiProvider {
           const a = await gate(ctx);
           if (a === null) return;
           // Counters over every organization: not for a viewer limited to some.
-          if (a.selected.restricted) return refuseRestricted(ctx);
+          if (a.selected.restricted) return refuseRestricted(ctx, a);
           const registry = getTelescopeRuntime().aiMetrics ?? null;
           if (registry === null) {
             return ctx.response.status(404).send({ error: 'Prometheus metrics are not running.' });
@@ -511,7 +517,7 @@ export default class TelescopeUiProvider {
         .post(`${apiBase}/ext/:ext/actions/:action`, async (ctx: GuardedContext) => {
           const a = await gate(ctx);
           if (a === null) return;
-          if (a.selected.restricted) return refuseRestricted(ctx);
+          if (a.selected.restricted) return refuseRestricted(ctx, a);
           return a.extApi?.action(
             ctx,
             String(ctx.params.ext),
