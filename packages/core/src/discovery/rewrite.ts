@@ -7,10 +7,10 @@ import type { ServiceDirectory } from './directory.js';
 /**
  * `fetch('http://billing/invoices/1')` → `https://billing.internal/invoices/1`.
  *
- * Only single-label hosts are touched (no dot, not an IP, not `localhost` or a `passthrough`
- * host); a host with a dot always goes out as written. A single-label host that names no app
- * fails the call with "app billing is not registered" rather than leaking to whatever DNS answers
- * for it.
+ * Only single-label hosts that name a known app are rewritten; a host with a dot, an IP, and a
+ * single-label host that names no app (a Docker Compose service such as `minio`) go out as
+ * written. With `strict`, a single-label host that names no app and is not in `passthrough` fails
+ * the call with "app billing is not registered" instead of reaching DNS.
  *
  * The rewrite runs in a dispatcher composed onto the global one, outermost, so every interceptor
  * after it (telescope's trace headers, the authkit client's token, the crypto envelope) sees the
@@ -32,6 +32,8 @@ export class DiscoveryError extends Error {
 export interface RewriteOptions {
   passthrough: Set<string>;
   failFast: boolean;
+  /** Fail calls to single-label hosts that name no app (and are not in `passthrough`). */
+  strict?: boolean;
 }
 
 /** Where a call to `origin` goes instead: the new origin and a base path to prefix. */
@@ -69,8 +71,10 @@ export function rewriteTarget(
   const app = parsed.hostname.toLowerCase();
   const found = directory.lookup(app);
   if (found.kind === 'unknown') {
+    // Not an app: by default the host goes out as written (a Compose service, say).
+    if (options.strict !== true) return null;
     throw new DiscoveryError(
-      `[@adonis-agora/telescope] app ${app} is not registered: no app named "${app}" in discovery (config/telescope.ts) or on the central server. Add it to discovery, or to discovery.passthrough if "${app}" is a host, not an app.`,
+      `[@adonis-agora/telescope] app ${app} is not registered: no app named "${app}" in discovery (config/telescope.ts) or on the central server. Add it to discovery, or to discovery.passthrough if "${app}" is a host, not an app (discovery.strict is on).`,
       app,
     );
   }

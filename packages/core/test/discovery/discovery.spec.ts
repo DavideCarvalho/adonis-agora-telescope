@@ -78,9 +78,19 @@ describe('which calls are rewritten', () => {
     }
   });
 
-  it('an unknown name fails clearly', () => {
-    expect(() => rewriteTarget(directory, options, 'http://nope/x')).toThrow(
+  it('by default an unknown single-label host goes out untouched (a Compose service)', () => {
+    expect(rewriteTarget(directory, options, 'http://languagetool:8010/v2/check')).toBeNull();
+    expect(rewriteTarget(directory, options, 'http://nope/x')).toBeNull();
+  });
+
+  it('strict: an unknown name fails clearly, passthrough hosts still go out', () => {
+    const strict = { ...options, strict: true };
+    expect(() => rewriteTarget(directory, strict, 'http://nope/x')).toThrow(
       /app nope is not registered/,
+    );
+    expect(rewriteTarget(directory, strict, 'http://minio:9000/bucket')).toBeNull();
+    expect(rewriteTarget(directory, strict, 'http://billing/x')?.origin).toBe(
+      'https://billing.internal',
     );
   });
 
@@ -104,12 +114,14 @@ describe('config', () => {
     expect(resolved.apps).toEqual({ billing: 'http://localhost:3334' });
     expect(resolved.snapshotPath).toBe('/tmp/x.json');
     expect(resolved.failFast).toBe(true);
+    expect(resolved.strict).toBe(false);
+    expect(resolveDiscovery({ strict: true }).strict).toBe(true);
     expect(() => resolveDiscovery({ billing: 'not a url' })).toThrow(/absolute http/);
     expect(() => resolveDiscovery({ 'billing.prod': 'http://x' })).toThrow(/single DNS label/);
   });
 });
 
-describe('fetch and http.request by app name (standalone, static map)', () => {
+describe('fetch and http.request by app name (standalone, static map, strict)', () => {
   let billing: { url: string; server: Server };
   let discovery: RunningDiscovery | null;
   let stopTrace: () => void = () => {};
@@ -117,7 +129,7 @@ describe('fetch and http.request by app name (standalone, static map)', () => {
   beforeAll(async () => {
     billing = await echoServer();
     discovery = await startDiscovery({
-      config: resolveDiscovery({ billing: `${billing.url}/v1`, nodeHttp: true }),
+      config: resolveDiscovery({ billing: `${billing.url}/v1`, nodeHttp: true, strict: true }),
       topology: resolveTopology({}),
     });
   });
@@ -436,7 +448,7 @@ describe('a tenant reading the central server', () => {
 describe('telescope’s own calls', () => {
   it('a token is read as telescope work, so a single-label issuer host is never rewritten', async () => {
     const discovery = await startDiscovery({
-      config: resolveDiscovery({ other: 'http://127.0.0.1:1' }),
+      config: resolveDiscovery({ other: 'http://127.0.0.1:1', strict: true }),
       topology: resolveTopology({}),
     });
     try {

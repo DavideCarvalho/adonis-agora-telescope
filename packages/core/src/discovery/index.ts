@@ -69,7 +69,11 @@ export async function startDiscovery(options: {
       : null;
   client?.start();
   const unpublish = publishDirectory(directory);
-  const rewriteOptions = { passthrough: config.passthrough, failFast: config.failFast };
+  const rewriteOptions = {
+    passthrough: config.passthrough,
+    failFast: config.failFast,
+    strict: config.strict,
+  };
   const fetchRewrite = await installFetchRewrite(directory, rewriteOptions);
   if (fetchRewrite === null) {
     options.onError?.(

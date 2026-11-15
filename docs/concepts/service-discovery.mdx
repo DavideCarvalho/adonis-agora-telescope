@@ -38,15 +38,17 @@ and hear about changes as they happen: a new deploy at another URL, the last ins
   instance is up.
 - An app sees the apps of its own environment: the environment its token carries.
 - The app name is its partition, and it must be a single label (letters, digits, `-`, `_`) so it
-  can be written as a host.
+  can be written as a host. An app whose name has a dot (`billing.prod`) is not discoverable: rename
+  its partition, or list it in `discovery` under a single-label name.
 
 <Callout type="info" title="When the central server is down">
 Each app keeps the last map in memory and in a file (`discovery.snapshotPath`, by default
 `telescope-discovery-<app>.json` in the OS temp directory). Calls keep resolving while the server is unreachable, and after a restart.
 </Callout>
 
-A tenant whose `transport` is a broker (queue, BullMQ, Redis, durable) reads the map over HTTP. Give
-it the server's URL:
+A tenant whose `transport` is a broker (queue, BullMQ, Redis, durable) still reads the map over HTTP,
+and its transport has no HTTP address to use. Give it the server's URL, or it resolves only the apps
+you list yourself:
 
 ```ts title="config/telescope.ts"
 discovery: { serverUrl: env.get('TELESCOPE_SERVER_URL') },
@@ -70,13 +72,25 @@ A URL with a path (`/api`) is put in front of the path you call.
 
 ## Which calls are touched
 
-Only hosts that are a single name: `http://billing/…`, `https://search/…`.
+Only a single-name host that is an app: `http://billing/…`, `https://search/…`.
 
 - A host with a dot (`api.stripe.com`, `billing.internal`), an IP, or `localhost` always goes out as
   written.
-- A single name that is not an app fails the call: `fetch` rejects with *app billing is not
-  registered* as its `cause`. If a name is a real host on your network (a Docker Compose service,
-  say), list it in `passthrough`.
+- A single name that is not an app goes out as written too, so Docker Compose services such as
+  `http://minio:9000` or `http://languagetool:8010` keep working.
+
+### Strict mode
+
+To catch typos (`http://billng/…`), turn on `strict`. A single name that is not an app then fails the
+call: `fetch` rejects with *app billng is not registered* as its `cause`, and `http.request` emits it
+as an `error` event. Names that are real hosts on your network go in `passthrough`:
+
+```ts title="config/telescope.ts"
+discovery: {
+  strict: true,
+  passthrough: ['minio', 'languagetool'],
+},
+```
 
 ## Options
 
@@ -84,10 +98,11 @@ Only hosts that are a single name: `http://billing/…`, `https://search/…`.
 | --- | --- | --- |
 | `<app>: '<url>'` | | An app and its URL. Wins over the central server's map. |
 | `snapshotPath` | `<tmp>/telescope-discovery-<app>.json` | Where a tenant saves the last map. A snapshot written for another app or server is ignored. |
+| `strict` | `false` | Fail a call to a single name that is not an app (and not in `passthrough`). |
 | `failFast` | `false` | Fail a call to an app with no live instance, instead of using its last URL. |
 | `nodeHttp` | `false` | Also resolve names in `http.request` / `https.request` (axios, got). `fetch` is always covered. |
-| `passthrough` | `[]` | Single names that are hosts, not apps. |
-| `serverUrl` | the HTTP transport's URL | Where a tenant on a broker transport reads the map. |
+| `passthrough` | `[]` | With `strict`: single names that are hosts, not apps. |
+| `serverUrl` | the HTTP transport's URL | Where a tenant reads the map. Needed on a broker transport. |
 | `enabled` | `true` | `false` turns discovery off. |
 
 ## With tracing, tokens and encryption

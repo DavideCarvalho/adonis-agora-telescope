@@ -29,11 +29,18 @@ export interface DiscoveryConfig {
    * sending it to the last URL seen. Default `false`.
    */
   failFast?: boolean;
+  /**
+   * Fail a call to a single-label host that names no app (`http://billng/…`, a typo) with "app
+   * billng is not registered", instead of letting it go out as written. Hosts in `passthrough` are
+   * still let through. Default `false`: an unknown single-label host (a Docker Compose service such
+   * as `http://minio:9000`) goes out untouched.
+   */
+  strict?: boolean;
   /** Also resolve names in `http.request` / `https.request` (axios, got). Default `false`. */
   nodeHttp?: boolean;
   /**
-   * Single-label hosts that are not apps and must go out untouched (`minio`, `mailpit`). `localhost`
-   * always does.
+   * With `strict`: single-label hosts that are not apps and must go out untouched (`minio`,
+   * `mailpit`). `localhost` always does.
    */
   passthrough?: string[];
   /**
@@ -50,6 +57,7 @@ export const DISCOVERY_OPTIONS = new Set([
   'enabled',
   'snapshotPath',
   'failFast',
+  'strict',
   'nodeHttp',
   'passthrough',
   'serverUrl',
@@ -63,6 +71,7 @@ export interface ResolvedDiscoveryConfig {
   /** `null`: the default, a file per app in the OS temp directory. */
   snapshotPath: string | null;
   failFast: boolean;
+  strict: boolean;
   nodeHttp: boolean;
   passthrough: Set<string>;
   serverUrl: string | null;
@@ -109,6 +118,7 @@ export function resolveDiscovery(
     snapshotPath:
       typeof raw.snapshotPath === 'string' && raw.snapshotPath !== '' ? raw.snapshotPath : null,
     failFast: raw.failFast === true,
+    strict: raw.strict === true,
     nodeHttp: raw.nodeHttp === true,
     passthrough: new Set(['localhost', ...passthrough.map((h) => h.toLowerCase())]),
     serverUrl,
