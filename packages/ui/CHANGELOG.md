@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.15
+
+### Patch Changes
+
+- [#331](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/331) [`4b76919`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/4b769193912bbbe8ada4532010e6ed40ae2a565c) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - ⌘K now navigates: it lists every page of the console's sidebar and every other Agora console you can open ("Go to Workflows", found by "durable" too), matched case- and accent-insensitively, before the console's own commands and the cross-console search hits. ⌘K opens even without a search endpoint, and shows the pages and consoles before anything is typed. Telescope's own page, entry-type and dashboard jumps are gone from ⌘K's command list: they are the sidebar's pages and watchers now, so each appears once.
+
 ## 3.0.0-rc.14
 
 ### Patch Changes
