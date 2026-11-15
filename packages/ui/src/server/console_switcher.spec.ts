@@ -1,3 +1,4 @@
+import { viewerStore } from '@adonis-agora/telescope/ui';
 import type { HttpContext } from '@adonisjs/core/http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { telescopeConsoleSearch } from './console_search.js';
@@ -232,6 +233,54 @@ describe('telescope search provider', () => {
       '/#/entries/e1',
     );
     expect(await telescopeConsoleSearch(() => null, '/telescope')(ctx(), 'e1', 5)).toEqual([]);
+  });
+
+  it("searches only the viewer's apps when given the viewer's store", async () => {
+    type Row = {
+      id: string;
+      type: string;
+      traceId: null;
+      content: unknown;
+      createdAt: Date;
+      tags: string[];
+    };
+    const rows: Row[] = [
+      {
+        id: 'eb',
+        type: 'log',
+        traceId: null,
+        content: { m: 'boom-b' },
+        createdAt: at,
+        tags: ['app:b'],
+      },
+      {
+        id: 'ea',
+        type: 'log',
+        traceId: null,
+        content: { m: 'boom-a' },
+        createdAt: at,
+        tags: ['app:a'],
+      },
+    ];
+    const inner = {
+      get: async (id: string) => rows.find((r) => r.id === id) ?? null,
+      list: async (q: { search?: string; traceId?: string; anyTags?: string[] } = {}) =>
+        rows.filter(
+          (r) =>
+            (q.traceId === undefined || r.traceId === q.traceId) &&
+            (q.search === undefined || JSON.stringify(r.content).includes(q.search)) &&
+            (q.anyTags === undefined || r.tags.some((t) => q.anyTags?.includes(t))),
+        ),
+      record: async () => rows[0],
+      count: async () => rows.length,
+      prune: async () => 0,
+      clear: async () => {},
+    };
+    const viewer = viewerStore(inner as never, { apps: ['a'] }, { enabled: false, tag: 'tenant' });
+    const search = telescopeConsoleSearch(() => viewer as never, '/telescope');
+    expect(await search(ctx(), 'eb', 5)).toEqual([]);
+    const hits = await search(ctx(), 'boom', 5);
+    expect(hits.map((h) => h.href)).toEqual(['/telescope#/entries/ea']);
   });
 });
 

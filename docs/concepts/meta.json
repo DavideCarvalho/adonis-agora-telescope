@@ -8,6 +8,7 @@
     "extensions",
     "performance",
     "protection",
-    "tenancy"
+    "tenancy",
+    "apps"
   ]
 }

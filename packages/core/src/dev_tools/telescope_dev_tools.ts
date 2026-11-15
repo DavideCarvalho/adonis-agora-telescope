@@ -125,11 +125,11 @@ export function telescopeDevTools(
   ];
 }
 
-/** The allowed decision of each MCP request, so its tools read the organizations it granted. */
+/** The allowed decision of each MCP request, so its tools read the organizations and apps it granted. */
 const decisions = new WeakMap<object, GuardResult>();
 
 /** The decision the gate took for `ctx` (`{ allowed: true }` when the gate did not run). */
-export function devToolsDecisionOf(ctx: unknown): Pick<GuardResult, 'tenants'> {
+export function devToolsDecisionOf(ctx: unknown): Pick<GuardResult, 'tenants' | 'apps'> {
   return (typeof ctx === 'object' && ctx !== null ? decisions.get(ctx) : undefined) ?? {};
 }
 

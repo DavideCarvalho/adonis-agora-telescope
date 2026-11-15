@@ -2,6 +2,7 @@ import { filterQuery } from '@adonis-agora/filter-client';
 import { resolveApiBase } from './api-base.js';
 import type {
   AiUsageSummary,
+  AppScope,
   ArmOutcome,
   ArmProfileResult,
   CursorPageResponse,
@@ -74,6 +75,16 @@ export function selectedTenant(search?: string): string | undefined {
   return value === null || value === '' || value === '*' ? undefined : value;
 }
 
+/**
+ * The app the console shows (`?app=<id>` in the page URL; `*` or absent = every app the viewer may
+ * see), on a server that collects entries from several apps. Sent on every API call.
+ */
+export function selectedApp(search?: string): string | undefined {
+  const source = search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const value = new URLSearchParams(source).get('app');
+  return value === null || value === '' || value === '*' ? undefined : value;
+}
+
 export interface TelescopeClientOptions {
   /** API base (e.g. `/telescope/api`). Defaults to the injected/derived base for the current page. */
   baseUrl?: string;
@@ -83,6 +94,8 @@ export interface TelescopeClientOptions {
   size?: number;
   /** The organization to show (`?tenant=`). Defaults to the page URL's `tenant` parameter. */
   tenant?: string;
+  /** The app to show (`?app=`). Defaults to the page URL's `app` parameter. */
+  app?: string;
 }
 
 /**
@@ -126,17 +139,23 @@ export class TelescopeClient {
   private readonly doFetch: FetchLike;
   private readonly size: number;
   private readonly tenant: string | undefined;
+  private readonly app: string | undefined;
 
   constructor(options: TelescopeClientOptions = {}) {
     this.base = (options.baseUrl ?? resolveApiBase()).replace(/\/+$/, '');
     this.doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.size = options.size ?? 50;
     this.tenant = options.tenant ?? selectedTenant();
+    this.app = options.app ?? selectedApp();
   }
 
-  /** `query` plus the selected organization, when there is one. */
+  /** `query` plus the selected organization and app, when there are. */
   private withTenant(query: Record<string, string>): Record<string, string> {
-    return this.tenant === undefined ? query : { ...query, tenant: this.tenant };
+    return {
+      ...query,
+      ...(this.tenant !== undefined ? { tenant: this.tenant } : {}),
+      ...(this.app !== undefined ? { app: this.app } : {}),
+    };
   }
 
   /** The absolute URL of the SSE live-stream route, for `new EventSource(url)`. */
@@ -520,6 +539,20 @@ export class TelescopeClient {
     } catch (err) {
       if (err instanceof TelescopeApiError && err.status === 404) {
         return { enabled: false, all: true, tenants: [] };
+      }
+      throw err;
+    }
+  }
+
+  // ── apps (a server collecting several apps) ──────────────────────────────
+
+  /** What the App picker shows. `{ enabled: false }` when no entry carries an app tag. */
+  async apps(): Promise<AppScope> {
+    try {
+      return await this.data<AppScope>('/apps');
+    } catch (err) {
+      if (err instanceof TelescopeApiError && err.status === 404) {
+        return { enabled: false, all: true, apps: [] };
       }
       throw err;
     }

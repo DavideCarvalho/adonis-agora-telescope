@@ -47,6 +47,7 @@ export class TenantTaggingStore implements TelescopeStore {
 
 /**
  * A read-only view of a store narrowed to entries carrying one of `tags` (the tenants a console
+ * viewer may see) and, for each extra group in `also`, one of that group's tags too (the apps the
  * viewer may see). It never forwards the store's aggregate fast paths (bucket/family/tag counts,
  * trace-id pages), so every aggregate the console shows is computed from the viewer's own entries
  * only: no cross-tenant counts. `get` answers `null` for an entry outside the scope. Writes are
@@ -54,16 +55,22 @@ export class TenantTaggingStore implements TelescopeStore {
  */
 export class TenantScopedStore implements TelescopeStore {
   private readonly tags: Set<string>;
+  private readonly also: Set<string>[];
 
   constructor(
     private readonly inner: TelescopeStore,
     tags: readonly string[],
+    also: readonly (readonly string[])[] = [],
   ) {
     this.tags = new Set(tags);
+    this.also = also.map((group) => new Set(group));
   }
 
   private visible(entry: Entry): boolean {
-    return entry.tags.some((tag) => this.tags.has(tag));
+    return (
+      entry.tags.some((tag) => this.tags.has(tag)) &&
+      this.also.every((group) => entry.tags.some((tag) => group.has(tag)))
+    );
   }
 
   record<TContent>(): Promise<Entry<TContent>> {
@@ -76,20 +83,22 @@ export class TenantScopedStore implements TelescopeStore {
   }
 
   async list(query: EntryQuery = {}): Promise<Entry[]> {
-    if (this.tags.size === 0) return [];
+    if (this.tags.size === 0 || this.also.some((group) => group.size === 0)) return [];
     const scope = [...this.tags];
     const wanted = query.anyTags;
-    if (wanted === undefined) {
+    if (wanted === undefined && this.also.length === 0) {
       // The store filters natively; the second pass guards against a store that ignores `anyTags`.
       const rows = await this.inner.list({ ...query, anyTags: scope });
       return rows.filter((entry) => this.visible(entry));
     }
-    // The caller's own `anyTags` AND the scope: the store narrows by the scope, the caller's
-    // filter is applied here, then the page is cut.
-    if (wanted.length === 0) return [];
+    // The caller's own `anyTags` (and the extra groups) AND the scope: the store narrows by the
+    // scope, the rest is applied here, then the page is cut.
+    if (wanted !== undefined && wanted.length === 0) return [];
     const { page, size, ...rest } = query;
     const rows = (await this.inner.list({ ...rest, anyTags: scope })).filter(
-      (entry) => this.visible(entry) && entry.tags.some((tag) => wanted.includes(tag)),
+      (entry) =>
+        this.visible(entry) &&
+        (wanted === undefined || entry.tags.some((tag) => wanted.includes(tag))),
     );
     if (size === undefined) return rows;
     const offset = (Math.max(1, Math.floor(page ?? 1)) - 1) * size;
@@ -107,4 +116,40 @@ export class TenantScopedStore implements TelescopeStore {
   clear(): Promise<void> {
     return Promise.reject(new Error('A tenant-scoped telescope view is read-only.'));
   }
+}
+
+/**
+ * The store a console request reads: `store` itself when nothing narrows it, else a
+ * {@link TenantScopedStore} over the tenant tags AND the app tags (each `null` = not narrowed).
+ */
+export function scopedStore(
+  store: TelescopeStore,
+  tenantTags: readonly string[] | null,
+  appTags: readonly string[] | null,
+): TelescopeStore {
+  if (tenantTags === null && appTags === null) return store;
+  if (tenantTags === null) return new TenantScopedStore(store, appTags ?? []);
+  return new TenantScopedStore(store, tenantTags, appTags === null ? [] : [appTags]);
+}
+
+/** A cache key for a (tenant tags, app tags) pair; `null` when nothing narrows. */
+export function scopeKey(
+  tenantTags: readonly string[] | null,
+  appTags: readonly string[] | null,
+): string | null {
+  if (tenantTags === null && appTags === null) return null;
+  const part = (tags: readonly string[] | null) =>
+    tags === null ? '*' : [...tags].sort().join('\n');
+  return `${part(tenantTags)}\u0000${part(appTags)}`;
+}
+
+/** Whether `entry` is inside the (tenant tags, app tags) pair (`null` = not narrowed). */
+export function entryInScope(
+  entry: Pick<Entry, 'tags'>,
+  tenantTags: readonly string[] | null,
+  appTags: readonly string[] | null,
+): boolean {
+  if (tenantTags !== null && !entry.tags.some((tag) => tenantTags.includes(tag))) return false;
+  if (appTags !== null && !entry.tags.some((tag) => appTags.includes(tag))) return false;
+  return true;
 }

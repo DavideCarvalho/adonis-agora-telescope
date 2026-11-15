@@ -19,6 +19,8 @@ export interface GuardResult {
   redirectTo?: string;
   /** When allowed with tenancy scoping: the tenants the hook granted (`'*'` = all). */
   tenants?: '*' | string[];
+  /** When allowed: the apps the hook granted (`'*'` = all; absent = all). */
+  apps?: '*' | string[];
 }
 
 /**
@@ -45,9 +47,11 @@ export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Pr
 
   const decision = normalizeConsoleDecision(result);
   if (decision.allowed) {
-    return decision.tenants !== undefined
-      ? { allowed: true, tenants: decision.tenants }
-      : { allowed: true };
+    return {
+      allowed: true,
+      ...(decision.tenants !== undefined ? { tenants: decision.tenants } : {}),
+      ...(decision.apps !== undefined ? { apps: decision.apps } : {}),
+    };
   }
   if (decision.redirectTo !== undefined) {
     return {

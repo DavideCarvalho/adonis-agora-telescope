@@ -82,7 +82,8 @@ Guard outcomes: a bare `false` (or `{ allowed: false }` with no `reason`) → `4
 `{ error: 'unauthenticated' }`; `{ redirectTo }` → `302` for a page, `401` JSON with
 `redirectTo` for the API; a throwing hook → `403`. With tenancy on,
 `{ allowed: true, tenants: [...] | '*' }` narrows the viewer to those
-organizations (omitted = the viewer's own active tenant).
+organizations (omitted = the viewer's own active tenant). `apps: [...] | '*'` narrows it to
+those apps on a server collecting several (entries tagged `app:<id>`; omitted = every app).
 
 Source: `docs/dashboard/auth.mdx` (Delegate to your app's auth, Guard behaviour).
 
@@ -156,7 +157,7 @@ Every console screen and action is also a `node ace telescope:<noun>:<verb>` com
 `telescope:pulse:show`, `telescope:jobs:retry <queue> <id>`, `telescope:entries:prune --dry-run`).
 They run the console's handlers in the app's process, without `authorize` (a shell on the host is
 trusted like a viewer allowed every organization), but keep the `replay.enabled` /
-`queueActions.enabled` gates. `--json` everywhere, `--tenant` narrows, destructive ones need
+`queueActions.enabled` gates. `--json` everywhere, `--tenant` / `--app` narrow, destructive ones need
 `--force` without a terminal. Source: `docs/reference/cli.mdx`.
 
 ## Common mistakes

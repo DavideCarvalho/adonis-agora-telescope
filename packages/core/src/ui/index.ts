@@ -23,6 +23,23 @@ export type {
 // — JSON API —
 export { rejectList, TelescopeApi, toSummary } from './api.js';
 export type {
+  AppLabels,
+  AppOption,
+  AppScopeDescription,
+  ConsoleAppScope,
+  SelectedAppScope,
+} from './app_scope.js';
+// — apps (a server collecting entries from several apps) —
+export {
+  APP_TAG,
+  appOfTag,
+  appTag,
+  consoleAppScope,
+  describeAppScope,
+  selectAppScope,
+  viewerStore,
+} from './app_scope.js';
+export type {
   AuthorizeByTokenOptions,
   ConsoleAuthorize,
   ConsoleAuthorizeResult,

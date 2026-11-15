@@ -98,7 +98,9 @@ uses — no React, no dependencies. Requests are same-origin, inheriting whateve
 session already gates the dashboard. With tenancy on, the header shows an
 Organization picker (`?tenant=<id>`); the client sends it on every call (defaults
 to the page URL, overridable via `new TelescopeClient({ tenant })`) and
-`client.tenants()` describes the viewer's scope.
+`client.tenants()` describes the viewer's scope. The App picker works the same way
+(`?app=<id>`, `new TelescopeClient({ app })`, `client.apps()`); it is hidden when no
+entry carries an `app:<id>` tag.
 
 ```ts
 import { TelescopeClient } from '@adonis-agora/telescope-ui/client'

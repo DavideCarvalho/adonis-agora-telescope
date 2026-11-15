@@ -372,6 +372,12 @@ export function useLiveTail(enabled: boolean, cap = 100) {
   return { entries, status, clear };
 }
 
+/** The viewer's app scope (a server collecting several apps), asked once per page. */
+export function useApps() {
+  const client = useTelescopeClient();
+  return useTelescopeQuery(['apps'], () => client.apps());
+}
+
 /** The viewer's organization scope (tenancy), asked once per page. */
 export function useTenants() {
   const client = useTelescopeClient();

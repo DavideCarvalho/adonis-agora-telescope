@@ -5,7 +5,8 @@ import { MetricsService } from '../metrics/metrics_service.js';
 import { getTelescopeRuntime } from '../registry.js';
 import { TelescopeService } from '../service.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
-import { TenantScopedStore } from '../tenancy_store.js';
+import { scopedStore, scopeKey } from '../tenancy_store.js';
+import { consoleAppScope, selectAppScope } from '../ui/app_scope.js';
 import type { GuardResult } from '../ui/guard.js';
 import { consoleTenantScope, selectTenantScope } from '../ui/tenant_scope.js';
 
@@ -231,23 +232,24 @@ export function buildTelescopeTools(
 }
 
 /**
- * The tools for one caller: over the whole store, or (with tenancy on) over the organizations its
- * `authorize` granted (`tenants`, or the caller's own active tenant). Cached per scope.
+ * The tools for one caller: over the whole store, or over the organizations (tenancy on: `tenants`,
+ * or the caller's own active tenant) and the apps (`apps`) its `authorize` granted. Cached per scope.
  */
 export function scopedTelescopeTools(
   store: TelescopeStore,
   coreConfig: ResolvedTelescopeConfig,
-): (decision: Pick<GuardResult, 'tenants'>) => TelescopeTools {
+): (decision: Pick<GuardResult, 'tenants' | 'apps'>) => TelescopeTools {
   const shared = buildTelescopeTools(store, coreConfig);
   const cache = new Map<string, TelescopeTools>();
   return (decision) => {
     const scope = consoleTenantScope(decision, coreConfig.tenancy);
     const { tags } = selectTenantScope(scope, undefined, coreConfig.tenancy);
-    if (tags === null) return shared;
-    const key = [...tags].sort().join('\n');
+    const appTags = selectAppScope(consoleAppScope(decision), undefined).tags;
+    const key = scopeKey(tags, appTags);
+    if (key === null) return shared;
     let tools = cache.get(key);
     if (tools === undefined) {
-      tools = buildTelescopeTools(new TenantScopedStore(store, tags), coreConfig);
+      tools = buildTelescopeTools(scopedStore(store, tags, appTags), coreConfig);
       if (cache.size >= 64) cache.delete(cache.keys().next().value as string);
       cache.set(key, tools);
     }
