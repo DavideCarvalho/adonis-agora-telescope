@@ -65,13 +65,13 @@ export interface DeployEvent {
   previous: string | null;
   /** Epoch ms the first instance of this version booted. */
   startedAt: number;
-  /** Live (up or starting) instances on this version. */
+  /** Live (up, starting or draining) instances on this version. */
   live: number;
   /** Live instances in total. */
   total: number;
-  /** `live / total` among live instances (0..1). */
+  /** `live / total` among live instances (0..1); 1 once nothing runs. */
   progress: number;
-  /** Whether no live instance runs another version (the rollout finished). */
+  /** Whether no live instance runs another version, or nothing runs any more (the rollout is over). */
   complete: boolean;
 }
 
@@ -132,7 +132,8 @@ export function deploysOf(instances: FleetInstance[]): DeployEvent[] {
     }
   }
   const ordered = [...firstBoot].sort((a, b) => a[1] - b[1]);
-  const live = instances.filter((i) => isLive(i.status));
+  // Draining instances still run their version (as in the versions list and the incidents).
+  const live = instances.filter((i) => isLive(i.status) || i.status === 'draining');
   const deploys: DeployEvent[] = [];
   for (let index = 1; index < ordered.length; index++) {
     const [version, startedAt] = ordered[index] as [string | null, number];
@@ -143,8 +144,9 @@ export function deploysOf(instances: FleetInstance[]): DeployEvent[] {
       startedAt,
       live: on,
       total: live.length,
-      progress: live.length === 0 ? 0 : on / live.length,
-      complete: live.length > 0 && on === live.length,
+      // Nothing running any more: the rollout is over (not stuck at 0/0).
+      progress: live.length === 0 ? 1 : on / live.length,
+      complete: live.length === 0 || on === live.length,
     });
   }
   return deploys;

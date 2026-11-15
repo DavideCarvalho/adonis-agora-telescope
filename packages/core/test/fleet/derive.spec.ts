@@ -167,6 +167,31 @@ describe('deploys', () => {
   });
 });
 
+describe('deploys and draining', () => {
+  it('a draining host on the old version keeps the rollout incomplete', () => {
+    const [app] = deriveFleet(
+      [
+        instance({ host: 'a', version: 'v1', bootedAt: NOW - 120 * MIN, state: 'draining' }),
+        instance({ host: 'b', version: 'v2', bootedAt: NOW - 2 * MIN }),
+      ],
+      NOW,
+    );
+    expect(app?.deploys[0]).toMatchObject({ version: 'v2', live: 1, total: 2, complete: false });
+  });
+
+  it('with nothing running any more the rollout is over, not stuck at 0/0', () => {
+    const gone = NOW - 30 * MIN;
+    const [app] = deriveFleet(
+      [
+        instance({ host: 'a', version: 'v1', bootedAt: NOW - 120 * MIN, lastSeenAt: gone }),
+        instance({ host: 'b', version: 'v2', bootedAt: NOW - 60 * MIN, lastSeenAt: gone }),
+      ],
+      NOW,
+    );
+    expect(app?.deploys[0]).toMatchObject({ live: 0, total: 0, progress: 1, complete: true });
+  });
+});
+
 describe('restart loops', () => {
   it('flags a host that booted N times within M minutes', () => {
     const boots = [1, 3, 5].map((m) =>

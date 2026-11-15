@@ -84,6 +84,7 @@ rules: [
     minSamples: 10,                          // guard percentiles against a single slow request
   },
   // Fleet rules (control plane / standalone, need heartbeats): raise + resolve per app
+  // (restart-loop per host, check-down per check)
   { type: 'instances-up', app: 'shop', below: 2, for: '2m' },
   { type: 'restart-loop' },
   { type: 'check-down', check: 'redis', for: '2m' }, // needs `checks` in config/telescope.ts
