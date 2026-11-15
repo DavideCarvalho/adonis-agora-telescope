@@ -1,12 +1,14 @@
 import type { ExceptionEntryContent } from '../ai/diagnoser.js';
 import type { ResolvedTelescopeConfig } from '../define_config.js';
 import { type Entry, EntryType } from '../entry.js';
+import type { FleetScope, FleetView } from '../fleet/view.js';
 import { MetricsService } from '../metrics/metrics_service.js';
 import { getTelescopeRuntime } from '../registry.js';
 import { TelescopeService } from '../service.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
 import { scopedStore, scopeKey } from '../tenancy_store.js';
 import { consoleAppScope, selectAppScope } from '../ui/app_scope.js';
+import { appsOfTags, FleetApi } from '../ui/fleet_api.js';
 import type { GuardResult } from '../ui/guard.js';
 import { consoleTenantScope, selectTenantScope } from '../ui/tenant_scope.js';
 
@@ -49,6 +51,7 @@ export class TelescopeTools {
     private readonly service: TelescopeService,
     private readonly metrics: MetricsService,
     private readonly diagnose?: DiagnoseExceptionHook,
+    private readonly readFleet?: () => Promise<FleetView>,
   ) {}
 
   /**
@@ -119,6 +122,35 @@ export class TelescopeTools {
             ? args.sinceMinutes * 60_000
             : DEFAULT_HEALTH_WINDOW_MS;
         return this.service.getHealth({ windowMs });
+      }
+      case 'get_fleet': {
+        if (this.readFleet === undefined) return notice('The fleet is not available here.');
+        const view = await this.readFleet();
+        if (!view.enabled || view.notice !== null) {
+          return notice(view.notice ?? 'This telescope keeps no fleet.');
+        }
+        // Compact: per app, counts, versions, deploys, restart loops, failing checks, instances.
+        return {
+          apps: view.apps.map((app) => ({
+            app: app.app,
+            counts: app.counts,
+            versions: app.versions,
+            deploys: app.deploys,
+            restartLoops: app.restartLoops,
+            checks: app.checks,
+            shipping: app.shipping,
+            instances: app.instances.map((i) => ({
+              instanceId: i.instanceId,
+              host: i.host,
+              version: i.version,
+              status: i.status,
+              health: i.health,
+              uptimeMs: i.uptimeMs,
+              lastSeenAt: new Date(i.lastSeenAt).toISOString(),
+              buffered: i.shipping?.buffered ?? null,
+            })),
+          })),
+        };
       }
       case 'diagnose_exception': {
         if (typeof args.id !== 'string') throw new Error('`id` is required.');
@@ -205,6 +237,7 @@ function safeSummary(content: Record<string, unknown>, type: string): string {
 export function buildTelescopeTools(
   store: TelescopeStore,
   coreConfig: ResolvedTelescopeConfig,
+  fleetScope: FleetScope = { apps: null },
 ): TelescopeTools {
   const service = new TelescopeService(store, {
     windowMs: coreConfig.pulse.windowMs,
@@ -228,7 +261,8 @@ export function buildTelescopeTools(
         });
       }
     : undefined;
-  return new TelescopeTools(service, metrics, diagnose);
+  const fleetApi = new FleetApi(store, coreConfig.topology.topology === 'control-plane');
+  return new TelescopeTools(service, metrics, diagnose, () => fleetApi.read(fleetScope));
 }
 
 /**
@@ -249,7 +283,10 @@ export function scopedTelescopeTools(
     if (key === null) return shared;
     let tools = cache.get(key);
     if (tools === undefined) {
-      tools = buildTelescopeTools(scopedStore(store, tags, appTags), coreConfig);
+      tools = buildTelescopeTools(scopedStore(store, tags, appTags), coreConfig, {
+        apps: appsOfTags(appTags),
+        hidden: scope !== null && !scope.all,
+      });
       if (cache.size >= 64) cache.delete(cache.keys().next().value as string);
       cache.set(key, tools);
     }

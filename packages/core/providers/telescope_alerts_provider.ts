@@ -1,7 +1,7 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import type { ExceptionEntryContent } from '../src/ai/diagnoser.js';
 import { Alerter } from '../src/alerts/alerter.js';
-import { AlerterService } from '../src/alerts/alerter_service.js';
+import { AlerterService, isFleetRule } from '../src/alerts/alerter_service.js';
 import { resolveConfig, type TelescopeAlertsConfig } from '../src/alerts/define_config.js';
 import { ExceptionPoller } from '../src/alerts/exception_source.js';
 import type { Entry } from '../src/entry.js';
@@ -83,11 +83,20 @@ export default class TelescopeAlertsProvider {
 
     // The interval metric-threshold service only needs to run when at least one
     // such rule is configured — otherwise its timer would tick doing nothing.
-    const hasMetricRule = config.rules.some((rule) => rule.type === 'metric-threshold');
+    const hasMetricRule = config.rules.some(
+      (rule) => rule.type === 'metric-threshold' || isFleetRule(rule),
+    );
+    if (config.rules.some(isFleetRule) && getTelescopeRuntime().fleet === null) {
+      console.warn(
+        'TelescopeAlertsProvider: fleet rules (instances-up, restart-loop, check-down, entries-dropped) need the fleet: they run on a control plane or a standalone app with `fleet` on.',
+      );
+    }
     if (hasMetricRule) {
       this.alerterService = new AlerterService({
         alerts: config,
         metrics: new MetricsService(store),
+        // Read per evaluation: the core provider publishes the fleet at boot.
+        fleet: () => getTelescopeRuntime().fleet,
       });
       try {
         this.alerterService.start();

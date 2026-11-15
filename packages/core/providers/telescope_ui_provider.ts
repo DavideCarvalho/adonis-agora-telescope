@@ -25,6 +25,7 @@ import {
   type TelescopeUiConfig,
 } from '../src/ui/define_config.js';
 import type { ExtensionActionAudit } from '../src/ui/extension_api.js';
+import { appsOfTags } from '../src/ui/fleet_api.js';
 import { enforceGuardDecision } from '../src/ui/guard.js';
 import type { SseSink, UiHttpContext } from '../src/ui/http.js';
 import {
@@ -528,6 +529,30 @@ export default class TelescopeUiProvider {
         })
         .as('telescope_ui.ext_action');
     }
+
+    // `GET <path>/api/fleet` — the fleet: instances per app (up / starting / draining / gone),
+    // deploys, restart loops and failing checks with the exceptions since. The apps the viewer may
+    // see (`?app=` narrows); hidden from a viewer limited to some organizations (instances are
+    // shared by all of them).
+    router
+      .get(`${apiBase}/fleet`, async (ctx: GuardedContext) => {
+        const a = await gate(ctx);
+        if (a === null) return;
+        return a.fleetApi.fleet(ctx, {
+          apps: appsOfTags(a.selected.appTags),
+          hidden: a.scope !== null && !a.scope.all,
+        });
+      })
+      .as('telescope_ui.fleet');
+
+    // `GET <path>/api/health` — this process's health checks, run now (cached per check).
+    router
+      .get(`${apiBase}/health`, async (ctx: GuardedContext) => {
+        const a = await gate(ctx);
+        if (a === null) return;
+        return a.fleetApi.health(ctx, a.scope !== null && !a.scope.all);
+      })
+      .as('telescope_ui.health');
 
     // `GET <path>/api/tenants` — what the console's organization picker shows.
     router

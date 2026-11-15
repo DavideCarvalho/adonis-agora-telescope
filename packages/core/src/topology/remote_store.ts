@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { currentTraceId } from '../context_accessor.js';
 import { type Entry, type RecordInput, resolveCreatedAt, resolveEntryId } from '../entry.js';
+import type { InstanceHeartbeat, ShippingStats } from '../fleet/heartbeat.js';
 import { resolveOrigin } from '../origin_scope.js';
 import { runAsTelescopeWork } from '../self_scope.js';
 import type { EntryQuery, TelescopeStore } from '../store.js';
@@ -75,7 +76,10 @@ export class RemoteTelescopeStore implements TelescopeStore {
   private readonly channel: Promise<TenantChannel>;
   private readonly now: () => number;
   private readonly tee: TelescopeStore | null;
+  private readonly startedAt: number;
   private buffer: Pending[] = [];
+  /** The latest heartbeat not yet sent (only the newest matters): rides the next batch. */
+  private pendingHeartbeat: string | null = null;
   private sequence = 0;
   private inflight: Promise<boolean> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -105,6 +109,7 @@ export class RemoteTelescopeStore implements TelescopeStore {
     // A channel that fails to build (a missing peer) surfaces on each send, not as an unhandled rejection.
     this.channel.catch(() => {});
     this.now = config.now ?? Date.now;
+    this.startedAt = this.now();
     this.tee = config.tee ?? null;
     if (this.tee !== null) {
       const self = this as unknown as Record<string, unknown>;
@@ -188,6 +193,35 @@ export class RemoteTelescopeStore implements TelescopeStore {
     if (this.buffer.length >= this.batchSize) queueMicrotask(() => void this.tick());
   }
 
+  /**
+   * Send this instance's heartbeat with the next batch (alone when nothing is buffered). Only the
+   * newest one is kept; it never takes a buffer slot, so a full buffer cannot hide the instance.
+   */
+  heartbeat(heartbeat: InstanceHeartbeat): void {
+    try {
+      this.pendingHeartbeat = JSON.stringify(heartbeat);
+    } catch {
+      return;
+    }
+    queueMicrotask(() => void this.tick());
+  }
+
+  /** The buffer's state as a heartbeat reports it. */
+  shippingStats(): ShippingStats {
+    const now = this.now();
+    return {
+      buffered: this.buffer.length,
+      dropped: this.counters.dropped,
+      sent: this.counters.sent,
+      failures: this.counters.failures,
+      lagMs:
+        this.buffer.length === 0
+          ? 0
+          : Math.max(0, now - (this.counters.lastSuccessAt ?? this.startedAt)),
+      lastError: this.counters.lastError,
+    };
+  }
+
   /** Drop the oldest entries past the buffer cap. */
   private trim(): void {
     const over = this.buffer.length - this.options.maxEntries;
@@ -199,7 +233,8 @@ export class RemoteTelescopeStore implements TelescopeStore {
 
   /** One send attempt, unless one is running or the backoff has not elapsed. */
   private async tick(): Promise<void> {
-    if (this.inflight !== null || this.buffer.length === 0) return;
+    if (this.inflight !== null) return;
+    if (this.buffer.length === 0 && this.pendingHeartbeat === null) return;
     if (this.now() < this.counters.nextAttemptAt) return;
     await this.sendNext();
   }
@@ -210,7 +245,7 @@ export class RemoteTelescopeStore implements TelescopeStore {
    */
   async flush(): Promise<void> {
     if (this.inflight !== null) await this.inflight;
-    while (this.buffer.length > 0) {
+    while (this.buffer.length > 0 || this.pendingHeartbeat !== null) {
       if (!(await this.sendNext())) return;
     }
   }
@@ -234,8 +269,14 @@ export class RemoteTelescopeStore implements TelescopeStore {
       bytes += next.bytes;
       this.buffer.shift();
     }
-    if (batch.length === 0) return true;
-    const body = `{"version":${WIRE_VERSION},"entries":[${batch.map((p) => p.json).join(',')}]}`;
+    const heartbeat = this.pendingHeartbeat;
+    if (batch.length === 0 && heartbeat === null) return true;
+    this.pendingHeartbeat = null;
+    const body = `{"version":${WIRE_VERSION},"entries":[${batch.map((p) => p.json).join(',')}]${heartbeat !== null ? `,"heartbeat":${heartbeat}` : ''}}`;
+    // A heartbeat that did not get through is sent again, unless a newer one replaced it.
+    const keepHeartbeat = () => {
+      if (heartbeat !== null && this.pendingHeartbeat === null) this.pendingHeartbeat = heartbeat;
+    };
 
     let outcome: Awaited<ReturnType<TenantChannel['send']>>;
     try {
@@ -252,6 +293,7 @@ export class RemoteTelescopeStore implements TelescopeStore {
         }),
       );
     } catch (error) {
+      keepHeartbeat();
       return this.failed(batch, errorMessage(error));
     }
 
@@ -265,6 +307,7 @@ export class RemoteTelescopeStore implements TelescopeStore {
       return true;
     }
     if (outcome.kind === 'too-large' && batch.length > 1) {
+      keepHeartbeat();
       // Too big for the server: send smaller batches from now on.
       this.batchSize = Math.max(1, Math.floor(batch.length / 2));
       this.requeue(batch);
@@ -279,6 +322,7 @@ export class RemoteTelescopeStore implements TelescopeStore {
       return true;
     }
     if (outcome.auth) resetToken(this.config.token);
+    keepHeartbeat();
     return this.failed(batch, outcome.message);
   }
 

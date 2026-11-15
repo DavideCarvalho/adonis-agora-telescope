@@ -121,6 +121,10 @@ function summarize(alert: AlertPayload): string {
     const where = route !== null ? ` (${route})` : '';
     return `${base}: ${cls}: ${message}${where} — ${occurrences}× in window`;
   }
+  if (alert.fleet !== undefined) {
+    const status = alert.status === 'resolved' ? 'resolved' : 'firing';
+    return `${base} [${status}] ${alert.fleet.app}: ${alert.fleet.detail}`;
+  }
   return `${base}: value ${alert.value} (threshold ${alert.threshold})`;
 }
 

@@ -27,6 +27,11 @@ import {
 } from '../src/extension/binding.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import type { ExtensionContext } from '../src/extension/types.js';
+import { HealthChecks } from '../src/fleet/checks.js';
+import { resolveSelfApp, resolveVersion } from '../src/fleet/config.js';
+import { type ProbeRouter, registerProbeRoutes } from '../src/fleet/probes.js';
+import { FleetRegistry, InstanceReporter } from '../src/fleet/registry.js';
+import { type FleetStore, LucidFleetStore, MemoryFleetStore } from '../src/fleet/store.js';
 import { isGlobalOtelRegistered } from '../src/otel/detect.js';
 import { OverloadGuard, type PauseController } from '../src/overload_guard.js';
 import { TelescopePruner } from '../src/pruner.js';
@@ -38,6 +43,7 @@ import {
   setTelescopeAiMetrics,
   setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
+  setTelescopeFleet,
   setTelescopePaused,
   setTelescopeRecordHeartbeat,
   setTelescopeRuntime,
@@ -75,6 +81,8 @@ import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
  */
 export default class TelescopeProvider {
   private store: TelescopeStore | null = null;
+  /** The store as built, before any decorator (the fleet puts its table next to a Lucid one). */
+  private localStore: TelescopeStore | null = null;
   private remote: RemoteTelescopeStore | null = null;
   /** A control plane's broker consumer (`transport` other than HTTP). */
   private consumer: ControlPlaneChannel | null = null;
@@ -86,6 +94,9 @@ export default class TelescopeProvider {
   private otelReaderInstalled = false;
   private otelMetricsExporter: OtelMetricsExporter | null = null;
   private unsubscribePrometheus: (() => void) | null = null;
+  private fleet: FleetRegistry | null = null;
+  private reporter: InstanceReporter | null = null;
+  private healthChecks: HealthChecks | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -109,6 +120,7 @@ export default class TelescopeProvider {
     await registerDoctorChecks(this.app.container, telescopeDoctorChecks).catch(() => {});
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
     const local = await this.buildStore(config);
+    this.localStore = local;
     await this.registerSchemaCheck(local);
     const built = this.applyTopology(local, config);
     const sampled = this.applySampling(this.applyRedaction(built, config), config);
@@ -189,9 +201,109 @@ export default class TelescopeProvider {
       await this.registerClientErrors(store, config);
     }
 
+    // Health checks, the fleet and this instance's heartbeat (before the ingest routes, which
+    // hand the tenants' heartbeats to the fleet).
+    await this.startFleet(config);
+
     // Central server: a tenant starts sending; a control plane mounts the ingest routes.
     this.remote?.start();
     if (config.topology.topology === 'control-plane') await this.registerIngest(config);
+  }
+
+  /** The app is serving: this instance is ready. */
+  async ready() {
+    await this.reporter?.setState('ready');
+  }
+
+  /**
+   * `checks`, `health` and `fleet`: the checks this process runs, its probe routes, the fleet a
+   * control plane or a standalone app keeps, and this instance's heartbeat (a tenant sends it with
+   * its batches, over the same transport as the entries).
+   */
+  private async startFleet(config: ResolvedTelescopeConfig): Promise<void> {
+    const onError = (what: string) => (error: unknown) =>
+      void this.debug(
+        `[@adonis-agora/telescope] ${what}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    this.healthChecks =
+      config.checks.length > 0
+        ? new HealthChecks(config.checks, {
+            make: (binding) => this.app.container.make(binding as never) as Promise<unknown>,
+          })
+        : null;
+    const fleetConfig = config.fleet;
+    if (fleetConfig.enabled && config.topology.topology !== 'tenant') {
+      this.fleet = new FleetRegistry(this.fleetStore(fleetConfig.store), {
+        derive: {
+          goneAfterIntervals: fleetConfig.goneAfterIntervals,
+          restartLoop: fleetConfig.restartLoop,
+        },
+        retentionMs: fleetConfig.retentionMs,
+        onError: onError('the fleet could not store a heartbeat'),
+      });
+      this.fleet.startPruning();
+    }
+    const environment = (this.app as { getEnvironment?(): string }).getEnvironment?.() ?? 'unknown';
+    if (fleetConfig.enabled && fleetConfig.report.includes(environment)) {
+      const appRoot = (this.app as { appRoot?: URL }).appRoot;
+      const remote = this.remote;
+      const fleet = this.fleet;
+      const selfApp = remote === null ? await resolveSelfApp(fleetConfig.app, appRoot) : null;
+      this.reporter = new InstanceReporter({
+        intervalMs: fleetConfig.intervalMs,
+        host: fleetConfig.host,
+        version: () => resolveVersion(fleetConfig.version, appRoot),
+        checks: this.healthChecks,
+        ...(remote !== null ? { shipping: () => remote.shippingStats() } : {}),
+        send: (heartbeat) => {
+          if (remote !== null) remote.heartbeat(heartbeat);
+          else if (fleet !== null && selfApp !== null) return fleet.beat(selfApp, heartbeat);
+        },
+        onError: onError('the heartbeat failed'),
+      });
+      this.reporter.start();
+    }
+    setTelescopeFleet({
+      fleet: this.fleet,
+      healthChecks: this.healthChecks,
+      reporter: this.reporter,
+    });
+    const probes = config.health;
+    if (probes.readiness !== null || probes.liveness !== null) {
+      const runtime = getTelescopeRuntime();
+      if (probes.readiness !== null) runtime.probePaths.add(probes.readiness);
+      if (probes.liveness !== null) runtime.probePaths.add(probes.liveness);
+      const router = (await this.app.container.make('router')) as unknown as ProbeRouter;
+      registerProbeRoutes(router, probes, () => ({
+        checks: this.healthChecks,
+        state: this.reporter?.currentState ?? 'ready',
+      }));
+    }
+  }
+
+  /** `fleet.store`: a table next to a Lucid entries store (`'auto'`), memory, or a given store. */
+  private fleetStore(choice: 'auto' | 'memory' | FleetStore): FleetStore {
+    if (typeof choice === 'object') return choice;
+    if (choice === 'auto') {
+      const local = this.localStore as
+        | (TelescopeStore & { hot?: unknown; connectionInfo?: unknown })
+        | null;
+      const candidate = (local?.hot ?? local) as {
+        connectionInfo?: () => {
+          db: ConstructorParameters<typeof LucidFleetStore>[0];
+          schema: string | undefined;
+          autoCreateTable: boolean;
+        };
+      } | null;
+      if (candidate !== null && typeof candidate.connectionInfo === 'function') {
+        const info = candidate.connectionInfo();
+        return new LucidFleetStore(info.db, {
+          ...(info.schema !== undefined ? { schema: info.schema } : {}),
+          autoCreateTable: info.autoCreateTable,
+        });
+      }
+    }
+    return new MemoryFleetStore();
   }
 
   /**
@@ -238,10 +350,17 @@ export default class TelescopeProvider {
     } catch {
       // No logger: refusals are not logged.
     }
+    const fleet = this.fleet;
     const handler = createIngestHandler({
       verifyTenant,
       store: () => getTelescopeRuntime().store,
       limits: ingest,
+      ...(fleet !== null
+        ? {
+            onHeartbeat: (verified, heartbeat) =>
+              fleet.beat(verified.partition, heartbeat, verified.environment ?? null),
+          }
+        : {}),
       onRefused: (reason, verified) =>
         logger?.warn(
           `[@adonis-agora/telescope] ingest refused (${reason})${verified ? ` for app ${JSON.stringify(verified.partition)}` : ''}`,
@@ -495,6 +614,13 @@ export default class TelescopeProvider {
   }
 
   async shutdown() {
+    // Draining first: a tenant's last heartbeat goes out with the final flush below.
+    await this.reporter?.setState('draining').catch(() => {});
+    this.reporter?.stop();
+    this.reporter = null;
+    this.fleet?.stop();
+    this.fleet = null;
+    this.healthChecks = null;
     await this.flushRemote();
     await this.consumer?.close().catch(() => {});
     this.consumer = null;

@@ -17,6 +17,8 @@ export type {
   AlertPayload,
   AlertRule,
   ExceptionAlertContext,
+  FleetAlertContext,
+  FleetAlertRule,
   GeoLookup,
   ResolvedAlerts,
 } from './alert_rule.js';
@@ -25,7 +27,7 @@ export type { AlerterDeps } from './alerter.js';
 export { Alerter } from './alerter.js';
 export type { AlerterServiceDeps, MetricSource } from './alerter_service.js';
 // — alerter service (interval metric-threshold rules with raise/resolve) —
-export { AlerterService } from './alerter_service.js';
+export { AlerterService, isFleetRule } from './alerter_service.js';
 export type {
   ChannelConfig,
   ChannelSpec,
@@ -34,9 +36,10 @@ export type {
 // — config —
 export { DEFAULT_RULES, defineConfig, resolveConfig } from './define_config.js';
 export type { ExceptionPollerDeps } from './exception_source.js';
-
 // — exception source (the polling hook) —
 export { ExceptionPoller } from './exception_source.js';
+export type { FleetOutcome, FleetSource } from './fleet_rules.js';
+export { FleetRuleEvaluator } from './fleet_rules.js';
 // — new-exception dedupe —
 export { DEFAULT_MAX_FAMILIES, NewExceptionTracker } from './new_exception_tracker.js';
 

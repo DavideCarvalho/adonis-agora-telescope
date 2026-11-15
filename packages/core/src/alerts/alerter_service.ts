@@ -2,7 +2,15 @@ import { EntryType } from '../entry.js';
 import type { StatsResult } from '../metrics/stats.js';
 import { getTelescopeRuntime } from '../registry.js';
 import type { AlertChannel } from './alert_channel.js';
-import type { AlertMetric, AlertPayload, AlertRule, ResolvedAlerts } from './alert_rule.js';
+import type {
+  AlertMetric,
+  AlertPayload,
+  AlertRule,
+  FleetAlertContext,
+  FleetAlertRule,
+  ResolvedAlerts,
+} from './alert_rule.js';
+import { FleetRuleEvaluator, type FleetSource } from './fleet_rules.js';
 import { durationToMs } from './parse_duration.js';
 
 /** The metric-threshold member of the rule union — the only rule this service owns. */
@@ -24,6 +32,11 @@ export interface AlerterServiceDeps {
   alerts: ResolvedAlerts;
   /** Windowed metrics source (typically the core `MetricsService`). */
   metrics: MetricSource;
+  /**
+   * The fleet, for `instances-up` / `restart-loop` / `check-down` / `entries-dropped` (the core's
+   * `FleetRegistry`). A function is read on every evaluation. Without it those rules do nothing.
+   */
+  fleet?: FleetSource | (() => FleetSource | null) | null;
   /** Wall-clock seam (ms). Defaults to `Date.now`. */
   now?: () => number;
   /** Failure log sink. Defaults to `console.warn`. */
@@ -60,10 +73,12 @@ export class AlerterService {
   private readonly logger: (message: string) => void;
   private readonly isPaused: () => boolean;
   private timer: ReturnType<typeof setInterval> | null = null;
-  /** Rule indices currently in the FIRING state (the dedup + resolve keys). */
-  private readonly active = new Set<number>();
-  /** Per-rule wall time of the last RESOLVE, for the post-resolve cooldown. */
-  private readonly lastResolvedAt = new Map<number, number>();
+  /** Alerts currently FIRING: `<rule index>` (metric) or `<rule index>\u0000<subject>` (fleet). */
+  private readonly active = new Map<string, AlertPayload>();
+  /** Per-alert wall time of the last RESOLVE, for the post-resolve cooldown. */
+  private readonly lastResolvedAt = new Map<string, number>();
+  private fleetEvaluator: FleetRuleEvaluator | null = null;
+  private fleetEvaluatorSource: FleetSource | null = null;
   /** Channels we've already warned about (rate-limit failure logs by name). */
   private readonly warnedChannels = new Set<string>();
 
@@ -117,7 +132,12 @@ export class AlerterService {
     const nowMs = this.now();
     for (let index = 0; index < this.deps.alerts.rules.length; index++) {
       const rule = this.deps.alerts.rules[index];
+      if (rule !== undefined && isFleetRule(rule)) {
+        await this.evaluateFleetRule(rule, index, nowMs);
+        continue;
+      }
       if (rule === undefined || rule.type !== 'metric-threshold') continue;
+      const key = String(index);
       let outcome: { crosses: boolean; value: number } | null;
       try {
         outcome = await this.measure(rule);
@@ -128,23 +148,103 @@ export class AlerterService {
       // `null` ⇒ not enough data to decide — leave the current state untouched
       // (a quiet window neither raises nor spuriously resolves a real alert).
       if (outcome === null) continue;
-      const isActive = this.active.has(index);
-      if (outcome.crosses) {
-        if (isActive) continue; // dedup: already firing.
-        if (this.inCooldown(index, nowMs)) continue; // flap control after a resolve.
-        this.active.add(index);
-        await this.dispatch(this.buildPayload(rule, outcome.value, 'firing', nowMs));
-      } else {
-        if (!isActive) continue; // nothing to resolve.
-        this.active.delete(index);
-        this.lastResolvedAt.set(index, nowMs);
-        await this.dispatch(this.buildPayload(rule, outcome.value, 'resolved', nowMs));
-      }
+      await this.transition(
+        key,
+        outcome.crosses,
+        this.buildPayload(rule, outcome.value, outcome.crosses ? 'firing' : 'resolved', nowMs),
+        nowMs,
+      );
     }
   }
 
-  private inCooldown(index: number, nowMs: number): boolean {
-    const last = this.lastResolvedAt.get(index);
+  /** Raise, resolve or hold one alert (dedup + post-resolve cooldown). */
+  private async transition(
+    key: string,
+    crosses: boolean,
+    payload: AlertPayload,
+    nowMs: number,
+  ): Promise<void> {
+    const isActive = this.active.has(key);
+    if (crosses) {
+      if (isActive) return; // dedup: already firing.
+      if (this.inCooldown(key, nowMs)) return; // flap control after a resolve.
+      this.active.set(key, payload);
+      await this.dispatch(payload);
+    } else {
+      if (!isActive) return; // nothing to resolve.
+      this.active.delete(key);
+      this.lastResolvedAt.set(key, nowMs);
+      await this.dispatch(payload);
+    }
+  }
+
+  private fleetSource(): FleetSource | null {
+    const fleet = this.deps.fleet;
+    if (fleet === undefined || fleet === null) return null;
+    return typeof fleet === 'function' ? fleet() : fleet;
+  }
+
+  /** One fleet rule: each app (or app + check) raises and resolves on its own. */
+  private async evaluateFleetRule(rule: FleetAlertRule, index: number, nowMs: number) {
+    const source = this.fleetSource();
+    if (source === null) return;
+    if (this.fleetEvaluator === null || this.fleetEvaluatorSource !== source) {
+      this.fleetEvaluator = new FleetRuleEvaluator(source);
+      this.fleetEvaluatorSource = source;
+    }
+    let outcomes: Awaited<ReturnType<FleetRuleEvaluator['evaluate']>>;
+    try {
+      outcomes = await this.fleetEvaluator.evaluate(rule, String(index), nowMs);
+    } catch (error: unknown) {
+      this.logger(`Telescope alert rule '${rule.type}' failed: ${asMessage(error)}`);
+      return;
+    }
+    const seen = new Set<string>();
+    for (const outcome of outcomes) {
+      const key = `${index}\u0000${outcome.key}`;
+      seen.add(key);
+      await this.transition(
+        key,
+        outcome.crosses,
+        this.fleetPayload(rule, outcome, outcome.crosses ? 'firing' : 'resolved', nowMs),
+        nowMs,
+      );
+    }
+    // A subject that left the fleet (pruned) resolves.
+    const prefix = `${index}\u0000`;
+    for (const [key, payload] of this.active) {
+      if (!key.startsWith(prefix) || seen.has(key)) continue;
+      await this.transition(
+        key,
+        false,
+        { ...payload, status: 'resolved', firedAt: new Date(nowMs).toISOString() },
+        nowMs,
+      );
+    }
+  }
+
+  private fleetPayload(
+    rule: FleetAlertRule,
+    outcome: { value: number; threshold: number; fleet: FleetAlertContext },
+    status: 'firing' | 'resolved',
+    nowMs: number,
+  ): AlertPayload {
+    return {
+      rule,
+      value: outcome.value,
+      threshold: outcome.threshold,
+      firedAt: new Date(nowMs).toISOString(),
+      instanceId: this.deps.alerts.instanceId,
+      status,
+      fleet: outcome.fleet,
+      ...(this.deps.alerts.dashboardUrl !== null
+        ? { dashboardUrl: this.deps.alerts.dashboardUrl }
+        : {}),
+    };
+  }
+
+  private inCooldown(key: string, nowMs: number): boolean {
+    const last = this.lastResolvedAt.get(key);
     if (last === undefined) return false;
     return nowMs - last < this.deps.alerts.cooldownMs;
   }
@@ -247,6 +347,13 @@ export class AlerterService {
     this.warnedChannels.add(channel.name);
     this.logger(`Telescope alert channel '${channel.name}' failed: ${asMessage(reason)}`);
   }
+}
+
+const FLEET_RULES = new Set(['instances-up', 'restart-loop', 'check-down', 'entries-dropped']);
+
+/** Whether `rule` is evaluated over the fleet. */
+export function isFleetRule(rule: AlertRule): rule is FleetAlertRule {
+  return FLEET_RULES.has(rule.type);
 }
 
 function asMessage(error: unknown): string {

@@ -55,7 +55,40 @@ export type AlertRule =
        * must be able to auto-resolve a firing spike).
        */
       minSamples?: number;
-    };
+    }
+  | FleetAlertRule;
+
+/**
+ * Rules over the fleet (the instances' heartbeats), evaluated with the `metric-threshold` rules:
+ * they RAISE and RESOLVE per app (and per check), with the same dedup and post-resolve cooldown.
+ * They need the fleet, so they run on a control plane or a standalone app.
+ *
+ * - `instances-up`    fires when fewer than `below` instances of an app are up (`below: 1` pages
+ *                     when an app has none left). Without `app`, every app the fleet knows.
+ *                     Held for `for` (default `'1m'`) so a rolling deploy does not page.
+ * - `restart-loop`    fires when a host booted `fleet.restartLoop.restarts` times within
+ *                     `fleet.restartLoop.within` (default 3 in 10 minutes).
+ * - `check-down`      fires when a health check (`check`, or any) has been `down` on a live
+ *                     instance for `for` (e.g. `'2m'`): availability without an outside monitor.
+ * - `entries-dropped` fires when an app's instances dropped at least `threshold` (default 1)
+ *                     entries within `window` (their buffer to the control plane overflowed).
+ */
+export type FleetAlertRule =
+  | { type: 'instances-up'; app?: string; below: number; for?: string }
+  | { type: 'restart-loop'; app?: string }
+  | { type: 'check-down'; check?: string; app?: string; for: string }
+  | { type: 'entries-dropped'; app?: string; window: string; threshold?: number };
+
+/** What a fleet alert is about. */
+export interface FleetAlertContext {
+  app: string;
+  /** The check, for `check-down`. */
+  check?: string;
+  /** The host, for `restart-loop`. */
+  host?: string;
+  /** One line: "Redis down for 12 min on 3 of 3 instances". */
+  detail: string;
+}
 
 /**
  * The metrics a `metric-threshold` rule can evaluate. Each is derived from the
@@ -206,6 +239,8 @@ export interface AlertPayload {
   status?: 'firing' | 'resolved';
   /** The evaluated metric — present on `metric-threshold` alerts. */
   metric?: AlertMetric;
+  /** What a fleet rule (`instances-up`, `restart-loop`, `check-down`, `entries-dropped`) is about. */
+  fleet?: FleetAlertContext;
   /** Rich context for `new-exception` alerts; absent for rate/metric rules. */
   exception?: ExceptionAlertContext;
   /**

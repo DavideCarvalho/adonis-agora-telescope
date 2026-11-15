@@ -40,6 +40,7 @@ export type { ContextAccessor, UserRef } from './context_accessor.js';
 export { currentTraceId, currentUserRef, getContextAccessor } from './context_accessor.js';
 export type {
   DiagnosticsConfig,
+  HealthRoutesConfig,
   NPlusOneConfig,
   OverloadConfig,
   PruneConfig,
@@ -119,6 +120,8 @@ export type {
 } from './extension/types.js';
 // — extension SDK —
 export { defineTelescopeExtension } from './extension/types.js';
+// — fleet: health checks, heartbeats, instances per app —
+export * from './fleet/index.js';
 export type {
   MetricsServiceOptions,
   StatsQuery,

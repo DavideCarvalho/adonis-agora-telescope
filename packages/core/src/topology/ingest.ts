@@ -1,4 +1,5 @@
 import type { BatchOrigin, RecordInput } from '../entry.js';
+import { type InstanceHeartbeat, normalizeHeartbeat } from '../fleet/heartbeat.js';
 import { runAsTelescopeWork } from '../self_scope.js';
 import type { TelescopeStore } from '../store.js';
 import { type ResolvedIngestLimits, resolveIngestLimits } from './config.js';
@@ -35,6 +36,11 @@ export interface IngestHandlerOptions {
   /** The store entries are written to (resolved per request: telescope boots after this). */
   store: () => TelescopeStore | null;
   limits?: ResolvedIngestLimits;
+  /**
+   * Called with the heartbeat a batch carries (`heartbeat` next to `entries`), with the sender as
+   * its token names it. A failure here never fails the batch.
+   */
+  onHeartbeat?: (verified: VerifiedTenant, heartbeat: InstanceHeartbeat) => Promise<void> | void;
   /** Called with a refused request, for a log line. */
   onRefused?: (reason: string, verified: VerifiedTenant | null) => void;
 }
@@ -186,7 +192,7 @@ export function createIngestHandler(options: IngestHandlerOptions) {
     rawBody: unknown,
     measure: boolean,
   ): Promise<IngestResponse> {
-    const body = rawBody as { version?: unknown; entries?: unknown } | null;
+    const body = rawBody as { version?: unknown; entries?: unknown; heartbeat?: unknown } | null;
     if (body === null || typeof body !== 'object' || !Array.isArray(body.entries)) {
       return deny(400, 'expected { version: 1, entries: [...] }');
     }
@@ -207,6 +213,16 @@ export function createIngestHandler(options: IngestHandlerOptions) {
     }
     if (body.entries.length > limits.maxEntries) {
       return deny(413, `at most ${limits.maxEntries} entries per batch`);
+    }
+    if (body.heartbeat !== undefined && options.onHeartbeat !== undefined) {
+      const heartbeat = normalizeHeartbeat(body.heartbeat);
+      if (heartbeat !== null) {
+        try {
+          await runAsTelescopeWork(async () => options.onHeartbeat?.(verified, heartbeat));
+        } catch {
+          // The fleet store is down: the entries are still taken.
+        }
+      }
     }
     const store = options.store();
     if (store === null) return deny(503, 'telescope is not running on this server');

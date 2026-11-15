@@ -76,6 +76,13 @@ export default class TelescopeMiddleware {
     if (runtime.selfPath !== null && isUnder(ctx.request.url(), runtime.selfPath)) {
       return next();
     }
+    // A kubelet or uptime monitor probing every few seconds is not the app's traffic.
+    if (
+      runtime.probePaths.size > 0 &&
+      runtime.probePaths.has(ctx.request.url().split('?')[0] ?? '')
+    ) {
+      return next();
+    }
 
     const startedAt = Date.now();
     const store = runtime.store;
