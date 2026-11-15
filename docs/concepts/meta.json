@@ -13,6 +13,7 @@
     "central-server",
     "transports",
     "tracing-across-apps",
+    "service-discovery",
     "health-checks",
     "fleet"
   ]

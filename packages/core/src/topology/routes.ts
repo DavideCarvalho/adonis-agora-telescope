@@ -1,4 +1,5 @@
 import type { HttpContext } from '@adonisjs/core/http';
+import type { DiscoveryPublisher } from '../discovery/server.js';
 import type { ResolvedIngestLimits } from './config.js';
 import type { IngestHandler, IngestResponse } from './ingest.js';
 import { APP_HEADER } from './wire.js';
@@ -22,11 +23,19 @@ export interface IngestRouter {
   get(pattern: string, handler: (ctx: HttpContext) => unknown): { as(name: string): unknown };
 }
 
-/** A control plane's `POST <path>/ingest` and `GET <path>/whoami`. */
+/** Longest a `GET <path>/discovery` is held open. */
+const MAX_DISCOVERY_WAIT_S = 30;
+
+/**
+ * A control plane's `POST <path>/ingest`, `GET <path>/whoami`, and (with a fleet)
+ * `GET <path>/discovery?since=<version>&wait=<seconds>`: the discovery map the caller's token may
+ * see, answered at once when `since` is not the current version, else held until it changes.
+ */
 export function registerIngestRoutes(
   router: IngestRouter,
   handler: IngestHandler,
   limits: ResolvedIngestLimits,
+  discovery: DiscoveryPublisher | null = null,
 ): void {
   router
     .post(`${limits.path}/ingest`, async (ctx: HttpContext) => {
@@ -53,4 +62,20 @@ export function registerIngestRoutes(
       ),
     )
     .as('telescope.whoami');
+  if (discovery !== null) {
+    router
+      .get(`${limits.path}/discovery`, async (ctx: HttpContext) => {
+        const caller = await handler.caller({
+          token: bearer(ctx),
+          app: ctx.request.header(APP_HEADER) ?? undefined,
+        });
+        if ('status' in caller) return send(ctx, caller);
+        const qs = ctx.request.qs() as Record<string, unknown>;
+        const since = typeof qs.since === 'string' && qs.since !== '' ? qs.since : null;
+        const wait = Math.min(MAX_DISCOVERY_WAIT_S, Math.max(0, Number(qs.wait) || 0));
+        const map = await discovery.wait(caller.environment ?? null, since, wait * 1000);
+        return send(ctx, { status: 200, body: { ...map } });
+      })
+      .as('telescope.discovery');
+  }
 }

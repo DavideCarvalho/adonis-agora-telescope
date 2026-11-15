@@ -23,6 +23,7 @@ function record(overrides: Partial<InstanceRecord> = {}): InstanceRecord {
     lastSeenAt: NOW,
     state: 'ready',
     intervalMs: 15_000,
+    url: 'https://shop.internal',
     checks: [
       {
         name: 'redis',

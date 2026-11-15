@@ -1,4 +1,5 @@
 import type { CheckState, CheckStatus } from './checks.js';
+import { normalizeAppUrl } from './config.js';
 
 /** The lifecycle state an instance reports: booting, serving, or shutting down. */
 export type InstanceState = 'starting' | 'ready' | 'draining';
@@ -38,6 +39,8 @@ export interface InstanceHeartbeat {
   intervalMs: number;
   checks: CheckState[];
   shipping: ShippingStats | null;
+  /** The URL other apps reach this one at (`fleet.url`), or `null`. Absent from older senders. */
+  url?: string | null;
 }
 
 const STATES: readonly InstanceState[] = ['starting', 'ready', 'draining'];
@@ -129,5 +132,6 @@ export function normalizeHeartbeat(raw: unknown): InstanceHeartbeat | null {
     intervalMs: Math.min(3_600_000, Math.max(1000, int(h.intervalMs, 15_000))),
     checks,
     shipping,
+    url: normalizeAppUrl(h.url),
   };
 }

@@ -1,0 +1,98 @@
+---
+title: Service discovery
+icon: Compass
+description: Call your other apps by name. fetch('http://billing/invoices/1') reaches the app named billing, wherever it runs.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Write the app's name where the host goes:
+
+```ts title="app/services/billing_client.ts"
+export async function invoice(id: number) {
+  const response = await fetch(`http://billing/invoices/${id}`)
+  return response.json()
+}
+```
+
+Telescope sends the call to wherever `billing` runs. Your code holds no URLs and no environment
+variable per app.
+
+## With a central server
+
+Each app tells the [central server](/docs/telescope/concepts/central-server) its URL. It sends the URL
+with its heartbeat (see [Fleet](/docs/telescope/concepts/fleet)), from `APP_URL`, or from `fleet.url`:
+
+```ts title="config/telescope.ts (billing)"
+export default defineConfig({
+  topology: 'tenant',
+  tenant: { url: env.get('TELESCOPE_SERVER_URL'), partition: 'billing', token: env.get('TELESCOPE_TOKEN') },
+  fleet: { url: 'https://billing.internal' }, // default: APP_URL
+})
+```
+
+The apps calling it need nothing more than being tenants. They read the map from the central server
+and hear about changes as they happen: a new deploy at another URL, the last instance going away.
+
+- An app shows up once one of its instances sends a URL, and it resolves while at least one
+  instance is up.
+- An app sees the apps of its own environment: the environment its token carries.
+- The app name is its partition, and it must be a single label (letters, digits, `-`, `_`) so it
+  can be written as a host.
+
+<Callout type="info" title="When the central server is down">
+Each app keeps the last map in memory and in a file (`discovery.snapshotPath`, by default in the
+OS temp directory). Calls keep resolving while the server is unreachable, and after a restart.
+</Callout>
+
+A tenant whose `transport` is a broker (queue, BullMQ, Redis, durable) reads the map over HTTP. Give
+it the server's URL:
+
+```ts title="config/telescope.ts"
+discovery: { serverUrl: env.get('TELESCOPE_SERVER_URL') },
+```
+
+## Without a central server
+
+List the apps yourself. This also works next to a central server: these entries win over its map,
+which is handy in local development.
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  discovery: {
+    billing: 'http://localhost:3334',
+    search: 'http://localhost:3335/api',
+  },
+})
+```
+
+A URL with a path (`/api`) is put in front of the path you call.
+
+## Which calls are touched
+
+Only hosts that are a single name: `http://billing/…`, `https://search/…`.
+
+- A host with a dot (`api.stripe.com`, `billing.internal`), an IP, or `localhost` always goes out as
+  written.
+- A single name that is not an app fails the call: `fetch` rejects with *app billing is not
+  registered* as its `cause`. If a name is a real host on your network (a Docker Compose service,
+  say), list it in `passthrough`.
+
+## Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `<app>: '<url>'` | | An app and its URL. Wins over the central server's map. |
+| `snapshotPath` | OS temp dir | Where a tenant saves the last map. |
+| `failFast` | `false` | Fail a call to an app with no live instance, instead of using its last URL. |
+| `nodeHttp` | `false` | Also resolve names in `http.request` / `https.request` (axios, got). `fetch` is always covered. |
+| `passthrough` | `[]` | Single names that are hosts, not apps. |
+| `serverUrl` | the HTTP transport's URL | Where a tenant on a broker transport reads the map. |
+| `enabled` | `true` | `false` turns discovery off. |
+
+## With tracing, tokens and encryption
+
+Telescope resolves the name before anything else looks at the call. [Tracing across
+apps](/docs/telescope/concepts/tracing-across-apps) then sees the real origin, so `propagation.targets`
+lists real origins, and so does the authkit client choosing a token and the crypto envelope choosing
+a key.

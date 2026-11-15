@@ -78,6 +78,7 @@ export class FleetRegistry {
       intervalMs: heartbeat.intervalMs,
       checks: heartbeat.checks,
       shipping: heartbeat.shipping,
+      url: heartbeat.url ?? null,
     };
     try {
       await this.store.upsert(record);
@@ -121,6 +122,8 @@ export interface InstanceReporterOptions {
   version: () => Promise<string | null>;
   /** This process's checks, run (cached) for each heartbeat. */
   checks?: HealthChecks | null;
+  /** The URL other apps reach this one at (`fleet.url`), or `null`. */
+  url?: string | null;
   /** The shipping stats of a tenant's buffer, or `null`. */
   shipping?: () => ShippingStats | null;
   /** Where a heartbeat goes: the tenant's buffer, or the local registry. */
@@ -201,6 +204,7 @@ export class InstanceReporter {
       intervalMs: this.options.intervalMs,
       checks,
       shipping: this.options.shipping?.() ?? null,
+      url: this.options.url ?? null,
     };
   }
 

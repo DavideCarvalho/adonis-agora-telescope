@@ -69,6 +69,8 @@ export {
   DIAGNOSTIC_ENTRY_TYPE,
   DiagnosticsWatcher,
 } from './diagnostics_watcher.js';
+export type { DiscoveryConfig } from './discovery/config.js';
+export type { DiscoveryContract } from './discovery/directory.js';
 export type { BatchOrigin, BuiltinEntryType, Entry, RecordInput } from './entry.js';
 // — entry model —
 export {
