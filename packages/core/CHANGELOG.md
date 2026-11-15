@@ -1,5 +1,16 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.18
+
+### Patch Changes
+
+- [#342](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/342) [`00807b6`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/00807b685c7350e102cd0dc5f26b84d00eac66e7) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fleet fixes:
+  
+  - `restart-loop` now alerts once per looping host, so two hosts looping at the same time page twice, and each one resolves on its own.
+  - `entries-dropped` counts all of a new process's drops for as long as its boot is inside the window, instead of resolving on its next heartbeat.
+  - `check-down` no longer reads a negative down time when the sender's clock runs ahead.
+  - Deploys count draining instances as still running the old version, and a rollout with nothing left running is now marked complete instead of staying at 0/0.
+
 ## 1.0.0-rc.17
 
 ### Minor Changes
