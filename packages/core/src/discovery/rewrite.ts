@@ -93,12 +93,54 @@ interface DispatchOptions {
 
 type Dispatch = (options: DispatchOptions, handler: unknown) => unknown;
 
-/** The undici interceptor (`dispatcher.compose(...)`): rewrites the origin of app-name calls. */
+/** The origin the start-time self-check calls: reserved (`.invalid`), answered by the interceptor. */
+export const PROBE_ORIGIN = 'http://telescope-discovery-probe.invalid';
+
+/** What the interceptor fails a probe with: proof that `fetch` went through it. */
+export class DiscoveryProbeAnswer extends Error {
+  constructor() {
+    super('telescope discovery probe');
+    this.name = 'DiscoveryProbeAnswer';
+  }
+}
+
+/** The slice of an undici dispatch handler used to fail a request (undici 7 and 8). */
+interface FailableHandler {
+  onResponseError?: (controller: unknown, error: unknown) => void;
+  onError?: (error: unknown) => void;
+}
+
+/**
+ * Fail a request from inside an interceptor. undici 8's `compose` passes the caller's handler
+ * through unwrapped (`onResponseError`), undici 7 wraps it (`onError`).
+ */
+function failRequest(handler: unknown, error: unknown): boolean {
+  const h = handler as FailableHandler;
+  if (typeof h.onResponseError === 'function') h.onResponseError(null, error);
+  else h.onError?.(error);
+  return true;
+}
+
+/**
+ * The undici interceptor (`dispatcher.compose(...)`): rewrites the origin of app-name calls.
+ * Idempotent: a request that passes through it twice (Node composes `.1` and `.2`) is rewritten
+ * once, the second pass sees a real origin.
+ */
 export function discoveryInterceptor(directory: ServiceDirectory, options: RewriteOptions) {
   return (dispatch: Dispatch): Dispatch =>
     function discoveryDispatch(opts, handler) {
-      if (opts.origin === undefined || isTelescopeWork()) return dispatch(opts, handler);
-      const target = rewriteTarget(directory, options, String(opts.origin));
+      if (opts.origin === undefined) return dispatch(opts, handler);
+      const origin = String(opts.origin);
+      if (origin.replace(/\/+$/, '') === PROBE_ORIGIN) {
+        return failRequest(handler, new DiscoveryProbeAnswer());
+      }
+      if (isTelescopeWork()) return dispatch(opts, handler);
+      let target: RewriteTarget | null;
+      try {
+        target = rewriteTarget(directory, options, origin);
+      } catch (error) {
+        return failRequest(handler, error);
+      }
       if (target === null) return dispatch(opts, handler);
       return dispatch(
         { ...opts, origin: target.origin, path: `${target.basePath}${opts.path ?? '/'}` },
@@ -107,7 +149,15 @@ export function discoveryInterceptor(directory: ServiceDirectory, options: Rewri
     };
 }
 
-const GLOBAL_DISPATCHER = Symbol.for('undici.globalDispatcher.1');
+/**
+ * Node keeps `fetch`'s dispatcher in a global slot: `.1` on Node 24 (undici 7), `.2` on Node 26
+ * (undici 8, where `.1` is a legacy wrapper `fetch` never reads). Both may exist; the rewrite is
+ * composed onto each one that does.
+ */
+const DISPATCHER_SLOTS = [
+  Symbol.for('undici.globalDispatcher.2'),
+  Symbol.for('undici.globalDispatcher.1'),
+] as const;
 const slot = globalThis as Record<symbol, unknown>;
 
 interface ComposableDispatcher {
@@ -123,50 +173,72 @@ function isComposable(value: unknown): value is ComposableDispatcher {
 }
 
 /**
- * Node creates its global dispatcher on the first `fetch`. One local call that fails at once
- * (nothing listens on port 9 of the loopback) makes it exist, so telescope can compose onto it
- * without depending on the `undici` package.
+ * Node's bundled undici installs the dispatcher on the first `fetch()` call (and, when it finds no
+ * `.2`, overwrites `.1`). A `data:` fetch makes it load without touching the network, so the
+ * rewrite is composed onto the dispatcher `fetch` actually uses, and is not overwritten later.
  */
 async function ensureGlobalDispatcher(): Promise<void> {
-  if (slot[GLOBAL_DISPATCHER] !== undefined) return;
-  await runAsTelescopeWork(async () => {
-    try {
-      await fetch('http://127.0.0.1:9/', { signal: AbortSignal.timeout(1000) });
-    } catch {
-      // Expected: the point was the dispatcher, not the answer.
-    }
-  });
+  if (slot[DISPATCHER_SLOTS[0]] !== undefined) return;
+  await runAsTelescopeWork(() => fetch('data:,').catch(() => undefined));
 }
 
-/** The installed rewrite: re-asserts itself outermost, and uninstalls. */
+/** The installed rewrite: re-asserts itself outermost, checks itself, and uninstalls. */
 export interface InstalledRewrite {
-  /** Compose again on top if something replaced the global dispatcher since. */
+  /** Compose again on top where something composed onto (or replaced) a dispatcher since. */
   reassert(): void;
+  /** Whether `fetch` really goes through the rewrite (a probe answered locally, no network). */
+  selfCheck(): Promise<boolean>;
   uninstall(): void;
 }
 
-/** Compose the rewrite onto Node's global dispatcher, outermost. */
+/** Whether `fetch` goes through the rewrite: the probe origin fails with the probe answer. */
+export async function probeFetchRewrite(): Promise<boolean> {
+  try {
+    await fetch(`${PROBE_ORIGIN}/`, { signal: AbortSignal.timeout(2000) });
+    return false;
+  } catch (error) {
+    const cause = (error as { cause?: unknown }).cause;
+    return cause instanceof Error && cause.name === 'DiscoveryProbeAnswer';
+  }
+}
+
+/**
+ * Compose the rewrite onto Node's global dispatcher(s), outermost. Never replaces a dispatcher with
+ * a new one: it composes onto the current one, so other libraries' interceptors stay in place.
+ */
 export async function installFetchRewrite(
   directory: ServiceDirectory,
   options: RewriteOptions,
 ): Promise<InstalledRewrite | null> {
   await ensureGlobalDispatcher();
-  const original = slot[GLOBAL_DISPATCHER];
-  if (!isComposable(original)) return null;
   const interceptor = discoveryInterceptor(directory, options);
-  let ours = original.compose(interceptor);
-  slot[GLOBAL_DISPATCHER] = ours;
+  const installed = new Map<symbol, { original: unknown; ours: unknown }>();
+  for (const key of DISPATCHER_SLOTS) {
+    const current = slot[key];
+    if (!isComposable(current)) continue;
+    const ours = current.compose(interceptor);
+    slot[key] = ours;
+    installed.set(key, { original: current, ours });
+  }
+  if (installed.size === 0) return null;
   return {
     reassert() {
-      const current = slot[GLOBAL_DISPATCHER];
-      if (current === ours || !isComposable(current)) return;
-      // Someone composed on top of us (or replaced the dispatcher): go back on top. A second
-      // rewrite further in is a no-op, the origin is no longer an app name.
-      ours = current.compose(interceptor);
-      slot[GLOBAL_DISPATCHER] = ours;
+      for (const key of DISPATCHER_SLOTS) {
+        const current = slot[key];
+        const entry = installed.get(key);
+        if (!isComposable(current) || current === entry?.ours) continue;
+        // Someone composed on top of us: go back on top. The rewrite further in is then a no-op,
+        // the origin is no longer an app name.
+        const ours = current.compose(interceptor);
+        slot[key] = ours;
+        installed.set(key, { original: entry?.original ?? current, ours });
+      }
     },
+    selfCheck: probeFetchRewrite,
     uninstall() {
-      if (slot[GLOBAL_DISPATCHER] === ours) slot[GLOBAL_DISPATCHER] = original;
+      for (const [key, entry] of installed) {
+        if (slot[key] === entry.ours) slot[key] = entry.original;
+      }
     },
   };
 }

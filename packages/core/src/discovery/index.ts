@@ -21,8 +21,11 @@ export { DiscoveryError } from './rewrite.js';
 /** Discovery running in this process. */
 export interface RunningDiscovery {
   directory: ServiceDirectory;
-  /** Put the rewrite back on top of the global dispatcher (call once the app is ready). */
-  reassert(): void;
+  /**
+   * Once the app is ready: put the rewrite back on top of the global dispatcher, then check that
+   * `fetch` really goes through it. Throws when it does not (calls by app name would reach DNS).
+   */
+  ready(): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -77,7 +80,15 @@ export async function startDiscovery(options: {
 
   return {
     directory,
-    reassert: () => fetchRewrite?.reassert(),
+    async ready() {
+      if (fetchRewrite === null) return;
+      fetchRewrite.reassert();
+      if (!(await fetchRewrite.selfCheck())) {
+        throw new Error(
+          "[@adonis-agora/telescope] discovery: fetch does not go through telescope's rewrite. Something replaced Node's global dispatcher instead of composing onto it (setGlobalDispatcher(new Agent(...))); calls such as fetch('http://billing/...') would not reach the app. Compose onto the existing dispatcher instead.",
+        );
+      }
+    },
     async stop() {
       await client?.stop();
       fetchRewrite?.uninstall();

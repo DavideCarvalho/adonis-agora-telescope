@@ -230,7 +230,7 @@ export default class TelescopeProvider {
   async ready() {
     // Providers that composed onto the global dispatcher during boot (an auth token, an
     // encryption envelope) now sit outside the rewrite: put it back on top, so they see real origins.
-    this.discovery?.reassert();
+    await this.discovery?.ready();
     await this.reporter?.setState('ready');
   }
 

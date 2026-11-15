@@ -153,8 +153,11 @@ describe('fetch and http.request by app name (standalone, static map)', () => {
   });
 
   it('stays on top when something composes onto the dispatcher later', async () => {
-    const key = Symbol.for('undici.globalDispatcher.1');
-    const slot = globalThis as unknown as Record<symbol, { compose(i: unknown): unknown }>;
+    const slot = globalThis as unknown as Record<
+      symbol,
+      { compose(i: unknown): unknown } | undefined
+    >;
+    const keys = [Symbol.for('undici.globalDispatcher.2'), Symbol.for('undici.globalDispatcher.1')];
     const seen: string[] = [];
     const later =
       (dispatch: (o: { origin?: unknown }, h: unknown) => unknown) =>
@@ -162,10 +165,15 @@ describe('fetch and http.request by app name (standalone, static map)', () => {
         seen.push(String(opts.origin));
         return dispatch(opts, handler);
       };
-    slot[key] = slot[key]?.compose(later) as never;
-    discovery?.reassert();
+    // Another library composes onto every slot that exists (Node 24 reads .1, Node 26 reads .2).
+    for (const key of keys) {
+      const current = slot[key];
+      if (current !== undefined) slot[key] = current.compose(later) as never;
+    }
+    await discovery?.ready();
     await fetch('http://billing/x');
-    expect(seen).toEqual([new URL(billing.url).origin]);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(new Set(seen)).toEqual(new Set([new URL(billing.url).origin]));
   });
 
   it('http.get by app name, with the nodeHttp hook', async () => {
