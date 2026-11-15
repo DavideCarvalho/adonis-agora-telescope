@@ -142,9 +142,9 @@ new EventSource(client.streamUrl())                     // SSE live tail of new 
 
 Replay/arm/queue gates default to off in `config/telescope_ui.ts`; extension
 actions need no flag — they run behind `authorize` once an extension contributes
-them. A viewer limited to some organizations still gets `403` on arm, queue
+them. A viewer limited to some organizations or some apps still gets `403` on arm, queue
 actions, extension actions and Prometheus even when the gate is on — those reach
-every organization. The console asks `<path>/api/meta` and renders which config key turns each surface on.
+every organization and every app. The console asks `<path>/api/meta` and renders which config key turns each surface on.
 
 Source: `docs/packages/telescope-ui.mdx` (Acting on an entry, Getting around).
 

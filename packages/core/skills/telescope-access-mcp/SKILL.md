@@ -125,8 +125,8 @@ claude mcp add --transport http agora https://your-app.example.com/mcp/agora \
   --header 'Authorization: Bearer <CONSOLE_TOKEN>'
 ```
 
-Redaction, sampling and tenancy scoping are never bypassed — an agent sees exactly what
-the dashboard sees for its granted organizations. Turning the console off
+Redaction, sampling and tenancy/app scoping are never bypassed — an agent sees exactly what
+the dashboard sees for its granted organizations and apps. Turning the console off
 (`telescope_ui.enabled: false`) also takes the tools off `/mcp/agora`.
 
 Source: `docs/packages/mcp.mdx`.
@@ -135,9 +135,9 @@ Source: `docs/packages/mcp.mdx`.
 
 Replay, CPU-arm and queue retry/enqueue are each disabled by default and answer
 `403` until their ui-config gate is flipped — even when the underlying feature is
-enabled. With tenancy on, a viewer limited to some organizations still gets `403`
+enabled. A viewer limited to some organizations or some apps still gets `403`
 on CPU capture, queue actions, extension actions and Prometheus even when the
-gate is on — those reach every organization, so they need access to all of them.
+gate is on — those reach every organization and every app, so they need access to all of them.
 
 ```ts
 export default defineConfig({
@@ -156,7 +156,7 @@ Every console screen and action is also a `node ace telescope:<noun>:<verb>` com
 (`telescope:entries:list --type exception --since 1h`, `telescope:traces:waterfall <id>`,
 `telescope:pulse:show`, `telescope:jobs:retry <queue> <id>`, `telescope:entries:prune --dry-run`).
 They run the console's handlers in the app's process, without `authorize` (a shell on the host is
-trusted like a viewer allowed every organization), but keep the `replay.enabled` /
+trusted like a viewer allowed every organization and every app), but keep the `replay.enabled` /
 `queueActions.enabled` gates. `--json` everywhere, `--tenant` / `--app` narrow, destructive ones need
 `--force` without a terminal. Source: `docs/reference/cli.mdx`.
 
