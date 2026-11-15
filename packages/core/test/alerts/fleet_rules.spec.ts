@@ -3,6 +3,7 @@ import {
   AlerterService,
   type AlertPayload,
   type AlertRule,
+  FleetRuleEvaluator,
   formatSlackMessage,
   resolveConfig,
 } from '../../src/alerts/index.js';
@@ -151,6 +152,21 @@ describe('check-down', () => {
     expect(slack).toContain('Health check down');
     expect(slack).toContain('redis: down for 12 min');
   });
+
+  it('a sender clock ahead of ours reads as 0 s down, never negative', async () => {
+    const h = harness([{ type: 'check-down', check: 'redis', for: '1m' }]);
+    await h.beat('shop', 'a', { checks: [down(h.now() + 5 * MIN)] });
+    const evaluator = new FleetRuleEvaluator(h.fleet);
+    const [outcome] = await evaluator.evaluate(
+      { type: 'check-down', check: 'redis', for: '1m' },
+      '0',
+      h.now(),
+    );
+    expect(outcome).toMatchObject({ crosses: false, value: 0 });
+    expect(outcome?.fleet.detail).toMatch(/down for 1 s/);
+    await h.service.evaluateOnce();
+    expect(h.sent).toEqual([]);
+  });
 });
 
 describe('restart-loop', () => {
@@ -169,6 +185,29 @@ describe('restart-loop', () => {
     h.advance(20 * MIN);
     await h.service.evaluateOnce();
     expect(states(h.sent)).toEqual(['firing:shop', 'resolved:shop']);
+  });
+
+  it('two hosts looping at once page once each, and each resolves on its own', async () => {
+    const h = harness([{ type: 'restart-loop' }]);
+    const loop = async (host: string, minutesAgo: number[]) => {
+      for (const [i, m] of minutesAgo.entries()) {
+        await h.beat('shop', `${host}-${i}`, {
+          host,
+          bootedAt: new Date(h.now() - m * MIN).toISOString(),
+        });
+      }
+    };
+    await loop('web-1', [9, 8, 7]);
+    await loop('web-2', [3, 2, 1]);
+    await h.service.evaluateOnce();
+    expect(h.sent.map((p) => `${p.status}:${p.fleet?.host}`).sort()).toEqual([
+      'firing:web-1',
+      'firing:web-2',
+    ]);
+    // web-1's boots leave the 10 min window first; web-2 keeps looping.
+    h.advance(4 * MIN);
+    await h.service.evaluateOnce();
+    expect(h.sent.slice(2).map((p) => `${p.status}:${p.fleet?.host}`)).toEqual(['resolved:web-1']);
   });
 });
 
@@ -198,6 +237,25 @@ describe('entries-dropped', () => {
     await h.service.evaluateOnce();
     h.advance(MIN);
     await h.beat('shop', 'a', { shipping: shipping(1500) });
+    await h.service.evaluateOnce();
+    expect(states(h.sent)).toEqual(['firing:shop', 'resolved:shop']);
+  });
+
+  it('a new process counts its drops whole while its boot is inside the window', async () => {
+    const h = harness([{ type: 'entries-dropped', window: '5m', threshold: 100 }]);
+    const bootedAt = new Date(h.now() - 30_000).toISOString();
+    await h.beat('shop', 'fresh', { bootedAt, shipping: shipping(300) });
+    await h.service.evaluateOnce();
+    expect(states(h.sent)).toEqual(['firing:shop']);
+    expect(h.sent[0]?.value).toBe(300);
+    // No new drops, but they are still inside the window: it keeps firing (no flap).
+    h.advance(MIN);
+    await h.beat('shop', 'fresh', { bootedAt, shipping: shipping(300) });
+    await h.service.evaluateOnce();
+    expect(h.sent).toHaveLength(1);
+    // Once the boot leaves the window the drops do too.
+    h.advance(5 * MIN);
+    await h.beat('shop', 'fresh', { bootedAt, shipping: shipping(300) });
     await h.service.evaluateOnce();
     expect(states(h.sent)).toEqual(['firing:shop', 'resolved:shop']);
   });

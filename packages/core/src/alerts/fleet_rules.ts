@@ -43,31 +43,21 @@ export class FleetRuleEvaluator {
       case 'instances-up':
         return this.instancesUp(rule, ruleKey, fleet, now);
       case 'restart-loop':
-        return fleet
-          .flatMap((app) =>
-            app.restartLoops.length === 0
-              ? [
-                  {
-                    key: app.app,
-                    crosses: false,
-                    value: 0,
-                    threshold: 0,
-                    fleet: { app: app.app, detail: 'no restart loop' },
-                  },
-                ]
-              : app.restartLoops.map((loop) => ({
-                  key: app.app,
-                  crosses: true,
-                  value: loop.restarts,
-                  threshold: loop.restarts,
-                  fleet: {
-                    app: app.app,
-                    host: loop.host,
-                    detail: `${loop.host} restarted ${loop.restarts} times in ${minutes(now - loop.since)}`,
-                  },
-                })),
-          )
-          .filter((o, i, all) => all.findIndex((x) => x.key === o.key) === i);
+        // One subject per looping host (`<app>\u0000<host>`): two hosts looping at once page twice,
+        // and each resolves on its own once it settles (the subject leaves the outcomes).
+        return fleet.flatMap((app) =>
+          app.restartLoops.map((loop) => ({
+            key: `${app.app}\u0000${loop.host}`,
+            crosses: true,
+            value: loop.restarts,
+            threshold: loop.restarts,
+            fleet: {
+              app: app.app,
+              host: loop.host,
+              detail: `${loop.host} restarted ${loop.restarts} times in ${minutes(Math.max(0, now - loop.since))}`,
+            },
+          })),
+        );
       case 'check-down':
         return this.checkDown(rule, fleet, now);
       case 'entries-dropped':
@@ -127,7 +117,8 @@ export class FleetRuleEvaluator {
       for (const name of names) {
         if (rule.check !== undefined && name !== rule.check) continue;
         const incident = app.checks.find((c) => c.name === name && c.status === 'down');
-        const downMs = incident !== undefined ? now - incident.since : 0;
+        // `since` comes from the sender's clock: a clock ahead of ours must not read as a negative age.
+        const downMs = incident !== undefined ? Math.max(0, now - incident.since) : 0;
         outcomes.push({
           key: `${app.app}\u0000${name}`,
           crosses: incident !== undefined && downMs >= forMs,
@@ -172,8 +163,9 @@ export class FleetRuleEvaluator {
         const first = samples[0] as { at: number; dropped: number };
         const latest = samples[samples.length - 1] as { at: number; dropped: number };
         // A new process counts from 0: its first sample inside the window counts whole.
-        const base =
-          instance.bootedAt >= now - windowMs && samples.length === 1 ? 0 : first.dropped;
+        // A process that booted inside the window dropped everything it counts inside it: its
+        // counter counts whole for as long as the boot stays in the window.
+        const base = instance.bootedAt >= now - windowMs ? 0 : first.dropped;
         dropped += Math.max(0, latest.dropped - base);
       }
       outcomes.push({
