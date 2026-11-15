@@ -88,7 +88,7 @@ export class DiscoveryClient {
     this.controller = controller;
     const timer = setTimeout(() => controller.abort(), waitMs + 10_000);
     try {
-      const token = await readToken(this.options.token);
+      const token = await runAsTelescopeWork(() => readToken(this.options.token));
       const response = await runAsTelescopeWork(() =>
         this.fetchImpl(
           `${this.options.prefix}/discovery?${params}`,

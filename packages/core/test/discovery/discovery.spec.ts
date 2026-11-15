@@ -415,3 +415,37 @@ describe('a tenant reading the central server', () => {
     }
   });
 });
+
+describe('telescope’s own calls', () => {
+  it('a token is read as telescope work, so a single-label issuer host is never rewritten', async () => {
+    const discovery = await startDiscovery({
+      config: resolveDiscovery({ other: 'http://127.0.0.1:1' }),
+      topology: resolveTopology({}),
+    });
+    try {
+      let cause: unknown;
+      const client = new DiscoveryClient({
+        prefix: 'http://127.0.0.1:9/_telescope/v1',
+        // An authkit issuer at `http://authkit-issuer.invalid` would be a dotted host; a Compose
+        // one is `http://authkit`. Not an app: it must go out as written (and fail on DNS here),
+        // never with "app ... is not registered".
+        token: async () => {
+          cause = await fetch('http://authkit-issuer/token').catch((e: Error) => e.cause);
+          return 'token';
+        },
+        partition: 'shop',
+        directory: new ServiceDirectory(),
+        snapshotPath: join(tmpdir(), `telescope-discovery-own-${process.pid}.json`),
+        waitMs: 100,
+      });
+      await client.pollOnce(100);
+      expect(cause).toBeDefined();
+      expect(cause).not.toBeInstanceOf(DiscoveryError);
+      // Outside telescope work the same call is refused by discovery.
+      const outside = await fetch('http://authkit-issuer/token').catch((e: Error) => e.cause);
+      expect(outside).toBeInstanceOf(DiscoveryError);
+    } finally {
+      await discovery?.stop();
+    }
+  });
+});
