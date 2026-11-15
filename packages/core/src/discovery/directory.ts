@@ -29,9 +29,9 @@ export interface DiscoveryMap {
  */
 export interface DiscoveryContract {
   /**
-   * The base URL a call to app `name` (case-insensitive) goes to, exactly as the rewrite sends it,
-   * or `undefined` when such a call would fail (an unknown app; with `failFast`, one with no live
-   * instance).
+   * The base URL a call to app `name` (case-insensitive) goes to, exactly as the rewrite sends it.
+   * `undefined` when `name` is not an app (the rewrite leaves such a host untouched, or fails the
+   * call with `strict`), or, with `failFast`, when the app has no live instance (the call fails).
    */
   resolve(name: string): string | undefined;
   /** The app an origin (`https://billing.internal`) belongs to, or `undefined`. */
