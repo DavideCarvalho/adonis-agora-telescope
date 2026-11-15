@@ -1,6 +1,7 @@
 import diagnostics_channel from 'node:diagnostics_channel';
 import { currentTraceId } from '../context_accessor.js';
 import { EntryType, type RecordInput } from '../entry.js';
+import { currentSpanIds } from '../tracing/scope.js';
 import { safeRecord } from './record.js';
 
 /**
@@ -85,6 +86,10 @@ export interface JobEntryContent {
   failureReason: string | null;
   /** The active trace id at execution time, or `null`. */
   traceId: string | null;
+  /** This execution's span id, when the job runs in a trace (see `propagation`). */
+  spanId?: string;
+  /** The span that dispatched the job (a request, another job), possibly in another app. */
+  parentSpanId?: string | null;
 }
 
 /** Options for {@link QueueWatcher}. */
@@ -162,6 +167,7 @@ export function buildJobEntry(
   const failed = status === 'failed' || status === 'retrying';
   const failureReason = failed && message.error !== undefined ? errorMessage(message.error) : null;
   const traceId = currentTraceId();
+  const spans = currentSpanIds();
 
   const content: JobEntryContent = {
     id,
@@ -172,6 +178,7 @@ export function buildJobEntry(
     attempts,
     failureReason,
     traceId,
+    ...(spans !== null ? { spanId: spans.spanId, parentSpanId: spans.parentSpanId } : {}),
   };
 
   const tags: string[] = ['queue', `status:${status}`];

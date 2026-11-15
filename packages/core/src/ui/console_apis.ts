@@ -31,6 +31,11 @@ export interface ConsoleApisOptions {
   container: { make(token: unknown): Promise<unknown> };
   /** Records one extension action (see {@link recordExtensionAction}). */
   audit: (record: ExtensionActionAudit) => void | Promise<void>;
+  /**
+   * For a viewer limited to some apps: counts the spans of a trace recorded by the apps it may not
+   * see, for the waterfall's "N spans in other apps hidden" note.
+   */
+  hiddenSpans?: (traceId: string) => Promise<number>;
 }
 
 /**
@@ -61,6 +66,7 @@ export function buildConsoleApis(source: TelescopeStore, options: ConsoleApisOpt
       ...nPlusOne,
     },
     { prune: coreConfig.prune, sampling: coreConfig.sampling },
+    options.hiddenSpans,
   );
   const registry = runtime.registry;
   const extApi = registry

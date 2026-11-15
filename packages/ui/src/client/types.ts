@@ -214,6 +214,11 @@ export interface TraceSummary {
   rootLabel?: string;
   /** The request entry's user label (`email` ?? `id`), when the trace has one. */
   userLabel?: string;
+  /**
+   * The apps the trace crossed, the one that started it first. Empty (or absent, from an older
+   * server) when no entry carries an app tag.
+   */
+  apps?: string[];
 }
 
 export interface WaterfallSpan {
@@ -224,6 +229,8 @@ export interface WaterfallSpan {
   durationMs: number;
   depth: number;
   sequence: number;
+  /** The app that recorded it, on a server that collects several apps. */
+  app?: string;
   children: WaterfallSpan[];
 }
 
@@ -231,6 +238,10 @@ export interface Waterfall {
   traceStartMs: number;
   totalDurationMs: number;
   spans: WaterfallSpan[];
+  /** The apps the shown spans come from (absent from an older server). */
+  apps?: string[];
+  /** Spans of this trace in apps the viewer may not see: counted, never shown. */
+  hiddenSpans?: number;
 }
 
 export interface NPlusOnePattern {

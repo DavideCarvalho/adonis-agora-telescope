@@ -1,9 +1,23 @@
 import { useMemo } from 'react';
 import { formatDuration, formatRelative } from '../client/format.js';
 import type { TraceSummary } from '../client/types.js';
+import { appLabel } from './AppPicker.js';
 import { DataTable } from './primitives/data_table.js';
 import { AsyncBlock, PageHeader, Panel, SectionTitle, typeStyle } from './ui.js';
-import { useCursorPager, useTracesPage } from './use-telescope.js';
+import { useApps, useCursorPager, useTracesPage } from './use-telescope.js';
+
+/** The apps a trace crossed, the one that started it first: `shop → billing`. */
+export function TraceApps({ apps, labelOf }: { apps: string[]; labelOf: (id: string) => string }) {
+  if (apps.length === 0) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span
+      className="mono text-xs"
+      title={apps.length > 1 ? `crosses ${apps.length} apps` : undefined}
+    >
+      {apps.map(labelOf).join(' → ')}
+    </span>
+  );
+}
 
 /** Traces per page. Small on purpose: this list is scanned, not read in bulk, and a
  *  page is one round trip to a grouped query. */
@@ -14,6 +28,12 @@ export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) 
   const pager = useCursorPager();
   const page = pager.page;
   const state = useTracesPage(PAGE_SIZE, pager.after);
+  const appScope = useApps().data;
+  // The Apps column on a server that collects several apps: decided by the app scope, not by the
+  // page, so it does not come and go between pages. A row naming apps shows it too (an older
+  // server without the apps endpoint).
+  const showApps =
+    appScope?.enabled === true || (state.data?.data ?? []).some((t) => (t.apps?.length ?? 0) > 0);
 
   const columns = useMemo(
     () => [
@@ -30,6 +50,20 @@ export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) 
           <span className="text-muted-foreground">{String(getValue())}</span>
         ),
       },
+      ...(showApps
+        ? [
+            {
+              id: 'apps',
+              header: 'Apps',
+              cell: ({ row }: { row: { original: TraceSummary } }) => (
+                <TraceApps
+                  apps={row.original.apps ?? []}
+                  labelOf={(id) => appLabel(appScope, id)}
+                />
+              ),
+            },
+          ]
+        : []),
       {
         id: 'types',
         header: 'Types',
@@ -72,7 +106,7 @@ export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) 
         ),
       },
     ],
-    [],
+    [showApps, appScope],
   );
 
   return (

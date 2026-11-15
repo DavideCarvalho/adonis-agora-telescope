@@ -146,3 +146,21 @@ export function viewerStore(
   const appTags = selectAppScope(consoleAppScope(decision), undefined).tags;
   return scopedStore(store, tenantTags, appTags);
 }
+
+/**
+ * For a viewer narrowed to `appTags`: counts the entries of a trace that other apps recorded
+ * (inside the viewer's organizations), for the waterfall's "N spans in other apps hidden" note.
+ * Only the number leaves the store, never the entries.
+ */
+export function hiddenSpansCounter(
+  store: TelescopeStore,
+  tenantTags: readonly string[] | null,
+  appTags: readonly string[],
+): (traceId: string) => Promise<number> {
+  const allowed = new Set(appTags);
+  const source = scopedStore(store, tenantTags, null);
+  return async (traceId) => {
+    const entries = await source.list({ traceId, omitContent: true });
+    return entries.filter((entry) => !entry.tags.some((tag) => allowed.has(tag))).length;
+  };
+}

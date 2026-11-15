@@ -3,6 +3,7 @@ import { Button } from '../agora-kit/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../agora-kit/ui/tabs';
 import { formatCount, formatDuration, formatRelative } from '../client/format.js';
 import type { EntrySummary, NPlusOnePattern, Waterfall, WaterfallSpan } from '../client/types.js';
+import { appLabel } from './AppPicker.js';
 import { ArrowLeftIcon } from './icons.js';
 import {
   Table,
@@ -13,7 +14,13 @@ import {
   TableRow,
 } from './primitives/table.js';
 import { AsyncBlock, clickable, Panel, SectionTitle, TypeBadge, typeColor } from './ui.js';
-import { type AsyncState, useNPlusOne, useTraceEntries, useWaterfall } from './use-telescope.js';
+import {
+  type AsyncState,
+  useApps,
+  useNPlusOne,
+  useTraceEntries,
+  useWaterfall,
+} from './use-telescope.js';
 
 /** A flat waterfall row (depth-first) carrying the geometry for one bar. */
 export interface FlatSpan {
@@ -152,6 +159,21 @@ function NPlusOneView({
   );
 }
 
+/**
+ * Whether the waterfall shows an app column: only when its spans come from more than one app. A
+ * single app (standalone, or the one app a viewer may see) has nothing to tell apart.
+ */
+export function waterfallShowsApps(waterfall: Waterfall): boolean {
+  return (waterfall.apps?.length ?? 0) > 1;
+}
+
+/** "3 spans in other apps hidden", or `null` when nothing is hidden. */
+export function hiddenSpansNote(waterfall: Waterfall): string | null {
+  const hidden = waterfall.hiddenSpans ?? 0;
+  if (hidden <= 0) return null;
+  return `${formatCount(hidden)} ${hidden === 1 ? 'span' : 'spans'} in other apps hidden`;
+}
+
 function WaterfallView({
   traceId,
   onOpenEntry,
@@ -160,19 +182,40 @@ function WaterfallView({
   onOpenEntry: (id: string) => void;
 }) {
   const state = useWaterfall(traceId);
+  const apps = useApps().data;
   return (
     <AsyncBlock state={state} empty="No spans in this trace." skeletonRows={6}>
       {(waterfall) => {
         const rows = flattenWaterfall(waterfall);
+        const showApps = waterfallShowsApps(waterfall);
+        const note = hiddenSpansNote(waterfall);
         return (
           <>
-            <div className="mono mb-3 flex items-center justify-between text-[11px] text-faint">
+            <div className="mono mb-3 flex items-center justify-between gap-3 text-[11px] text-faint">
               <span>total {formatDuration(waterfall.totalDurationMs)}</span>
+              {showApps ? (
+                <span data-testid="waterfall-apps">
+                  across {(waterfall.apps ?? []).map((id) => appLabel(apps, id)).join(' → ')}
+                </span>
+              ) : null}
               <span>{rows.length} spans</span>
             </div>
-            <div className="waterfall">
+            {note !== null ? (
+              <p
+                className="mb-3 rounded-md border border-line px-3 py-2 text-xs text-muted-foreground"
+                role="status"
+              >
+                {note}
+              </p>
+            ) : null}
+            <div className={showApps ? 'waterfall waterfall-apps' : 'waterfall'}>
               {rows.map(({ span, leftPct, widthPct }) => (
                 <div key={span.id} className="wf-row" {...clickable(() => onOpenEntry(span.id))}>
+                  {showApps ? (
+                    <div className="wf-app mono" title={span.app ?? ''}>
+                      {span.app !== undefined ? appLabel(apps, span.app) : '—'}
+                    </div>
+                  ) : null}
                   <div
                     className="wf-label mono"
                     style={{ paddingLeft: span.depth * 14 }}

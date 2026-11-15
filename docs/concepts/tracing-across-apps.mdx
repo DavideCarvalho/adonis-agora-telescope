@@ -1,0 +1,102 @@
+---
+title: Tracing across apps
+icon: Route
+description: One trace when your apps call each other. A request in shop that calls billing, or dispatches a job billing's worker runs, shows as one waterfall with an app per span.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+When `shop` calls `billing` with a plain `fetch`, telescope sends the trace along in the W3C
+`traceparent` header. `billing` continues it. On the [central server](/docs/telescope/concepts/central-server)
+the request and everything it caused, in both apps, show up as **one trace**.
+
+## Turn it on
+
+List the apps a call may carry the trace to, in each app that makes calls:
+
+```ts title="config/telescope.ts (shop)"
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  propagation: {
+    targets: [env.get('BILLING_URL'), 'http://localhost:3334'],
+  },
+})
+```
+
+That's it. Your code stays the same:
+
+```ts title="app/services/billing_client.ts"
+export async function charge(orderId: number) {
+  const response = await fetch(`${env.get('BILLING_URL')}/charges`, {
+    method: 'POST',
+    body: JSON.stringify({ orderId }),
+  })
+  return response.json()
+}
+```
+
+The app being called needs nothing: telescope continues an incoming `traceparent` by default.
+
+<Callout type="warn" title="Only the targets get the header">
+A call to an origin that is not in `targets` (Stripe, an email API) carries no trace header.
+`targets: 'all'` sends it everywhere, third parties included.
+</Callout>
+
+## Options
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `targets` | `[]` | Origins (`https://billing.internal`; a URL is read for its origin) or `RegExp`s tested against the origin, or `'all'`. Calls to them carry `traceparent` and the caller's `tracestate`. |
+| `incoming` | `true` | Continue the `traceparent` a request arrives with. Set `false` on an app the public calls directly if you don't want callers to pick its trace ids. |
+| `nodeHttp` | `false` | Also add the headers to `http.request` / `https.request` (axios, got). `fetch` is always covered. |
+| `queue` | `true` | Carry the trace in `@adonisjs/queue` jobs. |
+
+```ts title="config/telescope.ts"
+propagation: {
+  targets: [/\.internal$/],
+  nodeHttp: true,
+  incoming: false,
+}
+```
+
+A header your code sets itself is never replaced.
+
+## Queue jobs
+
+A job dispatched during a request runs in that request's trace, whichever app's worker runs it:
+
+```ts title="app/controllers/orders_controller.ts"
+import ChargeOrder from '#jobs/charge_order'
+
+export default class OrdersController {
+  async store({ request }: HttpContext) {
+    const order = await Order.create(request.only(['total']))
+    await ChargeOrder.dispatch({ orderId: order.id })
+    return order
+  }
+}
+```
+
+In the waterfall the job sits under `POST /orders`, with its queries under it.
+
+## In the console
+
+On the central server:
+
+- **Traces** has an **Apps** column: `shop → billing` for a trace that crossed both, the app that
+  started it first.
+- The **waterfall** shows every span of the trace with the app that recorded it. A request
+  `billing` received hangs under the `shop` request that made the call.
+- A viewer limited to some apps (see [Apps](/docs/telescope/concepts/apps)) sees only those apps'
+  spans, and a note such as *3 spans in other apps hidden*.
+
+An app running telescope on its own shows the same waterfall without the app column.
+
+## With OpenTelemetry
+
+When the app runs [`@adonisjs/otel`](/docs/telescope/packages/otel), OpenTelemetry already sends
+`traceparent` on every `fetch` and `http.request`, and continues the incoming one. Telescope then
+adds no header of its own, so a call never carries two, and its entries use OpenTelemetry's trace
+ids. `targets` does not limit OpenTelemetry's headers: configure that in `config/otel.ts`.

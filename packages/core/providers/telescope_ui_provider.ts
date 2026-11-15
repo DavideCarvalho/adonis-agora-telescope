@@ -10,7 +10,12 @@ import { getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { entryInScope, scopedStore, scopeKey } from '../src/tenancy_store.js';
-import { consoleAppScope, describeAppScope, selectAppScope } from '../src/ui/app_scope.js';
+import {
+  consoleAppScope,
+  describeAppScope,
+  hiddenSpansCounter,
+  selectAppScope,
+} from '../src/ui/app_scope.js';
 import { callerOf } from '../src/ui/caller.js';
 import {
   buildConsoleApis,
@@ -128,12 +133,16 @@ export default class TelescopeUiProvider {
 
     // Every console API over one store: the full store, or a tenant-scoped view of it. The same
     // builder backs the `telescope:*` ace commands.
-    const buildApis = (source: TelescopeStore) =>
+    const buildApis = (
+      source: TelescopeStore,
+      hiddenSpans?: (traceId: string) => Promise<number>,
+    ) =>
       buildConsoleApis(source, {
         coreConfig,
         uiConfig: config,
         container: { make: (token) => this.app.container.make(token as never) },
         audit: (record) => this.auditAction(store, record),
+        ...(hiddenSpans !== undefined ? { hiddenSpans } : {}),
       });
     const shared = buildApis(store);
     const scopedApis = new Map<string, ReturnType<typeof buildApis>>();
@@ -142,7 +151,10 @@ export default class TelescopeUiProvider {
       if (key === null) return shared;
       let apis = scopedApis.get(key);
       if (apis === undefined) {
-        apis = buildApis(scopedStore(store, tenantTags, appTags));
+        apis = buildApis(
+          scopedStore(store, tenantTags, appTags),
+          appTags === null ? undefined : hiddenSpansCounter(store, tenantTags, appTags),
+        );
         if (scopedApis.size >= 64) scopedApis.delete(scopedApis.keys().next().value as string);
         scopedApis.set(key, apis);
       }

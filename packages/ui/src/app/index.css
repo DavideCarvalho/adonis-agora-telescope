@@ -106,6 +106,15 @@
   border-radius: 6px;
   cursor: pointer;
 }
+.waterfall-apps .wf-row {
+  grid-template-columns: minmax(64px, 12%) minmax(140px, 30%) 1fr max-content;
+}
+.wf-app {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--agora-muted);
+}
 .wf-row:hover {
   background: var(--agora-line-soft);
 }

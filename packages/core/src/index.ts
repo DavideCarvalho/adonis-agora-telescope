@@ -330,3 +330,4 @@ export { DEFAULT_HEARTBEAT_MS, streamEntries } from './stream/stream_handler.js'
 export { StreamingTelescopeStore } from './stream/streaming_store.js';
 // — topology: standalone, control plane (central server), tenant —
 export * from './topology/index.js';
+export type { PropagationConfig } from './tracing/config.js';

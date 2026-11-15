@@ -112,6 +112,30 @@ export function readActiveOtelTraceId(): string | undefined {
     : undefined;
 }
 
+/**
+ * The active span's ids and its parent's span id, for the entries of the request or job it
+ * covers. The parent is read off the SDK span (`parentSpanContext` in SDK 2+, `parentSpanId`
+ * before), which the API does not expose.
+ */
+export function readActiveOtelSpan():
+  | { traceId: string; spanId: string; parentSpanId: string | null }
+  | undefined {
+  const span = trace.getSpan(context.active());
+  if (span === undefined) return undefined;
+  const spanContext = span.spanContext();
+  if (!isSpanContextValid(spanContext)) return undefined;
+  const sdk = span as unknown as {
+    parentSpanContext?: { spanId?: unknown };
+    parentSpanId?: unknown;
+  };
+  const parent = sdk.parentSpanContext?.spanId ?? sdk.parentSpanId;
+  return {
+    traceId: spanContext.traceId,
+    spanId: spanContext.spanId,
+    parentSpanId: typeof parent === 'string' && parent !== '' ? parent : null,
+  };
+}
+
 /** The global meter telescope's AI-usage metrics are recorded on. */
 export function globalTelescopeMeter() {
   return metrics.getMeter(TELESCOPE_INSTRUMENTATION_SCOPE);

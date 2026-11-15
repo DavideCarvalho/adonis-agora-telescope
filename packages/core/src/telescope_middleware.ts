@@ -5,6 +5,8 @@ import type { ProfileHandle } from './profiling/profiler_service.js';
 import { getTelescopeRuntime } from './registry.js';
 import { failureMessage, reportFailure } from './report_failure.js';
 import { type HttpContextLike, recordRequest } from './request_watcher.js';
+import { traceScopeForRequest } from './tracing/index.js';
+import { runInTraceScope } from './tracing/scope.js';
 
 /** The bit of AdonisJS's real `HttpContext` a route-labelled profile needs beyond
  *  {@link HttpContextLike} — the matched route's pattern (e.g. `/users/:id`), when the router has
@@ -63,6 +65,22 @@ export function isUnder(url: string, prefix: string): boolean {
  */
 export default class TelescopeMiddleware {
   async handle(ctx: HttpContext, next: NextFn) {
+    if (getTelescopeRuntime().store === null) return next();
+    // Continue the caller's trace (`traceparent`), or start one when propagation is configured,
+    // so this request's entries, outgoing calls and jobs carry it. Before the recording checks:
+    // a request telescope does not record still passes its trace on.
+    let scope: ReturnType<typeof traceScopeForRequest>;
+    try {
+      scope = traceScopeForRequest((ctx as unknown as HttpContextLike).request);
+    } catch {
+      scope = undefined;
+    }
+    return scope === undefined
+      ? this.observe(ctx, next)
+      : runInTraceScope(scope, () => this.observe(ctx, next));
+  }
+
+  private async observe(ctx: HttpContext, next: NextFn) {
     const runtime = getTelescopeRuntime();
     // `runtime.paused` is the overload guard's shed flag: while set, skip recording
     // entirely (request + auto-captured exception) so telescope can't amplify load.

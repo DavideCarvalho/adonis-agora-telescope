@@ -1,3 +1,5 @@
+import { currentTraceScope } from './tracing/scope.js';
+
 /**
  * Structural reader for `@adonis-agora/context` — WITHOUT importing it.
  *
@@ -61,11 +63,22 @@ export function currentOtelTraceId(): string | undefined {
 }
 
 /**
- * The active trace id: the OpenTelemetry one when a span is active (the app runs
- * `@adonisjs/otel`), else the `@adonis-agora/context` one, else `null`.
+ * The active trace id, first found of:
+ *
+ * 1. the OpenTelemetry one, when a span is active (the app runs `@adonisjs/otel`);
+ * 2. the trace a caller sent (an incoming `traceparent`, a queue job's trace context) that
+ *    telescope continued;
+ * 3. the `@adonis-agora/context` one;
+ * 4. the trace telescope started for this request or job (only when tracing across apps is on).
+ *
+ * `null` outside all of them.
  */
 export function currentTraceId(): string | null {
-  return currentOtelTraceId() ?? getContextAccessor()?.traceId() ?? null;
+  const otel = currentOtelTraceId();
+  if (otel !== undefined) return otel;
+  const scope = currentTraceScope();
+  if (scope?.upstreamTraceId) return scope.upstreamTraceId;
+  return getContextAccessor()?.traceId() ?? scope?.fallbackTraceId ?? null;
 }
 
 /**
