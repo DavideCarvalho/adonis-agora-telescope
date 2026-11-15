@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.14
+
+### Patch Changes
+
+- [#330](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/330) [`f16469d`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/f16469d992c84f908215cbd06507e3bcd1fea34b) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Charts now show a tooltip when you hover or focus them: the throughput sparklines (Overview, Pulse), the exception trends, extension stat sparklines and the AI spend bars (users and platform cost, total and calls per bucket). They are built on the console kit's TanStack Charts components and follow the light/dark theme. The console kit gains charts on TanStack Charts (`agora-kit/charts`: TimeSeriesChart, BarChart, Sparkline, DonutChart) with a themed tooltip on hover and keyboard focus.
+
 ## 3.0.0-rc.13
 
 ### Minor Changes
