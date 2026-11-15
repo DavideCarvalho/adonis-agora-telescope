@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.16
+
+### Minor Changes
+
+- [#340](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/340) [`3909bf2`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/3909bf205a39b45ba5166533b67de874e0585ca9) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - New **Fleet** page (Monitor section, and in ⌘K). For each app it shows instance counts by state (up, starting, draining, gone), every instance (host, version, uptime, last heartbeat, health, send buffer), the deploy timeline with rollout progress, hosts in a restart loop, and each failing health check with how long it has been failing ("Redis: down for 12 min on 3 of 3 instances") plus the exception families recorded since then. The page follows the App picker and refreshes every 15 s. It needs `@adonis-agora/telescope` with the fleet (`GET <path>/api/fleet`). The client gains `fleet()`.
+
 ## 3.0.0-rc.15
 
 ### Patch Changes
