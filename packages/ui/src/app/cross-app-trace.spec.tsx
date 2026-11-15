@@ -139,8 +139,17 @@ describe('trace list', () => {
     expect(screen.getByText('Apps')).toBeTruthy();
   });
 
-  it('no Apps column for a single app', async () => {
+  it('the Apps column stays on a multi-app server even when this page is single-app', async () => {
     renderWith(client({ tracesPage: page([row]) }), <TracesSection onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('Apps')).toBeTruthy());
+  });
+
+  it('no Apps column for a single app', async () => {
+    const standalone = vi.fn().mockResolvedValue({ enabled: false, all: true, apps: [] });
+    renderWith(
+      client({ tracesPage: page([row]), apps: standalone }),
+      <TracesSection onOpenTrace={vi.fn()} />,
+    );
     await waitFor(() => expect(screen.getByText('GET /checkout')).toBeTruthy());
     expect(screen.queryByText('Apps')).toBeNull();
   });

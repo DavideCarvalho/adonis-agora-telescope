@@ -38,8 +38,11 @@ export function injectIntoJobs(message: unknown): void {
   for (const job of jobs as JobDataLike[]) {
     if (job === null || typeof job !== 'object') continue;
     const carrier = job.traceContext;
-    if (carrier !== undefined && typeof carrier.traceparent === 'string') continue;
-    job.traceContext = { ...(carrier ?? {}), ...headers };
+    // A valid traceparent is kept (OTel's, or the code's own). A malformed one would be ignored
+    // by the worker anyway, so it is replaced, together with the tracestate that went with it.
+    if (parseTraceparent(carrier?.traceparent) !== undefined) continue;
+    const { traceparent: _bad, tracestate: _state, ...rest } = carrier ?? {};
+    job.traceContext = { ...rest, ...headers };
   }
 }
 

@@ -125,11 +125,19 @@ describe('queue jobs carry the trace', () => {
     const { injectIntoJobs } = await import('../../src/tracing/queue.js');
     const { newTraceScope, runInTraceScope } = await import('../../src/tracing/scope.js');
     const own = `00-${'1'.repeat(32)}-${'2'.repeat(16)}-01`;
-    const jobs = [{ traceContext: { traceparent: own } }, {}] as Array<{
+    const jobs = [
+      { traceContext: { traceparent: own } },
+      {},
+      { traceContext: { traceparent: 'garbage', tracestate: 'old=1', baggage: 'k=v' } },
+    ] as Array<{
       traceContext?: Record<string, string>;
     }>;
     runInTraceScope(newTraceScope(), () => injectIntoJobs({ jobs }));
     expect(jobs[0]?.traceContext?.traceparent).toBe(own);
     expect(jobs[1]?.traceContext?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+    // A malformed traceparent is replaced (the worker would ignore it), other keys kept.
+    expect(jobs[2]?.traceContext?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+    expect(jobs[2]?.traceContext?.tracestate).toBeUndefined();
+    expect(jobs[2]?.traceContext?.baggage).toBe('k=v');
   });
 });

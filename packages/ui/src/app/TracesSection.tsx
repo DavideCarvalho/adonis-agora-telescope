@@ -29,8 +29,11 @@ export function TracesSection({ onOpenTrace }: { onOpenTrace: (traceId: string) 
   const page = pager.page;
   const state = useTracesPage(PAGE_SIZE, pager.after);
   const appScope = useApps().data;
-  // The Apps column only where entries carry app tags (a server collecting several apps).
-  const showApps = (state.data?.data ?? []).some((t) => (t.apps?.length ?? 0) > 0);
+  // The Apps column on a server that collects several apps: decided by the app scope, not by the
+  // page, so it does not come and go between pages. A row naming apps shows it too (an older
+  // server without the apps endpoint).
+  const showApps =
+    appScope?.enabled === true || (state.data?.data ?? []).some((t) => (t.apps?.length ?? 0) > 0);
 
   const columns = useMemo(
     () => [

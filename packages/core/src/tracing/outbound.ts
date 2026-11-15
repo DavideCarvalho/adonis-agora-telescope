@@ -96,6 +96,10 @@ function clientRequestOrigin(request: ClientRequestLike): string | null {
 /** The headers for a call to `origin`, or `null` when it must carry none. */
 function headersFor(config: ResolvedPropagationConfig, origin: string | null) {
   if (isTelescopeWork()) return null;
+  // Process-wide, not per active span: OpenTelemetry's undici instrumentation starts a root span
+  // and injects even when no span is active, so stepping aside only inside a span would send two
+  // headers outside one (test/tracing/otel_coexistence.spec.ts). With OTel's
+  // `requireParentforSpans`, a call outside any span carries no header: OTel's choice.
   if (isOtelTracingActive()) return null;
   if (!isPropagationTarget(config.targets, origin)) return null;
   return outgoingTraceHeaders();
