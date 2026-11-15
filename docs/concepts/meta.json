@@ -10,6 +10,7 @@
     "protection",
     "tenancy",
     "apps",
-    "central-server"
+    "central-server",
+    "transports"
   ]
 }

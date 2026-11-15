@@ -54,6 +54,7 @@ import { TenantTaggingStore } from '../src/tenancy_store.js';
 import { createIngestHandler } from '../src/topology/ingest.js';
 import { activeRemoteStores, RemoteTelescopeStore } from '../src/topology/remote_store.js';
 import { type IngestRouter, registerIngestRoutes } from '../src/topology/routes.js';
+import type { ControlPlaneChannel, TransportContext } from '../src/topology/transports/types.js';
 import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 
 /**
@@ -75,6 +76,8 @@ import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
 export default class TelescopeProvider {
   private store: TelescopeStore | null = null;
   private remote: RemoteTelescopeStore | null = null;
+  /** A control plane's broker consumer (`transport` other than HTTP). */
+  private consumer: ControlPlaneChannel | null = null;
   private diagnosticsWatcher: DiagnosticsWatcher | null = null;
   private logsWatcher: LogsWatcher | null = null;
   private entryEvents: EntryEvents | null = null;
@@ -201,9 +204,22 @@ export default class TelescopeProvider {
     config: ResolvedTelescopeConfig,
   ): TelescopeStore {
     if (config.topology.topology !== 'tenant') return local ?? new InMemoryTelescopeStore();
-    const { tenant, buffer } = config.topology;
+    const { tenant, buffer, transport } = config.topology;
+    // Built at boot; the driver's peer is imported only now. A channel that cannot be built (a
+    // missing package, no connection) is logged once; entries stay buffered and every send says why.
+    const channel = transport.tenant({
+      app: this.app as unknown as NonNullable<TransportContext['app']>,
+      timeoutMs: buffer.timeoutMs,
+      logger: { warn: (message) => void this.warn(message) },
+    });
+    channel.catch(
+      (error: unknown) =>
+        void this.warn(
+          `[@adonis-agora/telescope] the ${transport.describe()} transport could not start: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    );
     this.remote = new RemoteTelescopeStore({
-      url: tenant.url,
+      channel,
       partition: tenant.partition,
       token: tenant.token,
       buffer,
@@ -231,8 +247,38 @@ export default class TelescopeProvider {
           `[@adonis-agora/telescope] ingest refused (${reason})${verified ? ` for app ${JSON.stringify(verified.partition)}` : ''}`,
         ),
     });
+    // The HTTP routes stay mounted whatever the transport: tenants on HTTP and on a broker can
+    // share this control plane, and `whoami` keeps answering.
     const router = (await this.app.container.make('router')) as unknown as IngestRouter;
     registerIngestRoutes(router, handler, ingest);
+    const transport = config.topology.transport;
+    if (transport !== null) {
+      // A broker that cannot be reached or built (a missing package, a bad connection name) is
+      // logged, never fatal: the HTTP routes above keep serving HTTP tenants and the console.
+      let consumer: ControlPlaneChannel | null = null;
+      try {
+        consumer = await transport.controlPlane({
+          app: this.app as unknown as NonNullable<TransportContext['app']>,
+          ...(logger ? { logger } : {}),
+        });
+        await consumer?.start((raw) => handler.message(raw));
+      } catch (error) {
+        logger?.warn(
+          `[@adonis-agora/telescope] the ${transport.describe()} consumer did not start: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      this.consumer = consumer;
+    }
+  }
+
+  /** Warn through the app logger when one is bound. Never throws. */
+  private async warn(message: string): Promise<void> {
+    try {
+      const logger = (await this.app.container.make('logger')) as { warn(msg: string): void };
+      logger.warn(message);
+    } catch {
+      // No logger.
+    }
   }
 
   /**
@@ -450,6 +496,8 @@ export default class TelescopeProvider {
 
   async shutdown() {
     await this.flushRemote();
+    await this.consumer?.close().catch(() => {});
+    this.consumer = null;
     this.overloadGuard?.stop();
     this.overloadGuard = null;
     this.pruner?.stop();
@@ -480,7 +528,7 @@ export default class TelescopeProvider {
       Promise.allSettled(stores.map((store) => store.flush())),
       new Promise((resolve) => setTimeout(resolve, 5000).unref()),
     ]);
-    for (const store of stores) store.stop();
+    await Promise.allSettled(stores.map((store) => store.close()));
     this.remote = null;
   }
 }

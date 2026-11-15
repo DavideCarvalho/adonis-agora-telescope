@@ -2,6 +2,7 @@ import type { BatchOrigin, RecordInput } from '../entry.js';
 import { runAsTelescopeWork } from '../self_scope.js';
 import type { TelescopeStore } from '../store.js';
 import { type ResolvedIngestLimits, resolveIngestLimits } from './config.js';
+import { type ConsumeOutcome, ENVELOPE_VERSION, type PushEnvelope } from './transports/types.js';
 import {
   canIngest,
   resolveTenantVerifier,
@@ -144,6 +145,8 @@ export function createIngestHandler(options: IngestHandlerOptions) {
   const verify = resolveTenantVerifier(options.verifyTenant);
   const limits = options.limits ?? resolveIngestLimits();
   const recent = new RecentIds(limits.dedupeWindow);
+  /** Broker message ids already stored (`<app>:<message id>`): a redelivery is acknowledged. */
+  const recentMessages = new RecentIds(Math.max(1000, Math.floor(limits.dedupeWindow / 10)));
 
   async function authenticate(
     request: Pick<IngestRequest, 'token' | 'app'>,
@@ -177,6 +180,68 @@ export function createIngestHandler(options: IngestHandlerOptions) {
     return verified;
   }
 
+  /** Validate a sender's batch and write it, tagged with the verified app. */
+  async function storeBatch(
+    verified: VerifiedTenant,
+    rawBody: unknown,
+    measure: boolean,
+  ): Promise<IngestResponse> {
+    const body = rawBody as { version?: unknown; entries?: unknown } | null;
+    if (body === null || typeof body !== 'object' || !Array.isArray(body.entries)) {
+      return deny(400, 'expected { version: 1, entries: [...] }');
+    }
+    if (body.version !== undefined && body.version !== 1) {
+      return deny(400, `unsupported version ${String(body.version)}`);
+    }
+    // Without a content-length (chunked), measure the parsed body against the same cap.
+    if (measure) {
+      let bytes: number;
+      try {
+        bytes = Buffer.byteLength(JSON.stringify(body));
+      } catch {
+        return deny(400, 'the body cannot be read as JSON');
+      }
+      if (bytes > limits.maxBodyBytes) {
+        return deny(413, `the body is over ${limits.maxBodyBytes} bytes`);
+      }
+    }
+    if (body.entries.length > limits.maxEntries) {
+      return deny(413, `at most ${limits.maxEntries} entries per batch`);
+    }
+    const store = options.store();
+    if (store === null) return deny(503, 'telescope is not running on this server');
+
+    const result: IngestResult = { accepted: 0, duplicates: 0, rejected: 0 };
+    for (const raw of body.entries) {
+      const entry = normalize(raw, verified, limits);
+      if (entry === null) {
+        result.rejected += 1;
+        continue;
+      }
+      const key = `${verified.partition}\u0000${entry.id}`;
+      if (recent.has(key)) {
+        result.duplicates += 1;
+        continue;
+      }
+      // Stored as `<app>:<id>`: the app's own id, which no other app can collide with. The store
+      // skips an id it already holds, so a retry is stored once even after a restart.
+      const input: RecordInput & { id: string; createdAt?: string } = {
+        ...entry,
+        id: `${verified.partition}:${entry.id}`,
+      };
+      // Telescope's own work: nothing the write causes (its INSERT) is recorded again.
+      try {
+        await runAsTelescopeWork(() => store.record(input));
+      } catch {
+        // The store is down: the sender retries the batch, and what was stored is deduped.
+        return deny(503, 'the store could not write the entries right now');
+      }
+      recent.add(key);
+      result.accepted += 1;
+    }
+    return { status: 202, body: { ...result } };
+  }
+
   return {
     limits,
 
@@ -187,62 +252,52 @@ export function createIngestHandler(options: IngestHandlerOptions) {
       }
       const auth = await authenticate(request);
       if ('status' in auth) return auth;
-      const verified = auth;
+      return storeBatch(auth, request.body, request.contentLength === undefined);
+    },
 
-      const body = request.body as { version?: unknown; entries?: unknown } | null;
-      if (body === null || typeof body !== 'object' || !Array.isArray(body.entries)) {
-        return deny(400, 'expected { version: 1, entries: [...] }');
+    /**
+     * One broker message (the envelope JSON a tenant's `transport` sent): the same checks as the
+     * HTTP route, the token verified on every message, the app taken from the token. Says whether
+     * to acknowledge it, deliver it again, or dead-letter it.
+     */
+    async message(raw: string): Promise<ConsumeOutcome> {
+      const dead = (reason: string, verified: VerifiedTenant | null = null): ConsumeOutcome => {
+        options.onRefused?.(reason, verified);
+        return { kind: 'dead', reason };
+      };
+      if (Buffer.byteLength(raw) > limits.maxBodyBytes) {
+        return dead(`the message is over ${limits.maxBodyBytes} bytes`);
       }
-      if (body.version !== undefined && body.version !== 1) {
-        return deny(400, `unsupported version ${String(body.version)}`);
+      let envelope: Partial<PushEnvelope>;
+      try {
+        envelope = JSON.parse(raw) as Partial<PushEnvelope>;
+      } catch {
+        return dead('the message is not JSON');
       }
-      // Without a content-length (chunked), measure the parsed body against the same cap.
-      if (request.contentLength === undefined) {
-        let bytes: number;
-        try {
-          bytes = Buffer.byteLength(JSON.stringify(body));
-        } catch {
-          return deny(400, 'the body cannot be read as JSON');
-        }
-        if (bytes > limits.maxBodyBytes) {
-          return deny(413, `the body is over ${limits.maxBodyBytes} bytes`);
-        }
+      if (envelope === null || typeof envelope !== 'object' || envelope.v !== ENVELOPE_VERSION) {
+        return dead('the message is not a telescope batch (v: 1)');
       }
-      if (body.entries.length > limits.maxEntries) {
-        return deny(413, `at most ${limits.maxEntries} entries per batch`);
+      if (typeof envelope.id !== 'string' || !ID_RE.test(envelope.id)) {
+        return dead('the message has no valid id');
       }
-      const store = options.store();
-      if (store === null) return deny(503, 'telescope is not running on this server');
-
-      const result: IngestResult = { accepted: 0, duplicates: 0, rejected: 0 };
-      for (const raw of body.entries) {
-        const entry = normalize(raw, verified, limits);
-        if (entry === null) {
-          result.rejected += 1;
-          continue;
-        }
-        const key = `${verified.partition}\u0000${entry.id}`;
-        if (recent.has(key)) {
-          result.duplicates += 1;
-          continue;
-        }
-        // Stored as `<app>:<id>`: the app's own id, which no other app can collide with. The store
-        // skips an id it already holds, so a retry is stored once even after a restart.
-        const input: RecordInput & { id: string; createdAt?: string } = {
-          ...entry,
-          id: `${verified.partition}:${entry.id}`,
-        };
-        // Telescope's own work: nothing the write causes (its INSERT) is recorded again.
-        try {
-          await runAsTelescopeWork(() => store.record(input));
-        } catch {
-          // The store is down: the sender retries the batch, and what was stored is deduped.
-          return deny(503, 'the store could not write the entries right now');
-        }
-        recent.add(key);
-        result.accepted += 1;
+      if (typeof envelope.token !== 'string' || envelope.token === '') {
+        return dead('the message carries no token');
       }
-      return { status: 202, body: { ...result } };
+      const auth = await authenticate({
+        token: envelope.token,
+        app: typeof envelope.app === 'string' ? envelope.app : undefined,
+      });
+      if ('status' in auth) {
+        if (auth.status === 503) return { kind: 'retry', reason: String(auth.body.error) };
+        return dead(`refused (${auth.status} ${String(auth.body.error)})`);
+      }
+      const messageKey = `${auth.partition}:${envelope.id}`;
+      if (recentMessages.has(messageKey)) return { kind: 'ok' };
+      const response = await storeBatch(auth, envelope.batch, false);
+      if (response.status === 503) return { kind: 'retry', reason: String(response.body.error) };
+      if (response.status !== 202) return dead(String(response.body.error), auth);
+      recentMessages.add(messageKey);
+      return { kind: 'ok' };
     },
 
     /** `GET <path>/whoami`: who the token says the sender is. */

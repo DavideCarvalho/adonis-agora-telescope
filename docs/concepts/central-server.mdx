@@ -114,6 +114,11 @@ export default defineConfig({
 
 Watchers, redaction, sampling and tenancy tags all run in the app, before an entry is sent.
 
+Entries go over HTTP by default. To send them through `@adonisjs/queue`, BullMQ, a Redis stream
+or `@adonis-agora/durable` instead, set `transport` on both sides: see
+[Transports](/docs/telescope/concepts/transports). The console, live tail and client errors stay
+on HTTP either way.
+
 ### Buffering and retries
 
 Recording never waits on the network. Entries go into a buffer sent every second, in batches. If
@@ -214,6 +219,7 @@ exit code is `1` when the server refuses the app or has no Telescope store.
 
 <Callout type="info">
 `node ace agora:doctor --deep` runs the same check with the others: `telescope.topology`,
-`telescope.topology-store`, `telescope.ingest-csrf` and `telescope.server-reachable`. See
+`telescope.topology-store`, `telescope.ingest-csrf`, `telescope.server-reachable` and
+`telescope.transport`. See
 [Health check](/docs/telescope/reference/health-check).
 </Callout>

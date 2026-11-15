@@ -1,0 +1,188 @@
+---
+title: Transports
+icon: Truck
+description: How a tenant's entries reach the central server — over HTTP (the default), @adonisjs/queue, BullMQ, a Redis stream or @adonis-agora/durable.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+A [tenant](/docs/telescope/concepts/central-server) sends its entries to the control-plane. By
+default it posts them over HTTP. `transport` lets it send them through a broker you already run
+instead. Set the same driver on both sides: the tenant sends with it, the control-plane reads with it.
+
+| Driver | The tenant sends | The control-plane reads | Needs |
+| --- | --- | --- | --- |
+| `transports.http({ url, fetch?, timeoutMs? })` (default) | `POST <url>/ingest` | its ingest route | nothing |
+| `transports.queue({ connection?, queue? })` | one job per batch | a poller on the same queue | [`@adonisjs/queue`](https://github.com/adonisjs/queue) |
+| `transports.bullmq({ connection, prefix?, queue? })` | one job per batch | a BullMQ worker | `bullmq` + `ioredis` |
+| `transports.redis({ connection?, prefix? })` | one stream message per batch | a consumer group | [`@adonisjs/redis`](https://docs.adonisjs.com/guides/database/redis) |
+| `transports.durable({ transport? })` | one `telescope.ingest` step per batch | a step handler | [`@adonis-agora/durable`](/docs/durable) |
+
+A driver loads its package only when you choose it.
+
+<Callout type="info" title="Only app ↔ server traffic">
+The transport only changes how a tenant sends entries to the control-plane. Everything that
+comes from a browser stays HTTP whatever you choose: the console and its API, live tail, and
+[client errors](/docs/telescope/packages/client-errors). The control-plane always keeps its HTTP
+ingest route as well, so some apps can send over HTTP and others through a broker, into the same
+server.
+</Callout>
+
+## HTTP (default)
+
+`tenant.url` is a shorthand for `transports.http({ url })`. Use the long form to pass your own
+`fetch` (a proxy, mTLS, request signing) or a timeout:
+
+```ts title="config/telescope.ts (an app)"
+import { defineConfig, transports } from '@adonis-agora/telescope'
+import { proxiedFetch } from '#services/proxied_fetch'
+
+export default defineConfig({
+  topology: 'tenant',
+  transport: transports.http({
+    url: env.get('TELESCOPE_SERVER_URL'),
+    fetch: proxiedFetch,
+    timeoutMs: 5000,
+  }),
+  tenant: { partition: 'shop', token: env.get('TELESCOPE_TOKEN') },
+})
+```
+
+The control-plane needs nothing for HTTP: its ingest route takes the batches.
+
+## @adonisjs/queue
+
+`connection` names an adapter in `config/queue.ts` (default: that file's `default`).
+
+```ts title="config/telescope.ts (an app)"
+export default defineConfig({
+  topology: 'tenant',
+  transport: transports.queue({ connection: 'redis' }),
+  tenant: { partition: 'shop', token: env.get('TELESCOPE_TOKEN') },
+})
+```
+
+```ts title="config/telescope.ts (telescope server)"
+export default defineConfig({
+  topology: 'control-plane',
+  verifyTenant: authkitTenantVerifier({ issuer, resource: 'urn:agora:telescope' }),
+  transport: transports.queue({ connection: 'redis' }),
+  store: 'lucid',
+  stores: { lucid: storage.lucid() },
+})
+```
+
+| Option | Default | |
+| --- | --- | --- |
+| `connection` | `config/queue.ts` default | the adapter to use |
+| `queue` | `telescope-ingest` | the queue name |
+| `pollIntervalMs` | `500` | server: how often an empty queue is checked |
+| `maxAttempts` | `5` | server: deliveries before a message is failed |
+
+A message the server cannot use is failed straight away and stays in the queue's failed jobs.
+
+## BullMQ
+
+```ts title="config/telescope.ts (an app and the telescope server)"
+transport: transports.bullmq({
+  connection: { host: env.get('REDIS_HOST'), port: env.get('REDIS_PORT') },
+}),
+```
+
+| Option | Default | |
+| --- | --- | --- |
+| `connection` | required | ioredis options or an ioredis instance |
+| `prefix` | BullMQ's (`bull`) | key prefix |
+| `queue` | `telescope-ingest` | the queue name |
+| `maxAttempts` | `5` | deliveries before a job stays failed |
+| `concurrency` | `1` | server: jobs handled at once |
+
+Install the packages in both apps: `npm i bullmq ioredis`. A message the server cannot use goes
+to the failed set without retries. Look at it with any BullMQ board.
+
+## Redis stream
+
+`connection` names a connection in `config/redis.ts` (default: its default connection).
+
+```ts title="config/telescope.ts (an app and the telescope server)"
+transport: transports.redis({ connection: 'main' }),
+```
+
+| Option | Default | |
+| --- | --- | --- |
+| `connection` | `config/redis.ts` default | the `@adonisjs/redis` connection |
+| `prefix` | `telescope` | the stream is `<prefix>:ingest` |
+| `maxLength` | `100000` | stream length cap; past it the oldest messages are dropped |
+| `group` | `telescope` | server: consumer group |
+| `pollIntervalMs` | `500` | server: how often an empty stream is read |
+| `claimIdleMs` | `60000` | server: a message unacknowledged this long is read again |
+| `maxAttempts` | `5` | server: deliveries before a message is dead-lettered |
+
+Several control-plane instances can read the same stream: each message goes to one of them.
+Messages the server cannot use go to `<prefix>:ingest:dead`, with the reason.
+
+## @adonis-agora/durable
+
+Batches ride a transport from `config/durable.ts`, as `telescope.ingest` steps. `transport` names
+a key of its `transports` (default: its `transport`).
+
+```ts title="config/telescope.ts (an app)"
+export default defineConfig({
+  topology: 'tenant',
+  transport: transports.durable({ transport: 'queue' }),
+  tenant: { partition: 'shop', token: env.get('TELESCOPE_TOKEN') },
+})
+```
+
+```ts title="config/telescope.ts (telescope server)"
+export default defineConfig({
+  topology: 'control-plane',
+  verifyTenant: authkitTenantVerifier({ issuer, resource: 'urn:agora:telescope' }),
+  transport: transports.durable({ transport: 'queue' }),
+  store: 'lucid',
+  stores: { lucid: storage.lucid() },
+})
+```
+
+The server retries a failing step itself (`maxAttempts`, default `5`). A message it cannot use is
+logged and dropped, not redelivered. Run durable on the server too: it reads the step results.
+
+Telescope builds its own instance of that durable transport, so it never pauses or competes with
+your app's own steps.
+
+## What stays the same
+
+- **Every message carries the app's token.** The server checks it on every message with
+  `verifyTenant`. The app and environment tags come from the token, never from the message or the
+  queue name. Sharing a broker with other apps does not let one write as another.
+- **Recording never waits on the broker.** Entries go into the same buffer as with HTTP. While the
+  broker is down they stay there and sends are retried with a growing delay. At shutdown the app
+  sends what is left. Each entry keeps the time it was recorded.
+- **A message delivered twice is stored once.**
+- **Size limits** (`ingest.maxBodyBytes`, `maxEntries`, `maxEntryBytes`) apply to broker messages
+  too.
+- **Bad messages are not retried forever.** Malformed or oversized messages, or ones with a token
+  the server refuses, are dead-lettered at once. A message that keeps failing (the store is down)
+  is dead-lettered after `maxAttempts`.
+
+<Callout type="warn" title="Who can read the broker">
+Messages carry the app's token while they wait in the broker, so anyone who can read the queue or
+stream can read the token. Limit broker access to the apps and the server, as you would for the
+secret itself. Dead-letter copies in Redis streams and BullMQ's failed set have the token removed.
+`@adonisjs/queue` keeps a failed job's payload as it was.
+</Callout>
+
+<Callout type="warn" title="Token lifetime">
+A message waits in the broker while the server is down. If its token has expired by the time the
+server reads it, the server refuses it and dead-letters the message. Give tenant tokens a
+lifetime longer than the outages you want to ride out, or use a shared secret.
+</Callout>
+
+## Checking the broker
+
+```sh
+node ace agora:doctor --deep
+```
+
+`telescope.transport` connects to the broker from either side and says whether it answers.
+`node ace telescope:server:status` on a tenant shows the transport instead of the server URL.

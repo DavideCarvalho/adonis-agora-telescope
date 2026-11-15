@@ -13,6 +13,9 @@ allowBuilds:
   # Pulled in by the optional @adonisjs/otel peer (its gRPC exporters). The postinstall only
   # prints a version notice; nothing here needs it.
   protobufjs: false
+  # bullmq's optional msgpack accelerator (a native addon); bullmq runs without it, and it is
+  # only a devDependency here (the bullmq transport's tests).
+  msgpackr-extract: false
 minimumReleaseAgeExclude:
   - '@aws-sdk/client-s3@3.1154.0'
   - hyparquet-writer@0.17.0

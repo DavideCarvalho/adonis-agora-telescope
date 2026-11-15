@@ -1,3 +1,6 @@
+import { httpTransport } from './transports/http.js';
+import { isTelescopeTransport } from './transports/index.js';
+import type { TelescopeTransport } from './transports/types.js';
 import type { TenantTokenSource, TenantVerifierInput } from './verify.js';
 
 /** The default route prefix of a control plane's ingest routes. */
@@ -46,9 +49,10 @@ export interface TenantBufferOptions {
 export interface TelescopeTenantOptions {
   /**
    * The control plane: its origin (`https://telescope.example.com`, the default path is added)
-   * or the full prefix (`https://telescope.example.com/_telescope/v1`).
+   * or the full prefix (`https://telescope.example.com/_telescope/v1`). The same as
+   * `transport: transports.http({ url })`; leave it out when `transport` is set.
    */
-  url: string;
+  url?: string;
   /** This app's name. The server takes it from the token; this names the app to a shared secret. */
   partition: string;
   /**
@@ -78,13 +82,32 @@ export interface TelescopeTopologyConfig {
   ingest?: IngestLimits;
   /** Tenant only: the server, the app name and the token. */
   tenant?: TelescopeTenantOptions;
+  /**
+   * Tenant and control plane: how a tenant's entries reach the control plane, the same driver on
+   * both sides (`transports.http/queue/bullmq/redis/durable`). Default HTTP. Browser traffic (the
+   * console, live tail, client errors) is HTTP whatever is chosen, and a control plane keeps its
+   * HTTP ingest route, so tenants on HTTP and on a broker can share it.
+   */
+  transport?: TelescopeTransport;
 }
 
 /** The resolved topology the provider acts on. */
 export type ResolvedTopology =
   | { topology: 'standalone' }
-  | { topology: 'control-plane'; verifyTenant: TenantVerifierInput; ingest: ResolvedIngestLimits }
-  | { topology: 'tenant'; tenant: TelescopeTenantOptions; buffer: ResolvedBufferOptions };
+  | {
+      topology: 'control-plane';
+      verifyTenant: TenantVerifierInput;
+      ingest: ResolvedIngestLimits;
+      /** The broker the control plane also consumes, or `null` (HTTP only). */
+      transport: TelescopeTransport | null;
+    }
+  | {
+      topology: 'tenant';
+      tenant: TelescopeTenantOptions;
+      buffer: ResolvedBufferOptions;
+      /** How entries are sent (`transports.http({ url: tenant.url })` when only `url` is set). */
+      transport: TelescopeTransport;
+    };
 
 const PREFIX = '[@adonis-agora/telescope]';
 
@@ -103,6 +126,15 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
   }
   if (topology !== 'control-plane' && raw.ingest !== undefined) {
     throw new Error(`${PREFIX} \`ingest\` only applies to topology 'control-plane'`);
+  }
+  const rawTransport = (config as { transport?: unknown }).transport;
+  if (topology === 'standalone' && rawTransport !== undefined) {
+    throw new Error(`${PREFIX} \`transport\` only applies to topology 'tenant' or 'control-plane'`);
+  }
+  if (rawTransport !== undefined && !isTelescopeTransport(rawTransport)) {
+    throw new Error(
+      `${PREFIX} \`transport\` must be built with transports.http/queue/bullmq/redis/durable()`,
+    );
   }
   if (topology !== 'tenant' && raw.tenant !== undefined) {
     throw new Error(`${PREFIX} \`tenant\` only applies to topology 'tenant'`);
@@ -126,15 +158,23 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
       topology,
       verifyTenant: verify as TenantVerifierInput,
       ingest: resolveIngestLimits(config.ingest),
+      transport:
+        config.transport !== undefined && config.transport.driver !== 'http'
+          ? config.transport
+          : null,
     };
   }
   if (topology === 'tenant') {
     const tenant = config.tenant;
     if (!tenant || typeof tenant !== 'object') throw new Error(`${PREFIX} tenant is required`);
+    if (config.transport !== undefined && tenant.url !== undefined) {
+      throw new Error(
+        `${PREFIX} set the server in one place: tenant.url is transports.http({ url }); with \`transport\`, drop tenant.url`,
+      );
+    }
     if (
-      typeof tenant.url !== 'string' ||
-      !/^https?:\/\//.test(tenant.url) ||
-      !validUrl(tenant.url)
+      config.transport === undefined &&
+      (typeof tenant.url !== 'string' || !/^https?:\/\//.test(tenant.url) || !validUrl(tenant.url))
     ) {
       throw new Error(`${PREFIX} tenant.url must be an absolute http(s) URL`);
     }
@@ -154,7 +194,12 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
         `${PREFIX} tenant.local must name a store (a key of \`stores\`, or 'memory')`,
       );
     }
-    return { topology, tenant, buffer: resolveBufferOptions(tenant.buffer) };
+    return {
+      topology,
+      tenant,
+      buffer: resolveBufferOptions(tenant.buffer),
+      transport: config.transport ?? httpTransport({ url: tenant.url as string }),
+    };
   }
   return { topology: 'standalone' };
 }

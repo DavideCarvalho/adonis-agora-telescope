@@ -65,6 +65,7 @@ In CI, fail the build on anything the doctor flags:
 | `telescope.topology-store` | control plane: Telescope runs here, so received entries are stored. Tenant: Telescope runs, so entries are sent | error / warn |
 | `telescope.ingest-csrf` | control plane: shield's CSRF lets `POST /_telescope/v1/ingest` through | error |
 | `telescope.server-reachable` | tenant, with `--deep`: the [central server](/docs/telescope/concepts/central-server) accepts this app's token | error / warn |
+| `telescope.transport` | tenant or control-plane on a broker, with `--deep`: the [transport](/docs/telescope/concepts/transports)'s broker answers | error |
 | `telescope.peers` | every peer dependency is installed and in range | error |
 | `telescope.agora-siblings` | the other `@adonis-agora` libs are on the same release line | warn |
 

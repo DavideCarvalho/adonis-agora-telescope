@@ -8,9 +8,10 @@ import {
   serverPrefix,
 } from './config.js';
 import { activeRemoteStores } from './remote_store.js';
-import { whoami } from './status.js';
+import { httpUrl, whoami } from './status.js';
 
 const DOCS = 'https://davidecarvalho.github.io/agora/docs/telescope/concepts/central-server';
+const TRANSPORT_DOCS = 'https://davidecarvalho.github.io/agora/docs/telescope/concepts/transports';
 
 type Read =
   | { config: Record<string, unknown> | undefined; topology: ResolvedTopology }
@@ -92,12 +93,16 @@ export const topologyDoctorChecks: AgoraDoctorCheck[] = [
         return skip('Standalone: this app keeps its own telescope entries.');
       }
       if (topology.topology === 'tenant') {
+        const url = httpUrl(topology);
         return {
           status: 'ok',
-          message: `Sends entries as app ${JSON.stringify(topology.tenant.partition)} to ${serverPrefix(topology.tenant.url)}.`,
+          message: `Sends entries as app ${JSON.stringify(topology.tenant.partition)} ${url !== null ? `to ${serverPrefix(url)}` : `over ${topology.transport.describe()}`}.`,
         };
       }
-      return { status: 'ok', message: `Receives entries on POST ${topology.ingest.path}/ingest.` };
+      return {
+        status: 'ok',
+        message: `Receives entries on POST ${topology.ingest.path}/ingest${topology.transport !== null ? ` and from ${topology.transport.describe()}` : ''}.`,
+      };
     },
   },
   {
@@ -171,7 +176,44 @@ export const topologyDoctorChecks: AgoraDoctorCheck[] = [
       if (isResult(state)) return state;
       const { topology } = state;
       if (topology.topology !== 'tenant') return skip('Not a tenant.');
-      return whoami(topology.tenant);
+      const url = httpUrl(topology);
+      if (url === null) {
+        return skip(
+          `Entries go over ${topology.transport.describe()}: see "Transport reaches the broker".`,
+        );
+      }
+      return whoami({ ...topology.tenant, url });
+    },
+  },
+  {
+    id: 'telescope.transport',
+    lib: 'telescope',
+    title: 'Transport reaches the broker',
+    cost: 'deep',
+    run: async (app): Promise<AgoraDoctorResult> => {
+      const state = read(app);
+      if (isResult(state)) return state;
+      const { topology } = state;
+      if (topology.topology === 'standalone') return skip('Standalone: nothing to send.');
+      const transport = topology.transport;
+      if (transport === null || transport.driver === 'http') {
+        return skip('HTTP: no broker between the apps and the control plane.');
+      }
+      const side = topology.topology === 'tenant' ? 'this app sends' : 'this control plane reads';
+      try {
+        const message = await transport.ping({ app: app as never });
+        return { status: 'ok', message: `${message} (${side} ${transport.describe()})` };
+      } catch (error) {
+        return {
+          status: 'error',
+          message: `${transport.describe()} cannot be reached: ${error instanceof Error ? error.message : String(error)}`,
+          fix:
+            topology.topology === 'tenant'
+              ? 'Check the transport in config/telescope.ts and the broker connection it names; entries wait in the local buffer meanwhile.'
+              : 'Check the transport in config/telescope.ts and the broker connection it names: no broker entries are stored meanwhile.',
+          docs: TRANSPORT_DOCS,
+        };
+      }
     },
   },
 ];
