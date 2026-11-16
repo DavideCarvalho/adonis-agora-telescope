@@ -41,6 +41,21 @@ export class TelescopeServerStatus extends BaseCommand {
     if (status.topology === 'tenant') {
       this.logger.info(`Server: ${status.server}`);
       this.logger.info(`App:    ${status.partition}`);
+      if (status.as?.relay !== undefined) {
+        this.logger.info(
+          `Relay:  ${status.as.relay === '*' ? 'any app' : status.as.relay.join(', ')}`,
+        );
+      } else if (status.relaying === true) {
+        // `as` is set once the server answered whoami; without it the token was refused, the
+        // server was unreachable, or entries go over a broker (which never checks it here).
+        this.logger.info(
+          status.as !== undefined
+            ? 'Relay:  on here, not allowed by the token'
+            : status.accepted
+              ? "Relay:  on here (the token's relay rights are not checked over a broker)"
+              : 'Relay:  on here (not checked: see the error below)',
+        );
+      }
       if (status.accepted) this.logger.success(status.message);
       else this.logger.error(status.message);
       return;

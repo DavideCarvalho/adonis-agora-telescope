@@ -7,6 +7,13 @@ export const TELESCOPE_RESOURCE = 'urn:agora:telescope';
 export const INGEST_CAPABILITY = 'telescope:ingest';
 
 /**
+ * The capability a token needs to send entries on behalf of other apps: an entry tagged
+ * `app:<name>` is stored as `<name>`'s (plus `via:<sender>`). `telescope:ingest:relay:<name>`
+ * allows that one app only; `telescope:*` allows every app. Implies `telescope:ingest`.
+ */
+export const RELAY_CAPABILITY = 'telescope:ingest:relay';
+
+/**
  * What a telescope server trusts about a sender. Everything comes from the verified token, never
  * from the request: `authkitTenantVerifier` from `@adonis-agora/authkit-client` returns it.
  */
@@ -15,7 +22,10 @@ export interface VerifiedTenant {
   partition: string;
   /** The environment, when the token has one. Entries are tagged `env:<environment>`. */
   environment?: string;
-  /** What the token may do. Sending entries needs `telescope:ingest` (or `telescope:*`). */
+  /**
+   * What the token may do. Sending entries needs `telescope:ingest` (or `telescope:*`); sending
+   * them on behalf of other apps needs `telescope:ingest:relay[:<app>]` (or `telescope:*`).
+   */
   capabilities: string[];
   /** The service-tenant client behind the token, when it says. */
   clientId?: string;
@@ -144,9 +154,33 @@ export function resolveTenantVerifier(
   };
 }
 
-/** Whether `capabilities` allow sending entries. */
+/** Whether `capabilities` allow sending entries (relaying for other apps implies it). */
 export function canIngest(capabilities: readonly string[]): boolean {
-  return capabilities.includes(INGEST_CAPABILITY) || capabilities.includes('telescope:*');
+  return (
+    capabilities.includes(INGEST_CAPABILITY) ||
+    capabilities.includes('telescope:*') ||
+    relayScope(capabilities) !== null
+  );
+}
+
+/**
+ * The apps `capabilities` may relay entries for: `'*'` (`telescope:ingest:relay` or
+ * `telescope:*`), the apps named by `telescope:ingest:relay:<app>`, or `null` (none).
+ */
+export function relayScope(capabilities: readonly string[]): '*' | string[] | null {
+  if (capabilities.includes('telescope:*') || capabilities.includes(RELAY_CAPABILITY)) return '*';
+  const prefix = `${RELAY_CAPABILITY}:`;
+  // Only valid app names (as `PARTITION_RE`): anything else could never match an entry's app.
+  const apps = capabilities
+    .filter((capability) => capability.startsWith(prefix))
+    .map((capability) => capability.slice(prefix.length))
+    .filter((app) => /^[A-Za-z0-9_.-]{1,64}$/.test(app));
+  return apps.length > 0 ? [...new Set(apps)] : null;
+}
+
+/** Whether a {@link relayScope} allows relaying entries for `app`. */
+export function canRelayFor(scope: '*' | readonly string[] | null, app: string): boolean {
+  return scope === '*' || scope?.includes(app) === true;
 }
 
 /** Constant-time comparison that does not leak the length through an early return. */

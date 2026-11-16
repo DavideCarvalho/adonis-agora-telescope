@@ -354,6 +354,7 @@ export default class TelescopeProvider {
       channel,
       partition: tenant.partition,
       token: tenant.token,
+      relay: tenant.relay === true,
       buffer,
       tee: local,
     });

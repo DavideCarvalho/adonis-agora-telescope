@@ -405,6 +405,24 @@ describe('status', () => {
       accepted: true,
       as: { partition: 'shop', environment: 'prod' },
     });
+    const relaying = (body: Record<string, unknown>) =>
+      telescopeTopologyStatus(
+        resolveTopology({
+          topology: 'tenant',
+          tenant: { url: 'http://central', partition: 'durable', token: 't', relay: true },
+        }),
+        null,
+        vi.fn(async () => Response.json(body)) as never,
+      );
+    expect(await relaying({ partition: 'durable', relay: ['shop'] })).toMatchObject({
+      accepted: true,
+      relaying: true,
+      as: { partition: 'durable', relay: ['shop'] },
+      message: expect.stringContaining('may relay entries for "shop"'),
+    });
+    const refused = await relaying({ partition: 'durable' });
+    expect(refused).toMatchObject({ accepted: true, relaying: true });
+    expect(refused.topology === 'tenant' && refused.message).toMatch(/may not relay/);
     expect(await telescopeTopologyStatus(resolveTopology({}), null)).toEqual({
       topology: 'standalone',
     });

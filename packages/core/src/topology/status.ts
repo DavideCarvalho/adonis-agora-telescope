@@ -15,7 +15,13 @@ export type TelescopeTopologyStatus =
       partition: string;
       /** How the server sees this app's token. */
       accepted: boolean;
-      as?: { partition: string; environment?: string };
+      /**
+       * How the server sees this app's token. `relay`: the apps it may send entries for besides
+       * its own (`'*'` = any), when the token may relay.
+       */
+      as?: { partition: string; environment?: string; relay?: '*' | string[] };
+      /** `tenant.relay` is on: this app sends entries on behalf of other apps. */
+      relaying?: boolean;
       message: string;
     }
   | {
@@ -72,6 +78,7 @@ export async function telescopeTopologyStatus(
         server: config.transport.describe(),
         partition: tenant.partition,
         accepted,
+        ...(tenant.relay === true ? { relaying: true } : {}),
         message,
       };
     }
@@ -81,11 +88,13 @@ export async function telescopeTopologyStatus(
       server: serverPrefix(url),
       partition: tenant.partition,
       accepted: result.status !== 'error',
+      ...(tenant.relay === true ? { relaying: true } : {}),
       ...(result.partition !== undefined
         ? {
             as: {
               partition: result.partition,
               ...(result.environment !== undefined ? { environment: result.environment } : {}),
+              ...(result.relay !== undefined ? { relay: result.relay } : {}),
             },
           }
         : {}),
@@ -110,11 +119,18 @@ export function httpUrl(config: Extract<ResolvedTopology, { topology: 'tenant' }
   return typeof options?.url === 'string' ? options.url : (config.tenant.url ?? null);
 }
 
-/** Ask the control plane who it takes this app for. */
+/** How a relay scope reads in a message. */
+function describeRelay(relay: '*' | string[]): string {
+  return relay === '*' ? 'any app' : relay.map((app) => JSON.stringify(app)).join(', ');
+}
+
+/** Ask the control plane who it takes this app for (and, with `relay`, whether it may relay). */
 export async function whoami(
-  tenant: Pick<TelescopeTenantOptions, 'partition' | 'token'> & { url: string },
+  tenant: Pick<TelescopeTenantOptions, 'partition' | 'token' | 'relay'> & { url: string },
   doFetch: typeof fetch = globalThis.fetch,
-): Promise<AgoraDoctorResult & { partition?: string; environment?: string }> {
+): Promise<
+  AgoraDoctorResult & { partition?: string; environment?: string; relay?: '*' | string[] }
+> {
   const prefix = serverPrefix(tenant.url);
   try {
     const token = await readToken(tenant.token);
@@ -129,17 +145,34 @@ export async function whoami(
     const body = (await response.json().catch(() => ({}))) as {
       partition?: string;
       environment?: string;
+      relay?: unknown;
     };
     if (response.status === 200 && typeof body.partition === 'string') {
       const env = body.environment !== undefined ? ` (${body.environment})` : '';
+      const relay =
+        body.relay === '*' ||
+        (Array.isArray(body.relay) && body.relay.every((app) => typeof app === 'string'))
+          ? (body.relay as '*' | string[])
+          : undefined;
+      const same = body.partition === tenant.partition;
+      let message = same
+        ? `The server accepts this app as ${JSON.stringify(body.partition)}${env}.`
+        : `The server takes this app's token for ${JSON.stringify(body.partition)}${env}, not ${JSON.stringify(tenant.partition)}: entries are tagged with the token's app.`;
+      if (relay !== undefined) message += ` It may relay entries for ${describeRelay(relay)}.`;
+      const relayRefused = tenant.relay === true && relay === undefined;
+      if (relayRefused) {
+        message +=
+          ' tenant.relay is on, but the token may not relay: entries tagged for other apps are stored as this app.';
+      }
       return {
-        status: body.partition === tenant.partition ? 'ok' : 'warn',
-        message:
-          body.partition === tenant.partition
-            ? `The server accepts this app as ${JSON.stringify(body.partition)}${env}.`
-            : `The server takes this app's token for ${JSON.stringify(body.partition)}${env}, not ${JSON.stringify(tenant.partition)}: entries are tagged with the token's app.`,
+        status: same && !relayRefused ? 'ok' : 'warn',
+        message,
+        ...(relayRefused
+          ? { fix: 'Give the token the telescope:ingest:relay capability.', docs: DOCS }
+          : {}),
         partition: body.partition,
         ...(body.environment !== undefined ? { environment: body.environment } : {}),
+        ...(relay !== undefined ? { relay } : {}),
       };
     }
     return {
