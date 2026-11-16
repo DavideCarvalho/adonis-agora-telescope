@@ -85,13 +85,18 @@ export interface AppScopeDescription {
   apps: AppOption[];
 }
 
-/** Describe the viewer's app scope for the picker; labels from `labels`, else the id. */
+/**
+ * Describe the viewer's app scope for the picker; labels from `labels`, else the id. For a
+ * viewer that sees every app, the apps come from `known` (default: {@link knownApps} over
+ * `store`).
+ */
 export async function describeAppScope(
   scope: ConsoleAppScope,
   store: TelescopeStore,
   labels?: AppLabels,
+  known: () => Promise<string[]> = () => knownApps(store),
 ): Promise<AppScopeDescription> {
-  const ids = scope.all ? await knownApps(store) : scope.ids;
+  const ids = scope.all ? await known() : scope.ids;
   const names = await resolveLabels(ids, labels);
   return {
     enabled: !scope.all || ids.length > 0,
@@ -111,22 +116,93 @@ async function resolveLabels(ids: string[], labels: AppLabels | undefined) {
   }
 }
 
-/** The apps telescope has entries for (most common first, at most 200). */
-async function knownApps(store: TelescopeStore): Promise<string[]> {
-  const ids: string[] = [];
-  const add = (tag: string) => {
-    const id = appOfTag(tag);
-    if (id !== undefined && !ids.includes(id)) ids.push(id);
-  };
-  if (typeof store.countTags === 'function') {
-    for (const row of await store.countTags({ limit: 200, prefix: `${APP_TAG}:` })) add(row.key);
+/** Most apps the picker lists. */
+const MAX_APPS = 200;
+/** How far back {@link knownApps} looks for app tags by default. */
+const DEFAULT_APPS_WINDOW_MS = 3_600_000;
+/** How many of the newest entries {@link knownApps} reads by default. */
+const DEFAULT_APPS_SAMPLE = 1_000;
+
+/** Where {@link knownApps} looks besides the entries. */
+export interface KnownAppsOptions {
+  /** Other lists of app ids (e.g. the fleet's instances); one that fails is skipped. */
+  sources?: ReadonlyArray<() => Promise<readonly string[]>>;
+  /** How far back to read entries. Default one hour. */
+  windowMs?: number;
+  /** How many of the newest entries in that window to read. Default 1000. */
+  sampleSize?: number;
+  /** Injectable clock (tests). */
+  now?: () => number;
+}
+
+/**
+ * The apps the picker offers: those tagging the newest entries of the recent window (most
+ * common first), then those only `sources` know, by name; at most 200. A bounded read, never a
+ * scan of the table: an app quiet for longer than the window is found through a source (on a
+ * control plane, the fleet's instances).
+ */
+export async function knownApps(
+  store: TelescopeStore,
+  options: KnownAppsOptions = {},
+): Promise<string[]> {
+  const now = options.now?.() ?? Date.now();
+  const [entries, ...others] = await Promise.all([
+    store.list({
+      after: new Date(now - (options.windowMs ?? DEFAULT_APPS_WINDOW_MS)),
+      size: options.sampleSize ?? DEFAULT_APPS_SAMPLE,
+      omitContent: true,
+    }),
+    ...(options.sources ?? []).map((source) =>
+      source().then(
+        (ids) => [...ids],
+        () => [] as string[],
+      ),
+    ),
+  ]);
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    for (const tag of entry.tags) {
+      const id = appOfTag(tag);
+      if (id !== undefined) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+  }
+  const ids = [...counts.entries()]
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    .map(([id]) => id);
+  const seen = new Set(ids);
+  const rest = new Set<string>();
+  for (const list of others) {
+    for (const id of list) if (typeof id === 'string' && id !== '' && !seen.has(id)) rest.add(id);
+  }
+  return [...ids, ...[...rest].sort((a, b) => a.localeCompare(b))].slice(0, MAX_APPS);
+}
+
+/**
+ * Remembers each scope's app list for `ttlMs` and shares one in-flight read between the
+ * requests that arrive while it runs, so a console polling the picker costs one bounded read
+ * per scope per TTL. A failed read is not remembered.
+ */
+export class KnownAppsCache {
+  private readonly entries = new Map<string, { at: number; ids: Promise<string[]> }>();
+
+  constructor(
+    private readonly ttlMs = 30_000,
+    private readonly now: () => number = Date.now,
+    private readonly maxScopes = 1_000,
+  ) {}
+
+  get(key: string, load: () => Promise<string[]>): Promise<string[]> {
+    const now = this.now();
+    const cached = this.entries.get(key);
+    if (cached !== undefined && now - cached.at < this.ttlMs) return cached.ids;
+    const ids = load();
+    if (this.entries.size >= this.maxScopes) this.entries.clear();
+    this.entries.set(key, { at: now, ids });
+    ids.catch(() => {
+      if (this.entries.get(key)?.ids === ids) this.entries.delete(key);
+    });
     return ids;
   }
-  for (const entry of await store.list({ size: 1000, omitContent: true })) {
-    for (const tag of entry.tags) add(tag);
-    if (ids.length >= 200) break;
-  }
-  return ids;
 }
 
 /**

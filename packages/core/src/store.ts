@@ -58,7 +58,22 @@ export interface EntryQuery {
    * they display afterwards.
    */
   omitContent?: boolean;
+  /**
+   * The caller reads only these top-level fields of `content`, so a store MAY return a
+   * `content` holding just them (a field absent from the stored content stays absent).
+   * A hint like {@link omitContent}: a store that ignores it returns the whole content,
+   * which answers the same. Ignored when `omitContent` is set.
+   */
+  contentFields?: string[];
 }
+
+/**
+ * Entries must carry, for EACH group, at least one of its tags (an AND of ORs) — how a console
+ * view narrowed to some organizations and apps reaches the aggregate reads below. A store
+ * honors it only when it declares {@link TelescopeStore.honorsTagGroups}; an empty group
+ * matches nothing.
+ */
+export type TagGroups = readonly (readonly string[])[];
 
 /** One row of {@link TelescopeStore.listTraceIds} — a trace and when it was last seen. */
 export interface TraceIdRow {
@@ -85,6 +100,46 @@ export interface BucketCountQuery {
   bucketMs: number;
   /** Only entries of this type. */
   type?: string;
+  /** Only entries inside these tag groups (see {@link TagGroups}). */
+  tagGroups?: TagGroups;
+}
+
+/** What {@link TelescopeStore.listSlowest} reads. */
+export interface SlowestQuery {
+  /** Window start (exclusive). */
+  after: Date;
+  /** Window end (inclusive). */
+  before: Date;
+  /** How many entries to return. */
+  limit: number;
+  /** Only entries inside these tag groups (see {@link TagGroups}). */
+  tagGroups?: TagGroups;
+}
+
+/** What {@link TelescopeStore.countTraceRepeats} counts. */
+export interface TraceRepeatQuery {
+  /** Window start (exclusive). */
+  after: Date;
+  /** Window end (inclusive). */
+  before: Date;
+  /** Only entries of this type. */
+  type: string;
+  /** Only `(trace, family)` pairs seen at least this many times. */
+  minCount: number;
+  /** Only entries inside these tag groups (see {@link TagGroups}). */
+  tagGroups?: TagGroups;
+}
+
+/** One `(trace, family)` pair from {@link TelescopeStore.countTraceRepeats}. */
+export interface TraceRepeatRow {
+  traceId: string;
+  familyHash: string;
+  /** Entries of the family in the trace. */
+  count: number;
+  /** Sum of their `durationMs` (entries without one count as 0). */
+  totalDurationMs: number;
+  /** The newest `createdAt` among them, in epoch ms. */
+  lastAt: number;
 }
 
 /** A grouping key and how many stored entries carry it. */
@@ -203,10 +258,39 @@ export interface TelescopeStore {
    * service lists the whole table and counts in JS.
    */
   countTags?(query: TagCountQuery): Promise<KeyCountRow[]>;
+
+  /**
+   * OPTIONAL fast path for the Pulse "slowest" card: the `limit` entries of the window
+   * with the largest `durationMs` (entries without one excluded), slowest first, ties in
+   * ascending id order. `content` may be omitted. Without it Pulse scans the window.
+   */
+  listSlowest?(query: SlowestQuery): Promise<Entry[]>;
+
+  /**
+   * OPTIONAL fast path for the Pulse N+1 card: per `(traceId, familyHash)` pair of
+   * entries of `type` in the window (both non-null), how many there are, when at least
+   * `minCount`. Without it Pulse scans the window and groups in JS.
+   */
+  countTraceRepeats?(query: TraceRepeatQuery): Promise<TraceRepeatRow[]>;
+
+  /**
+   * Whether {@link countByBucket}, {@link listSlowest} and {@link countTraceRepeats} honor
+   * a query's `tagGroups`. A view narrowed to some tenants or apps uses those fast paths
+   * only when this is `true`: a store that ignored the groups would count entries the
+   * viewer may not see.
+   */
+  readonly honorsTagGroups?: boolean;
 }
 
 /** The optional read methods a store may implement on top of the required contract. */
-const OPTIONAL_READS = ['listTraceIds', 'countByBucket', 'countFamilies', 'countTags'] as const;
+const OPTIONAL_READS = [
+  'listTraceIds',
+  'countByBucket',
+  'countFamilies',
+  'countTags',
+  'listSlowest',
+  'countTraceRepeats',
+] as const;
 
 /**
  * Give a decorating store the optional read methods its inner store has, and only
@@ -220,4 +304,5 @@ export function forwardOptionalReads(target: TelescopeStore, inner: TelescopeSto
     const method = inner[name];
     if (typeof method === 'function') writable[name] = method.bind(inner);
   }
+  if (inner.honorsTagGroups === true) writable.honorsTagGroups = true;
 }

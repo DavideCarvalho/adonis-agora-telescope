@@ -155,6 +155,32 @@ describe('LucidQueryWatcher', () => {
       expect((entries[0]!.content as QueryEntryContent).connection).toBe('primary');
     });
 
+    it('does not record statements matching `ignore` or on an `ignoreTables` table', async () => {
+      const watcher = new LucidQueryWatcher({
+        ignore: ['SELECT *   FROM "durable_workflow_runs" where "id" = ? limit ?', /pg_sleep/],
+        ignoreTables: ['job_heartbeats'],
+      });
+      watcher.start(emitter);
+
+      const sqls = [
+        'select * from "durable_workflow_runs" where "id" = ? limit ?',
+        'select pg_sleep(1)',
+        'update "public"."job_heartbeats" set "at" = ?',
+        'select * from "durable_workflow_runs" where "status" = ?',
+        'select * from "users" where "id" = ?',
+      ];
+      for (const sql of sqls) await emitter.emit(DB_QUERY_EVENT, dbQueryEvent({ sql }));
+      await flush();
+
+      const recorded = (await store.list({ type: EntryType.Query }))
+        .map((entry) => (entry.content as QueryEntryContent).sql)
+        .sort();
+      expect(recorded).toEqual([
+        'select * from "durable_workflow_runs" where "status" = ?',
+        'select * from "users" where "id" = ?',
+      ]);
+    });
+
     it('sheds new entries while the runtime is paused', async () => {
       // The overload guard flips the shed flag; safeRecord must honour it.
       setTelescopePaused(true);

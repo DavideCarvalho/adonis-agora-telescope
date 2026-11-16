@@ -4,7 +4,7 @@ import { type Entry, type RecordInput, resolveCreatedAt, resolveEntryId } from '
 import type { InstanceHeartbeat, ShippingStats } from '../fleet/heartbeat.js';
 import { resolveOrigin } from '../origin_scope.js';
 import { runAsTelescopeWork } from '../self_scope.js';
-import type { EntryQuery, TelescopeStore } from '../store.js';
+import { type EntryQuery, forwardOptionalReads, type TelescopeStore } from '../store.js';
 import {
   type ResolvedBufferOptions,
   resolveBufferOptions,
@@ -70,8 +70,6 @@ interface Pending {
   bytes: number;
 }
 
-const OPTIONAL_READS = ['listTraceIds', 'countByBucket', 'countFamilies', 'countTags'] as const;
-
 /** Every remote store built in this process (the provider flushes them at shutdown). */
 export const activeRemoteStores = new Set<RemoteTelescopeStore>();
 
@@ -121,14 +119,7 @@ export class RemoteTelescopeStore implements TelescopeStore {
     this.now = config.now ?? Date.now;
     this.startedAt = this.now();
     this.tee = config.tee ?? null;
-    if (this.tee !== null) {
-      const self = this as unknown as Record<string, unknown>;
-      const inner = this.tee as unknown as Record<string, unknown>;
-      for (const name of OPTIONAL_READS) {
-        const method = inner[name];
-        if (typeof method === 'function') self[name] = method.bind(this.tee);
-      }
-    }
+    if (this.tee !== null) forwardOptionalReads(this, this.tee);
   }
 
   /** Start the send timer (unref'd: it never keeps the process alive). */

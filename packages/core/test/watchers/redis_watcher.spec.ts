@@ -10,6 +10,7 @@ import {
   type RedisEntryContent,
   type RedisManagerLike,
   RedisWatcher,
+  redactRedisArgs,
 } from '../../src/watchers/index.js';
 import { clearStore, flush, installStore } from './helpers.js';
 
@@ -132,12 +133,12 @@ describe('RedisWatcher', () => {
     watcher.stop();
   });
 
-  it('redacts a sensitive argument value in the stored entry', async () => {
+  it('with captureValues, still redacts a sensitive argument value downstream', async () => {
     const inner = new InMemoryTelescopeStore({ maxEntries: 100 });
     setTelescopeRuntime(new RedactingTelescopeStore(inner), true);
     const conn = fakeConnection('main');
     const manager = fakeManager({ main: conn });
-    const watcher = new RedisWatcher(manager);
+    const watcher = new RedisWatcher(manager, { captureValues: true });
     watcher.start();
 
     const client = conn.ioConnection as ReturnType<typeof fakeIoClient>;
@@ -150,6 +151,62 @@ describe('RedisWatcher', () => {
     expect(args[1]).toEqual({ token: '[REDACTED]' });
 
     watcher.stop();
+  });
+});
+
+describe('RedisWatcher — argument values', () => {
+  afterEach(() => clearStore());
+
+  it('keeps the key and redacts every other argument by default (arity preserved)', () => {
+    const session = JSON.stringify({ csrfSecret: 's3cret', refreshToken: 'rt' });
+    const input = buildRedisEntry(
+      { name: 'set', args: ['session:abc', session, 'PX', 7200000] },
+      'main',
+      1,
+    );
+    const content = input.content as RedisEntryContent;
+    expect(content.args).toEqual(['session:abc', '[REDACTED]', '[REDACTED]', '[REDACTED]']);
+    expect(JSON.stringify(input.content)).not.toContain('s3cret');
+  });
+
+  it('records the real values with captureValues', () => {
+    const input = buildRedisEntry({ name: 'set', args: ['k', 'v', 'EX', 60] }, 'main', 1, {
+      captureValues: true,
+    });
+    expect((input.content as RedisEntryContent).args).toEqual(['k', 'v', 'EX', 60]);
+  });
+
+  it('redacts every argument of a credential-carrying command, key position included', () => {
+    expect(redactRedisArgs('AUTH', ['user', 'password'])).toEqual(['[REDACTED]', '[REDACTED]']);
+    expect(redactRedisArgs('HELLO', ['3', 'AUTH', 'u', 'p'])).toEqual([
+      '[REDACTED]',
+      '[REDACTED]',
+      '[REDACTED]',
+      '[REDACTED]',
+    ]);
+    expect(redactRedisArgs('GET', ['k'])).toEqual(['k']);
+    expect(redactRedisArgs('MULTI', [])).toEqual([]);
+    // Called directly, in any case: `auth` is still a credential command.
+    expect(redactRedisArgs('auth', ['user', 'password'])).toEqual(['[REDACTED]', '[REDACTED]']);
+  });
+
+  it('the watcher redacts by default and honours captureValues', async () => {
+    for (const [options, expected] of [
+      [{}, ['session:abc', '[REDACTED]']],
+      [{ captureValues: true }, ['session:abc', '{"token":"t"}']],
+    ] as const) {
+      const store = installStore();
+      const conn = fakeConnection('main');
+      const watcher = new RedisWatcher(fakeManager({ main: conn }), options);
+      watcher.start();
+      const client = conn.ioConnection as ReturnType<typeof fakeIoClient>;
+      await client.sendCommand({ name: 'set', args: ['session:abc', '{"token":"t"}'] });
+      await flush();
+      const [entry] = await store.list({ type: EntryType.Redis });
+      expect((entry!.content as RedisEntryContent).args).toEqual(expected);
+      watcher.stop();
+      clearStore();
+    }
   });
 });
 

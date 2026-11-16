@@ -92,6 +92,8 @@ export default class TelescopeWatchersProvider {
           captureBindings: config.query.captureBindings,
           ignoreConnections: config.query.ignoreConnections,
           normalize: config.query.normalize,
+          ignore: config.query.ignore,
+          ignoreTables: config.query.ignoreTables,
         }),
         emitter,
       );
@@ -210,6 +212,7 @@ export default class TelescopeWatchersProvider {
       ignoreConnections: config.redis.ignoreConnections,
       sampleRate: config.redis.sampleRate,
       floodWarnPerMinute: config.redis.floodWarnPerMinute,
+      captureValues: config.redis.captureValues,
     });
     try {
       watcher.start();

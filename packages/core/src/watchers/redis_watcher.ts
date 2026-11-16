@@ -49,7 +49,11 @@ export interface RedisManagerLike {
 export interface RedisEntryContent {
   /** The command name, upper-cased (e.g. `'GET'`). */
   command: string;
-  /** The command arguments, in order (redaction applies downstream). */
+  /**
+   * The command arguments, in order. Unless the watcher records values
+   * (`captureValues`), only the first one — the key, for every keyed command — is
+   * kept and the rest are `[REDACTED]`, arity preserved.
+   */
   args: unknown[];
   /** The connection name (e.g. `'main'`), or `null`. */
   connection: string | null;
@@ -138,6 +142,35 @@ export interface RedisWatcherOptions {
    * Set `0` to disable.
    */
   floodWarnPerMinute?: number;
+  /**
+   * Record every argument's real value. Default `false`: the command and its first
+   * argument (the key) are kept and every other argument becomes `[REDACTED]`, arity
+   * preserved — the values a `SET` writes are whatever the app stores (a session
+   * store writes the whole session, CSRF secret and tokens included). Commands that
+   * carry credentials (`AUTH`, `HELLO`, `CONFIG`, `ACL`, `MIGRATE`) have every
+   * argument redacted, key included.
+   */
+  captureValues?: boolean;
+}
+
+/** Placeholder a redacted argument is replaced with (same as the query watcher's bindings). */
+const REDACTED = '[REDACTED]';
+
+/** Commands whose arguments can carry credentials anywhere, so none of them is kept. */
+const SECRET_COMMANDS = new Set(['AUTH', 'HELLO', 'CONFIG', 'ACL', 'MIGRATE']);
+
+/**
+ * The arguments a redis entry records: all of them with `captureValues`, else the
+ * first one (the key) and `[REDACTED]` for the rest, arity preserved.
+ */
+export function redactRedisArgs(
+  command: string,
+  args: unknown[],
+  captureValues = false,
+): unknown[] {
+  if (captureValues) return args;
+  if (SECRET_COMMANDS.has(command.toUpperCase())) return args.map(() => REDACTED);
+  return args.map((arg, index) => (index === 0 ? arg : REDACTED));
 }
 
 /** Default flood threshold (entries/minute) — see {@link RedisWatcherOptions.floodWarnPerMinute}. */
@@ -190,6 +223,7 @@ export class RedisWatcher {
   private readonly ignoreConnections: Set<string>;
   private readonly sampleRate: number;
   private readonly floodWarnPerMinute: number;
+  private readonly captureValues: boolean;
 
   /** Flood accounting: entries recorded in the current minute, plus the loudest
    *  command/key seen, so the warning can name the actual culprit. */
@@ -212,6 +246,7 @@ export class RedisWatcher {
       0,
       options.floodWarnPerMinute ?? DEFAULT_FLOOD_WARN_PER_MINUTE,
     );
+    this.captureValues = options.captureValues ?? false;
   }
 
   /**
@@ -325,7 +360,10 @@ export class RedisWatcher {
     durationMs: number | null,
   ): void {
     this.accountForFlood(command);
-    safeRecord(() => buildRedisEntry(command, connection, durationMs), 'RedisWatcher');
+    safeRecord(
+      () => buildRedisEntry(command, connection, durationMs, { captureValues: this.captureValues }),
+      'RedisWatcher',
+    );
   }
 
   /**
@@ -404,15 +442,21 @@ function isManager(value: unknown): value is RedisManagerLike {
 }
 
 /** Map a captured Redis command to a telescope {@link RecordInput}. Exported so
- *  the entry shape can be unit-tested without a real ioredis client. */
+ *  the entry shape can be unit-tested without a real ioredis client. Arguments past
+ *  the key are redacted unless `options.captureValues` (see {@link redactRedisArgs}). */
 export function buildRedisEntry(
   command: RedisCommandLike,
   connection: string | null,
   durationMs: number | null,
+  options: { captureValues?: boolean } = {},
 ): RecordInput<RedisEntryContent> {
   const name =
     typeof command.name === 'string' ? command.name.toUpperCase() : String(command.name ?? '');
-  const args = Array.isArray(command.args) ? command.args : [];
+  const args = redactRedisArgs(
+    name,
+    Array.isArray(command.args) ? command.args : [],
+    options.captureValues ?? false,
+  );
   const traceId = currentTraceId();
   const content: RedisEntryContent = {
     command: name,

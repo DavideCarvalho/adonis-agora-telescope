@@ -39,7 +39,7 @@ keyset cursors and no built-in rollup tables. The `EntryQuery` uses a simple
 
 ### Optional fast paths
 
-On top of the six required methods, a store may implement four optional reads. The
+On top of the six required methods, a store may implement these optional reads. The
 dashboard detects each one by the method being present, and falls back to scanning `list`
 when it is absent, so a store without them is correct, just slower on a large table:
 
@@ -49,8 +49,21 @@ when it is absent, so a store without them is correct, just slower on a large ta
 | `countByBucket({ after, before, bucketMs, type? })` | the throughput chart: per-bucket, per-type counts | lists the window without content and buckets it in JS |
 | `countFamilies({ limit, type? })` | `topFamilies`: busiest `familyHash` values, ties to the most recently seen | lists the whole table without content and counts in JS |
 | `countTags({ limit, prefix? })` | `topTags`: most common tags, ties to the most recently seen | lists the whole table without content and counts in JS |
+| `listSlowest({ after, before, limit, tagGroups? })` | Pulse's slowest entries: the `limit` entries with the largest `durationMs`, ties by id | Pulse scans the window |
+| `countTraceRepeats({ after, before, type, minCount, tagGroups? })` | Pulse's N+1 card: per `(traceId, familyHash)` pair, how many entries, their summed `durationMs` and newest `createdAt`, when at least `minCount` | Pulse scans the window |
 
-The `memory` and `lucid` drivers implement all four. The redaction, sampling, streaming and
+Pulse covers its whole window from SQL when the store has `countByBucket`, `listSlowest` and
+`countTraceRepeats`; without all three it scans the newest 50,000 entries of the window
+(`truncated: true` past that).
+
+`tagGroups` (on `countByBucket`, `listSlowest` and `countTraceRepeats`) narrows to entries
+carrying, for each group, one of its tags. A console viewer limited to some organizations or
+apps keeps those fast paths only when the store sets `honorsTagGroups: true`; otherwise its
+screens scan. `list` may also honour `contentFields: string[]` (return a `content` holding only
+those top-level fields) and `omitContent`; both are hints, and ignoring them is correct.
+
+The `memory` driver implements the first four; the `lucid` driver implements all of them,
+`honorsTagGroups` and `contentFields` included. The redaction, sampling, streaming and
 OTel decorators the provider wraps around your store expose each method only when the store
 underneath has it.
 

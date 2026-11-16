@@ -27,6 +27,7 @@ export type {
   AppOption,
   AppScopeDescription,
   ConsoleAppScope,
+  KnownAppsOptions,
   SelectedAppScope,
 } from './app_scope.js';
 // — apps (a server collecting entries from several apps) —
@@ -36,6 +37,8 @@ export {
   appTag,
   consoleAppScope,
   describeAppScope,
+  KnownAppsCache,
+  knownApps,
   selectAppScope,
   viewerStore,
 } from './app_scope.js';

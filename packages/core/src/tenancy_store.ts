@@ -1,5 +1,14 @@
 import type { Entry, RecordInput } from './entry.js';
-import { type EntryQuery, forwardOptionalReads, type TelescopeStore } from './store.js';
+import {
+  type BucketCountQuery,
+  type BucketCountRow,
+  type EntryQuery,
+  forwardOptionalReads,
+  type SlowestQuery,
+  type TelescopeStore,
+  type TraceRepeatQuery,
+  type TraceRepeatRow,
+} from './store.js';
 import { currentTenantTags, type ResolvedTelescopeTenancy } from './tenancy.js';
 
 /**
@@ -48,10 +57,12 @@ export class TenantTaggingStore implements TelescopeStore {
 /**
  * A read-only view of a store narrowed to entries carrying one of `tags` (the tenants a console
  * viewer may see) and, for each extra group in `also`, one of that group's tags too (the apps the
- * viewer may see). It never forwards the store's aggregate fast paths (bucket/family/tag counts,
- * trace-id pages), so every aggregate the console shows is computed from the viewer's own entries
- * only: no cross-tenant counts. `get` answers `null` for an entry outside the scope. Writes are
- * refused.
+ * viewer may see). Every aggregate the console shows is computed from the viewer's own entries
+ * only: no cross-tenant counts. The store's windowed aggregate fast paths (bucket counts, slowest
+ * entries, per-trace repeats) are forwarded with the scope as `tagGroups` only when the store
+ * declares it honors them ({@link TelescopeStore.honorsTagGroups}); the others (family/tag
+ * counts, trace-id pages) never are. `get` answers `null` for an entry outside the scope. Writes
+ * are refused.
  */
 export class TenantScopedStore implements TelescopeStore {
   private readonly tags: Set<string>;
@@ -64,6 +75,30 @@ export class TenantScopedStore implements TelescopeStore {
   ) {
     this.tags = new Set(tags);
     this.also = also.map((group) => new Set(group));
+    if (inner.honorsTagGroups === true) {
+      const groups = [[...this.tags], ...this.also.map((group) => [...group])];
+      const self = this as unknown as Record<string, unknown>;
+      const { countByBucket, listSlowest, countTraceRepeats } = inner;
+      if (countByBucket !== undefined) {
+        self.countByBucket = (query: BucketCountQuery): Promise<BucketCountRow[]> =>
+          countByBucket.call(inner, {
+            ...query,
+            tagGroups: [...(query.tagGroups ?? []), ...groups],
+          });
+      }
+      if (listSlowest !== undefined) {
+        self.listSlowest = (query: SlowestQuery): Promise<Entry[]> =>
+          listSlowest.call(inner, { ...query, tagGroups: [...(query.tagGroups ?? []), ...groups] });
+      }
+      if (countTraceRepeats !== undefined) {
+        self.countTraceRepeats = (query: TraceRepeatQuery): Promise<TraceRepeatRow[]> =>
+          countTraceRepeats.call(inner, {
+            ...query,
+            tagGroups: [...(query.tagGroups ?? []), ...groups],
+          });
+      }
+      self.honorsTagGroups = true;
+    }
   }
 
   private visible(entry: Entry): boolean {

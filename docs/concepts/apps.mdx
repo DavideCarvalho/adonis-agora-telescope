@@ -76,6 +76,11 @@ export default defineConfig({
 ## API and CLI
 
 - `GET <path>/api/apps` lists the apps this viewer may pick: `{ enabled, tag, all, apps: [{ id, label }] }`.
+  For a viewer that sees every app, the list is the apps tagging the newest 1,000 entries of the
+  last hour (most common first), plus, on a control plane and for a viewer not limited to some
+  organizations, every app in the [fleet](/docs/telescope/concepts/fleet) (quiet ones
+  included), at most 200. It is cached for
+  30 seconds per organization scope.
 - Every API route accepts `?app=<id>`.
 - `node ace telescope:apps:list` lists the apps Telescope has entries for, and every `telescope:*`
   read accepts `--app <id>`.

@@ -8,7 +8,7 @@
  * Normalize an SQL string into a template: lowercase, collapse whitespace, and
  * replace string/number literals with `?` so only the query shape remains.
  */
-function normalizeSql(sql: string): string {
+export function normalizeSql(sql: string): string {
   return sql
     .toLowerCase()
     .replace(/'(?:[^']|'')*'/g, '?') // string literals
