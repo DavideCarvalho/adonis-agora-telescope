@@ -8,7 +8,7 @@ import {
   serverPrefix,
 } from './config.js';
 import { activeRemoteStores } from './remote_store.js';
-import { httpUrl, whoami } from './status.js';
+import { httpServer, whoami } from './status.js';
 
 const DOCS = 'https://davidecarvalho.github.io/agora/docs/telescope/concepts/central-server';
 const TRANSPORT_DOCS = 'https://davidecarvalho.github.io/agora/docs/telescope/concepts/transports';
@@ -93,10 +93,16 @@ export const topologyDoctorChecks: AgoraDoctorCheck[] = [
         return skip('Standalone: this app keeps its own telescope entries.');
       }
       if (topology.topology === 'tenant') {
-        const url = httpUrl(topology);
+        const server = httpServer(topology);
+        const where =
+          server === null
+            ? `over ${topology.transport.describe()}`
+            : server.current !== null
+              ? `to ${serverPrefix(server.current)}`
+              : 'to the server tenant.url resolves (looked up on first send)';
         return {
           status: 'ok',
-          message: `Sends entries as app ${JSON.stringify(topology.tenant.partition)} ${url !== null ? `to ${serverPrefix(url)}` : `over ${topology.transport.describe()}`}.`,
+          message: `Sends entries as app ${JSON.stringify(topology.tenant.partition)} ${where}.`,
         };
       }
       return {
@@ -176,13 +182,13 @@ export const topologyDoctorChecks: AgoraDoctorCheck[] = [
       if (isResult(state)) return state;
       const { topology } = state;
       if (topology.topology !== 'tenant') return skip('Not a tenant.');
-      const url = httpUrl(topology);
-      if (url === null) {
+      const server = httpServer(topology);
+      if (server === null) {
         return skip(
           `Entries go over ${topology.transport.describe()}: see "Transport reaches the broker".`,
         );
       }
-      return whoami({ ...topology.tenant, url });
+      return whoami({ ...topology.tenant, url: server });
     },
   },
   {

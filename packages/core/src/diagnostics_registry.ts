@@ -78,6 +78,13 @@ export interface DiagnosticEvent<TPayload = unknown> {
    * the full mapping (including the `payload.durationMs` fallback some libs use).
    */
   durationMs?: number;
+  /**
+   * The tenant app the event is about, when the process that coordinates an action emits it on
+   * behalf of another app (a control plane running a job for `billing`). Absent: this app's own.
+   * Recorded as the entry's `app:<app>` tag; anything but an app name (`[A-Za-z0-9_.-]{1,64}`)
+   * is ignored.
+   */
+  app?: string;
 }
 
 /** Strict structural validation of a diagnostics envelope. */

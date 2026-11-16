@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { runAsTelescopeWork } from '../self_scope.js';
+import { serverPrefix } from '../topology/config.js';
+import { ServerUrl } from '../topology/server_url.js';
 import { readToken, resetToken, type TenantTokenSource } from '../topology/verify.js';
 import { APP_HEADER } from '../topology/wire.js';
 import { markInternalFetch } from '../watchers/http_client_watcher.js';
@@ -9,8 +11,11 @@ import type { DiscoveryMap, ServiceDirectory } from './directory.js';
 
 /** Options of {@link DiscoveryClient}. */
 export interface DiscoveryClientOptions {
-  /** The central server's route prefix (`https://telescope.example.com/_telescope/v1`). */
-  prefix: string;
+  /**
+   * The central server's route prefix (`https://telescope.example.com/_telescope/v1`), or the
+   * tenant's lazy server URL (resolved on the first poll, looked up again when unreachable).
+   */
+  prefix: string | ServerUrl;
   token: TenantTokenSource;
   /** This app's name (advisory: the token decides). */
   partition: string;
@@ -69,13 +74,18 @@ export class DiscoveryClient {
   private controller: AbortController | null = null;
   private loop: Promise<void> | null = null;
   private readonly fetchImpl: typeof fetch;
+  private readonly server: ServerUrl;
 
   /** Who the snapshot belongs to: this server and this app (whose token decides the scope). */
   private readonly scope: string;
 
   constructor(private readonly options: DiscoveryClientOptions) {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
-    this.scope = `${options.prefix}#${options.partition}`;
+    this.server =
+      options.prefix instanceof ServerUrl ? options.prefix : new ServerUrl(options.prefix);
+    // A lazy URL is not known at boot: its snapshot is scoped to the app alone.
+    const known = this.server.current;
+    this.scope = `${known !== null ? serverPrefix(known) : 'tenant.url'}#${options.partition}`;
   }
 
   /** Load the snapshot (synchronously, before the first request), then start polling. */
@@ -103,10 +113,11 @@ export class DiscoveryClient {
     this.controller = controller;
     const timer = setTimeout(() => controller.abort(), waitMs + 10_000);
     try {
+      const prefix = serverPrefix(await this.server.get());
       const token = await runAsTelescopeWork(() => readToken(this.options.token));
       const response = await runAsTelescopeWork(() =>
         this.fetchImpl(
-          `${this.options.prefix}/discovery?${params}`,
+          `${prefix}/discovery?${params}`,
           markInternalFetch({
             headers: { authorization: `Bearer ${token}`, [APP_HEADER]: this.options.partition },
             signal: controller.signal,
@@ -114,6 +125,8 @@ export class DiscoveryClient {
         ),
       );
       if (response.status === 401) resetToken(this.options.token);
+      // The server moved: the next poll looks the URL up again.
+      if (response.status === 404 && this.server.lazy) await this.server.refresh();
       if (!response.ok) {
         this.options.onError?.(`the central server answered ${response.status} to /discovery`);
         return false;
@@ -133,6 +146,9 @@ export class DiscoveryClient {
       }
       return true;
     } catch (error) {
+      if (!this.stopped && this.server.lazy && this.server.current !== null) {
+        await this.server.refresh();
+      }
       if (!this.stopped) {
         this.options.onError?.(
           `could not read the discovery map: ${error instanceof Error ? error.message : String(error)}`,

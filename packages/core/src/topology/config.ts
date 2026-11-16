@@ -1,3 +1,4 @@
+import { isServerUrlInput, type ServerUrlInput } from './server_url.js';
 import { httpTransport } from './transports/http.js';
 import { isTelescopeTransport } from './transports/index.js';
 import type { TelescopeTransport } from './transports/types.js';
@@ -50,9 +51,11 @@ export interface TelescopeTenantOptions {
   /**
    * The control plane: its origin (`https://telescope.example.com`, the default path is added)
    * or the full prefix (`https://telescope.example.com/_telescope/v1`). The same as
-   * `transport: transports.http({ url })`; leave it out when `transport` is set.
+   * `transport: transports.http({ url })`; leave it out when `transport` is set. A function
+   * (`controlPlaneUrl({ issuer, resource: 'urn:agora:telescope' })`) is resolved when the first
+   * batch is sent, and looked up again when the server cannot be reached.
    */
-  url?: string;
+  url?: ServerUrlInput;
   /** This app's name. The server takes it from the token; this names the app to a shared secret. */
   partition: string;
   /**
@@ -180,9 +183,11 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
     }
     if (
       config.transport === undefined &&
-      (typeof tenant.url !== 'string' || !/^https?:\/\//.test(tenant.url) || !validUrl(tenant.url))
+      (!isServerUrlInput(tenant.url) || (typeof tenant.url === 'string' && !validUrl(tenant.url)))
     ) {
-      throw new Error(`${PREFIX} tenant.url must be an absolute http(s) URL`);
+      throw new Error(
+        `${PREFIX} tenant.url must be an absolute http(s) URL, or a function returning one`,
+      );
     }
     if (typeof tenant.partition !== 'string' || tenant.partition === '') {
       throw new Error(`${PREFIX} tenant.partition is required`);
@@ -207,7 +212,7 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
       topology,
       tenant,
       buffer: resolveBufferOptions(tenant.buffer),
-      transport: config.transport ?? httpTransport({ url: tenant.url as string }),
+      transport: config.transport ?? httpTransport({ url: tenant.url as ServerUrlInput }),
     };
   }
   return { topology: 'standalone' };

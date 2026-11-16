@@ -10,6 +10,7 @@ import {
   resolveBufferOptions,
   type TenantBufferOptions,
 } from './config.js';
+import type { ServerUrlInput } from './server_url.js';
 import { HttpTenantChannel } from './transports/http.js';
 import { errorMessage, type TenantChannel } from './transports/types.js';
 import { readToken, resetToken, type TenantTokenSource } from './verify.js';
@@ -37,8 +38,11 @@ export interface RemoteStoreStats {
 
 /** Options of a {@link RemoteTelescopeStore}. */
 export interface RemoteTelescopeStoreOptions {
-  /** The control plane's URL, for the HTTP channel (when no `channel` is given). */
-  url?: string;
+  /**
+   * The control plane's URL, for the HTTP channel (when no `channel` is given), or a function
+   * resolving it on the first send.
+   */
+  url?: ServerUrlInput;
   /**
    * How batches are sent: a transport's tenant channel (or a promise of one, built at boot).
    * Default HTTP to `url`.
@@ -105,7 +109,7 @@ export class RemoteTelescopeStore implements TelescopeStore {
     this.batchSize = this.options.batchSize;
     if (config.channel !== undefined) {
       this.channel = Promise.resolve(config.channel);
-    } else if (typeof config.url === 'string') {
+    } else if (typeof config.url === 'string' || typeof config.url === 'function') {
       this.channel = Promise.resolve(
         new HttpTenantChannel(config.url, this.options.timeoutMs, config.fetch),
       );
