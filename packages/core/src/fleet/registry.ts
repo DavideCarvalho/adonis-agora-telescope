@@ -7,7 +7,12 @@ import {
   type FleetDeriveOptions,
   type InstanceRecord,
 } from './derive.js';
-import type { InstanceHeartbeat, InstanceState, ShippingStats } from './heartbeat.js';
+import {
+  DEFAULT_ROLE,
+  type InstanceHeartbeat,
+  type InstanceState,
+  type ShippingStats,
+} from './heartbeat.js';
 import type { FleetStore } from './store.js';
 
 /** Options of {@link FleetRegistry}. */
@@ -79,6 +84,8 @@ export class FleetRegistry {
       checks: heartbeat.checks,
       shipping: heartbeat.shipping,
       url: heartbeat.url ?? null,
+      // Older senders send no role: they only reported their web process.
+      role: heartbeat.role ?? DEFAULT_ROLE,
     };
     try {
       await this.store.upsert(record);
@@ -124,6 +131,10 @@ export interface InstanceReporterOptions {
   checks?: HealthChecks | null;
   /** The URL other apps reach this one at (`fleet.url`), or `null`. */
   url?: string | null;
+  /** `web`, or the ace command this process runs (`durable:work`). Default `web`. */
+  role?: string;
+  /** The state of the first heartbeat. Default `starting`. */
+  state?: InstanceState;
   /** The shipping stats of a tenant's buffer, or `null`. */
   shipping?: () => ShippingStats | null;
   /** Where a heartbeat goes: the tenant's buffer, or the local registry. */
@@ -141,7 +152,8 @@ export interface InstanceReporterOptions {
 export class InstanceReporter {
   readonly instanceId: string;
   readonly bootedAt: number;
-  private state: InstanceState = 'starting';
+  readonly role: string;
+  private state: InstanceState;
   private version: string | null = null;
   private versionResolved = false;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -151,6 +163,8 @@ export class InstanceReporter {
 
   constructor(private readonly options: InstanceReporterOptions) {
     this.now = options.now ?? Date.now;
+    this.role = options.role ?? DEFAULT_ROLE;
+    this.state = options.state ?? 'starting';
     this.bootedAt = options.bootedAt ?? this.now();
     const host = options.host.replace(/[^\x21-\x7e]/g, '-').slice(0, 64) || 'host';
     this.instanceId =
@@ -205,6 +219,7 @@ export class InstanceReporter {
       checks,
       shipping: this.options.shipping?.() ?? null,
       url: this.options.url ?? null,
+      role: this.role,
     };
   }
 

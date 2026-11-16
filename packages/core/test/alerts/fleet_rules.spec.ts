@@ -112,6 +112,48 @@ describe('instances-up', () => {
   });
 });
 
+describe('instances-up per role', () => {
+  it('counts web instances by default: a live worker does not hide a web outage', async () => {
+    const h = harness([{ type: 'instances-up', below: 1, for: '0s' }]);
+    await h.beat('shop', 'web-1', { state: 'draining' });
+    await h.beat('shop', 'worker-1', { role: 'durable:work' });
+    // A worker-only app has no web instance to miss.
+    await h.beat('jobs', 'worker-2', { role: 'durable:work' });
+    await h.service.evaluateOnce();
+    expect(states(h.sent)).toEqual(['firing:shop']);
+    expect(h.sent[0]?.fleet?.detail).toBe('no instance is up');
+  });
+
+  it("role: a worker command, or '*' for every role", async () => {
+    const h = harness([
+      { type: 'instances-up', app: 'shop', role: 'durable:work', below: 1, for: '0s' },
+      { type: 'instances-up', app: 'shop', role: '*', below: 2, for: '0s' },
+    ]);
+    await h.beat('shop', 'web-1');
+    await h.beat('shop', 'worker-1', { role: 'durable:work', state: 'draining' });
+    await h.service.evaluateOnce();
+    expect(h.sent.map((p) => p.fleet?.detail)).toEqual([
+      'no durable:work instance is up',
+      '1 instance up (expected at least 2)',
+    ]);
+    expect(h.sent[0]?.fleet?.role).toBe('durable:work');
+  });
+
+  it('a restart loop names the role of the process that keeps restarting', async () => {
+    const h = harness([{ type: 'restart-loop' }]);
+    for (const [i, ago] of [1, 3, 5].entries()) {
+      await h.beat('shop', `worker-${i}`, {
+        host: 'box',
+        role: 'durable:work',
+        bootedAt: new Date(h.now() - ago * MIN).toISOString(),
+      });
+    }
+    await h.service.evaluateOnce();
+    expect(h.sent[0]?.fleet).toMatchObject({ host: 'box', role: 'durable:work' });
+    expect(h.sent[0]?.fleet?.detail).toMatch(/^box \(durable:work\) restarted 3 times/);
+  });
+});
+
 describe('check-down', () => {
   const down = (since: number): CheckState => ({
     name: 'redis',

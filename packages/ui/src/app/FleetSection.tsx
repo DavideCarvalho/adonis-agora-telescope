@@ -1,6 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { MetricCard, MetricGrid } from '../agora-kit/blocks/metric-card';
+import { Toolbar } from '../agora-kit/blocks/page-header';
 import { Badge } from '../agora-kit/ui/badge';
+import { Button } from '../agora-kit/ui/button';
 import type {
   FleetApp,
   FleetCheckStatus,
@@ -57,6 +59,38 @@ const INCIDENT_TONE: Record<FleetCheckStatus, string> = {
   unknown: 'border-border bg-panel-2',
 };
 
+/** The role of a process; older servers send none (they only knew web processes). */
+export const roleOf = (item: { role?: string }): string => item.role ?? 'web';
+
+/** Roles in display order: `web` first, then by name. */
+function compareRoles(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a === 'web') return -1;
+  if (b === 'web') return 1;
+  return a.localeCompare(b);
+}
+
+/** Every role across the apps, web first. */
+export function rolesOf(apps: FleetApp[]): string[] {
+  const roles = new Set<string>();
+  for (const app of apps) for (const instance of app.instances) roles.add(roleOf(instance));
+  return [...roles].sort(compareRoles);
+}
+
+/** `app` narrowed to the processes of `role` (`null`: every role), its counts recounted. */
+export function appForRole(app: FleetApp, role: string | null): FleetApp {
+  if (role === null) return app;
+  const instances = app.instances.filter((i) => roleOf(i) === role);
+  const counts: FleetApp['counts'] = { up: 0, starting: 0, draining: 0, gone: 0 };
+  for (const instance of instances) counts[instance.status] += 1;
+  return {
+    ...app,
+    counts,
+    instances,
+    restartLoops: app.restartLoops.filter((loop) => roleOf(loop) === role),
+  };
+}
+
 function shortVersion(version: string | null): string {
   if (version === null) return '—';
   return version.length > 12 ? version.slice(0, 12) : version;
@@ -68,6 +102,11 @@ function InstanceRow({ instance, now }: { instance: FleetInstance; now: number }
     <TableRow className={instance.status === 'gone' ? 'opacity-60' : undefined}>
       <TableCell className="mono text-xs text-fg" title={instance.instanceId}>
         {instance.host}
+      </TableCell>
+      <TableCell>
+        <Badge variant={roleOf(instance) === 'web' ? 'neutral' : 'info'} data-testid="fleet-role">
+          {roleOf(instance)}
+        </Badge>
       </TableCell>
       <TableCell>
         <Badge variant={STATUS_VARIANT[instance.status]}>{instance.status}</Badge>
@@ -228,12 +267,15 @@ function AppPanel({
 
         {app.restartLoops.map((loop) => (
           <div
-            key={loop.host}
+            key={`${loop.host}:${roleOf(loop)}`}
             className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2 text-sm"
             data-testid="fleet-restart-loop"
           >
             <span className="font-medium text-bad">Restart loop</span>{' '}
             <span className="mono text-fg">{loop.host}</span>{' '}
+            {roleOf(loop) !== 'web' && (
+              <span className="mono text-muted-foreground">({roleOf(loop)}) </span>
+            )}
             <span className="text-muted-foreground">
               restarted {loop.restarts} times in {humanDuration(now - loop.since)}
             </span>
@@ -259,6 +301,7 @@ function AppPanel({
               <TableHeader>
                 <TableRow>
                   <TableHead>Host</TableHead>
+                  <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Version</TableHead>
                   <TableHead>Uptime</TableHead>
@@ -284,15 +327,66 @@ function AppPanel({
   );
 }
 
+function FleetApps({
+  view,
+  role,
+  onRole,
+  onOpenEntry,
+}: {
+  view: FleetView;
+  role: string | null;
+  onRole: (role: string | null) => void;
+  onOpenEntry: (id: string) => void;
+}) {
+  const roles = rolesOf(view.apps);
+  // A role no longer in the fleet (another App picker choice) falls back to every role.
+  const active = role !== null && roles.includes(role) ? role : null;
+  const apps = view.apps
+    .map((app) => appForRole(app, active))
+    .filter((app) => app.instances.length > 0);
+  return (
+    <div className="flex flex-col gap-4">
+      {roles.length > 1 && (
+        <Toolbar label="role">
+          <Button
+            size="chip"
+            variant="chip"
+            aria-pressed={active === null}
+            onClick={() => onRole(null)}
+          >
+            All roles
+          </Button>
+          {roles.map((r) => (
+            <Button
+              size="chip"
+              key={r}
+              variant="chip"
+              aria-pressed={active === r}
+              onClick={() => onRole(r)}
+            >
+              {r}
+            </Button>
+          ))}
+        </Toolbar>
+      )}
+      {apps.map((app) => (
+        <AppPanel key={app.app} app={app} now={view.now} onOpenEntry={onOpenEntry} />
+      ))}
+    </div>
+  );
+}
+
 /**
  * Fleet: per app, how many instances are up, starting, draining or gone, each instance (host,
- * version, uptime, last heartbeat, health, send buffer), the deploy timeline, restart loops and
+ * role, version, uptime, last heartbeat, health, send buffer), the deploy timeline, restart loops and
  * failing health checks with the exceptions recorded since. Follows the App picker; re-read every
  * heartbeat interval.
  */
 export function FleetSection({ onOpenEntry }: { onOpenEntry: (id: string) => void }) {
   const state = useFleet();
   const { reload } = state;
+  // `null`: every role. Web servers and workers (`durable:work`, `queue:work`) side by side.
+  const [role, setRole] = useState<string | null>(null);
   useEffect(() => {
     const timer = setInterval(reload, REFRESH_MS);
     return () => clearInterval(timer);
@@ -302,7 +396,7 @@ export function FleetSection({ onOpenEntry }: { onOpenEntry: (id: string) => voi
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Fleet"
-        description="Instances per app from their heartbeats: state, versions, deploys, restart loops and health checks."
+        description="Instances per app from their heartbeats (web servers and workers): state, versions, deploys, restart loops and health checks."
       />
       <AsyncBlock
         state={state}
@@ -315,11 +409,7 @@ export function FleetSection({ onOpenEntry }: { onOpenEntry: (id: string) => voi
               <p className="text-sm text-muted-foreground">{view.notice}</p>
             </Panel>
           ) : (
-            <div className="flex flex-col gap-4">
-              {view.apps.map((app) => (
-                <AppPanel key={app.app} app={app} now={view.now} onOpenEntry={onOpenEntry} />
-              ))}
-            </div>
+            <FleetApps view={view} role={role} onRole={setRole} onOpenEntry={onOpenEntry} />
           )
         }
       </AsyncBlock>

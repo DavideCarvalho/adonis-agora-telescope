@@ -116,6 +116,68 @@ describe('Fleet page', () => {
     expect(onOpenEntry).toHaveBeenCalledWith('entry-1');
   });
 
+  it('shows each instance role and filters by role (web servers and workers)', async () => {
+    const mixed: FleetApp = {
+      ...shop,
+      counts: { up: 2, starting: 0, draining: 1, gone: 0 },
+      instances: [
+        instance({ instanceId: 'w', host: 'web-a', role: 'web' }),
+        instance({ instanceId: 'd', host: 'worker-a', role: 'durable:work' }),
+        instance({
+          instanceId: 'q',
+          host: 'worker-b',
+          role: 'queue:work',
+          status: 'draining',
+          state: 'draining',
+        }),
+      ],
+      restartLoops: [
+        {
+          host: 'worker-a',
+          role: 'durable:work',
+          restarts: 3,
+          since: NOW - 4 * MIN,
+          lastBootAt: NOW,
+        },
+      ],
+      checks: [],
+    };
+    renderFleet({ enabled: true, notice: null, now: NOW, apps: [mixed], self: null });
+    expect(await screen.findByText('web-a')).toBeTruthy();
+    expect(screen.getAllByTestId('fleet-role').map((b) => b.textContent)).toEqual([
+      'web',
+      'durable:work',
+      'queue:work',
+    ]);
+    expect(screen.getByTestId('fleet-restart-loop').textContent).toMatch(
+      /worker-a\s*\(durable:work\)\s*restarted 3 times/,
+    );
+
+    const filter = screen.getByRole('button', { name: 'queue:work' });
+    expect(screen.getByRole('button', { name: 'All roles' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    fireEvent.click(filter);
+    expect(filter.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByText('web-a')).toBeNull();
+    expect(screen.queryByTestId('fleet-restart-loop')).toBeNull();
+    expect(screen.getAllByTestId('fleet-role').map((b) => b.textContent)).toEqual(['queue:work']);
+    // Counts follow the filter: the queue worker is draining, nothing of that role is up.
+    const card = (label: string) => screen.getByText(label).parentElement?.textContent ?? '';
+    expect(card('Draining')).toMatch(/1/);
+    expect(card('Up')).toMatch(/0/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'All roles' }));
+    expect(screen.getByText('web-a')).toBeTruthy();
+  });
+
+  it('an older server without roles shows every instance as web, with no role filter', async () => {
+    renderFleet({ enabled: true, notice: null, now: NOW, apps: [shop], self: null });
+    expect(await screen.findByText('web-a')).toBeTruthy();
+    expect(screen.getAllByTestId('fleet-role').every((b) => b.textContent === 'web')).toBe(true);
+    expect(screen.queryByRole('button', { name: 'All roles' })).toBeNull();
+  });
+
   it('shows why there is no fleet', async () => {
     renderFleet({
       enabled: false,

@@ -8,7 +8,7 @@ import {
 } from '../stores/sql_schema.js';
 import type { CheckState } from './checks.js';
 import type { InstanceRecord } from './derive.js';
-import type { ShippingStats } from './heartbeat.js';
+import { DEFAULT_ROLE, normalizeRole, type ShippingStats } from './heartbeat.js';
 
 /** Where the fleet keeps its instances. */
 export interface FleetStore {
@@ -106,6 +106,7 @@ interface Payload {
   checks: CheckState[];
   shipping: ShippingStats | null;
   url?: string | null;
+  role?: string;
 }
 
 const toInt = (value: unknown) => (typeof value === 'number' ? value : Number(value ?? 0));
@@ -165,6 +166,7 @@ export class LucidFleetStore implements FleetStore {
       checks: record.checks,
       shipping: record.shipping,
       url: record.url ?? null,
+      role: record.role ?? DEFAULT_ROLE,
     };
     const row = {
       id,
@@ -224,6 +226,8 @@ export class LucidFleetStore implements FleetStore {
         checks: Array.isArray(payload.checks) ? payload.checks : [],
         shipping: payload.shipping ?? null,
         url: payload.url ?? null,
+        // Rows written before roles existed were web processes.
+        role: normalizeRole(payload.role),
       };
     });
   }

@@ -6,7 +6,8 @@ description: How many instances of each app are up, starting, draining or gone, 
 
 import { Callout } from 'fumadocs-ui/components/callout'
 
-Every instance of an app sends a heartbeat every 15 seconds. The control plane (or a standalone
+Every instance of an app sends a heartbeat every 15 seconds: the web server and each worker
+(`node ace durable:work`, `node ace queue:work`). The control plane (or a standalone
 app, for its own replicas) keeps the last one of each instance and shows the fleet: per app, how
 many instances are up, starting, draining or gone, which versions they run, the deploys, the hosts
 in a restart loop and the [health checks](/docs/telescope/concepts/health-checks) that are failing.
@@ -18,9 +19,10 @@ It is on by default. Nothing to add for the defaults.
 | Field | From |
 | --- | --- |
 | app | The token on a control plane (never the heartbeat). `fleet.app` on a standalone app. |
+| role | `web` for the HTTP server, the command's name for a worker (`durable:work`). `fleet.role` overrides it. |
 | host | `fleet.host`, else `HOSTNAME`, else the OS hostname (a pod's name in Kubernetes). |
 | version | `fleet.version`, else `GIT_SHA`, `COMMIT_SHA`, `SOURCE_VERSION`, `RENDER_GIT_COMMIT`, `RAILWAY_GIT_COMMIT_SHA`, `VERCEL_GIT_COMMIT_SHA`, `HEROKU_SLUG_COMMIT` or `K_REVISION`, else the app's `package.json` version. |
-| state | `starting` while the app boots, `ready` once it serves, `draining` from the shutdown signal on. |
+| state | `starting` while the app boots, `ready` once it serves (a worker: once its command starts), `draining` from the shutdown signal (`SIGTERM`, `SIGINT`) on. |
 | boot time | When the process started. |
 | checks | The state of each [health check](/docs/telescope/concepts/health-checks). |
 | buffer | On a tenant: entries waiting, dropped and sent, and how far behind the buffer is. |
@@ -28,6 +30,34 @@ It is on by default. Nothing to add for the defaults.
 A tenant sends its heartbeat with its entries, over the same
 [transport](/docs/telescope/concepts/transports) (HTTP, queue, BullMQ, Redis or durable). It never
 takes a place in the entry buffer, so a full buffer cannot hide the instance.
+
+## Workers
+
+An ace command that keeps running (`static options = { staysAlive: true }`, as `durable:work` and
+`queue:work` set) is a worker: it shows up in the fleet under its command's name, next to the web
+instances. One-off commands (migrations, `telescope:*`, `make:*`) and tests send nothing.
+
+A worker runs the [health checks](/docs/telescope/concepts/health-checks) and sends their state
+with its heartbeat. It mounts no `health` route and sends no `fleet.url`, so service discovery
+never routes to it.
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  fleet: {
+    // The default: the web server and long-running ace commands.
+    report: ['web', 'worker'],
+  },
+})
+```
+
+| `report` entry | Sends a heartbeat |
+| --- | --- |
+| `'web'` | The HTTP server. |
+| `'worker'` | An ace command with `staysAlive`. |
+| `'scheduler:run'` | That ace command, `staysAlive` or not. |
+| `'console'` | Every ace command. |
+
+`report: ['web']` keeps workers out of the fleet.
 
 ## States
 
@@ -72,7 +102,8 @@ export default defineConfig({
 | `goneAfter` | `3` | Missed heartbeats before an instance is gone. |
 | `retention` | `'7d'` | How long a gone instance is kept, with its deploy and restart history. |
 | `restartLoop` | `{ restarts: 3, within: '10m' }` | |
-| `report` | `['web']` | Which environments send a heartbeat. Add `'console'` for workers started with `node ace`. |
+| `report` | `['web', 'worker']` | Which processes send a heartbeat (see [Workers](#workers)). |
+| `role` | `web`, or the command's name | This process's role in the fleet. |
 | `store` | `'auto'` | Where instances are kept: a `telescope_instances` table next to a Lucid entries store (same connection and `schema`), else memory. `'memory'`, or a store of your own. |
 
 `fleet: false` turns heartbeats and the fleet off.
@@ -92,7 +123,8 @@ and each one sees the others. With the memory store each replica only sees itsel
 picker or for every app:
 
 - the instance counts by state;
-- each instance: host, version, uptime, last heartbeat, health and send buffer;
+- each instance: host, role, version, uptime, last heartbeat, health and send buffer;
+- a role filter (all roles, `web`, `durable:work`, ...) when the fleet runs more than one;
 - the deploy timeline with rollout progress;
 - hosts in a restart loop;
 - each failing check, since when, on how many instances, and the exception families recorded since
@@ -115,7 +147,7 @@ for the apps the caller may see.
 
 | Rule | Fires when |
 | --- | --- |
-| `{ type: 'instances-up', app?, below, for? }` | Fewer than `below` instances of an app are up for `for` (default `'1m'`). `below: 1` pages when none is left. |
+| `{ type: 'instances-up', app?, role?, below, for? }` | Fewer than `below` instances of an app are up for `for` (default `'1m'`). `below: 1` pages when none is left. Counts `role` instances: `'web'` (default), a worker's command (`'durable:work'`) or `'*'`. |
 | `{ type: 'restart-loop', app? }` | A host of the app is in a restart loop. |
 | `{ type: 'check-down', check?, app?, for }` | A health check has been down for `for`. |
 | `{ type: 'entries-dropped', app?, window, threshold? }` | The app's instances dropped at least `threshold` (default 1) entries within `window`. |

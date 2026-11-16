@@ -143,7 +143,7 @@ type AlertRule =
       minSamples?: number   // guard a percentile page against a single slow request; default 1
     }
   // Over the fleet (see "Fleet rules" below)
-  | { type: 'instances-up'; app?: string; below: number; for?: string }
+  | { type: 'instances-up'; app?: string; role?: string; below: number; for?: string }
   | { type: 'restart-loop'; app?: string }
   | { type: 'check-down'; check?: string; app?: string; for: string }
   | { type: 'entries-dropped'; app?: string; window: string; threshold?: number }
@@ -229,7 +229,7 @@ resolves on its own.
 
 | Rule | Fires when |
 | --- | --- |
-| `instances-up` | Fewer than `below` instances of `app` (or of any app, without `app`) are up for `for` (default `'1m'`, so a rolling deploy does not page). `below: 1` pages when an app has none left. |
+| `instances-up` | Fewer than `below` instances of `app` (or of any app, without `app`) are up for `for` (default `'1m'`, so a rolling deploy does not page). `below: 1` pages when an app has none left. Counts the `role` instances: `'web'` (default), a worker such as `'durable:work'`, or `'*'` for all. |
 | `restart-loop` | A host booted `fleet.restartLoop.restarts` times within `fleet.restartLoop.within` (default 3 in 10 minutes). |
 | `check-down` | A [health check](/docs/telescope/concepts/health-checks) (`check`, or any) has been `down` on a live instance for `for`. |
 | `entries-dropped` | The app's instances dropped at least `threshold` (default 1) entries within `window`: their buffer to the control plane overflowed. |
@@ -243,6 +243,7 @@ export default defineConfig({
   rules: [
     { type: 'instances-up', app: 'shop', below: 2, for: '2m' },
     { type: 'instances-up', below: 1 },
+    { type: 'instances-up', app: 'shop', role: 'durable:work', below: 1 },
     { type: 'restart-loop' },
     { type: 'check-down', check: 'redis', for: '2m' },
     { type: 'entries-dropped', window: '10m', threshold: 100 },

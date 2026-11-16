@@ -60,6 +60,7 @@ export class FleetApi {
           configured: checks !== null,
           state: runtime.reporter?.currentState ?? null,
           instanceId: runtime.reporter?.instanceId ?? null,
+          role: runtime.reporter?.role ?? null,
           ...report,
         },
       });

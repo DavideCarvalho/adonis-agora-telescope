@@ -909,6 +909,8 @@ export interface FleetInstance {
     lagMs: number;
     lastError: string | null;
   } | null;
+  /** `web`, or the ace command the process runs (`durable:work`). Absent from older servers: web. */
+  role?: string;
   status: FleetInstanceStatus;
   uptimeMs: number;
   health: FleetCheckStatus;
@@ -926,6 +928,8 @@ export interface FleetDeploy {
 
 export interface FleetRestartLoop {
   host: string;
+  /** Absent from older servers: web. */
+  role?: string;
   restarts: number;
   since: number;
   lastBootAt: number;
@@ -955,6 +959,8 @@ export interface FleetApp {
   counts: Record<FleetInstanceStatus, number>;
   versions: Array<{ version: string | null; instances: number }>;
   instances: FleetInstance[];
+  /** Instance counts per role, web first. Absent from older servers. */
+  roles?: Array<{ role: string; counts: Record<FleetInstanceStatus, number> }>;
   deploys: FleetDeploy[];
   restartLoops: FleetRestartLoop[];
   checks: FleetIncident[];
@@ -967,5 +973,10 @@ export interface FleetView {
   notice: string | null;
   now: number;
   apps: FleetApp[];
-  self: { instanceId: string; state: string; checks: FleetCheckState[] } | null;
+  self: {
+    instanceId: string;
+    role?: string;
+    state: string;
+    checks: FleetCheckState[];
+  } | null;
 }

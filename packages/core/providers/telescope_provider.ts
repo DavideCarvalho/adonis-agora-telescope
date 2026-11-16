@@ -30,7 +30,13 @@ import {
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import type { ExtensionContext } from '../src/extension/types.js';
 import { HealthChecks } from '../src/fleet/checks.js';
-import { resolveSelfApp, resolveVersion } from '../src/fleet/config.js';
+import {
+  type ReportingCommand,
+  reportingRole,
+  resolveSelfApp,
+  resolveVersion,
+} from '../src/fleet/config.js';
+import type { InstanceState } from '../src/fleet/heartbeat.js';
 import { type ProbeRouter, registerProbeRoutes } from '../src/fleet/probes.js';
 import { FleetRegistry, InstanceReporter } from '../src/fleet/registry.js';
 import { type FleetStore, LucidFleetStore, MemoryFleetStore } from '../src/fleet/store.js';
@@ -66,6 +72,17 @@ import type { ControlPlaneChannel, TransportContext } from '../src/topology/tran
 import { installPropagation } from '../src/tracing/index.js';
 import { setOtelSpanReader } from '../src/tracing/scope.js';
 import { type LoggerLike, LogsWatcher } from '../src/watchers/logs_watcher.js';
+
+/** The slice of ace's kernel the fleet uses (`@adonisjs/ace`, bound as `ace` by `node ace`). */
+interface AceKernelLike {
+  executing(callback: (command: unknown, isMain: boolean) => Promise<void> | void): unknown;
+}
+
+/** The slice of an ace command class the fleet reads. */
+interface AceCommandClassLike {
+  commandName?: unknown;
+  options?: { staysAlive?: unknown };
+}
 
 /**
  * Wires `@adonis-agora/telescope` into the AdonisJS application.
@@ -104,6 +121,7 @@ export default class TelescopeProvider {
   private stopPropagation: (() => void) | null = null;
   private discovery: RunningDiscovery | null = null;
   private discoveryPublisher: DiscoveryPublisher | null = null;
+  private stopDrainOnSignal: (() => void) | null = null;
 
   constructor(protected app: ApplicationService) {}
 
@@ -263,7 +281,8 @@ export default class TelescopeProvider {
       this.fleet.startPruning();
     }
     const environment = (this.app as { getEnvironment?(): string }).getEnvironment?.() ?? 'unknown';
-    if (fleetConfig.enabled && fleetConfig.report.includes(environment)) {
+    const startReporter = async (role: string, state: InstanceState): Promise<void> => {
+      if (this.reporter !== null) return;
       const appRoot = (this.app as { appRoot?: URL }).appRoot;
       const remote = this.remote;
       const fleet = this.fleet;
@@ -271,7 +290,10 @@ export default class TelescopeProvider {
       this.reporter = new InstanceReporter({
         intervalMs: fleetConfig.intervalMs,
         host: fleetConfig.host,
-        url: fleetConfig.url,
+        // A worker serves no HTTP: discovery must not route other apps to it.
+        url: environment === 'console' ? null : fleetConfig.url,
+        role,
+        state,
         version: () => resolveVersion(fleetConfig.version, appRoot),
         checks: this.healthChecks,
         ...(remote !== null ? { shipping: () => remote.shippingStats() } : {}),
@@ -282,6 +304,24 @@ export default class TelescopeProvider {
         onError: onError('the heartbeat failed'),
       });
       this.reporter.start();
+      setTelescopeFleet({
+        fleet: this.fleet,
+        healthChecks: this.healthChecks,
+        reporter: this.reporter,
+      });
+    };
+    if (fleetConfig.enabled && environment === 'console') {
+      // `node ace <command>`: whether it reports depends on the command, known once ace runs it.
+      // The app has booted by then: a worker is ready as soon as its command starts.
+      await this.onAceCommand(async (command) => {
+        const role = reportingRole(fleetConfig, environment, command);
+        if (role === null) return;
+        await startReporter(role, 'ready');
+        this.drainOnSignal();
+      });
+    } else if (fleetConfig.enabled) {
+      const role = reportingRole(fleetConfig, environment);
+      if (role !== null) await startReporter(role, 'starting');
     }
     setTelescopeFleet({
       fleet: this.fleet,
@@ -289,7 +329,9 @@ export default class TelescopeProvider {
       reporter: this.reporter,
     });
     const probes = config.health;
-    if (probes.readiness !== null || probes.liveness !== null) {
+    // A console process (an ace worker) serves no HTTP: its checks ride its heartbeat only.
+    const serves = environment !== 'console' && environment !== 'repl';
+    if (serves && (probes.readiness !== null || probes.liveness !== null)) {
       const runtime = getTelescopeRuntime();
       if (probes.readiness !== null) runtime.probePaths.add(probes.readiness);
       if (probes.liveness !== null) runtime.probePaths.add(probes.liveness);
@@ -299,6 +341,59 @@ export default class TelescopeProvider {
         state: this.reporter?.currentState ?? 'ready',
       }));
     }
+  }
+
+  /**
+   * A worker drains from the shutdown signal on, like the HTTP server, while its command finishes
+   * what it runs (`durable:work` drains its executions before it terminates the app). Only
+   * observes the signal: a command that does not handle it still exits as it would without us.
+   */
+  private drainOnSignal(): void {
+    if (this.stopDrainOnSignal !== null) return;
+    const signals = ['SIGTERM', 'SIGINT'] as const;
+    const onSignal = (signal: NodeJS.Signals) => {
+      void this.reporter?.setState('draining').catch(() => {});
+      // First in line (prepended), so every other listener is still registered here.
+      if (process.listenerCount(signal) === 1) {
+        stop();
+        process.kill(process.pid, signal);
+      }
+    };
+    const stop = () => {
+      for (const signal of signals) process.off(signal, onSignal);
+      this.stopDrainOnSignal = null;
+    };
+    for (const signal of signals) process.prependListener(signal, onSignal);
+    this.stopDrainOnSignal = stop;
+  }
+
+  /**
+   * Call `handler` with the main ace command, right before it runs (`node ace durable:work`).
+   * Nothing happens outside ace (no `ace` kernel bound).
+   */
+  private async onAceCommand(
+    handler: (command: ReportingCommand) => Promise<void> | void,
+  ): Promise<void> {
+    let kernel: AceKernelLike | undefined;
+    try {
+      kernel = (await this.app.container.make('ace' as never)) as AceKernelLike | undefined;
+    } catch {
+      return;
+    }
+    if (kernel === undefined || typeof kernel.executing !== 'function') return;
+    kernel.executing(async (command, isMain) => {
+      if (!isMain) return;
+      const ctor = (command as { constructor?: AceCommandClassLike }).constructor;
+      const name = ctor?.commandName;
+      if (typeof name !== 'string' || name === '') return;
+      const staysAlive =
+        (command as { staysAlive?: unknown }).staysAlive ?? ctor?.options?.staysAlive;
+      try {
+        await handler({ name, staysAlive: staysAlive === true });
+      } catch {
+        // Reporting must never keep a command from running.
+      }
+    });
   }
 
   /** `fleet.store`: a table next to a Lucid entries store (`'auto'`), memory, or a given store. */
@@ -652,6 +747,7 @@ export default class TelescopeProvider {
     this.stopPropagation?.();
     this.stopPropagation = null;
     // Draining first: a tenant's last heartbeat goes out with the final flush below.
+    this.stopDrainOnSignal?.();
     await this.reporter?.setState('draining').catch(() => {});
     this.reporter?.stop();
     this.reporter = null;

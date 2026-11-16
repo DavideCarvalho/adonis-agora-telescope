@@ -57,6 +57,7 @@ export class TelescopeFleetList extends TelescopeCommand {
       this.table(
         app.instances.map((i) => ({
           host: i.host,
+          role: i.role,
           status: i.status,
           version: i.version ?? '',
           uptime: shortDuration(i.uptimeMs),
@@ -64,7 +65,7 @@ export class TelescopeFleetList extends TelescopeCommand {
           health: i.health,
           buffered: i.shipping?.buffered ?? '',
         })),
-        ['host', 'status', 'version', 'uptime', 'lastSeen', 'health', 'buffered'],
+        ['host', 'role', 'status', 'version', 'uptime', 'lastSeen', 'health', 'buffered'],
       );
       for (const deploy of app.deploys.slice(-5)) {
         this.logger.info(
@@ -73,7 +74,7 @@ export class TelescopeFleetList extends TelescopeCommand {
       }
       for (const loop of app.restartLoops) {
         this.logger.warning(
-          `restart loop: ${loop.host} restarted ${loop.restarts} times since ${new Date(loop.since).toISOString()}`,
+          `restart loop: ${loop.host} (${loop.role}) restarted ${loop.restarts} times since ${new Date(loop.since).toISOString()}`,
         );
       }
       for (const check of app.checks) {
