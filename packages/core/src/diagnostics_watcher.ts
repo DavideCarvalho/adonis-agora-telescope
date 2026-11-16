@@ -9,6 +9,7 @@ import {
 import { EntryType, type RecordInput } from './entry.js';
 import { failureMessage, reportFailure } from './report_failure.js';
 import type { TelescopeStore } from './store.js';
+import { PARTITION_RE } from './topology/ingest.js';
 
 /** Telescope entry `type` produced by this watcher. */
 export const DIAGNOSTIC_ENTRY_TYPE = EntryType.Diagnostic;
@@ -201,7 +202,8 @@ export function buildDiagnosticEntry(msg: DiagnosticEvent): RecordInput<Diagnost
       ...(traceId ? [`trace:${traceId}`] : []),
       // The tenant app the event is about: the console's App picker lists it. A tenant with
       // `relay: true` keeps it on the way to the control plane (else the server re-tags it).
-      ...(typeof msg.app === 'string' && msg.app !== '' ? [`app:${msg.app}`] : []),
+      // Only a valid app name (the one the producer and the server accept) is tagged.
+      ...(typeof msg.app === 'string' && PARTITION_RE.test(msg.app) ? [`app:${msg.app}`] : []),
     ],
     content,
     // Carry the producer-resolved trace id (it knows the emitting context best).

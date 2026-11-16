@@ -363,8 +363,8 @@ describe('DiagnosticsWatcher', () => {
     watcher.stop();
   });
 
-  it('ignores an empty or non-string app', () => {
-    for (const app of ['', 42, null]) {
+  it('ignores an app that is not a valid app name', () => {
+    for (const app of ['', 42, null, 'two words', 'a/b', 'x'.repeat(65)]) {
       const input = buildDiagnosticEntry(envelope({ app: app as never }));
       expect(input.tags?.some((tag) => tag.startsWith('app:'))).toBe(false);
     }

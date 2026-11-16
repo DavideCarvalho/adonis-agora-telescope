@@ -116,7 +116,8 @@ Watchers, redaction, sampling and tenancy tags all run in the app, before an ent
 
 ### Finding the server through authkit
 
-Instead of a fixed URL, `url` can ask authkit where the server is:
+Instead of a fixed URL, `url` can ask authkit where the server is (`controlPlaneUrl` ships in
+`@adonis-agora/authkit-client` 1.0.0-rc.12, the `rc` tag):
 
 ```ts title="config/telescope.ts (an app)"
 import { authkitTenantToken, controlPlaneUrl } from '@adonis-agora/authkit-client'
@@ -130,7 +131,8 @@ tenant: {
 
 The URL is looked up when the first batch is sent, then kept. If the server cannot be reached or
 answers 404, it is looked up again and the batch is retried at the new address. Any
-`() => Promise<string>` works the same way. `telescope:server:status` and `agora:doctor` resolve
+`() => Promise<string>` works the same way, such as
+`url: async () => env.get('TELESCOPE_SERVER_URL')`. `telescope:server:status` and `agora:doctor` resolve
 it too.
 
 Entries go over HTTP by default. To send them through `@adonisjs/queue`, BullMQ, a Redis stream
