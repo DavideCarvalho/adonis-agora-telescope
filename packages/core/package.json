@@ -214,7 +214,7 @@
     "@opentelemetry/api": "1.10.0",
     "@opentelemetry/context-async-hooks": "3.1.1",
     "@opentelemetry/core": "3.1.1",
-    "@opentelemetry/instrumentation-undici": "0.35.0",
+    "@opentelemetry/instrumentation-undici": "0.35.1",
     "@opentelemetry/sdk-logs": "3.1.1",
     "@opentelemetry/sdk-metrics": "3.1.1",
     "@opentelemetry/sdk-trace": "3.1.1",
