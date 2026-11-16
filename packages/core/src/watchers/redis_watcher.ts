@@ -169,7 +169,7 @@ export function redactRedisArgs(
   captureValues = false,
 ): unknown[] {
   if (captureValues) return args;
-  if (SECRET_COMMANDS.has(command)) return args.map(() => REDACTED);
+  if (SECRET_COMMANDS.has(command.toUpperCase())) return args.map(() => REDACTED);
   return args.map((arg, index) => (index === 0 ? arg : REDACTED));
 }
 

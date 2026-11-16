@@ -186,6 +186,8 @@ describe('RedisWatcher — argument values', () => {
     ]);
     expect(redactRedisArgs('GET', ['k'])).toEqual(['k']);
     expect(redactRedisArgs('MULTI', [])).toEqual([]);
+    // Called directly, in any case: `auth` is still a credential command.
+    expect(redactRedisArgs('auth', ['user', 'password'])).toEqual(['[REDACTED]', '[REDACTED]']);
   });
 
   it('the watcher redacts by default and honours captureValues', async () => {
