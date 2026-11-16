@@ -65,7 +65,12 @@ export type {
   QueryEntryContent,
 } from './lucid_query_watcher.js';
 // — Lucid query watcher (the headline watcher) —
-export { buildQueryEntry, DB_QUERY_EVENT, LucidQueryWatcher } from './lucid_query_watcher.js';
+export {
+  buildQueryEntry,
+  DB_QUERY_EVENT,
+  LucidQueryWatcher,
+  QueryIgnoreMatcher,
+} from './lucid_query_watcher.js';
 export type { MailEntryContent, MailSentEventLike } from './mail_watcher.js';
 // — mail watcher —
 export { buildMailEntry, MAIL_SENT_EVENT, MailWatcher } from './mail_watcher.js';
@@ -130,7 +135,12 @@ export type {
   RedisManagerLike,
   RedisWatcherOptions,
 } from './redis_watcher.js';
-export { buildRedisEntry, formatFloodWarning, RedisWatcher } from './redis_watcher.js';
+export {
+  buildRedisEntry,
+  formatFloodWarning,
+  RedisWatcher,
+  redactRedisArgs,
+} from './redis_watcher.js';
 export type {
   RegisteredSchedule,
   ScheduledRun,

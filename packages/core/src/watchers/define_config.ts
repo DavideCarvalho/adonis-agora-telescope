@@ -83,6 +83,21 @@ export interface QueryWatcherConfig {
    * raw SQL verbatim (no grouping across differing literals). Default `true`.
    */
   normalize?: boolean;
+  /**
+   * SQL statements that are never recorded — e.g. a job runner polling its table every
+   * second. Matched against the normalized template (lowercased, whitespace collapsed,
+   * literals replaced by `?`): a string matches as a PREFIX (normalized the same way,
+   * so `'select * from "durable_workflow_runs"'` drops every select on that table), a
+   * RegExp is tested as-is. Same shape as `redis.ignoreKeys`.
+   */
+  ignore?: Array<string | RegExp>;
+  /**
+   * Tables whose statements are never recorded: the first table a `select` reads
+   * from, or the table an `insert` / `update` / `delete` writes. Case-insensitive,
+   * with or without the schema (`'durable_workflow_runs'` also matches
+   * `"public"."durable_workflow_runs"`).
+   */
+  ignoreTables?: string[];
 }
 
 /**
@@ -101,6 +116,13 @@ export interface RedisWatcherConfig {
   sampleRate?: number;
   /** Warn once when recording exceeds this many entries/minute. Default 600; 0 disables. */
   floodWarnPerMinute?: number;
+  /**
+   * Record every argument's real value. Default `false`: the command and its key are
+   * kept and every other argument is recorded as `[REDACTED]` (arity preserved), the
+   * same stance as `query.captureBindings` — a `SET` from a session store would
+   * otherwise record the whole session, secrets and tokens included.
+   */
+  captureValues?: boolean;
 }
 
 /** Default flood threshold for the redis watcher (entries/minute). */
@@ -113,6 +135,7 @@ export interface ResolvedRedisWatcherConfig {
   ignoreConnections: string[];
   sampleRate: number;
   floodWarnPerMinute: number;
+  captureValues: boolean;
 }
 
 /** The fully-resolved `query` watcher config (no optionals). */
@@ -121,6 +144,8 @@ export interface ResolvedQueryWatcherConfig {
   captureBindings: boolean;
   ignoreConnections: string[];
   normalize: boolean;
+  ignore: Array<string | RegExp>;
+  ignoreTables: string[];
 }
 
 /** Default slow-query threshold (ms). Databases are hotter than outbound HTTP, so
@@ -279,6 +304,8 @@ export function resolveConfig(
       captureBindings: query.captureBindings ?? false,
       ignoreConnections: query.ignoreConnections ?? [],
       normalize: query.normalize ?? true,
+      ignore: query.ignore ?? [],
+      ignoreTables: query.ignoreTables ?? [],
     },
     redis: {
       ignoreCommands: redis.ignoreCommands ?? [],
@@ -286,6 +313,7 @@ export function resolveConfig(
       ignoreConnections: redis.ignoreConnections ?? [],
       sampleRate: redis.sampleRate ?? 1,
       floodWarnPerMinute: redis.floodWarnPerMinute ?? DEFAULT_REDIS_FLOOD_WARN_PER_MINUTE,
+      captureValues: redis.captureValues ?? false,
     },
     httpClient: {
       slowMs: httpClient.slowMs ?? DEFAULT_HTTP_CLIENT_SLOW_MS,

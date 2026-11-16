@@ -1,7 +1,7 @@
 import { currentTraceId } from '../context_accessor.js';
 import { EntryType, type RecordInput } from '../entry.js';
 import type { EmitterLike, Watcher } from './emitter.js';
-import { queryFamilyHash } from './query_family_hash.js';
+import { normalizeSql, queryFamilyHash } from './query_family_hash.js';
 import { safeRecord } from './record.js';
 
 /** The Lucid event name this watcher subscribes to. */
@@ -24,6 +24,82 @@ export interface LucidQueryWatcherOptions {
   ignoreConnections?: string[];
   /** Normalize SQL into the `familyHash` grouping key. Default `true`. */
   normalize?: boolean;
+  /** SQL patterns whose queries are not recorded (see {@link QueryIgnoreMatcher}). */
+  ignore?: Array<string | RegExp>;
+  /** Tables whose queries are not recorded (see {@link QueryIgnoreMatcher}). */
+  ignoreTables?: string[];
+}
+
+/** Ignore decisions cached per raw SQL string; bounded like the family-hash cache. */
+const MAX_CACHED_DECISIONS = 2_000;
+const MAX_CACHED_SQL_LENGTH = 4_096;
+
+/** The table a statement reads or writes first: `select … from t`, `insert into t`, `update t`, `delete from t`. */
+const PRIMARY_TABLE = /^(?:select\b.*?\bfrom|insert\s+into|update|delete\s+from)\s+([^\s(,;]+)/;
+
+/** A table name without quoting, lowercased: `"public"."Users"` → `public.users`. */
+function bareTable(name: string): string {
+  return name.replace(/["`\[\]]/g, '').toLowerCase();
+}
+
+/**
+ * Decides which SQL statements the query watcher drops, against the normalized
+ * template (lowercased, whitespace collapsed, literals replaced by `?`):
+ * - `ignore`: a string matches as a PREFIX of the template (the pattern is normalized
+ *   the same way, so case and spacing do not matter); a RegExp is tested against the
+ *   template as-is.
+ * - `ignoreTables`: the statement's primary table (the first `from` of a select, the
+ *   target of an insert/update/delete), with or without its schema.
+ *
+ * Exported for tests. Decisions are cached per SQL string: an app runs the same few
+ * hundred statements, so normalizing each one once keeps this off the hot path.
+ */
+export class QueryIgnoreMatcher {
+  private readonly prefixes: string[];
+  private readonly patterns: RegExp[];
+  private readonly tables: Set<string>;
+  private readonly decisions = new Map<string, boolean>();
+
+  constructor(ignore: Array<string | RegExp> = [], ignoreTables: string[] = []) {
+    this.prefixes = ignore.filter((p): p is string => typeof p === 'string').map(normalizeSql);
+    this.patterns = ignore.filter((p): p is RegExp => p instanceof RegExp);
+    this.tables = new Set(ignoreTables.map(bareTable));
+  }
+
+  /** Whether nothing is configured (the watcher then skips the check entirely). */
+  get empty(): boolean {
+    return this.prefixes.length === 0 && this.patterns.length === 0 && this.tables.size === 0;
+  }
+
+  ignores(sql: string): boolean {
+    if (this.empty) return false;
+    const cached = this.decisions.get(sql);
+    if (cached !== undefined) return cached;
+    const decision = this.decide(normalizeSql(sql));
+    if (sql.length <= MAX_CACHED_SQL_LENGTH) {
+      if (this.decisions.size >= MAX_CACHED_DECISIONS) this.decisions.clear();
+      this.decisions.set(sql, decision);
+    }
+    return decision;
+  }
+
+  private decide(template: string): boolean {
+    for (const prefix of this.prefixes) if (template.startsWith(prefix)) return true;
+    for (const pattern of this.patterns) {
+      // A /g or /y pattern keeps `lastIndex` between calls; reset it so each test starts fresh.
+      pattern.lastIndex = 0;
+      if (pattern.test(template)) return true;
+    }
+    if (this.tables.size > 0) {
+      const table = PRIMARY_TABLE.exec(template)?.[1];
+      if (table !== undefined) {
+        const bare = bareTable(table);
+        const unqualified = bare.slice(bare.lastIndexOf('.') + 1);
+        if (this.tables.has(bare) || this.tables.has(unqualified)) return true;
+      }
+    }
+    return false;
+  }
 }
 
 /**
@@ -99,6 +175,7 @@ export class LucidQueryWatcher implements Watcher {
   private readonly captureBindings: boolean;
   private readonly ignoreConnections: Set<string>;
   private readonly normalize: boolean;
+  private readonly ignore: QueryIgnoreMatcher;
 
   constructor(options: LucidQueryWatcherOptions = {}) {
     this.slowMs = options.slowMs ?? DEFAULT_SLOW_MS;
@@ -107,6 +184,7 @@ export class LucidQueryWatcher implements Watcher {
       (options.ignoreConnections ?? []).map((name) => name.toLowerCase()),
     );
     this.normalize = options.normalize ?? true;
+    this.ignore = new QueryIgnoreMatcher(options.ignore, options.ignoreTables);
   }
 
   start(emitter: EmitterLike): void {
@@ -125,6 +203,7 @@ export class LucidQueryWatcher implements Watcher {
     // An ignored connection is dropped before any work — a telescope query that
     // hits the store's own DB, a replica used only for the timeline, etc.
     if (this.ignoreConnections.has(data.connection.toLowerCase())) return;
+    if (this.ignore.ignores(data.sql)) return;
     safeRecord(
       () =>
         buildQueryEntry(data, {
