@@ -39,6 +39,7 @@ import {
 import type { InstanceState } from '../src/fleet/heartbeat.js';
 import { type ProbeRouter, registerProbeRoutes } from '../src/fleet/probes.js';
 import { FleetRegistry, InstanceReporter } from '../src/fleet/registry.js';
+import { observeShutdownSignals } from '../src/fleet/signals.js';
 import { type FleetStore, LucidFleetStore, MemoryFleetStore } from '../src/fleet/store.js';
 import { isGlobalOtelRegistered } from '../src/otel/detect.js';
 import { OverloadGuard, type PauseController } from '../src/overload_guard.js';
@@ -350,21 +351,13 @@ export default class TelescopeProvider {
    */
   private drainOnSignal(): void {
     if (this.stopDrainOnSignal !== null) return;
-    const signals = ['SIGTERM', 'SIGINT'] as const;
-    const onSignal = (signal: NodeJS.Signals) => {
+    const stop = observeShutdownSignals(() => {
       void this.reporter?.setState('draining').catch(() => {});
-      // First in line (prepended), so every other listener is still registered here.
-      if (process.listenerCount(signal) === 1) {
-        stop();
-        process.kill(process.pid, signal);
-      }
-    };
-    const stop = () => {
-      for (const signal of signals) process.off(signal, onSignal);
+    });
+    this.stopDrainOnSignal = () => {
+      stop();
       this.stopDrainOnSignal = null;
     };
-    for (const signal of signals) process.prependListener(signal, onSignal);
-    this.stopDrainOnSignal = stop;
   }
 
   /**
