@@ -74,7 +74,8 @@ export default defineConfig({
   // ignore: ['select * from "durable_workflow_runs"'] — SQL prefixes / RegExps (normalized SQL).
   // ignoreTables: ['job_heartbeats'] — the table a statement reads first or writes.
   // (The store's own INSERTs/reads/prunes are excluded automatically.)
-  // redis: { captureValues: false } — the key is kept, every other argument is '[REDACTED]';
+  // redis: { captureValues: false } — the key (first argument) is kept, every other argument is '[REDACTED]'
+  // (arity preserved); AUTH / HELLO / CONFIG / ACL / MIGRATE redact every argument, key included;
   // true records the real values (a session store's SET carries the whole session).
 })
 ```
