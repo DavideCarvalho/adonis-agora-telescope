@@ -1,5 +1,14 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.24
+
+### Minor Changes
+
+- [#355](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/355) [`e121ef5`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/e121ef582d167cf6c666829e73f50cd09e679781) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Diagnostic events about another app, and a server URL found at runtime.
+  
+  - A diagnostics envelope with `app` (from `@adonis-agora/diagnostics` 1.0.0-rc.6: the tenant app the event is about) records its entry tagged `app:<app>` (when it is a valid app name, `[A-Za-z0-9_.-]{1,64}`), so the console's App picker lists that app. On a tenant the tag reaches the server with `tenant.relay: true`, as any relayed entry.
+  - `tenant.url` and `transports.http({ url })` accept a function, such as `controlPlaneUrl({ issuer, resource: 'urn:agora:telescope' })` from `@adonis-agora/authkit-client` (1.0.0-rc.12). It is resolved when the first batch is sent (not at boot), kept, and looked up again (its `refresh()` when it has one) when the server cannot be reached or answers 404, retrying the batch at the new URL. `telescope:server:status`, `agora:doctor` (`telescope.server-reachable`) and service discovery resolve it too. Bad strings and anything that is neither a string nor a function are still refused at boot. `httpUrl()` now returns a promise; `httpServer()` returns the shared resolver.
+
 ## 1.0.0-rc.23
 
 ### Minor Changes
