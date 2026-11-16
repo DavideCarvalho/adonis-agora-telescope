@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.23
+
+### Minor Changes
+
+- [#353](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/353) [`f2bb5af`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/f2bb5af853dad5974fa9d65b996c6bd8f504fc7f) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Relaying entries for other apps. A token with `telescope:ingest:relay` (any app), `telescope:ingest:relay:<app>` (that app only) or `telescope:*` may send entries on behalf of other apps: an entry tagged `app:<name>` is stored as `<name>`'s, tagged `via:<sender>`, with its own `env:` tag (else the sender's environment), under the id `<sender>~<name>:<id>` so two relayers never overwrite each other. An entry without an `app:` tag is the sender's own, as before; an `app:` tag the token may not relay for (or an invalid one) rejects the entry. Without the capability nothing changes: `app:`, `env:` and now `via:` tags a sender sets are replaced from the token. On the app side, `tenant: { relay: true }` tags the app's own entries `app:<partition>` and leaves the `app:` tags its code sets untouched (also in `tenant.local`), so the App picker lists the relayed apps. `whoami` answers `relay` (`'*'` or a list), and `telescope:server:status` / `agora:doctor` report it, warning when `tenant.relay` is on but the token may not relay.
+
 ## 1.0.0-rc.22
 
 ### Patch Changes
