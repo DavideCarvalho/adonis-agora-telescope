@@ -29,6 +29,12 @@ describe('config', () => {
       defineConfig({ topology: 'tenant', tenant: { url: 'ftp://x', partition: 'a', token: 't' } }),
     ).toThrow(/absolute http/);
     expect(() =>
+      defineConfig({
+        topology: 'tenant',
+        tenant: { url: 'http://x', partition: 'a', token: 't', relay: 'yes' as never },
+      }),
+    ).toThrow(/tenant.relay must be a boolean/);
+    expect(() =>
       defineConfig({ topology: 'tenant', tenant: { url: 'http://', partition: 'a', token: 't' } }),
     ).toThrow(/absolute http/);
     expect(() =>

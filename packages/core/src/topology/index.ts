@@ -41,9 +41,12 @@ export type {
 } from './verify.js';
 export {
   canIngest,
+  canRelayFor,
   checkVerifiedTenant,
   INGEST_CAPABILITY,
+  RELAY_CAPABILITY,
   readToken,
+  relayScope,
   resetToken,
   resolveTenantVerifier,
   sharedSecretVerifier,

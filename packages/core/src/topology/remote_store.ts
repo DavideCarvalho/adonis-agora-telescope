@@ -46,6 +46,12 @@ export interface RemoteTelescopeStoreOptions {
   channel?: TenantChannel | Promise<TenantChannel>;
   partition: string;
   token: TenantTokenSource;
+  /**
+   * Relaying for other apps: an entry already tagged `app:<name>` is sent (and kept in `tee`) as
+   * it is, and one without an `app:` tag is tagged `app:<partition>`. Off, tags are never touched
+   * (the server drops a sender's `app:` tags unless its token may relay).
+   */
+  relay?: boolean;
   buffer?: TenantBufferOptions;
   /** Also record every entry here (and read from it), so the app's own console keeps working. */
   tee?: TelescopeStore | null;
@@ -149,9 +155,17 @@ export class RemoteTelescopeStore implements TelescopeStore {
   }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
+    if (this.config.relay === true) input = this.ownAppTag(input);
     const entry = this.tee !== null ? await this.tee.record(input) : this.localEntry(input);
     this.enqueue(entry as Entry);
     return entry;
+  }
+
+  /** A relayer's own entry (no `app:` tag yet) gets `app:<partition>`; a relayed one is kept. */
+  private ownAppTag<TContent>(input: RecordInput<TContent>): RecordInput<TContent> {
+    const tags = input.tags ?? [];
+    if (tags.some((tag) => tag.startsWith('app:'))) return input;
+    return { ...input, tags: [...tags, `app:${this.config.partition}`] };
   }
 
   private localEntry<TContent>(input: RecordInput<TContent>): Entry<TContent> {

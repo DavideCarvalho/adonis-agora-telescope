@@ -217,7 +217,161 @@ describe('server: ingest', () => {
     expect((await handler.ingest({ token: 'old', body: { entries: [] } })).status).toBe(401);
     expect(await handler.whoami({ token: 'new', app: 'spoofed' })).toEqual({
       status: 200,
-      body: { partition: 'shop', environment: 'staging' },
+      // `telescope:*` implies relaying for any app.
+      body: { partition: 'shop', environment: 'staging', relay: '*' },
+    });
+  });
+});
+
+describe('server: relaying entries for other apps', () => {
+  function relaySetup() {
+    const store = new InMemoryTelescopeStore();
+    const handler = createIngestHandler({
+      verifyTenant: sharedSecretVerifier({
+        partitions: {
+          durable: {
+            secret: 'durable-secret',
+            environment: 'production',
+            capabilities: ['telescope:ingest:relay'],
+          },
+          scoped: {
+            secret: 'scoped-secret',
+            capabilities: ['telescope:ingest', 'telescope:ingest:relay:shop'],
+          },
+          admin: { secret: 'admin-secret', capabilities: ['telescope:*'] },
+          other: { secret: 'other-secret', capabilities: ['telescope:ingest:relay'] },
+          shop: { secret: 'shop-secret', environment: 'production' },
+          billing: 'billing-secret',
+        },
+      }),
+      store: () => store,
+    });
+    const send = (token: string, app: string, entries: unknown[]) =>
+      handler.ingest({ token, app, body: { version: 1, entries } });
+    return { store, handler, send };
+  }
+
+  it('stores an entry tagged app:<name> as that app, with via:<relayer>', async () => {
+    const { store, send } = relaySetup();
+    const res = await send('durable-secret', 'durable', [
+      wire('1', { tags: ['workflow:charge', 'app:shop'] }),
+      wire('2', { tags: ['workflow:own'] }),
+    ]);
+    expect(res.body).toEqual({ accepted: 2, duplicates: 0, rejected: 0 });
+    const relayed = await store.get('durable~shop:1');
+    // No env: tag on the entry: the environment comes from the relayer's token.
+    expect(relayed?.tags).toEqual(['workflow:charge', 'app:shop', 'env:production', 'via:durable']);
+    // Without an app: tag the entry is the relayer's own, as before.
+    expect((await store.get('durable:2'))?.tags).toEqual([
+      'workflow:own',
+      'app:durable',
+      'env:production',
+    ]);
+    expect(await store.list({ tag: 'app:shop' })).toHaveLength(1);
+  });
+
+  it("keeps a relayed entry's env: tag; a relayer naming itself is not relaying", async () => {
+    const { store, send } = relaySetup();
+    await send('durable-secret', 'durable', [
+      wire('1', { tags: ['app:billing', 'env:staging'] }),
+      wire('2', { tags: ['app:durable', 'env:staging', 'via:someone'] }),
+    ]);
+    expect((await store.get('durable~billing:1'))?.tags).toEqual([
+      'app:billing',
+      'env:staging',
+      'via:durable',
+    ]);
+    expect((await store.get('durable:2'))?.tags).toEqual(['app:durable', 'env:production']);
+  });
+
+  it('without the capability, app:/env:/via: tags are replaced from the token (no spoofing)', async () => {
+    const { store, send } = relaySetup();
+    const res = await send('billing-secret', 'billing', [
+      wire('1', { tags: ['app:shop', 'env:production', 'via:durable', 'keep:me'] }),
+    ]);
+    expect(res.body).toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
+    const rows = await store.list();
+    expect(rows.map((r) => [r.id, r.tags])).toEqual([['billing:1', ['keep:me', 'app:billing']]]);
+  });
+
+  it('a scoped relay (telescope:ingest:relay:<app>) relays only for that app', async () => {
+    const { store, send } = relaySetup();
+    const res = await send('scoped-secret', 'scoped', [
+      wire('1', { tags: ['app:shop'] }),
+      wire('2', { tags: ['app:billing'] }),
+      wire('3'),
+    ]);
+    // Another app is refused, never silently stored as the relayer's.
+    expect(res.body).toEqual({ accepted: 2, duplicates: 0, rejected: 1 });
+    expect((await store.list()).map((r) => r.id).sort()).toEqual(['scoped:3', 'scoped~shop:1']);
+  });
+
+  it('telescope:* relays too; invalid or ambiguous app tags are rejected', async () => {
+    const { store, send } = relaySetup();
+    const res = await send('admin-secret', 'admin', [
+      wire('1', { tags: ['app:shop'] }),
+      wire('2', { tags: ['app:bad name'] }),
+      wire('3', { tags: ['app:shop', 'app:billing'] }),
+      wire('4', { tags: ['app:shop', 'env:no spaces'] }),
+      wire('5', { tags: ['app:shop', 'env:a', 'env:b'] }),
+    ]);
+    expect(res.body).toEqual({ accepted: 1, duplicates: 0, rejected: 4 });
+    expect((await store.get('admin~shop:1'))?.tags).toEqual(['app:shop', 'via:admin']);
+
+    // `<relayer>~<app>:<id>` past the store's 255-character id limit is rejected, not renamed.
+    const long = createIngestHandler({
+      verifyTenant: () => ({ partition: 'r'.repeat(64), capabilities: ['telescope:*'] }),
+      store: () => store,
+    });
+    expect(
+      (
+        await long.ingest({
+          token: 't',
+          body: { entries: [wire('x'.repeat(128), { tags: [`app:${'s'.repeat(64)}`] })] },
+        })
+      ).body,
+    ).toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
+  });
+
+  it('dedupe: per relayer and relayed app; never collides with the app itself or another relayer', async () => {
+    const { store, send } = relaySetup();
+    const relayed = [wire('a', { tags: ['app:shop'] })];
+    expect((await send('durable-secret', 'durable', relayed)).body).toMatchObject({ accepted: 1 });
+    // A retry of the same relayed entry is a duplicate.
+    expect((await send('durable-secret', 'durable', relayed)).body).toEqual({
+      accepted: 0,
+      duplicates: 1,
+      rejected: 0,
+    });
+    // Another relayer with the same id for the same app, and the app itself: separate entries.
+    expect((await send('other-secret', 'other', relayed)).body).toMatchObject({ accepted: 1 });
+    expect((await send('shop-secret', 'shop', [wire('a')])).body).toMatchObject({ accepted: 1 });
+    // The relayer's own `a` is yet another one.
+    expect((await send('durable-secret', 'durable', [wire('a')])).body).toMatchObject({
+      accepted: 1,
+    });
+    expect((await store.list()).map((r) => r.id).sort()).toEqual([
+      'durable:a',
+      'durable~shop:a',
+      'other~shop:a',
+      'shop:a',
+    ]);
+    expect(await store.list({ tag: 'app:shop' })).toHaveLength(3);
+  });
+
+  it('whoami reports what the token may relay', async () => {
+    const { handler } = relaySetup();
+    expect((await handler.whoami({ token: 'durable-secret', app: 'durable' })).body).toEqual({
+      partition: 'durable',
+      environment: 'production',
+      relay: '*',
+    });
+    expect((await handler.whoami({ token: 'scoped-secret', app: 'scoped' })).body).toEqual({
+      partition: 'scoped',
+      relay: ['shop'],
+    });
+    expect((await handler.whoami({ token: 'billing-secret', app: 'billing' })).body).toEqual({
+      partition: 'billing',
     });
   });
 });

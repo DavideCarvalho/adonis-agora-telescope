@@ -41,6 +41,13 @@ export class TelescopeServerStatus extends BaseCommand {
     if (status.topology === 'tenant') {
       this.logger.info(`Server: ${status.server}`);
       this.logger.info(`App:    ${status.partition}`);
+      if (status.as?.relay !== undefined) {
+        this.logger.info(
+          `Relay:  ${status.as.relay === '*' ? 'any app' : status.as.relay.join(', ')}`,
+        );
+      } else if (status.relaying === true) {
+        this.logger.info('Relay:  on here, not allowed by the token');
+      }
       if (status.accepted) this.logger.success(status.message);
       else this.logger.error(status.message);
       return;

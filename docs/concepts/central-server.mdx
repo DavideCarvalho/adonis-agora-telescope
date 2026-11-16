@@ -188,6 +188,50 @@ tenant: { url, partition: 'shop', token: env.get('TELESCOPE_SECRET_SHOP') }
 verifyTenant: () => import('#auth/telescope_verifier'),
 ```
 
+## Relaying for other apps
+
+A service that runs work for other apps (a durable control plane running every app's workflows)
+can send their entries itself, and the console still shows each entry under its own app. Give its
+token the relay capability:
+
+```sh
+# Any app
+node ace authkit:client create --client-id=durable --partition=durable --capability=telescope:ingest:relay
+# Only shop and billing
+node ace authkit:client create --client-id=durable --partition=durable \
+  --capability=telescope:ingest:relay:shop --capability=telescope:ingest:relay:billing
+```
+
+`telescope:*` relays for any app too. With a shared secret, pass the same strings in
+`capabilities`.
+
+Turn relaying on in the sender's config, and tag each entry with the app it belongs to:
+
+```ts title="config/telescope.ts (the relaying app)"
+tenant: { url, partition: 'durable', token, relay: true }
+```
+
+```ts
+await telescope.record({
+  type: 'log',
+  content: { message: 'charge retried' },
+  tags: ['app:shop', 'env:production'],
+})
+```
+
+- An entry tagged `app:shop` is stored as shop's, with `via:durable`. Its `env:` tag is kept;
+  without one, the sender's environment is used.
+- An entry without an `app:` tag is the sender's own. With `relay: true` it is tagged
+  `app:durable`, so the sender's own console lists every app in the App picker (`tenant.local`
+  keeps the tags as sent).
+- An `app:` tag the token may not relay for is refused (counted as rejected). Without the
+  capability, `app:`, `env:` and `via:` tags are replaced from the token, as for any app.
+- Relayed entries are stored as `<sender>~<app>:<id>`: a retry is stored once, and two senders
+  relaying the same id for the same app never overwrite each other.
+
+`node ace telescope:server:status` shows what the token may relay, and warns when `relay: true` is
+set but the token may not.
+
 ## Who sees which app
 
 The console is gated as usual. Return `apps` from its `authorize` to limit a viewer to some apps,

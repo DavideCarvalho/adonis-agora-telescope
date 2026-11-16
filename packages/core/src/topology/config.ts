@@ -65,6 +65,12 @@ export interface TelescopeTenantOptions {
    * `stores`, or `'memory'`. Default none (the app's console is empty; look at the server's).
    */
   local?: string;
+  /**
+   * This app sends entries on behalf of other apps: an entry its code tags `app:<name>` is stored
+   * as `<name>`'s on the server (the token needs `telescope:ingest:relay`), and its own entries are
+   * tagged `app:<partition>`, so the local console's App picker lists both. Default `false`.
+   */
+  relay?: boolean;
   /** Buffering, batching and retries. */
   buffer?: TenantBufferOptions;
 }
@@ -188,6 +194,9 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
       throw new Error(
         `${PREFIX} tenant.token is required (authkitTenantToken({ issuer, clientId, clientSecret, resource: 'urn:agora:telescope' }) or the shared secret)`,
       );
+    }
+    if (tenant.relay !== undefined && typeof tenant.relay !== 'boolean') {
+      throw new Error(`${PREFIX} tenant.relay must be a boolean`);
     }
     if (tenant.local !== undefined && (typeof tenant.local !== 'string' || tenant.local === '')) {
       throw new Error(

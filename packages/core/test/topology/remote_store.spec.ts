@@ -172,4 +172,37 @@ describe('tenant: remote store', () => {
     expect(await bare.list()).toEqual([]);
     expect(await bare.count()).toBe(0);
   });
+
+  it('never rewrites app: tags; with relay, its own entries are tagged app:<partition>', async () => {
+    const sent = async (relay: boolean) => {
+      const tee = new InMemoryTelescopeStore();
+      const server = fakeServer(202);
+      const { store } = make(server.fetch, { tee, relay });
+      await store.record({ type: 'log', content: {}, tags: ['app:billing', 'env:staging'] });
+      await store.record(log('own'));
+      await store.flush();
+      return {
+        wire: ((server.calls[0]?.body.entries ?? []) as Array<{ tags: string[] }>).map(
+          (e) => e.tags,
+        ),
+        local: (await tee.list()).map((e) => e.tags).reverse(),
+      };
+    };
+    // Off: tags go out as the code set them (the server drops app: tags without relay rights).
+    expect(await sent(false)).toEqual({
+      wire: [['app:billing', 'env:staging'], ['level:info']],
+      local: [['app:billing', 'env:staging'], ['level:info']],
+    });
+    // On: relayed tags are kept, locally too, and the relayer's own entries name it.
+    expect(await sent(true)).toEqual({
+      wire: [
+        ['app:billing', 'env:staging'],
+        ['level:info', 'app:shop'],
+      ],
+      local: [
+        ['app:billing', 'env:staging'],
+        ['level:info', 'app:shop'],
+      ],
+    });
+  });
 });

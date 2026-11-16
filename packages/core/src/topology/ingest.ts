@@ -6,6 +6,8 @@ import { type ResolvedIngestLimits, resolveIngestLimits } from './config.js';
 import { type ConsumeOutcome, ENVELOPE_VERSION, type PushEnvelope } from './transports/types.js';
 import {
   canIngest,
+  canRelayFor,
+  relayScope,
   resolveTenantVerifier,
   type TenantVerifierInput,
   type VerifiedTenant,
@@ -49,10 +51,14 @@ const ORIGINS: readonly BatchOrigin[] = ['http', 'queue', 'schedule', 'cli', 'ma
 const TYPE_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
 /** A sender's entry id: printable, short enough to namespace by app (`<app>:<id>`). */
 const ID_RE = /^[\x21-\x7e]{1,128}$/;
-/** Tags only the server sets: anything a sender puts there is dropped. */
-const RESERVED_TAG_RE = /^(app|env):/;
+/** Tags only the server sets: anything a sender puts there is dropped (a relayer's are read first). */
+const RESERVED_TAG_RE = /^(app|env|via):/;
 /** An app name from a token: short and printable, so `<app>:<id>` fits the store's id limit. */
 export const PARTITION_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+/** An environment a relayer names on an entry (`env:<name>`). */
+const ENV_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+/** The longest stored id (the SQL stores' `VARCHAR(255)`). */
+const MAX_STORED_ID = 255;
 
 /** A bounded set of recently stored ids per app (insertion order = eviction order). */
 class RecentIds {
@@ -77,12 +83,28 @@ function deny(status: number, error: string): IngestResponse {
 const isNullableString = (value: unknown, max: number) =>
   value === null || value === undefined || (typeof value === 'string' && value.length <= max);
 
-/** The validated, server-tagged form of one wire entry, or `null` when it is invalid. */
+/** The distinct values of a sender's `<prefix>:<value>` tags. */
+function tagValues(tags: readonly string[], prefix: string): string[] {
+  return [
+    ...new Set(
+      tags.filter((t) => t.startsWith(`${prefix}:`)).map((t) => t.slice(prefix.length + 1)),
+    ),
+  ];
+}
+
+/**
+ * The validated, server-tagged form of one wire entry, or `null` when it is invalid. `app` is the
+ * app it is stored for: the token's, or (with relay rights) the one its `app:` tag names, in which
+ * case `relayed` is set.
+ */
 function normalize(
   raw: unknown,
   verified: VerifiedTenant,
+  relay: '*' | string[] | null,
   limits: ResolvedIngestLimits,
 ): {
+  app: string;
+  relayed: boolean;
   id: string;
   type: string;
   familyHash: string | null;
@@ -123,12 +145,31 @@ function normalize(
     return null;
   }
   if (size > limits.maxEntryBytes) return null;
-  const own = [`app:${verified.partition}`];
-  if (verified.environment !== undefined && verified.environment !== '') {
-    own.push(`env:${verified.environment}`);
+  let app = verified.partition;
+  let environment = verified.environment;
+  let relayed = false;
+  // A relayer's `app:` tag names the app the entry is for (its `env:` tag, that app's environment).
+  // Without relay rights both are dropped below, like any other reserved tag.
+  if (relay !== null) {
+    const apps = tagValues(tags as string[], 'app');
+    if (apps.length > 1) return null;
+    const target = apps[0];
+    if (target !== undefined && target !== verified.partition) {
+      if (!PARTITION_RE.test(target) || !canRelayFor(relay, target)) return null;
+      const envs = tagValues(tags as string[], 'env');
+      if (envs.length > 1 || (envs[0] !== undefined && !ENV_RE.test(envs[0]))) return null;
+      app = target;
+      relayed = true;
+      if (envs[0] !== undefined) environment = envs[0];
+    }
   }
+  const own = [`app:${app}`];
+  if (environment !== undefined && environment !== '') own.push(`env:${environment}`);
+  if (relayed) own.push(`via:${verified.partition}`);
   const kept = (tags as string[]).filter((t) => !RESERVED_TAG_RE.test(t));
   return {
+    app,
+    relayed,
     id: e.id,
     type: e.type,
     familyHash: (e.familyHash as string | null | undefined) ?? null,
@@ -145,7 +186,8 @@ function normalize(
 /**
  * The server half: verify the sender's token, validate and size-limit its batch, and write each
  * entry into the server's telescope store tagged `app:<partition>` (and `env:<environment>`), where
- * partition and environment come from the token. A batch sent twice is stored once.
+ * partition and environment come from the token. A token with relay rights may name another app
+ * with the entry's own `app:` tag (stored with `via:<partition>`). A batch sent twice is stored once.
  */
 export function createIngestHandler(options: IngestHandlerOptions) {
   const verify = resolveTenantVerifier(options.verifyTenant);
@@ -186,7 +228,7 @@ export function createIngestHandler(options: IngestHandlerOptions) {
     return verified;
   }
 
-  /** Validate a sender's batch and write it, tagged with the verified app. */
+  /** Validate a sender's batch and write it, tagged with the verified (or relayed) app. */
   async function storeBatch(
     verified: VerifiedTenant,
     rawBody: unknown,
@@ -227,24 +269,29 @@ export function createIngestHandler(options: IngestHandlerOptions) {
     const store = options.store();
     if (store === null) return deny(503, 'telescope is not running on this server');
 
+    const relay = relayScope(verified.capabilities);
     const result: IngestResult = { accepted: 0, duplicates: 0, rejected: 0 };
     for (const raw of body.entries) {
-      const entry = normalize(raw, verified, limits);
-      if (entry === null) {
+      const normalized = normalize(raw, verified, relay, limits);
+      if (normalized === null) {
         result.rejected += 1;
         continue;
       }
-      const key = `${verified.partition}\u0000${entry.id}`;
-      if (recent.has(key)) {
+      const { app, relayed, ...entry } = normalized;
+      // Stored as `<app>:<id>`: the app's own id, which no other app can collide with. A relayed
+      // entry is `<relayer>~<app>:<id>` (`~` is never in an app name): keyed on who sent it, so two
+      // relayers (or a relayer and the app itself) never overwrite each other. The store skips an
+      // id it already holds, so a retry is stored once even after a restart.
+      const id = relayed ? `${verified.partition}~${app}:${entry.id}` : `${app}:${entry.id}`;
+      if (id.length > MAX_STORED_ID) {
+        result.rejected += 1;
+        continue;
+      }
+      if (recent.has(id)) {
         result.duplicates += 1;
         continue;
       }
-      // Stored as `<app>:<id>`: the app's own id, which no other app can collide with. The store
-      // skips an id it already holds, so a retry is stored once even after a restart.
-      const input: RecordInput & { id: string; createdAt?: string } = {
-        ...entry,
-        id: `${verified.partition}:${entry.id}`,
-      };
+      const input: RecordInput & { id: string; createdAt?: string } = { ...entry, id };
       // Telescope's own work: nothing the write causes (its INSERT) is recorded again.
       try {
         await runAsTelescopeWork(() => store.record(input));
@@ -252,7 +299,7 @@ export function createIngestHandler(options: IngestHandlerOptions) {
         // The store is down: the sender retries the batch, and what was stored is deduped.
         return deny(503, 'the store could not write the entries right now');
       }
-      recent.add(key);
+      recent.add(id);
       result.accepted += 1;
     }
     return { status: 202, body: { ...result } };
@@ -323,15 +370,20 @@ export function createIngestHandler(options: IngestHandlerOptions) {
       return authenticate(request);
     },
 
-    /** `GET <path>/whoami`: who the token says the sender is. */
+    /**
+     * `GET <path>/whoami`: who the token says the sender is, and (`relay`) the apps it may send
+     * entries for besides its own: `'*'` or a list.
+     */
     async whoami(request: Pick<IngestRequest, 'token' | 'app'>): Promise<IngestResponse> {
       const auth = await authenticate(request);
       if ('status' in auth) return auth;
+      const relay = relayScope(auth.capabilities);
       return {
         status: 200,
         body: {
           partition: auth.partition,
           ...(auth.environment !== undefined ? { environment: auth.environment } : {}),
+          ...(relay !== null ? { relay } : {}),
         },
       };
     },

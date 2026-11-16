@@ -24,3 +24,32 @@ describe('what the server stores, as the console sees it per app', () => {
     expect(rows.map((r) => r.tags)).toEqual([['app:shop']]);
   });
 });
+
+describe('relayed entries in the App picker', () => {
+  it('lists the relayed apps next to the relayer', async () => {
+    const store = new InMemoryTelescopeStore();
+    const handler = createIngestHandler({
+      verifyTenant: sharedSecretVerifier({
+        partitions: { durable: { secret: 's', capabilities: ['telescope:ingest:relay'] } },
+      }),
+      store: () => store,
+    });
+    await handler.ingest({
+      token: 's',
+      app: 'durable',
+      body: {
+        entries: [
+          { id: '1', type: 'log', content: {}, tags: ['app:shop'] },
+          { id: '2', type: 'log', content: {}, tags: ['app:billing'] },
+          { id: '3', type: 'log', content: {}, tags: [] },
+        ],
+      },
+    });
+    const picker = await describeAppScope({ all: true }, store);
+    expect(picker.apps.map((a) => a.id).sort()).toEqual(['billing', 'durable', 'shop']);
+    const shopOnly = viewerStore(store, { apps: ['shop'] }, { enabled: false, tag: 'tenant' });
+    expect(((await shopOnly.list()) ?? []).map((r) => r.tags)).toEqual([
+      ['app:shop', 'via:durable'],
+    ]);
+  });
+});
