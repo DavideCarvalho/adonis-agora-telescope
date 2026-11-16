@@ -24,6 +24,7 @@ function record(overrides: Partial<InstanceRecord> = {}): InstanceRecord {
     state: 'ready',
     intervalMs: 15_000,
     url: 'https://shop.internal',
+    role: 'web',
     checks: [
       {
         name: 'redis',
@@ -69,6 +70,17 @@ describe.each(Object.keys(kinds))('%s fleet store', (kind) => {
     );
   });
 
+  it('keeps each instance role (a worker next to the web process)', async () => {
+    const store = await make();
+    await store.upsert(record());
+    await store.upsert(record({ instanceId: 'worker-1', role: 'durable:work' }));
+    const roles = (await store.list()).map((r) => [r.instanceId, r.role]).sort();
+    expect(roles).toEqual([
+      ['web-1-1-aaaa', 'web'],
+      ['worker-1', 'durable:work'],
+    ]);
+  });
+
   it('lists by app and since; prunes by last seen', async () => {
     const store = await make();
     await store.upsert(record({ instanceId: 'old', lastSeenAt: NOW - 100_000 }));
@@ -82,6 +94,21 @@ describe.each(Object.keys(kinds))('%s fleet store', (kind) => {
     expect((await store.list({ since: NOW - 10_000 })).length).toBe(2);
     expect(await store.prune(NOW - 10_000)).toBe(1);
     expect((await store.list()).map((r) => r.instanceId).sort()).toEqual(['b', 'new']);
+  });
+});
+
+describe('lucid fleet store rows written before roles', () => {
+  it('reads a row without a role as a web instance', async () => {
+    const harness = await makeHarness();
+    harnesses.push(harness);
+    const store = new LucidFleetStore(harness.lucid, { autoCreateTable: true });
+    await store.upsert(record());
+    const data = JSON.parse(
+      String((await harness.db.from('telescope_instances').select('data'))[0]?.data),
+    ) as Record<string, unknown>;
+    delete data.role;
+    await harness.db.from('telescope_instances').update({ data: JSON.stringify(data) });
+    expect((await store.list())[0]?.role).toBe('web');
   });
 });
 

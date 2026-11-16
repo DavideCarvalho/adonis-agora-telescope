@@ -5,6 +5,7 @@ import {
   type InstanceRecord,
   instanceStatus,
   normalizeHeartbeat,
+  reportingRole,
   resolveFleetConfig,
   resolveVersion,
   restartLoopsOf,
@@ -199,8 +200,22 @@ describe('restart loops', () => {
     );
     const [app] = deriveFleet([...boots, instance({ host: 'web-2' })], NOW);
     expect(app?.restartLoops).toEqual([
-      { host: 'web-1', restarts: 3, since: NOW - 5 * MIN, lastBootAt: NOW - MIN },
+      { host: 'web-1', role: 'web', restarts: 3, since: NOW - 5 * MIN, lastBootAt: NOW - MIN },
     ]);
+  });
+
+  it('counts boots per role: a container booting web + worker together is not a loop', () => {
+    const boots = [1, 5].flatMap((m) => [
+      instance({ host: 'box', bootedAt: NOW - m * MIN, lastSeenAt: NOW - m * MIN + 20_000 }),
+      instance({
+        host: 'box',
+        role: 'durable:work',
+        bootedAt: NOW - m * MIN,
+        lastSeenAt: NOW - m * MIN + 20_000,
+      }),
+    ]);
+    const [app] = deriveFleet(boots, NOW);
+    expect(app?.restartLoops).toEqual([]);
   });
 
   it('ignores boots outside the window and hosts under the count', () => {
@@ -316,6 +331,75 @@ describe('heartbeat wire format', () => {
     expect(bounded?.host).toHaveLength(255);
     expect(bounded?.intervalMs).toBe(3_600_000);
     expect(bounded?.checks).toHaveLength(50);
+  });
+});
+
+describe('roles', () => {
+  it('a heartbeat keeps its role; an older one without a role is web; junk is web', () => {
+    const base = {
+      v: 1,
+      instanceId: 'w-1',
+      host: 'w',
+      pid: 1,
+      version: null,
+      bootedAt: '2026-11-15T11:00:00.000Z',
+      sentAt: '2026-11-15T12:00:00.000Z',
+      state: 'ready',
+      intervalMs: 15000,
+      checks: [],
+      shipping: null,
+    };
+    expect(normalizeHeartbeat({ ...base, role: 'durable:work' })?.role).toBe('durable:work');
+    expect(normalizeHeartbeat(base)?.role).toBe('web');
+    expect(normalizeHeartbeat({ ...base, role: 'has space' })?.role).toBe('web');
+    expect(normalizeHeartbeat({ ...base, role: 'x'.repeat(65) })?.role).toBe('web');
+  });
+
+  it('the view counts instances per role, web first; a record without a role is web', () => {
+    const [app] = deriveFleet(
+      [
+        instance({ role: 'queue:work' }),
+        instance({ role: 'durable:work', lastSeenAt: NOW - 10 * MIN }),
+        instance({ role: 'durable:work' }),
+        instance(),
+      ],
+      NOW,
+    );
+    expect(app?.instances.map((i) => i.role)).toEqual([
+      'web',
+      'durable:work',
+      'queue:work',
+      'durable:work',
+    ]);
+    expect(app?.roles).toEqual([
+      { role: 'web', counts: { up: 1, starting: 0, draining: 0, gone: 0 } },
+      { role: 'durable:work', counts: { up: 1, starting: 0, draining: 0, gone: 1 } },
+      { role: 'queue:work', counts: { up: 1, starting: 0, draining: 0, gone: 0 } },
+    ]);
+  });
+
+  it('which processes report (fleet.report) and under which role', () => {
+    const fleet = (report?: string[], role?: string) =>
+      resolveFleetConfig({ ...(report ? { report } : {}), ...(role ? { role } : {}) });
+    const work = { name: 'durable:work', staysAlive: true };
+    const migrate = { name: 'migration:run', staysAlive: false };
+    // Defaults: the web server and long-running ace commands.
+    expect(reportingRole(fleet(), 'web')).toBe('web');
+    expect(reportingRole(fleet(), 'console', work)).toBe('durable:work');
+    expect(reportingRole(fleet(), 'console', migrate)).toBeNull();
+    expect(reportingRole(fleet(), 'console', null)).toBeNull();
+    expect(reportingRole(fleet(), 'test')).toBeNull();
+    expect(reportingRole(fleet(), 'repl')).toBeNull();
+    // Web only: no workers.
+    expect(reportingRole(fleet(['web']), 'console', work)).toBeNull();
+    // A command by name, even without staysAlive; every command with 'console'.
+    expect(reportingRole(fleet(['web', 'migration:run']), 'console', migrate)).toBe(
+      'migration:run',
+    );
+    expect(reportingRole(fleet(['console']), 'console', migrate)).toBe('migration:run');
+    // fleet.role names the process.
+    expect(reportingRole(fleet(undefined, 'emails'), 'console', work)).toBe('emails');
+    expect(() => resolveFleetConfig({ role: 'has space' })).toThrow(/fleet.role/);
   });
 });
 

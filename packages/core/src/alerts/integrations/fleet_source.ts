@@ -1,4 +1,5 @@
 import type { FleetApp } from '../../fleet/derive.js';
+import { DEFAULT_ROLE } from '../../fleet/heartbeat.js';
 import type { UptimeCheckState, UptimeCheckStatus } from './health.js';
 
 const RANK: Record<UptimeCheckStatus, number> = { ok: 0, unknown: 1, warn: 2, down: 3 };
@@ -11,15 +12,20 @@ export interface FleetViewLike {
 /**
  * Check states for every app in the fleet, one per app and check name (the worst
  * across the app's live instances), plus an `instances` state per app: `down`
- * when no instance is up or starting, `ok` otherwise. So `app:checkout` on a
+ * when no web instance (or, for an app of workers only, no instance) is up or
+ * starting, `ok` otherwise. So `app:checkout` on a
  * status page, or a per-app heartbeat, goes down when the app is gone too.
  */
 export async function fleetCheckStates(fleet: FleetViewLike): Promise<UptimeCheckState[]> {
   const states: UptimeCheckState[] = [];
   for (const app of await fleet.view()) {
     const live = app.instances.filter((i) => i.status === 'up' || i.status === 'starting');
+    // The app is up when its web processes are; a live worker does not hide a web outage. An app
+    // that runs only workers is up when one of them is.
+    const hasWeb = app.instances.some((i) => (i.role ?? DEFAULT_ROLE) === DEFAULT_ROLE);
+    const serving = hasWeb ? live.filter((i) => (i.role ?? DEFAULT_ROLE) === DEFAULT_ROLE) : live;
     states.push(
-      live.length === 0
+      serving.length === 0
         ? { name: 'instances', app: app.app, status: 'down', message: 'no live instances' }
         : { name: 'instances', app: app.app, status: 'ok' },
     );

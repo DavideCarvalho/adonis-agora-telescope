@@ -293,6 +293,9 @@ export function resolveConfig(
         throw new Error('instances-up: `below` must be a whole number, 1 or more');
       }
       if (rule.for !== undefined) durationToMs(rule.for);
+      if (rule.role !== undefined && (typeof rule.role !== 'string' || rule.role === '')) {
+        throw new Error("instances-up: `role` must be a role such as 'web', 'durable:work' or '*'");
+      }
       continue;
     }
     if (rule.type === 'restart-loop') continue;

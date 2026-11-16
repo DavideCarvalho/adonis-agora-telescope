@@ -11,11 +11,15 @@ import { mockFetch } from './helpers.js';
 
 type Check = { name: string; status: 'ok' | 'warn' | 'down' | 'unknown'; critical?: boolean };
 
-function app(name: string, instances: Array<{ status: string; checks: Check[] }>): FleetApp {
+function app(
+  name: string,
+  instances: Array<{ status: string; checks: Check[]; role?: string }>,
+): FleetApp {
   return {
     app: name,
     instances: instances.map((i) => ({
       status: i.status,
+      ...(i.role !== undefined ? { role: i.role } : {}),
       checks: i.checks.map((c) => ({
         message: c.status === 'down' ? 'boom' : null,
         since: 1,
@@ -53,6 +57,22 @@ describe('fleetCheckStates', () => {
     ]);
     expect(statusForKey(states, 'app:billing')).toBe('down');
     expect(statusForKey(states, 'checkout/redis')).toBe('down');
+  });
+
+  it('the instances state follows the web processes; an app of workers only follows them', async () => {
+    const states = await fleetCheckStates(
+      view([
+        app('checkout', [
+          { status: 'gone', checks: [], role: 'web' },
+          { status: 'up', checks: [], role: 'durable:work' },
+        ]),
+        app('jobs', [{ status: 'up', checks: [], role: 'queue:work' }]),
+      ]),
+    );
+    expect(states.map((s) => [s.app, s.name, s.status])).toEqual([
+      ['checkout', 'instances', 'down'],
+      ['jobs', 'instances', 'ok'],
+    ]);
   });
 
   it('is the default source when the runtime has a fleet, so per-app heartbeats follow it', async () => {

@@ -87,9 +87,9 @@ rules: [
     minSamples: 10,                          // guard percentiles against a single slow request
   },
   // Fleet rules (control plane / standalone, need the fleet): raise + resolve per app
-  // (restart-loop per host, check-down per check)
-  { type: 'instances-up', app: 'shop', below: 2, for: '2m' },
-  { type: 'restart-loop' },
+  // (restart-loop per host and role, check-down per check)
+  { type: 'instances-up', app: 'shop', below: 2, for: '2m' }, // counts web instances; role: 'durable:work' or '*' for workers/all
+  { type: 'restart-loop' }, // per host and role
   { type: 'check-down', check: 'redis', for: '2m' }, // needs `checks` in config/telescope.ts
   { type: 'entries-dropped', window: '10m', threshold: 100 },
 ]

@@ -13,8 +13,8 @@ export type {
   TelescopeCheckInput,
 } from './checks.js';
 export { checks, HealthChecks, redisMemory, summarizeChecks } from './checks.js';
-export type { FleetConfig, ResolvedFleetConfig } from './config.js';
-export { resolveFleetConfig, resolveVersion, VERSION_ENV_VARS } from './config.js';
+export type { FleetConfig, ReportingCommand, ResolvedFleetConfig } from './config.js';
+export { reportingRole, resolveFleetConfig, resolveVersion, VERSION_ENV_VARS } from './config.js';
 export type {
   CheckIncident,
   DeployEvent,
@@ -28,6 +28,7 @@ export type {
 } from './derive.js';
 export {
   checkIncidentsOf,
+  compareRoles,
   DEFAULT_DERIVE,
   deploysOf,
   deriveFleet,
@@ -35,7 +36,7 @@ export {
   restartLoopsOf,
 } from './derive.js';
 export type { InstanceHeartbeat, InstanceState, ShippingStats } from './heartbeat.js';
-export { normalizeHeartbeat } from './heartbeat.js';
+export { DEFAULT_ROLE, normalizeHeartbeat, normalizeRole } from './heartbeat.js';
 export type { ProbeResponse } from './probes.js';
 export { liveness, readiness } from './probes.js';
 export type { FleetRegistryOptions, InstanceReporterOptions } from './registry.js';

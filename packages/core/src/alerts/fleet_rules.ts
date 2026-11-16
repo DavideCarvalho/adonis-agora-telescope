@@ -1,4 +1,5 @@
 import type { FleetApp } from '../fleet/derive.js';
+import { DEFAULT_ROLE } from '../fleet/heartbeat.js';
 import type { FleetAlertContext, FleetAlertRule } from './alert_rule.js';
 import { durationToMs } from './parse_duration.js';
 
@@ -23,6 +24,12 @@ const minutes = (ms: number) => {
   return `${(ms / 3_600_000).toFixed(1)} h`;
 };
 
+const EMPTY = {
+  app: '',
+  counts: { up: 0, starting: 0, draining: 0, gone: 0 },
+  roles: [],
+} as unknown as FleetApp;
+
 /**
  * Evaluates the fleet rules over the derived fleet. Holds what a rule needs across evaluations:
  * when `instances-up` started crossing (its `for`), and the drop counters `entries-dropped`
@@ -45,18 +52,24 @@ export class FleetRuleEvaluator {
       case 'restart-loop':
         // One subject per looping host (`<app>\u0000<host>`): two hosts looping at once page twice,
         // and each resolves on its own once it settles (the subject leaves the outcomes).
+        // A web host keeps its pre-role key, so an open alert carries over an upgrade.
         return fleet.flatMap((app) =>
-          app.restartLoops.map((loop) => ({
-            key: `${app.app}\u0000${loop.host}`,
-            crosses: true,
-            value: loop.restarts,
-            threshold: loop.restarts,
-            fleet: {
-              app: app.app,
-              host: loop.host,
-              detail: `${loop.host} restarted ${loop.restarts} times in ${minutes(Math.max(0, now - loop.since))}`,
-            },
-          })),
+          app.restartLoops.map((loop) => {
+            const role = loop.role ?? DEFAULT_ROLE;
+            const web = role === DEFAULT_ROLE;
+            return {
+              key: `${app.app}\u0000${loop.host}${web ? '' : `\u0000${role}`}`,
+              crosses: true,
+              value: loop.restarts,
+              threshold: loop.restarts,
+              fleet: {
+                app: app.app,
+                host: loop.host,
+                role,
+                detail: `${loop.host}${web ? '' : ` (${role})`} restarted ${loop.restarts} times in ${minutes(Math.max(0, now - loop.since))}`,
+              },
+            };
+          }),
         );
       case 'check-down':
         return this.checkDown(rule, fleet, now);
@@ -72,10 +85,24 @@ export class FleetRuleEvaluator {
     now: number,
   ): FleetOutcome[] {
     const holdMs = durationToMs(rule.for ?? '1m');
+    const role = rule.role ?? DEFAULT_ROLE;
+    const upOf = (app: FleetApp): number | null => {
+      if (role === '*') return app.counts.up;
+      const roleCounts = (app.roles ?? []).find((r) => r.role === role)?.counts;
+      // A fleet derived before roles: every instance is a web one.
+      if (app.roles === undefined && role === DEFAULT_ROLE) return app.counts.up;
+      return roleCounts === undefined ? null : roleCounts.up;
+    };
+    // Without `app`, only the apps that run this role at all: a worker-only app has no web
+    // instance to miss.
     const apps =
-      rule.app !== undefined && !fleet.some((a) => a.app === rule.app)
-        ? [{ app: rule.app, up: 0 }]
-        : fleet.map((a) => ({ app: a.app, up: a.counts.up }));
+      rule.app !== undefined
+        ? [{ app: rule.app, up: upOf(fleet.find((a) => a.app === rule.app) ?? EMPTY) ?? 0 }]
+        : fleet.flatMap((a) => {
+            const up = upOf(a);
+            return up === null ? [] : [{ app: a.app, up }];
+          });
+    const label = role === DEFAULT_ROLE || role === '*' ? 'instance' : `${role} instance`;
     return apps.map(({ app, up }) => {
       const below = up < rule.below;
       const holdKey = `${ruleKey}\u0000${app}`;
@@ -94,10 +121,11 @@ export class FleetRuleEvaluator {
         threshold: rule.below,
         fleet: {
           app,
+          ...(rule.role !== undefined ? { role } : {}),
           detail:
             up === 0
-              ? 'no instance is up'
-              : `${up} instance${up === 1 ? '' : 's'} up (expected at least ${rule.below})`,
+              ? `no ${label} is up`
+              : `${up} ${label}${up === 1 ? '' : 's'} up (expected at least ${rule.below})`,
         },
       };
     });

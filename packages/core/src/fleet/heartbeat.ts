@@ -41,6 +41,26 @@ export interface InstanceHeartbeat {
   shipping: ShippingStats | null;
   /** The URL other apps reach this one at (`fleet.url`), or `null`. Absent from older senders. */
   url?: string | null;
+  /**
+   * What the process does: `web` (the HTTP server), or the ace command it runs (`durable:work`).
+   * Absent from older senders, which only reported their web process.
+   */
+  role?: string;
+}
+
+/** The role of an instance whose heartbeat carries none (older senders only reported web). */
+export const DEFAULT_ROLE = 'web';
+
+const ROLE_RE = /^[A-Za-z0-9_.:@/-]{1,64}$/;
+
+/** `value` made a valid role (`durable:work`): other characters become `-`, cut to 64. */
+export function sanitizeRole(value: string): string {
+  return value.replace(/[^A-Za-z0-9_.:@/-]/g, '-').slice(0, 64) || DEFAULT_ROLE;
+}
+
+/** A role as a heartbeat may carry it, else {@link DEFAULT_ROLE}. */
+export function normalizeRole(value: unknown): string {
+  return typeof value === 'string' && ROLE_RE.test(value) ? value : DEFAULT_ROLE;
 }
 
 const STATES: readonly InstanceState[] = ['starting', 'ready', 'draining'];
@@ -133,5 +153,6 @@ export function normalizeHeartbeat(raw: unknown): InstanceHeartbeat | null {
     checks,
     shipping,
     url: normalizeAppUrl(h.url),
+    role: normalizeRole(h.role),
   };
 }

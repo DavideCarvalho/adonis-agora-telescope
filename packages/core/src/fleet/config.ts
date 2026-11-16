@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { durationToMs } from '../alerts/parse_duration.js';
+import { normalizeRole, sanitizeRole } from './heartbeat.js';
 import type { FleetStore } from './store.js';
 
 /** `fleet` in `config/telescope.ts`: this instance's heartbeat, and how the fleet is read. */
@@ -35,11 +36,19 @@ export interface FleetConfig {
    */
   store?: 'auto' | 'memory' | FleetStore;
   /**
-   * Which AdonisJS environments send a heartbeat. Default `['web']` (the HTTP server). Add
-   * `'console'` for queue workers started with `node ace`; every other ace command then reports
-   * too, briefly.
+   * Which processes send a heartbeat. Default `['web', 'worker']`:
+   * - `'web'`: the HTTP server;
+   * - `'worker'`: an ace command that keeps running (`staysAlive`: `durable:work`,
+   *   `queue:work`), not one-off commands such as migrations;
+   * - an ace command's name (`'scheduler:run'`): that command, even without `staysAlive`;
+   * - `'console'`: every ace command; `'repl'`, `'test'`: those environments.
    */
-  report?: Array<'web' | 'console' | 'repl' | 'test'>;
+  report?: Array<'web' | 'worker' | 'console' | 'repl' | 'test' | (string & {})>;
+  /**
+   * This process's role in the fleet. Default `web` for the HTTP server, the command's name for
+   * an ace command (`durable:work`), else the environment.
+   */
+  role?: string;
   /**
    * The URL other apps reach this one at (`https://billing.internal`), sent with each heartbeat so
    * the control plane can tell other apps where `billing` is (service discovery). Default
@@ -60,6 +69,8 @@ export interface ResolvedFleetConfig {
   restartLoop: { restarts: number; withinMs: number };
   store: 'auto' | 'memory' | FleetStore;
   report: string[];
+  /** `fleet.role`, or `null` (derived from the process). */
+  role: string | null;
   /** This app's URL (`fleet.url`, else `APP_URL`), or `null`. */
   url: string | null;
 }
@@ -90,6 +101,9 @@ export function resolveFleetConfig(config: FleetConfig | false | undefined): Res
   ) {
     throw new Error(`${PREFIX} fleet.store must be 'auto', 'memory' or a FleetStore`);
   }
+  if (fleet.role !== undefined && normalizeRole(fleet.role) !== fleet.role) {
+    throw new Error(`${PREFIX} fleet.role must be 1-64 of A-Z a-z 0-9 _ . : @ / -`);
+  }
   if (fleet.app !== undefined && !/^[A-Za-z0-9_.-]{1,64}$/.test(fleet.app)) {
     throw new Error(`${PREFIX} fleet.app must be 1-64 of A-Z a-z 0-9 _ . -`);
   }
@@ -116,9 +130,40 @@ export function resolveFleetConfig(config: FleetConfig | false | undefined): Res
       withinMs: positiveMs(fleet.restartLoop?.within, 10 * 60_000, 'restartLoop.within'),
     },
     store,
-    report: [...(fleet.report ?? ['web'])],
+    report: [...(fleet.report ?? ['web', 'worker'])],
+    role: fleet.role ?? null,
     url: resolveAppUrl(fleet.url),
   };
+}
+
+/** The ace command a console process runs, as the fleet sees it. */
+export interface ReportingCommand {
+  /** `durable:work`. */
+  name: string;
+  /** `static options = { staysAlive: true }`: it keeps running until stopped. */
+  staysAlive: boolean;
+}
+
+/**
+ * The role this process reports under, or `null` when it sends no heartbeat (`fleet.report`). A
+ * console process is judged by its command (`null` until it is known): a long-running one is a
+ * `worker`, a one-off one (migrations, `telescope:*` commands) is not.
+ */
+export function reportingRole(
+  fleet: Pick<ResolvedFleetConfig, 'report' | 'role'>,
+  environment: string,
+  command: ReportingCommand | null = null,
+): string | null {
+  const report = fleet.report;
+  if (environment === 'console') {
+    if (command === null) return null;
+    const reports =
+      report.includes('console') ||
+      report.includes(command.name) ||
+      (command.staysAlive && report.includes('worker'));
+    return reports ? (fleet.role ?? sanitizeRole(command.name)) : null;
+  }
+  return report.includes(environment) ? (fleet.role ?? sanitizeRole(environment)) : null;
 }
 
 /** An app's base URL: an absolute http(s) URL, without query, hash or trailing slash. */

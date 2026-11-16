@@ -70,7 +70,9 @@ export type AlertRule = AlertRuleRouting &
  *
  * - `instances-up`    fires when fewer than `below` instances of an app are up (`below: 1` pages
  *                     when an app has none left). Without `app`, every app the fleet knows.
- *                     Held for `for` (default `'1m'`) so a rolling deploy does not page.
+ *                     Counts the `role` instances (default `'web'`; a worker's command such as
+ *                     `'durable:work'`, or `'*'` for every role). Held for `for` (default
+ *                     `'1m'`) so a rolling deploy does not page.
  * - `restart-loop`    fires when a host booted `fleet.restartLoop.restarts` times within
  *                     `fleet.restartLoop.within` (default 3 in 10 minutes).
  * - `check-down`      fires when a health check (`check`, or any) has been `down` on a live
@@ -79,7 +81,7 @@ export type AlertRule = AlertRuleRouting &
  *                     entries within `window` (their buffer to the control plane overflowed).
  */
 export type FleetAlertRule =
-  | { type: 'instances-up'; app?: string; below: number; for?: string }
+  | { type: 'instances-up'; app?: string; role?: string; below: number; for?: string }
   | { type: 'restart-loop'; app?: string }
   | { type: 'check-down'; check?: string; app?: string; for: string }
   | { type: 'entries-dropped'; app?: string; window: string; threshold?: number };
@@ -91,6 +93,8 @@ export interface FleetAlertContext {
   check?: string;
   /** The host, for `restart-loop`. */
   host?: string;
+  /** The role (`web`, `durable:work`), for `instances-up` and `restart-loop`. */
+  role?: string;
   /** One line: "Redis down for 12 min on 3 of 3 instances". */
   detail: string;
 }
