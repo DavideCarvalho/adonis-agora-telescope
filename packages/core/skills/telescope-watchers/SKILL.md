@@ -71,7 +71,11 @@ export default defineConfig({
   // Bindings carry PII/secrets: redacted to [REDACTED] placeholders unless you opt in.
   query: { slowMs: 500, captureBindings: false, normalize: true },
   // ignoreConnections: ['analytics'] — drop e.g. a replica used only for the timeline.
+  // ignore: ['select * from "durable_workflow_runs"'] — SQL prefixes / RegExps (normalized SQL).
+  // ignoreTables: ['job_heartbeats'] — the table a statement reads first or writes.
   // (The store's own INSERTs/reads/prunes are excluded automatically.)
+  // redis: { captureValues: false } — the key is kept, every other argument is '[REDACTED]';
+  // true records the real values (a session store's SET carries the whole session).
 })
 ```
 

@@ -20,6 +20,8 @@ import {
   type ConsoleAppScope,
   consoleAppScope,
   describeAppScope,
+  KnownAppsCache,
+  knownApps,
   selectAppScope,
   viewerStore,
 } from '../src/ui/app_scope.js';
@@ -165,6 +167,62 @@ describe('app scope', () => {
       all: true,
       apps: [],
     });
+  });
+
+  it('knownApps reads a bounded recent sample, never the whole table', async () => {
+    const store = new InMemoryTelescopeStore();
+    const countTags = vi.fn();
+    (store as unknown as { countTags: unknown }).countTags = countTags;
+    const list = vi.spyOn(store, 'list');
+    const now = Date.now();
+    for (const [app, n] of [
+      ['busy', 3],
+      ['quiet', 1],
+    ] as const) {
+      for (let i = 0; i < n; i++)
+        await store.record({ type: 'log', content: {}, tags: [appTag(app)] });
+    }
+    await store.record({
+      type: 'log',
+      content: {},
+      tags: [appTag('stale')],
+      createdAt: new Date(now - 2 * 3_600_000),
+    });
+
+    expect(await knownApps(store, { now: () => now + 1 })).toEqual(['busy', 'quiet']);
+    expect(countTags).not.toHaveBeenCalled();
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ size: 1_000, omitContent: true, after: expect.any(Date) }),
+    );
+  });
+
+  it('knownApps adds the apps only a source knows (by name) and skips a failing source', async () => {
+    const store = new InMemoryTelescopeStore();
+    await store.record({ type: 'log', content: {}, tags: [appTag('b')] });
+    const ids = await knownApps(store, {
+      sources: [async () => ['z', 'b', 'a', ''], async () => Promise.reject(new Error('down'))],
+    });
+    expect(ids).toEqual(['b', 'a', 'z']);
+  });
+
+  it('KnownAppsCache shares one read per scope within the TTL and forgets failures', async () => {
+    let now = 0;
+    const cache = new KnownAppsCache(30_000, () => now);
+    const load = vi.fn(async () => ['a']);
+    const [x, y] = await Promise.all([cache.get('*', load), cache.get('*', load)]);
+    expect(x).toEqual(['a']);
+    expect(y).toEqual(['a']);
+    expect(load).toHaveBeenCalledTimes(1);
+    await cache.get('tenant-1', load);
+    expect(load).toHaveBeenCalledTimes(2);
+    now = 30_000;
+    await cache.get('*', load);
+    expect(load).toHaveBeenCalledTimes(3);
+
+    const failing = vi.fn(async (): Promise<string[]> => Promise.reject(new Error('boom')));
+    await expect(cache.get('f', failing)).rejects.toThrow('boom');
+    await expect(cache.get('f', failing)).rejects.toThrow('boom');
+    expect(failing).toHaveBeenCalledTimes(2);
   });
 
   it('authorizeByToken can grant apps to a token holder', async () => {

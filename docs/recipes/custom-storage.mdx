@@ -172,11 +172,16 @@ because they all only know the contract.
 ## Optional fast paths
 
 The contract is intentionally minimal — no rollups, no cursors. If your backend has cheap
-server-side aggregation, implement any of the four optional reads (`listTraceIds`,
-`countByBucket`, `countFamilies`, `countTags`, see
+server-side aggregation, implement any of the optional reads (`listTraceIds`,
+`countByBucket`, `countFamilies`, `countTags`, `listSlowest`, `countTraceRepeats`, see
 [Storage](/docs/telescope/concepts/storage#optional-fast-paths)). Each one replaces a scan of
 `list` on a dashboard screen; leave one out and that screen falls back to the scan.
 
 `list` may also honour `EntryQuery.omitContent`: when it is set, return `content: null`
-without loading the field (in Mongo, a projection that excludes `content` and `contentText`).
-Ignoring the hint is correct too.
+without loading the field (in Mongo, a projection that excludes `content` and `contentText`),
+and `EntryQuery.contentFields`: return a `content` holding only those top-level fields (a
+projection on `content.<field>`). Ignoring either hint is correct too.
+
+If your aggregate reads filter by `tagGroups`, set `readonly honorsTagGroups = true` on the
+store so consoles narrowed to some organizations or apps use them. Never set it on a store that
+ignores `tagGroups`: those viewers would see counts from entries outside their scope.

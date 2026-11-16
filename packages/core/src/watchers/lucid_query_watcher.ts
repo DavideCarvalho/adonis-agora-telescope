@@ -39,7 +39,7 @@ const PRIMARY_TABLE = /^(?:select\b.*?\bfrom|insert\s+into|update|delete\s+from)
 
 /** A table name without quoting, lowercased: `"public"."Users"` → `public.users`. */
 function bareTable(name: string): string {
-  return name.replace(/["`\[\]]/g, '').toLowerCase();
+  return name.replace(/["`[\]]/g, '').toLowerCase();
 }
 
 /**

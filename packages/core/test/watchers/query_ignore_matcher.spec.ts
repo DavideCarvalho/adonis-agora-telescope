@@ -10,9 +10,9 @@ describe('QueryIgnoreMatcher', () => {
 
   it('a string is a prefix of the normalized template (case, spacing and literals ignored)', () => {
     const matcher = new QueryIgnoreMatcher(['select * from "durable_workflow_runs"']);
-    expect(matcher.ignores('SELECT *\n  FROM "durable_workflow_runs" WHERE "id" = 42 LIMIT 1')).toBe(
-      true,
-    );
+    expect(
+      matcher.ignores('SELECT *\n  FROM "durable_workflow_runs" WHERE "id" = 42 LIMIT 1'),
+    ).toBe(true);
     // The quoted name in the pattern ends at its closing quote, so a longer table is not caught.
     expect(matcher.ignores('select * from "durable_workflow_runs_archive"')).toBe(false);
     expect(matcher.ignores('select * from "users"')).toBe(false);
@@ -35,9 +35,9 @@ describe('QueryIgnoreMatcher', () => {
     expect(matcher.ignores('delete from "durable_workflow_runs" where id = 1')).toBe(true);
     expect(matcher.ignores('select * from "audit"."log"')).toBe(true);
     // Another table that merely joins the ignored one is kept.
-    expect(
-      matcher.ignores('select * from "users" join "durable_workflow_runs" on 1 = 1'),
-    ).toBe(false);
+    expect(matcher.ignores('select * from "users" join "durable_workflow_runs" on 1 = 1')).toBe(
+      false,
+    );
     expect(matcher.ignores('select * from "log"')).toBe(false);
   });
 });

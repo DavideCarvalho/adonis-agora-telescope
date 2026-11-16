@@ -107,8 +107,9 @@ describe('dashboard aggregates over a content-less scan', () => {
     expect(actual).toEqual(expected);
     expect(actual.nPlusOne[0]?.sql).toBe('select * from orders where user_id = 35');
     expect(actual.slowest[0]?.label).toBe('select sum(total) from orders /* 3 */');
-    // 33 query entries in the window, none of them shipped with content by a list.
-    expect(returnedQueriesWithContent).toBe(0);
+    // 33 query entries in the window; the only ones shipped with content are the N+1
+    // samples (one row each), never the window.
+    expect(returnedQueriesWithContent).toBeLessThanOrEqual(actual.nPlusOne.length);
     expect(get.mock.calls.length).toBeLessThanOrEqual(6);
   });
 

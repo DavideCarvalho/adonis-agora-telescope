@@ -69,7 +69,8 @@ export default defineConfig({
 | -------------- | ----------- | ---------------------------------------------------------------------- |
 | `enabled`      | `true`      | Master switch; `false` starts no per-technology watcher.              |
 | `watchers`     | `['query']` | Which watchers run — any of `'query'`, `'mail'`, `'cache'`, `'http-client'`, `'logs'`, `'queue'`, `'events'`, `'redis'`, `'profiling'`, `'schedule'`, `'queue-manager'`. |
-| `query`        | see below   | Lucid `query` watcher tuning — `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `normalize` (`true`). |
+| `query`        | see below   | Lucid `query` watcher tuning — `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `ignore`, `ignoreTables`, `normalize` (`true`). |
+| `redis`        | see below   | `redis` watcher tuning — `captureValues` (`false`), `ignoreCommands`, `ignoreKeys`, `ignoreConnections`, `sampleRate` (1), `floodWarnPerMinute` (600). |
 | `httpClient`   | see below   | `http-client` watcher tuning — `slowMs` (1000), `ignoreHosts`, `captureBodies` (`false`). |
 | `profiling`    | see below   | `profiling` watcher tuning — `slowMs` (100), `minDurationMs` (0).       |
 | `schedule`     | see below   | `schedule` watcher tuning — `slowMs` (1000).                            |
@@ -113,6 +114,29 @@ Set `query.normalize: false` to hash the raw SQL verbatim (no grouping across li
 `query.ignoreConnections` to drop specific connections (e.g. a replica you don't want on the
 timeline). The `lucid` store's own queries are never recorded, whichever connection it uses.
 The SQL is templated into `familyHash` only for entries that survive sampling.
+
+### Dropping noisy queries
+
+A job runner that polls its table every second can outnumber every other query. Drop it
+with `query.ignore` or `query.ignoreTables`:
+
+```ts title="config/telescope_watchers.ts"
+export default defineConfig({
+  query: {
+    // Matched against the normalized SQL (lowercased, whitespace collapsed, literals → `?`):
+    // a string is a prefix, a RegExp is tested as-is.
+    ignore: ['select * from "durable_workflow_runs" where "id" = ?', /^select pg_sleep/],
+    // The table a select reads first, or the one an insert/update/delete writes,
+    // with or without its schema.
+    ignoreTables: ['job_heartbeats'],
+  },
+})
+```
+
+A string pattern is normalized the same way as the SQL, so case and spacing do not matter;
+`'select * from "durable_workflow_runs"'` drops every select on that table (the closing quote
+keeps `durable_workflow_runs_archive` out). `ignoreTables` keeps a query that only joins the
+table.
 
 <Callout type="warn">
 Bindings routinely carry PII / secrets (emails, tokens, password hashes), so by default they
@@ -410,14 +434,14 @@ double.
 ## Redis watcher
 
 Records **every Redis command issued through `@adonisjs/redis`** as a `redis` entry — the
-command, its arguments, the connection and the round-trip duration, correlated to the active
+command, its key, the connection and the round-trip duration, correlated to the active
 trace. Like the queue watcher it never imports the package it observes, so with `@adonisjs/redis`
 absent it no-ops.
 
 ```ts
 interface RedisEntryContent {
   command: string          // upper-cased, e.g. 'GET'
-  args: unknown[]          // the command arguments, in order (redaction applies downstream)
+  args: unknown[]          // the key, then '[REDACTED]' per other argument (see captureValues)
   connection: string | null   // the connection name, e.g. 'main'
   durationMs: number | null    // round-trip ms, or null when not awaitable
   traceId: string | null
@@ -426,6 +450,30 @@ interface RedisEntryContent {
 
 Tagged `redis`, `redis:<command>` and `connection:<name>`; `familyHash` is `redis:<command>`,
 so every `GET` (etc.) groups into one family.
+
+<Callout type="warn">
+Argument values are what your app stores — a session store's `SET` carries the whole session,
+CSRF secret and tokens included. So by default only the first argument (the key) is kept and
+every other one is recorded as `[REDACTED]`, arity preserved: `SET session:abc '{…}' PX 7200000`
+is recorded as `['session:abc', '[REDACTED]', '[REDACTED]', '[REDACTED]']`. `AUTH`, `HELLO`,
+`CONFIG`, `ACL` and `MIGRATE` have every argument redacted, key position included. Set
+`redis.captureValues: true` to record the real values (the [redaction](/docs/telescope/concepts/redaction)
+rules still apply to them).
+</Callout>
+
+```ts title="config/telescope_watchers.ts"
+export default defineConfig({
+  watchers: ['query', 'redis'],
+  redis: {
+    captureValues: false,               // default: key kept, values redacted
+    ignoreKeys: ['myapp:rlflx:'],       // a string is a key prefix, a RegExp is tested as-is
+    ignoreCommands: ['MULTI', 'EXEC'],
+    ignoreConnections: ['telescope'],
+    sampleRate: 1,                      // 0..1, per command
+    floodWarnPerMinute: 600,            // warn once past this many entries/minute; 0 disables
+  },
+})
+```
 
 ### How it hooks in
 
@@ -441,8 +489,9 @@ unchanged, and `stop()` restores every original.
 
 ```ts
 import { buildRedisEntry, type RedisEntryContent } from '@adonis-agora/telescope/watchers'
-// buildRedisEntry(command, connection, durationMs) maps a captured command to a
-// RecordInput — exported for unit tests without a live ioredis client.
+// buildRedisEntry(command, connection, durationMs, { captureValues? }) maps a captured
+// command to a RecordInput — exported for unit tests without a live ioredis client.
+// redactRedisArgs(command, args, captureValues?) is the argument redaction it applies.
 ```
 
 <Callout type="warn">
@@ -634,7 +683,7 @@ Live Schedules' `nextRunAt` is always `null` — and equally, npm will never ins
 Add them to your own `package.json` when you want them.
 
 <Callout type="info">
-The `queue`, `events` and `redis` watchers currently expose **no `config/telescope_watchers.ts`
+The `queue` and `events` watchers currently expose **no `config/telescope_watchers.ts`
 knobs** — enabling them in the `watchers` array is enough, and they run on their defaults
 (the queue slow threshold is 1000ms; the events watcher uses `DEFAULT_IGNORED_EVENTS`). Their
 constructor options (`QueueWatcherOptions.slowMs`, the `EventsWatcher` ignore-list) are still

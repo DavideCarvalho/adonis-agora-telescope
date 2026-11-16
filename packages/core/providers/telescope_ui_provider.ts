@@ -14,6 +14,8 @@ import {
   consoleAppScope,
   describeAppScope,
   hiddenSpansCounter,
+  KnownAppsCache,
+  knownApps,
   selectAppScope,
 } from '../src/ui/app_scope.js';
 import { callerOf } from '../src/ui/caller.js';
@@ -145,6 +147,8 @@ export default class TelescopeUiProvider {
         ...(hiddenSpans !== undefined ? { hiddenSpans } : {}),
       });
     const shared = buildApis(store);
+    // The App picker's list per scope, re-read at most every 30 s (see `GET <path>/api/apps`).
+    const knownAppsCache = new KnownAppsCache();
     const scopedApis = new Map<string, ReturnType<typeof buildApis>>();
     const apisFor = (tenantTags: string[] | null, appTags: string[] | null) => {
       const key = scopeKey(tenantTags, appTags);
@@ -585,10 +589,24 @@ export default class TelescopeUiProvider {
         const a = await gate(ctx);
         if (a === null) return;
         const source = scopedStore(store, a.selected.tags, null);
+        // On a control plane the fleet knows every app that reports, quiet ones included; it is
+        // hidden from a viewer limited to some organizations (instances are shared by all).
+        const fleet = getTelescopeRuntime().fleet;
+        const sources =
+          fleet !== null &&
+          coreConfig.topology.topology === 'control-plane' &&
+          !(a.scope !== null && !a.scope.all)
+            ? [async () => (await fleet.instances(null)).map((instance) => instance.app)]
+            : [];
+        const known = () =>
+          knownAppsCache.get(
+            `${sources.length}\u0000${scopeKey(a.selected.tags, null) ?? '*'}`,
+            () => knownApps(source, { sources }),
+          );
         return ctx.response
           .status(200)
           .header('cache-control', 'private, no-store')
-          .send({ data: await describeAppScope(a.appScope, source, config.apps.labels) });
+          .send({ data: await describeAppScope(a.appScope, source, config.apps.labels, known) });
       })
       .as('telescope_ui.apps');
 

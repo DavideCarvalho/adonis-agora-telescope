@@ -1,6 +1,5 @@
 import { type Entry, EntryType, EXCEPTION_ENTRY_TYPES, isExceptionType } from '../entry.js';
-import { detectNPlusOne } from '../query/n_plus_one.js';
-import type { TelescopeStore } from '../store.js';
+import type { TelescopeStore, TraceRepeatRow } from '../store.js';
 import {
   type CacheStats,
   type LatencyStats,
@@ -8,7 +7,11 @@ import {
   type StatusBreakdown,
   summarizeStats,
 } from './stats.js';
-import { bucketTimeseries, type TimeseriesReport } from './timeseries.js';
+import {
+  bucketTimeseries,
+  bucketTimeseriesFromCounts,
+  type TimeseriesReport,
+} from './timeseries.js';
 
 /**
  * The Pulse feature — an aggregated "at a glance" health rollup over recorded
@@ -17,9 +20,9 @@ import { bucketTimeseries, type TimeseriesReport } from './timeseries.js';
  * entries that already carry their `content`, N+1 grouped by `traceId` rather
  * than the NestJS `batchId`) and to REUSE the existing metrics primitives:
  * {@link summarizeStats} (request status + cache hit ratio + exception groups),
- * {@link bucketTimeseries} (throughput), {@link percentile} (slow-hotspot p99),
- * and {@link detectNPlusOne} (N+1 loops). Pure aggregation lives in
- * {@link summarizePulse}; {@link PulseService} adds the windowed store scan.
+ * {@link bucketTimeseries} (throughput) and {@link percentile} (slow-hotspot p99);
+ * N+1 loops are query families repeated within one trace. Pure aggregation lives in
+ * {@link summarizePulse}; {@link PulseService} adds the windowed store reads.
  */
 
 const DEFAULT_WINDOW_MS = 3_600_000;
@@ -236,13 +239,13 @@ function pushDuration(map: Map<string, number[]>, key: string, durationMs: numbe
 
 interface NPlusOneAccumulator {
   familyHash: string;
-  /** The entry whose SQL the hotspot reports. */
-  sample: Entry;
   perRequest: number;
   traces: number;
   total: number;
   totalDurationMs: number;
   sampleTraceId: string;
+  /** Newest occurrence of the family in {@link sampleTraceId}, the tie-break between equally bad traces. */
+  sampleLastAt: number;
 }
 
 /** Empty request-health card (used when the `requests` card is disabled). */
@@ -255,10 +258,109 @@ function emptyRequestHealth(): PulseRequestHealth {
 }
 
 /**
+ * What every pulse card is computed from. A store with the aggregate fast paths fills it
+ * from a few targeted reads ({@link PulseService}); without them it comes from one scan
+ * of the window ({@link inputsFromEntries}). Both feed the same {@link draftPulse}, so the
+ * summary does not depend on which store answered.
+ */
+interface PulseInputs {
+  /** Entries per type in the window. */
+  counts: Record<string, number>;
+  /** Entries in the window. */
+  total: number;
+  overTime: TimeseriesReport;
+  /** Request entries; their content needs `method`, `url` and `status` only. */
+  requests: Entry[];
+  /** Cache entries; their content needs `operation` and `key` only. */
+  cache: Entry[];
+  /** Exception entries (server and client); their content needs `name` and `message` only. */
+  exceptions: Entry[];
+  /** Outgoing HTTP entries; content unused. */
+  httpClient: Entry[];
+  /** Job entries; content unused. */
+  jobs: Entry[];
+  /** The slowest entries, slowest first, at most `topN`; content unused. */
+  slowest: Entry[];
+  /** Query families repeated within one trace at least `nPlusOneThreshold` times. */
+  repeats: TraceRepeatRow[];
+  truncated: boolean;
+}
+
+/** Slowest first, ties by id: the order {@link PulseSummary.slowest} lists entries in. */
+function bySlowest(a: Entry, b: Entry): number {
+  return (b.durationMs ?? 0) - (a.durationMs ?? 0) || a.id.localeCompare(b.id);
+}
+
+/** Build the {@link PulseInputs} from every entry of the window. */
+function inputsFromEntries(
+  entries: Entry[],
+  windowStart: Date,
+  windowEnd: Date,
+  options: PulseOptions,
+  truncated: boolean,
+): PulseInputs {
+  const counts: Record<string, number> = {};
+  const requests: Entry[] = [];
+  const cache: Entry[] = [];
+  const exceptions: Entry[] = [];
+  const httpClient: Entry[] = [];
+  const jobs: Entry[] = [];
+  const timed: Entry[] = [];
+  const repeats = new Map<string, TraceRepeatRow>();
+
+  for (const entry of entries) {
+    counts[entry.type] = (counts[entry.type] ?? 0) + 1;
+    if (typeof entry.durationMs === 'number') timed.push(entry);
+    if (entry.type === EntryType.Request) requests.push(entry);
+    else if (entry.type === EntryType.HttpClient) httpClient.push(entry);
+    else if (entry.type === EntryType.Job) jobs.push(entry);
+    else if (entry.type === EntryType.Cache) cache.push(entry);
+    // Server `exception` AND browser `client_exception` — see EXCEPTION_ENTRY_TYPES.
+    // Counting only the server one made a front-end outage invisible here while
+    // the alert poller was already paging on it.
+    else if (isExceptionType(entry.type)) exceptions.push(entry);
+
+    if (entry.type === EntryType.Query && entry.traceId !== null && entry.familyHash !== null) {
+      const key = `${entry.traceId}\u0000${entry.familyHash}`;
+      const createdAt = entry.createdAt.getTime();
+      const duration = typeof entry.durationMs === 'number' ? entry.durationMs : 0;
+      const seen = repeats.get(key);
+      if (seen === undefined) {
+        repeats.set(key, {
+          traceId: entry.traceId,
+          familyHash: entry.familyHash,
+          count: 1,
+          totalDurationMs: duration,
+          lastAt: createdAt,
+        });
+      } else {
+        seen.count += 1;
+        seen.totalDurationMs += duration;
+        if (createdAt > seen.lastAt) seen.lastAt = createdAt;
+      }
+    }
+  }
+
+  return {
+    counts,
+    total: entries.length,
+    overTime: bucketTimeseries(entries, windowStart, windowEnd, options.buckets),
+    requests,
+    cache,
+    exceptions,
+    httpClient,
+    jobs,
+    slowest: timed.sort(bySlowest).slice(0, options.topN),
+    repeats: [...repeats.values()].filter((r) => r.count >= options.nPlusOneThreshold),
+    truncated,
+  };
+}
+
+/**
  * Aggregate a window of entries — each carrying its `content` — into a
  * {@link PulseSummary}. Pure: callers fetch the windowed entries and supply the
- * window bounds. Reuses {@link summarizeStats}, {@link bucketTimeseries},
- * {@link percentile}, and {@link detectNPlusOne} for the heavy lifting.
+ * window bounds. Reuses {@link summarizeStats}, {@link bucketTimeseries} and
+ * {@link percentile} for the heavy lifting.
  */
 export function summarizePulse(
   entries: Entry[],
@@ -267,14 +369,39 @@ export function summarizePulse(
   options: PulseOptions,
   truncated = false,
 ): PulseSummary {
-  return finishPulse(draftPulse(entries, windowStart, windowEnd, options, truncated), (e) => e);
+  const draft = draftPulse(inputsFromEntries(entries, windowStart, windowEnd, options, truncated), {
+    windowStart,
+    windowEnd,
+    options,
+  });
+  return finishPulse(
+    draft,
+    (entry) => entry,
+    (traceId, familyHash) => newestOf(entries, traceId, familyHash),
+  );
+}
+
+/** The newest entry of `familyHash` in `traceId` (the one an N+1 hotspot shows the SQL of). */
+function newestOf(entries: Entry[], traceId: string, familyHash: string): Entry | null {
+  let newest: Entry | null = null;
+  for (const entry of entries) {
+    if (entry.traceId !== traceId || entry.familyHash !== familyHash) continue;
+    if (
+      newest === null ||
+      entry.createdAt.getTime() > newest.createdAt.getTime() ||
+      (entry.createdAt.getTime() === newest.createdAt.getTime() && entry.sequence > newest.sequence)
+    ) {
+      newest = entry;
+    }
+  }
+  return newest;
 }
 
 /**
  * A pulse summary short of the two lists labelled from content: the slowest entries
- * and the N+1 hotspots' SQL. Everything else reads the content of request, cache and
- * exception entries only, so a whole-window scan can skip the content of the rest
- * (query entries, by far the most numerous) and fetch it for these few afterwards.
+ * and the N+1 hotspots' SQL. Everything else reads at most a few content fields of
+ * request, cache and exception entries, so the content of the few entries these two
+ * lists show is fetched afterwards.
  */
 interface PulseDraft {
   summary: Omit<PulseSummary, 'slowest' | 'nPlusOne'>;
@@ -282,13 +409,15 @@ interface PulseDraft {
   nPlusOne: NPlusOneAccumulator[];
 }
 
-/** The entries whose content {@link finishPulse} reads. */
-function draftSamples(draft: PulseDraft): Entry[] {
-  return [...draft.slowest, ...draft.nPlusOne.map((hotspot) => hotspot.sample)];
-}
-
-/** Label the draft's slowest entries and N+1 hotspots, reading content through `withContent`. */
-function finishPulse(draft: PulseDraft, withContent: (entry: Entry) => Entry): PulseSummary {
+/**
+ * Label the draft's slowest entries (through `withContent`) and N+1 hotspots (with the
+ * SQL of `sampleOf(sampleTraceId, familyHash)`).
+ */
+function finishPulse(
+  draft: PulseDraft,
+  withContent: (entry: Entry) => Entry,
+  sampleOf: (traceId: string, familyHash: string) => Entry | null | undefined,
+): PulseSummary {
   const { summary } = draft;
   return {
     windowStart: summary.windowStart,
@@ -309,15 +438,18 @@ function finishPulse(draft: PulseDraft, withContent: (entry: Entry) => Entry): P
     slowOutgoing: summary.slowOutgoing,
     slowJobs: summary.slowJobs,
     topExceptions: summary.topExceptions,
-    nPlusOne: draft.nPlusOne.map((h) => ({
-      familyHash: h.familyHash,
-      sql: truncate(sqlOf(withContent(h.sample))),
-      perRequest: h.perRequest,
-      traces: h.traces,
-      total: h.total,
-      totalDurationMs: h.totalDurationMs,
-      sampleTraceId: h.sampleTraceId,
-    })),
+    nPlusOne: draft.nPlusOne.map((h) => {
+      const sample = sampleOf(h.sampleTraceId, h.familyHash);
+      return {
+        familyHash: h.familyHash,
+        sql: truncate(sample ? sqlOf(sample) : ''),
+        perRequest: h.perRequest,
+        traces: h.traces,
+        total: h.total,
+        totalDurationMs: h.totalDurationMs,
+        sampleTraceId: h.sampleTraceId,
+      };
+    }),
     loadByUser: summary.loadByUser,
     scanned: summary.scanned,
     truncated: summary.truncated,
@@ -330,89 +462,96 @@ function sqlOf(entry: Entry): string {
   return record !== null && typeof record.sql === 'string' ? record.sql : '';
 }
 
+/** Rank the N+1 hotspots from per-trace repeats: worst total time wasted first. */
+function nPlusOneOf(repeats: TraceRepeatRow[], topN: number): NPlusOneAccumulator[] {
+  const hotspots = new Map<string, NPlusOneAccumulator>();
+  for (const repeat of repeats) {
+    const existing = hotspots.get(repeat.familyHash);
+    if (existing === undefined) {
+      hotspots.set(repeat.familyHash, {
+        familyHash: repeat.familyHash,
+        perRequest: repeat.count,
+        traces: 1,
+        total: repeat.count,
+        totalDurationMs: repeat.totalDurationMs,
+        sampleTraceId: repeat.traceId,
+        sampleLastAt: repeat.lastAt,
+      });
+      continue;
+    }
+    existing.traces += 1;
+    existing.total += repeat.count;
+    existing.totalDurationMs += repeat.totalDurationMs;
+    // The worst trace; between equally bad ones the most recent, then the lowest id, so the
+    // pick does not depend on the order the repeats arrive in.
+    const worse =
+      repeat.count > existing.perRequest ||
+      (repeat.count === existing.perRequest &&
+        (repeat.lastAt > existing.sampleLastAt ||
+          (repeat.lastAt === existing.sampleLastAt && repeat.traceId < existing.sampleTraceId)));
+    if (worse) {
+      existing.perRequest = repeat.count;
+      existing.sampleTraceId = repeat.traceId;
+      existing.sampleLastAt = repeat.lastAt;
+    }
+  }
+  return [...hotspots.values()]
+    .sort(
+      (a, b) =>
+        b.totalDurationMs - a.totalDurationMs ||
+        b.total - a.total ||
+        b.traces - a.traces ||
+        a.familyHash.localeCompare(b.familyHash),
+    )
+    .slice(0, topN);
+}
+
 function draftPulse(
-  entries: Entry[],
-  windowStart: Date,
-  windowEnd: Date,
-  options: PulseOptions,
-  truncated: boolean,
+  inputs: PulseInputs,
+  window: { windowStart: Date; windowEnd: Date; options: PulseOptions },
 ): PulseDraft {
+  const { windowStart, windowEnd, options } = window;
+  const { truncated } = inputs;
   const enabled = (card: PulseCardName): boolean => options.cards.has(card);
   const windowMs = Math.max(0, windowEnd.getTime() - windowStart.getTime());
 
-  const counts: Record<string, number> = {};
-  const slowCandidates: Entry[] = [];
   const routeDurations = new Map<string, number[]>();
-  const outgoingDurations = new Map<string, number[]>();
-  const jobDurations = new Map<string, number[]>();
-  const byTrace = new Map<string, Entry[]>();
   const userLoad = new Map<string, { count: number; totalDurationMs: number }>();
-  const requestEntries: Entry[] = [];
-  const cacheEntries: Entry[] = [];
-  const exceptionEntries: Entry[] = [];
-
-  for (const entry of entries) {
-    counts[entry.type] = (counts[entry.type] ?? 0) + 1;
-
-    if (typeof entry.durationMs === 'number') slowCandidates.push(entry);
-
-    if (entry.type === EntryType.Request) {
-      requestEntries.push(entry);
-      const route = routeKey(entry);
-      if (route !== null && typeof entry.durationMs === 'number') {
-        pushDuration(routeDurations, route, entry.durationMs);
-      }
-      const user = userFromTags(entry.tags);
-      if (user !== null) {
-        const duration = typeof entry.durationMs === 'number' ? entry.durationMs : 0;
-        const existing = userLoad.get(user);
-        if (existing) {
-          existing.count += 1;
-          existing.totalDurationMs += duration;
-        } else {
-          userLoad.set(user, { count: 1, totalDurationMs: duration });
-        }
-      }
-    } else if (entry.type === EntryType.HttpClient) {
-      if (entry.familyHash !== null && typeof entry.durationMs === 'number') {
-        pushDuration(outgoingDurations, entry.familyHash, entry.durationMs);
-      }
-    } else if (entry.type === EntryType.Job) {
-      if (entry.familyHash !== null && typeof entry.durationMs === 'number') {
-        pushDuration(jobDurations, entry.familyHash, entry.durationMs);
-      }
-    } else if (entry.type === EntryType.Cache) {
-      cacheEntries.push(entry);
-    } else if (isExceptionType(entry.type)) {
-      // Server `exception` AND browser `client_exception` — see EXCEPTION_ENTRY_TYPES.
-      // Counting only the server one made a front-end outage invisible here while
-      // the alert poller was already paging on it.
-      exceptionEntries.push(entry);
+  for (const entry of inputs.requests) {
+    const route = routeKey(entry);
+    if (route !== null && typeof entry.durationMs === 'number') {
+      pushDuration(routeDurations, route, entry.durationMs);
     }
-
-    if (entry.traceId !== null && entry.type === EntryType.Query) {
-      const bucket = byTrace.get(entry.traceId);
-      if (bucket) bucket.push(entry);
-      else byTrace.set(entry.traceId, [entry]);
+    const user = userFromTags(entry.tags);
+    if (user !== null) {
+      const duration = typeof entry.durationMs === 'number' ? entry.durationMs : 0;
+      const existing = userLoad.get(user);
+      if (existing) {
+        existing.count += 1;
+        existing.totalDurationMs += duration;
+      } else {
+        userLoad.set(user, { count: 1, totalDurationMs: duration });
+      }
     }
   }
+  const outgoingDurations = familyDurations(inputs.httpClient);
+  const jobDurations = familyDurations(inputs.jobs);
 
-  // Throughput — reuse bucketTimeseries.
-  const overTime = bucketTimeseries(entries, windowStart, windowEnd, options.buckets);
+  // Throughput — the bucketed counts.
   const minutes = windowMs > 0 ? windowMs / 60_000 : 0;
   const throughput: PulseThroughput = enabled('throughput')
     ? {
-        total: entries.length,
-        perMinute: minutes > 0 ? entries.length / minutes : 0,
-        overTime,
+        total: inputs.total,
+        perMinute: minutes > 0 ? inputs.total / minutes : 0,
+        overTime: inputs.overTime,
       }
-    : { total: 0, perMinute: 0, overTime };
+    : { total: 0, perMinute: 0, overTime: inputs.overTime };
 
   // Request health — reuse summarizeStats for status + latency.
   let requests = emptyRequestHealth();
   if (enabled('requests')) {
     const stats = summarizeStats({
-      entries: requestEntries,
+      entries: inputs.requests,
       type: EntryType.Request,
       windowStart,
       windowEnd,
@@ -423,9 +562,10 @@ function draftPulse(
     });
     const status = stats.status ?? emptyRequestHealth().status;
     const failed = status['4xx'] + status['5xx'];
+    const total = inputs.requests.length;
     requests = {
-      total: requestEntries.length,
-      errorRate: requestEntries.length > 0 ? failed / requestEntries.length : 0,
+      total,
+      errorRate: total > 0 ? failed / total : 0,
       status,
       ...(stats.latency !== undefined ? { latency: stats.latency } : {}),
     };
@@ -433,9 +573,9 @@ function draftPulse(
 
   // Cache hit ratio — reuse summarizeStats' cache aggregate.
   let cache: CacheStats | undefined;
-  if (enabled('cache') && cacheEntries.length > 0) {
+  if (enabled('cache') && inputs.cache.length > 0) {
     const stats = summarizeStats({
-      entries: cacheEntries,
+      entries: inputs.cache,
       type: EntryType.Cache,
       windowStart,
       windowEnd,
@@ -449,9 +589,9 @@ function draftPulse(
 
   // Top exceptions — reuse summarizeStats' exception grouping.
   let topExceptions: PulseExceptionGroup[] = [];
-  if (enabled('exceptions') && exceptionEntries.length > 0) {
+  if (enabled('exceptions') && inputs.exceptions.length > 0) {
     const stats = summarizeStats({
-      entries: exceptionEntries,
+      entries: inputs.exceptions,
       type: EntryType.Exception,
       windowStart,
       windowEnd,
@@ -471,14 +611,6 @@ function draftPulse(
     }));
   }
 
-  // Slowest entries across all types.
-  const slowest: Entry[] = enabled('slowest')
-    ? slowCandidates
-        .slice()
-        .sort((a, b) => (b.durationMs ?? 0) - (a.durationMs ?? 0) || a.id.localeCompare(b.id))
-        .slice(0, options.topN)
-    : [];
-
   // Slow hotspots — reuse percentile via toHotspots.
   const slowRoutes = enabled('slowRoutes')
     ? toHotspots(routeDurations, options, options.slowRouteMs)
@@ -488,57 +620,6 @@ function draftPulse(
     : [];
   // Jobs are not gated by the slow-ms threshold — the slowest jobs always matter.
   const slowJobs = enabled('slowJobs') ? toHotspots(jobDurations, options, 0) : [];
-
-  // N+1 hotspots — reuse detectNPlusOne per trace, aggregated across traces.
-  let nPlusOne: NPlusOneAccumulator[] = [];
-  if (enabled('nPlusOne')) {
-    const hotspots = new Map<string, NPlusOneAccumulator>();
-    const familyDurationInTrace = new Map<string, number>();
-    for (const [traceId, traceEntries] of byTrace) {
-      familyDurationInTrace.clear();
-      for (const entry of traceEntries) {
-        if (entry.familyHash !== null && typeof entry.durationMs === 'number') {
-          familyDurationInTrace.set(
-            entry.familyHash,
-            (familyDurationInTrace.get(entry.familyHash) ?? 0) + entry.durationMs,
-          );
-        }
-      }
-      for (const insight of detectNPlusOne(traceEntries, options.nPlusOneThreshold)) {
-        const loopDuration = familyDurationInTrace.get(insight.familyHash) ?? 0;
-        const existing = hotspots.get(insight.familyHash);
-        if (existing) {
-          existing.traces += 1;
-          existing.total += insight.count;
-          existing.totalDurationMs += loopDuration;
-          if (insight.count > existing.perRequest) {
-            existing.perRequest = insight.count;
-            existing.sampleTraceId = traceId;
-          }
-        } else {
-          hotspots.set(insight.familyHash, {
-            familyHash: insight.familyHash,
-            // detectNPlusOne reports the SQL of the family's first entry in the trace.
-            sample: traceEntries.find((entry) => entry.familyHash === insight.familyHash)!,
-            perRequest: insight.count,
-            traces: 1,
-            total: insight.count,
-            totalDurationMs: loopDuration,
-            sampleTraceId: traceId,
-          });
-        }
-      }
-    }
-    nPlusOne = [...hotspots.values()]
-      .sort(
-        (a, b) =>
-          b.totalDurationMs - a.totalDurationMs ||
-          b.total - a.total ||
-          b.traces - a.traces ||
-          a.familyHash.localeCompare(b.familyHash),
-      )
-      .slice(0, options.topN);
-  }
 
   // Load by user — top users by total request time.
   const loadByUser: PulseUserLoad[] = enabled('loadByUser')
@@ -558,7 +639,7 @@ function draftPulse(
       windowStart: windowStart.toISOString(),
       windowEnd: windowEnd.toISOString(),
       windowMs,
-      counts,
+      counts: inputs.counts,
       throughput,
       requests,
       ...(cache !== undefined ? { cache } : {}),
@@ -567,12 +648,23 @@ function draftPulse(
       slowJobs,
       topExceptions,
       loadByUser,
-      scanned: entries.length,
+      scanned: inputs.total,
       truncated,
     },
-    slowest,
-    nPlusOne,
+    slowest: enabled('slowest') ? inputs.slowest.slice(0, options.topN) : [],
+    nPlusOne: enabled('nPlusOne') ? nPlusOneOf(inputs.repeats, options.topN) : [],
   };
+}
+
+/** Durations per `familyHash` (entries with both), for a hotspot card. */
+function familyDurations(entries: Entry[]): Map<string, number[]> {
+  const byFamily = new Map<string, number[]>();
+  for (const entry of entries) {
+    if (entry.familyHash !== null && typeof entry.durationMs === 'number') {
+      pushDuration(byFamily, entry.familyHash, entry.durationMs);
+    }
+  }
+  return byFamily;
 }
 
 /** Per-call / per-instance pulse tuning (all optional; sensible defaults). */
@@ -636,6 +728,11 @@ export class PulseService {
   /**
    * Build the health snapshot over the trailing window. `query.windowMs` /
    * `query.topN` override the configured defaults for a single call.
+   *
+   * A store with the aggregate fast paths ({@link TelescopeStore.countByBucket},
+   * {@link TelescopeStore.listSlowest}, {@link TelescopeStore.countTraceRepeats}) answers
+   * with a few targeted reads covering the whole window; any other store is scanned (up to
+   * `scanCap` entries, newest first, `truncated` past it). Both give the same summary.
    */
   async getHealth(query: PulseQuery = {}): Promise<PulseSummary> {
     const windowMs = query.windowMs ?? this.windowMs;
@@ -650,18 +747,113 @@ export class PulseService {
       topN: query.topN ?? this.base.topN,
     };
 
-    // The window is scanned without content; only the types the cards read content
-    // from get it back, and the slowest / N+1 rows are labelled from a read by id.
+    const inputs = hasPulseFastPaths(this.store)
+      ? await this.readInputs(this.store, windowStart, windowEnd, options)
+      : await this.scanInputs(windowStart, windowEnd, options);
+    const draft = draftPulse(inputs, { windowStart, windowEnd, options });
+    const [slowest, samples] = await Promise.all([
+      this.withContentById(draft.slowest),
+      this.nPlusOneSamples(draft.nPlusOne, windowStart, windowEnd),
+    ]);
+    return finishPulse(
+      draft,
+      (entry) => slowest.get(entry.id) ?? entry,
+      (traceId, familyHash) => samples.get(`${traceId}\u0000${familyHash}`),
+    );
+  }
+
+  /** The inputs from the store's aggregate reads: nothing but their results leaves the database. */
+  private async readInputs(
+    store: TelescopeStore & Required<Pick<TelescopeStore, PulseFastPath>>,
+    windowStart: Date,
+    windowEnd: Date,
+    options: PulseOptions,
+  ): Promise<PulseInputs> {
+    const cards = options.cards;
+    const window = { after: windowStart, before: windowEnd };
+    // `list` takes an exclusive `before`; the aggregates an inclusive one.
+    const listWindow = { after: windowStart, before: new Date(windowEnd.getTime() + 1) };
+    const spanMs = Math.max(1, windowEnd.getTime() - windowStart.getTime());
+    const listOf = (type: string, fields: string[] | null): Promise<Entry[]> =>
+      store.list({
+        ...listWindow,
+        type,
+        size: this.scanCap,
+        ...(fields === null ? { omitContent: true } : { contentFields: fields }),
+      });
+    const none = Promise.resolve([] as Entry[]);
+    const needsRequests =
+      cards.has('requests') || cards.has('slowRoutes') || cards.has('loadByUser');
+
+    const [buckets, slowest, repeats, requests, cache, exceptions, httpClient, jobs] =
+      await Promise.all([
+        store.countByBucket({
+          ...window,
+          bucketMs: Math.max(1, Math.floor(spanMs / options.buckets)),
+        }),
+        cards.has('slowest') ? store.listSlowest({ ...window, limit: options.topN }) : none,
+        cards.has('nPlusOne')
+          ? store.countTraceRepeats({
+              ...window,
+              type: EntryType.Query,
+              minCount: options.nPlusOneThreshold,
+            })
+          : Promise.resolve([] as TraceRepeatRow[]),
+        needsRequests ? listOf(EntryType.Request, ['method', 'url', 'status']) : none,
+        cards.has('cache') ? listOf(EntryType.Cache, ['operation', 'key']) : none,
+        cards.has('exceptions')
+          ? Promise.all(EXCEPTION_ENTRY_TYPES.map((type) => listOf(type, ['name', 'message'])))
+          : Promise.resolve([] as Entry[][]),
+        cards.has('slowOutgoing') ? listOf(EntryType.HttpClient, null) : none,
+        cards.has('slowJobs') ? listOf(EntryType.Job, null) : none,
+      ]);
+
+    const counts: Record<string, number> = {};
+    let total = 0;
+    for (const row of buckets) {
+      counts[row.type] = (counts[row.type] ?? 0) + row.count;
+      total += row.count;
+    }
+    const lists = [requests, cache, httpClient, jobs, ...exceptions];
+    return {
+      counts,
+      total,
+      overTime: bucketTimeseriesFromCounts(buckets, windowStart, windowEnd, options.buckets),
+      requests,
+      cache,
+      exceptions: exceptions.flat(),
+      httpClient,
+      jobs,
+      slowest,
+      repeats,
+      truncated: lists.some((list) => list.length >= this.scanCap),
+    };
+  }
+
+  /**
+   * The inputs from one scan of the window: the newest `scanCap` entries, without content,
+   * plus the content of the types the cards read it from.
+   */
+  private async scanInputs(
+    windowStart: Date,
+    windowEnd: Date,
+    options: PulseOptions,
+  ): Promise<PulseInputs> {
+    const before = new Date(windowEnd.getTime() + 1);
     const scanned = await this.store.list({
       after: windowStart,
+      before,
       size: this.scanCap,
       omitContent: true,
     });
     const truncated = scanned.length >= this.scanCap;
-    const entries = await this.withContentFor(scanned, contentTypes(options.cards), windowStart);
-    const draft = draftPulse(entries, windowStart, windowEnd, options, truncated);
-    const samples = await this.withContentById(draftSamples(draft));
-    return finishPulse(draft, (entry) => samples.get(entry.id) ?? entry);
+    const entries = await this.withContentFor(
+      scanned,
+      contentTypes(options.cards),
+      windowStart,
+      before,
+    );
+    return inputsFromEntries(entries, windowStart, windowEnd, options, truncated);
   }
 
   /**
@@ -673,6 +865,7 @@ export class PulseService {
     entries: Entry[],
     types: ReadonlySet<string>,
     after: Date,
+    before: Date,
   ): Promise<Entry[]> {
     const missing = new Set<string>();
     for (const entry of entries) {
@@ -681,7 +874,7 @@ export class PulseService {
     if (missing.size === 0) return entries;
     const full = new Map<string, Entry>();
     const lists = await Promise.all(
-      [...missing].map((type) => this.store.list({ type, after, size: this.scanCap })),
+      [...missing].map((type) => this.store.list({ type, after, before, size: this.scanCap })),
     );
     for (const list of lists) for (const entry of list) full.set(entry.id, entry);
     return entries.map((entry) => full.get(entry.id) ?? entry);
@@ -696,6 +889,41 @@ export class PulseService {
     for (const entry of found) if (entry !== null) byId.set(entry.id, entry);
     return byId;
   }
+
+  /** For each N+1 hotspot, the newest entry of its family in its sample trace (for its SQL). */
+  private async nPlusOneSamples(
+    hotspots: NPlusOneAccumulator[],
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<Map<string, Entry>> {
+    const samples = new Map<string, Entry>();
+    await Promise.all(
+      hotspots.map(async ({ sampleTraceId, familyHash }) => {
+        const [sample] = await this.store.list({
+          traceId: sampleTraceId,
+          familyHash,
+          after: windowStart,
+          before: new Date(windowEnd.getTime() + 1),
+          size: 1,
+        });
+        if (sample !== undefined) samples.set(`${sampleTraceId}\u0000${familyHash}`, sample);
+      }),
+    );
+    return samples;
+  }
+}
+
+/** The optional store reads Pulse's whole-window path needs. */
+type PulseFastPath = 'countByBucket' | 'listSlowest' | 'countTraceRepeats';
+
+function hasPulseFastPaths(
+  store: TelescopeStore,
+): store is TelescopeStore & Required<Pick<TelescopeStore, PulseFastPath>> {
+  return (
+    typeof store.countByBucket === 'function' &&
+    typeof store.listSlowest === 'function' &&
+    typeof store.countTraceRepeats === 'function'
+  );
 }
 
 /** The entry types whose content the enabled cards aggregate over. */

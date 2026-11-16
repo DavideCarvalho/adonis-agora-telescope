@@ -16,10 +16,14 @@ import type {
   EntryQuery,
   FamilyCountQuery,
   KeyCountRow,
+  SlowestQuery,
   TagCountQuery,
+  TagGroups,
   TelescopeStore,
   TraceIdQuery,
   TraceIdRow,
+  TraceRepeatQuery,
+  TraceRepeatRow,
 } from '../store.js';
 import {
   ensureSchema,
@@ -263,6 +267,8 @@ export interface LucidDatabaseLike {
   table(table: string): LucidInsertBuilderLike;
   /** Run a raw SQL statement (DDL, `MAX(sequence)` seed). */
   rawQuery(sql: string, bindings?: unknown[]): Promise<unknown>;
+  /** A raw SQL fragment for `select()`. Optional: without it `contentFields` is ignored. */
+  raw?(sql: string, bindings?: unknown[]): unknown;
   /** The dialect, when this is a single connection client. Picks the DDL's identifier quoting. */
   dialect?: { name: string };
   /** The default connection, when this is the `Database` facade. */
@@ -285,7 +291,12 @@ export interface LucidQueryBuilderLike {
   /** Aggregate MAX with an alias, e.g. `max('created_at as last_at')`. Chainable so it
    *  composes with `select()` in a grouped query. */
   max(expression: string): this;
-  select(...columns: string[]): Promise<Record<string, unknown>[]>;
+  /** Aggregate SUM with an alias. Optional: without it `countTraceRepeats` sums in JS. */
+  sum?(expression: string): this;
+  /** A raw HAVING clause. Optional: without it `countTraceRepeats` filters groups in JS. */
+  havingRaw?(sql: string, bindings?: unknown[]): this;
+  /** Columns, or raw fragments from {@link LucidDatabaseLike.raw}. */
+  select(...columns: unknown[]): Promise<Record<string, unknown>[]>;
   count(column: string, alias: string): Promise<Record<string, unknown>[]>;
   delete(): Promise<number>;
   first(): Promise<Record<string, unknown> | null>;
@@ -397,6 +408,8 @@ interface RowPosition {
  * `@adonisjs/lucid` only when the `lucid` driver is the active one.
  */
 export class LucidTelescopeStore implements TelescopeStore {
+  /** {@link countByBucket}, {@link listSlowest} and {@link countTraceRepeats} filter by `tagGroups`. */
+  readonly honorsTagGroups = true;
   private readonly tableName: string;
   /** The configured `schema`, or `undefined` for the connection's current one. */
   readonly schema: string | undefined;
@@ -580,11 +593,158 @@ export class LucidTelescopeStore implements TelescopeStore {
         if (page > 1) builder = builder.offset((page - 1) * size);
       }
 
-      const rows = await (query.omitContent === true
-        ? builder.select(...COLUMNS_WITHOUT_CONTENT)
-        : builder.select('*'));
+      if (query.omitContent === true) {
+        const rows = await builder.select(...COLUMNS_WITHOUT_CONTENT);
+        return rows.map((r) => hydrate(r as unknown as TelescopeColumns));
+      }
+      const fields = this.contentFieldColumns(query.contentFields);
+      if (fields === null) {
+        const rows = await builder.select('*');
+        return rows.map((r) => hydrate(r as unknown as TelescopeColumns));
+      }
+      const rows = await builder.select(...COLUMNS_WITHOUT_CONTENT, ...fields.map((f) => f.column));
+      return rows.map((r) => {
+        const entry = hydrate(r as unknown as TelescopeColumns);
+        const content: Record<string, unknown> = {};
+        for (const { field, alias } of fields) {
+          const text = r[alias];
+          // Absent field: SQL NULL. A JSON `null` comes back as the text `null`.
+          if (text !== null && text !== undefined) content[field] = parseJson(String(text));
+        }
+        entry.content = content;
+        return entry;
+      });
+    });
+  }
+
+  /**
+   * One raw select column per requested content field, extracting the field's JSON text
+   * in this dialect, or `null` when the hint cannot be served here (no raw builder, an
+   * unsupported dialect, a field name that is not a plain identifier): the caller then
+   * reads the whole content.
+   */
+  private contentFieldColumns(
+    fields: string[] | undefined,
+  ): Array<{ field: string; alias: string; column: unknown }> | null {
+    if (fields === undefined || fields.length === 0 || typeof this.db.raw !== 'function') {
+      return null;
+    }
+    if (!fields.every((field) => CONTENT_FIELD.test(field))) return null;
+    const dialect = dialectOf(this.db);
+    const extract = jsonFieldSql(dialect);
+    if (extract === null) return null;
+    const raw = this.db.raw.bind(this.db);
+    return fields.map((field, index) => {
+      const alias = `content_field_${index}`;
+      return { field, alias, column: raw(`${extract.sql} AS ${alias}`, extract.bindings(field)) };
+    });
+  }
+
+  /**
+   * The slowest entries of a window — see {@link TelescopeStore.listSlowest}. Ordered in
+   * SQL, so one page of rows leaves the database whatever the window holds.
+   */
+  listSlowest(query: SlowestQuery): Promise<Entry[]> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const limit = Math.max(0, Math.floor(query.limit));
+      if (limit === 0) return [];
+      let builder = this.db
+        .from(this.table)
+        .where('created_at', '>', query.after.getTime())
+        .where('created_at', '<=', query.before.getTime())
+        .whereNotNull('duration_ms');
+      const scoped = withTagGroups(builder, query.tagGroups);
+      if (scoped === null) return [];
+      builder = scoped;
+      const rows = await builder
+        .orderBy('duration_ms', 'desc')
+        .orderBy('id', 'asc')
+        .limit(limit)
+        .select(...COLUMNS_WITHOUT_CONTENT);
       return rows.map((r) => hydrate(r as unknown as TelescopeColumns));
     });
+  }
+
+  /**
+   * Per `(trace, family)` counts of one entry type in a window — see
+   * {@link TelescopeStore.countTraceRepeats}. Grouped (and filtered by `HAVING`) in SQL,
+   * so only the pairs that repeat leave the database.
+   */
+  countTraceRepeats(query: TraceRepeatQuery): Promise<TraceRepeatRow[]> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const minCount = Math.max(1, Math.floor(query.minCount));
+      let builder = this.db
+        .from(this.table)
+        .where('type', query.type)
+        .where('created_at', '>', query.after.getTime())
+        .where('created_at', '<=', query.before.getTime())
+        .whereNotNull('trace_id')
+        .whereNotNull('family_hash');
+      const scoped = withTagGroups(builder, query.tagGroups);
+      if (scoped === null) return [];
+      builder = scoped;
+      // The GROUP BY columns are selected through MAX() (see countByBucket for why).
+      builder = builder
+        .groupBy('trace_id', 'family_hash')
+        .max('trace_id as trace_key')
+        .max('family_hash as family_key')
+        .max('created_at as last_at');
+      const summed = typeof builder.sum === 'function';
+      if (summed) builder = builder.sum!('duration_ms as total_duration');
+      const having = typeof builder.havingRaw === 'function';
+      if (having) builder = builder.havingRaw!('COUNT(*) >= ?', [minCount]);
+      const rows = (await builder.count('*', 'total')) as unknown as Array<{
+        trace_key: string;
+        family_key: string;
+        last_at: unknown;
+        total_duration?: unknown;
+        total: unknown;
+      }>;
+      const repeats: TraceRepeatRow[] = [];
+      for (const row of rows) {
+        const count = toInt(row.total);
+        if (count < minCount) continue;
+        repeats.push({
+          traceId: row.trace_key,
+          familyHash: row.family_key,
+          count,
+          totalDurationMs: summed ? toNumber(row.total_duration) : 0,
+          lastAt: toInt(row.last_at),
+        });
+      }
+      if (!summed && repeats.length > 0) await this.sumRepeatDurations(query, repeats);
+      return repeats;
+    });
+  }
+
+  /** Durations for {@link countTraceRepeats} on a builder without `sum()`. */
+  private async sumRepeatDurations(query: TraceRepeatQuery, repeats: TraceRepeatRow[]) {
+    const byKey = new Map(repeats.map((r) => [`${r.traceId}\u0000${r.familyHash}`, r]));
+    const traceIds = [...new Set(repeats.map((r) => r.traceId))];
+    for (let i = 0; i < traceIds.length; i += TRACE_ID_CHUNK) {
+      let builder = this.db
+        .from(this.table)
+        .where('type', query.type)
+        .where('created_at', '>', query.after.getTime())
+        .where('created_at', '<=', query.before.getTime())
+        .whereIn('trace_id', traceIds.slice(i, i + TRACE_ID_CHUNK));
+      const scoped = withTagGroups(builder, query.tagGroups);
+      if (scoped === null) return;
+      builder = scoped;
+      const rows = (await builder.select('trace_id', 'family_hash', 'duration_ms')) as Array<{
+        trace_id: string;
+        family_hash: string | null;
+        duration_ms: unknown;
+      }>;
+      for (const row of rows) {
+        const repeat = byKey.get(`${row.trace_id}\u0000${row.family_hash}`);
+        if (repeat !== undefined && row.duration_ms !== null && row.duration_ms !== undefined) {
+          repeat.totalDurationMs += toNumber(row.duration_ms);
+        }
+      }
+    }
   }
 
   /**
@@ -646,6 +806,9 @@ export class LucidTelescopeStore implements TelescopeStore {
         .where('created_at', '>', startMs)
         .where('created_at', '<=', query.before.getTime());
       if (query.type !== undefined) builder = builder.where('type', query.type);
+      const scoped = withTagGroups(builder, query.tagGroups);
+      if (scoped === null) return [];
+      builder = scoped;
 
       const tally = new Map<string, BucketCountRow>();
       const add = (createdAt: unknown, type: string, count: number) => {
@@ -1111,6 +1274,61 @@ function parseJson(text: string): unknown {
 function parseTags(text: string): string[] {
   const parsed = parseJson(text);
   return Array.isArray(parsed) ? parsed.filter((t): t is string => typeof t === 'string') : [];
+}
+
+/** A content field `contentFields` may name: a plain identifier, safe in a JSON path. */
+const CONTENT_FIELD = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Trace ids per `whereIn` when summing durations without `sum()`. */
+const TRACE_ID_CHUNK = 500;
+
+/**
+ * SQL giving a content field's value as JSON text (`200`, `"GET"`, `null`), or SQL NULL
+ * when the field is absent, in `dialect`; `null` for a dialect without JSON functions here.
+ */
+function jsonFieldSql(
+  dialect: string | undefined,
+): { sql: string; bindings: (field: string) => unknown[] } | null {
+  if (dialect === 'postgres' || dialect === 'redshift') {
+    return { sql: '(??::json -> ?)::text', bindings: (field) => ['content', field] };
+  }
+  if (isMysql(dialect)) {
+    return {
+      sql: 'CAST(JSON_EXTRACT(??, ?) AS CHAR)',
+      bindings: (field) => ['content', `$.${field}`],
+    };
+  }
+  if (dialect === 'better-sqlite3' || dialect === 'sqlite3' || dialect === 'libsql') {
+    return { sql: '?? -> ?', bindings: (field) => ['content', `$.${field}`] };
+  }
+  return null;
+}
+
+/**
+ * `builder` narrowed to rows carrying, for each group, one of its tags (the quoted-token
+ * match `list` uses for `tag` / `anyTags`), or `null` when a group is empty (nothing matches).
+ */
+function withTagGroups(
+  builder: LucidQueryBuilderLike,
+  groups: TagGroups | undefined,
+): LucidQueryBuilderLike | null {
+  if (groups === undefined) return builder;
+  let scoped = builder;
+  for (const group of groups) {
+    if (group.length === 0) return null;
+    const clauses = group.map(() => `?? LIKE ? ESCAPE '!'`).join(' OR ');
+    const bindings = group.flatMap((tag) => ['tags', `%${likeEscape(JSON.stringify(tag))}%`]);
+    scoped = scoped.whereRaw(`(${clauses})`, bindings);
+  }
+  return scoped;
+}
+
+/** A numeric aggregate (`SUM` comes back as a string from pg / mysql), `0` when absent. */
+function toNumber(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value === 'string') return Number(value) || 0;
+  return 0;
 }
 
 function toInt(value: unknown): number {

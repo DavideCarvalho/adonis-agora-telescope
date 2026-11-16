@@ -101,7 +101,8 @@ export default defineConfig({
 | ------------ | --------------------------- | ----------- | ------------------------------------------------------- |
 | `enabled`    | `boolean`                   | `true`      | Master switch for per-technology watchers.             |
 | `watchers`   | `WatcherName[]`             | `['query']` | Any of `query`, `mail`, `cache`, `http-client`, `logs`, `queue`, `events`, `redis`, `profiling`, `schedule`, `queue-manager`. |
-| `query`      | `QueryWatcherConfig`        | see below   | `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `normalize` (`true`). |
+| `query`      | `QueryWatcherConfig`        | see below   | `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `ignore` (SQL prefixes / RegExps), `ignoreTables`, `normalize` (`true`). |
+| `redis`      | `RedisWatcherConfig`        | see below   | `captureValues` (`false`: key kept, other arguments `[REDACTED]`), `ignoreCommands`, `ignoreKeys`, `ignoreConnections`, `sampleRate` (1), `floodWarnPerMinute` (600). |
 | `httpClient` | `HttpClientWatcherConfig`   | see below   | `slowMs` (1000), `ignoreHosts`, `captureBodies` (`false`). |
 | `profiling`  | `ProfilingWatcherConfig`    | see below   | `slowMs` (100), `minDurationMs` (0).                   |
 | `schedule`   | `ScheduleWatcherConfig`     | see below   | `slowMs` (1000).                                       |
@@ -110,7 +111,8 @@ export default defineConfig({
 <Callout type="warn">
 Only `query` is on by default — it's the verified one. Enable the rest knowing some event
 contracts are best-effort (those packages aren't installed in this repo). Query bindings are
-redacted unless `query.captureBindings` is on, and `profiling`/`schedule` are user-driven (they
+redacted unless `query.captureBindings` is on, redis argument values unless
+`redis.captureValues` is on, and `profiling`/`schedule` are user-driven (they
 publish opt-in helpers rather than tapping an event). And remember Lucid only emits `db:query`
 when its connection `debug` is on. See [Watchers](/docs/telescope/packages/watchers).
 </Callout>

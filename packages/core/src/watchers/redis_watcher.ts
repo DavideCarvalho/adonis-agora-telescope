@@ -163,7 +163,11 @@ const SECRET_COMMANDS = new Set(['AUTH', 'HELLO', 'CONFIG', 'ACL', 'MIGRATE']);
  * The arguments a redis entry records: all of them with `captureValues`, else the
  * first one (the key) and `[REDACTED]` for the rest, arity preserved.
  */
-export function redactRedisArgs(command: string, args: unknown[], captureValues = false): unknown[] {
+export function redactRedisArgs(
+  command: string,
+  args: unknown[],
+  captureValues = false,
+): unknown[] {
   if (captureValues) return args;
   if (SECRET_COMMANDS.has(command)) return args.map(() => REDACTED);
   return args.map((arg, index) => (index === 0 ? arg : REDACTED));

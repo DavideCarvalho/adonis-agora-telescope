@@ -101,9 +101,10 @@ The [Lucid store](/docs/telescope/packages/storages) keeps `created_at` as an in
 indexes the hot read paths (`created_at`, `trace_id`, `(type, created_at, sequence)` and
 `(family_hash, created_at)`), so the common queries — recent entries, one trace, the newest
 of one type — are index scans, not table scans or sorts. Aggregates the dashboard needs
-(per-bucket throughput, the busiest families) are grouped in SQL, and window-wide scans
-(Pulse, per-type stats) read every column but `content`, fetching content only for the
-handful of rows they display.
+(per-bucket throughput, the busiest families, Pulse's counts, slowest entries and N+1
+groups) are grouped in SQL; the rest of Pulse reads only request, cache and exception rows,
+with just the content fields its cards use, and per-type stats read every column but
+`content`, fetching content only for the handful of rows they display.
 It never auto-evicts on `record` (that would add a query per write); bound it by running
 [`prune` on a schedule](/docs/telescope/concepts/storage#retention-and-pruning) instead.
 

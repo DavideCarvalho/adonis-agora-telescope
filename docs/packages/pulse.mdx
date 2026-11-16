@@ -84,8 +84,8 @@ interface PulseSummary {
   topExceptions: PulseExceptionGroup[]    // grouped exception families (server + browser)
   nPlusOne: PulseNPlusOne[]               // N+1 query loops aggregated across traces
   loadByUser: PulseUserLoad[]             // share of load by `user:<id>` tag
-  scanned: number                         // entries scanned to build this summary
-  truncated: boolean                      // whether the scan hit its cap
+  scanned: number                         // entries in the window the summary covers
+  truncated: boolean                      // whether a read hit its cap (results may be partial)
 }
 ```
 
@@ -106,9 +106,16 @@ before 0.12.0 and that rate reads 0% no matter what, see the response-status not
 <Callout type="info">
 The rollup **reuses** the existing metrics primitives rather than re-deriving anything:
 `summarizeStats` (status breakdown, cache hit ratio, exception groups), `bucketTimeseries`
-(throughput), `percentile` (slow-hotspot p99), and `detectNPlusOne` (N+1 loops) — so a Pulse
-number means exactly what the corresponding dashboard view shows. The scan is capped
-(50,000 entries) and surfaces `truncated: true` if it hit the cap.
+(throughput) and `percentile` (slow-hotspot p99) — so a Pulse number means exactly what the
+corresponding dashboard view shows. An N+1 suspect is a query family that ran at least
+`nPlusOneThreshold` times in one trace; its SQL is the newest such query in its worst trace.
+
+On the `lucid` store the whole window is aggregated in SQL (counts, throughput, slowest
+entries, N+1 groups), and only request, cache and exception rows are read, without their
+content beyond the few fields the cards use. Each of those per-type reads is capped at
+`scanCap` (50,000) entries. On a store without the
+[optional fast paths](/docs/telescope/concepts/storage#optional-fast-paths), Pulse scans the
+newest 50,000 entries of the window. Either way `truncated: true` says a cap was hit.
 </Callout>
 
 ## The dashboard route
