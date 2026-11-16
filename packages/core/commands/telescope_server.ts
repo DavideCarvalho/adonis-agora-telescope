@@ -46,7 +46,11 @@ export class TelescopeServerStatus extends BaseCommand {
           `Relay:  ${status.as.relay === '*' ? 'any app' : status.as.relay.join(', ')}`,
         );
       } else if (status.relaying === true) {
-        this.logger.info('Relay:  on here, not allowed by the token');
+        this.logger.info(
+          status.as !== undefined
+            ? 'Relay:  on here, not allowed by the token'
+            : "Relay:  on here (the token's relay rights are not checked over a broker)",
+        );
       }
       if (status.accepted) this.logger.success(status.message);
       else this.logger.error(status.message);

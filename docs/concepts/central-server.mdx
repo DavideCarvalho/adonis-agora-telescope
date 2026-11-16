@@ -222,8 +222,8 @@ await telescope.record({
 - An entry tagged `app:shop` is stored as shop's, with `via:durable`. Its `env:` tag is kept;
   without one, the sender's environment is used.
 - An entry without an `app:` tag is the sender's own. With `relay: true` it is tagged
-  `app:durable`, so the sender's own console lists every app in the App picker (`tenant.local`
-  keeps the tags as sent).
+  `app:durable`, on the server and in `tenant.local`, so the sender's own console lists every
+  app in the App picker.
 - An `app:` tag the token may not relay for is refused (counted as rejected). Without the
   capability, `app:`, `env:` and `via:` tags are replaced from the token, as for any app.
 - Relayed entries are stored as `<sender>~<app>:<id>`: a retry is stored once, and two senders

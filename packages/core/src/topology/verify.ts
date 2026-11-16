@@ -170,9 +170,11 @@ export function canIngest(capabilities: readonly string[]): boolean {
 export function relayScope(capabilities: readonly string[]): '*' | string[] | null {
   if (capabilities.includes('telescope:*') || capabilities.includes(RELAY_CAPABILITY)) return '*';
   const prefix = `${RELAY_CAPABILITY}:`;
+  // Only valid app names (as `PARTITION_RE`): anything else could never match an entry's app.
   const apps = capabilities
-    .filter((capability) => capability.startsWith(prefix) && capability.length > prefix.length)
-    .map((capability) => capability.slice(prefix.length));
+    .filter((capability) => capability.startsWith(prefix))
+    .map((capability) => capability.slice(prefix.length))
+    .filter((app) => /^[A-Za-z0-9_.-]{1,64}$/.test(app));
   return apps.length > 0 ? [...new Set(apps)] : null;
 }
 

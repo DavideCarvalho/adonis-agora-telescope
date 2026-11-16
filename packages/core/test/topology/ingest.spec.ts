@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { InMemoryTelescopeStore } from '../../src/index.js';
 import { resolveIngestLimits } from '../../src/topology/config.js';
 import { createIngestHandler } from '../../src/topology/ingest.js';
-import { sharedSecretVerifier } from '../../src/topology/verify.js';
+import { relayScope, sharedSecretVerifier } from '../../src/topology/verify.js';
 
 const wire = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -370,6 +370,11 @@ describe('server: relaying entries for other apps', () => {
       partition: 'scoped',
       relay: ['shop'],
     });
+    // A malformed scope names no app, so it grants nothing.
+    expect(relayScope(['telescope:ingest:relay:shop:extra', 'telescope:ingest:relay:'])).toBe(null);
+    expect(relayScope(['telescope:ingest:relay:a b', 'telescope:ingest:relay:shop'])).toEqual([
+      'shop',
+    ]);
     expect((await handler.whoami({ token: 'billing-secret', app: 'billing' })).body).toEqual({
       partition: 'billing',
     });
