@@ -43,6 +43,19 @@ describe('runGuard', () => {
     expect(result).toEqual({ allowed: false, status: 403, message: 'forbidden' });
   });
 
+  it('logs the error a throwing authorize hook raised, then still answers 403', async () => {
+    const { ctx: c } = ctx();
+    const warned: Array<{ obj: object; msg: string }> = [];
+    c.logger = { warn: (obj, msg) => void warned.push({ obj, msg }) };
+    const boom = new Error('boom');
+    const result = await runGuard(c, () => {
+      throw boom;
+    });
+    expect(result).toEqual({ allowed: false, status: 403, message: 'forbidden' });
+    expect(warned).toHaveLength(1);
+    expect(warned[0]?.obj).toEqual({ err: boom });
+  });
+
   it('awaits an async authorize hook', async () => {
     const { ctx: c } = ctx();
     expect((await runGuard(c, async () => true)).allowed).toBe(true);
