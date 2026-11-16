@@ -41,7 +41,14 @@ export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Pr
   let result: AuthorizeResult;
   try {
     result = await authorize(ctx);
-  } catch {
+  } catch (error) {
+    // Still fail closed, but leave a trace: the response is a bare 403, so without this an
+    // admin locked out by a throwing hook (a bug, a database outage) is indistinguishable
+    // from a missing role.
+    ctx.logger?.warn(
+      { err: error },
+      'telescope: the console authorize hook threw; answering 403 (fail closed)',
+    );
     return { allowed: false, status: 403, message: 'forbidden' };
   }
 

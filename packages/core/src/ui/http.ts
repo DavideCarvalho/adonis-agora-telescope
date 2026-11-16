@@ -37,6 +37,8 @@ export interface UiResponse {
 export interface UiHttpContext {
   request: UiRequest;
   response: UiResponse;
+  /** The request logger, when there is one (an Adonis `HttpContext` has it). */
+  logger?: { warn(obj: object, msg: string): void };
 }
 
 /**
