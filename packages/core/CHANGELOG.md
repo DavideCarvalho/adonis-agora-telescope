@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.22
+
+### Patch Changes
+
+- [#348](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/348) [`f853dfe`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/f853dfe46f25c8a05a3eb45f275f38133e6845e2) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - The console guard now logs (warn) the error when the `authorize` hook throws, before answering 403. It still fails closed.
+
 ## 1.0.0-rc.21
 
 ### Minor Changes
