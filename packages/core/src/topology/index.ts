@@ -26,8 +26,10 @@ export { createIngestHandler } from './ingest.js';
 export type { RemoteStoreStats, RemoteTelescopeStoreOptions } from './remote_store.js';
 export { activeRemoteStores, RemoteTelescopeStore } from './remote_store.js';
 export { type IngestRouter, registerIngestRoutes } from './routes.js';
+export type { LazyServerUrl, ServerUrlInput } from './server_url.js';
+export { ServerUrl } from './server_url.js';
 export type { TelescopeTopologyStatus } from './status.js';
-export { appsInStore, httpUrl, telescopeTopologyStatus, whoami } from './status.js';
+export { appsInStore, httpServer, httpUrl, telescopeTopologyStatus, whoami } from './status.js';
 export * from './transports/index.js';
 export type {
   SharedSecretTenant,

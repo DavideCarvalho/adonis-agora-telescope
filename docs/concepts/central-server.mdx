@@ -114,6 +114,25 @@ export default defineConfig({
 
 Watchers, redaction, sampling and tenancy tags all run in the app, before an entry is sent.
 
+### Finding the server through authkit
+
+Instead of a fixed URL, `url` can ask authkit where the server is:
+
+```ts title="config/telescope.ts (an app)"
+import { authkitTenantToken, controlPlaneUrl } from '@adonis-agora/authkit-client'
+
+tenant: {
+  url: controlPlaneUrl({ issuer: env.get('AUTHKIT_ISSUER'), resource: 'urn:agora:telescope' }),
+  partition: 'shop',
+  token: authkitTenantToken({ /* ... */ }),
+}
+```
+
+The URL is looked up when the first batch is sent, then kept. If the server cannot be reached or
+answers 404, it is looked up again and the batch is retried at the new address. Any
+`() => Promise<string>` works the same way. `telescope:server:status` and `agora:doctor` resolve
+it too.
+
 Entries go over HTTP by default. To send them through `@adonisjs/queue`, BullMQ, a Redis stream
 or `@adonis-agora/durable` instead, set `transport` on both sides: see
 [Transports](/docs/telescope/concepts/transports). The console, live tail and client errors stay

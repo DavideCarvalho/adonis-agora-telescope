@@ -7,6 +7,7 @@ import {
   DiagnosticsWatcher,
 } from '../src/diagnostics_watcher.js';
 import { InMemoryTelescopeStore } from '../src/stores/memory.js';
+import { describeAppScope } from '../src/ui/app_scope.js';
 
 const REGISTRY_KEY = Symbol.for('@agora/diagnostics:registry');
 const CLAIMS_KEY = Symbol.for('@agora/diagnostics:claims');
@@ -335,5 +336,37 @@ describe('DiagnosticsWatcher', () => {
     expect(input.content.traceId).toBeNull();
     expect(input.familyHash).toBe('cache:hit');
     expect(input.tags).not.toContain('trace:');
+  });
+
+  it('tags the entry app:<app> when the envelope names the tenant app it is about', async () => {
+    const channelName = 'agora:durable:job.completed:app';
+    registerChannel(registry, channelName);
+    const store = new InMemoryTelescopeStore();
+    const watcher = new DiagnosticsWatcher(store);
+    watcher.start();
+
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'durable', event: 'job.completed', app: 'billing' }));
+    diagnostics_channel
+      .channel(channelName)
+      .publish(envelope({ lib: 'durable', event: 'job.completed' }));
+    await flush();
+
+    const tagged = await store.list({ tag: 'app:billing' });
+    expect(tagged).toHaveLength(1);
+    expect(tagged[0]?.tags).toContain('lib:durable');
+    // The local console's App picker lists it.
+    const scope = await describeAppScope({ all: true }, store);
+    expect(scope.enabled).toBe(true);
+    expect(scope.apps).toEqual([{ id: 'billing', label: 'billing' }]);
+    watcher.stop();
+  });
+
+  it('ignores an empty or non-string app', () => {
+    for (const app of ['', 42, null]) {
+      const input = buildDiagnosticEntry(envelope({ app: app as never }));
+      expect(input.tags?.some((tag) => tag.startsWith('app:'))).toBe(false);
+    }
   });
 });

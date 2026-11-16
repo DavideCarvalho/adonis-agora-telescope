@@ -190,6 +190,11 @@ It is tagged `lib:<lib>`, `event:<event>`, and `trace:<traceId>` (when present),
 its `familyHash` is `lib:event` — so `topFamilies(10, 'diagnostic')` answers "what are
 the busiest event kinds?".
 
+When the event names the app it is about (`app` on the envelope, set by a process that
+coordinates work for other apps), the entry is also tagged `app:<app>`, so the console's
+App picker lists that app. On a tenant, the tag reaches the server only with
+`tenant.relay: true` (see [Relaying for other apps](/docs/telescope/concepts/central-server#relaying-for-other-apps)).
+
 ### How it subscribes to current *and future* channels
 
 `node:diagnostics_channel` has no wildcard subscribe, so on `start()` the watcher:

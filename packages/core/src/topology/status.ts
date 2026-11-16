@@ -1,6 +1,7 @@
 import type { AgoraDoctorResult } from '../doctor/agora_doctor.js';
 import type { TelescopeStore } from '../store.js';
 import { type ResolvedTopology, serverPrefix, type TelescopeTenantOptions } from './config.js';
+import { ServerUrl, type ServerUrlInput } from './server_url.js';
 import { readToken } from './verify.js';
 import { APP_HEADER } from './wire.js';
 
@@ -62,8 +63,8 @@ export async function telescopeTopologyStatus(
 ): Promise<TelescopeTopologyStatus> {
   if (config.topology === 'tenant') {
     const tenant = config.tenant;
-    const url = httpUrl(config);
-    if (url === null) {
+    const server = httpServer(config);
+    if (server === null) {
       // A broker carries the entries: report whether it answers.
       let accepted = true;
       let message: string;
@@ -82,10 +83,11 @@ export async function telescopeTopologyStatus(
         message,
       };
     }
-    const result = await whoami({ ...tenant, url }, doFetch);
+    const result = await whoami({ ...tenant, url: server }, doFetch);
+    const url = server.current;
     return {
       topology: 'tenant',
-      server: serverPrefix(url),
+      server: url !== null ? serverPrefix(url) : 'the server URL (not resolved)',
       partition: tenant.partition,
       accepted: result.status !== 'error',
       ...(tenant.relay === true ? { relaying: true } : {}),
@@ -112,11 +114,31 @@ export async function telescopeTopologyStatus(
   return { topology: 'standalone' };
 }
 
-/** The control plane's URL when a tenant sends over HTTP, else `null` (a broker). */
-export function httpUrl(config: Extract<ResolvedTopology, { topology: 'tenant' }>): string | null {
+/**
+ * The control plane's URL when a tenant sends over HTTP (shared with the transport, so it is
+ * resolved once), else `null` (a broker).
+ */
+export function httpServer(
+  config: Extract<ResolvedTopology, { topology: 'tenant' }>,
+): ServerUrl | null {
   if (config.transport.driver !== 'http') return null;
-  const options = (config.transport as { options?: { url?: unknown } }).options;
-  return typeof options?.url === 'string' ? options.url : (config.tenant.url ?? null);
+  const transport = config.transport as { server?: unknown; options?: { url?: unknown } };
+  if (transport.server instanceof ServerUrl) return transport.server;
+  const url = transport.options?.url ?? config.tenant.url;
+  return typeof url === 'string' || typeof url === 'function'
+    ? new ServerUrl(url as ServerUrlInput)
+    : null;
+}
+
+/**
+ * The control plane's URL when a tenant sends over HTTP (a function `tenant.url` is resolved),
+ * else `null` (a broker). Rejects when the URL function fails.
+ */
+export async function httpUrl(
+  config: Extract<ResolvedTopology, { topology: 'tenant' }>,
+): Promise<string | null> {
+  const server = httpServer(config);
+  return server !== null ? server.get() : null;
 }
 
 /** How a relay scope reads in a message. */
@@ -126,15 +148,100 @@ function describeRelay(relay: '*' | string[]): string {
 
 /** Ask the control plane who it takes this app for (and, with `relay`, whether it may relay). */
 export async function whoami(
-  tenant: Pick<TelescopeTenantOptions, 'partition' | 'token' | 'relay'> & { url: string },
+  tenant: Pick<TelescopeTenantOptions, 'partition' | 'token' | 'relay'> & {
+    url: string | ServerUrl;
+  },
   doFetch: typeof fetch = globalThis.fetch,
 ): Promise<
   AgoraDoctorResult & { partition?: string; environment?: string; relay?: '*' | string[] }
 > {
-  const prefix = serverPrefix(tenant.url);
+  const server = tenant.url instanceof ServerUrl ? tenant.url : new ServerUrl(tenant.url);
+  let url: string;
+  try {
+    url = await server.get();
+  } catch (error) {
+    return {
+      status: 'error',
+      message: `The server URL cannot be resolved: ${error instanceof Error ? error.message : String(error)}`,
+      fix: 'Check tenant.url (the function that resolves it, and what it asks).',
+      docs: DOCS,
+    };
+  }
+  let answer = await askWhoami(url, tenant, doFetch);
+  // The server moved (or the URL went stale): look it up again and ask once more.
+  if (server.lazy && (answer.kind === 'unreachable' || answer.response.status === 404)) {
+    const fresh = await server.refresh();
+    if (fresh !== null && fresh !== url) {
+      url = fresh;
+      answer = await askWhoami(url, tenant, doFetch);
+    }
+  }
+  const prefix = serverPrefix(url);
+  if (answer.kind === 'unreachable') {
+    const error = answer.error;
+    return {
+      status: 'error',
+      message: `The server at ${prefix} cannot be reached: ${error instanceof Error ? error.message : String(error)}`,
+      fix: 'Check tenant.url.',
+      docs: DOCS,
+    };
+  }
+  const { response, body } = answer;
+  if (response.status === 200 && typeof body.partition === 'string') {
+    const env = body.environment !== undefined ? ` (${body.environment})` : '';
+    const relay =
+      body.relay === '*' ||
+      (Array.isArray(body.relay) && body.relay.every((app) => typeof app === 'string'))
+        ? (body.relay as '*' | string[])
+        : undefined;
+    const same = body.partition === tenant.partition;
+    let message = same
+      ? `The server accepts this app as ${JSON.stringify(body.partition)}${env}.`
+      : `The server takes this app's token for ${JSON.stringify(body.partition)}${env}, not ${JSON.stringify(tenant.partition)}: entries are tagged with the token's app.`;
+    if (relay !== undefined) message += ` It may relay entries for ${describeRelay(relay)}.`;
+    const relayRefused = tenant.relay === true && relay === undefined;
+    if (relayRefused) {
+      message +=
+        ' tenant.relay is on, but the token may not relay: entries tagged for other apps are stored as this app.';
+    }
+    return {
+      status: same && !relayRefused ? 'ok' : 'warn',
+      message,
+      ...(relayRefused
+        ? { fix: 'Give the token the telescope:ingest:relay capability.', docs: DOCS }
+        : {}),
+      partition: body.partition,
+      ...(body.environment !== undefined ? { environment: body.environment } : {}),
+      ...(relay !== undefined ? { relay } : {}),
+    };
+  }
+  return {
+    status: 'error',
+    message: `The server refused this app's token (${response.status}).`,
+    fix:
+      response.status === 403
+        ? 'Give the token the telescope:ingest capability.'
+        : 'Check tenant.token here and verifyTenant on the server.',
+    docs: DOCS,
+  };
+}
+
+type WhoamiAnswer =
+  | { kind: 'unreachable'; error: unknown }
+  | {
+      kind: 'answered';
+      response: Response;
+      body: { partition?: string; environment?: string; relay?: unknown };
+    };
+
+async function askWhoami(
+  url: string,
+  tenant: Pick<TelescopeTenantOptions, 'partition' | 'token'>,
+  doFetch: typeof fetch,
+): Promise<WhoamiAnswer> {
   try {
     const token = await readToken(tenant.token);
-    const response = await doFetch(`${prefix}/whoami`, {
+    const response = await doFetch(`${serverPrefix(url)}/whoami`, {
       headers: {
         accept: 'application/json',
         authorization: `Bearer ${token}`,
@@ -147,49 +254,8 @@ export async function whoami(
       environment?: string;
       relay?: unknown;
     };
-    if (response.status === 200 && typeof body.partition === 'string') {
-      const env = body.environment !== undefined ? ` (${body.environment})` : '';
-      const relay =
-        body.relay === '*' ||
-        (Array.isArray(body.relay) && body.relay.every((app) => typeof app === 'string'))
-          ? (body.relay as '*' | string[])
-          : undefined;
-      const same = body.partition === tenant.partition;
-      let message = same
-        ? `The server accepts this app as ${JSON.stringify(body.partition)}${env}.`
-        : `The server takes this app's token for ${JSON.stringify(body.partition)}${env}, not ${JSON.stringify(tenant.partition)}: entries are tagged with the token's app.`;
-      if (relay !== undefined) message += ` It may relay entries for ${describeRelay(relay)}.`;
-      const relayRefused = tenant.relay === true && relay === undefined;
-      if (relayRefused) {
-        message +=
-          ' tenant.relay is on, but the token may not relay: entries tagged for other apps are stored as this app.';
-      }
-      return {
-        status: same && !relayRefused ? 'ok' : 'warn',
-        message,
-        ...(relayRefused
-          ? { fix: 'Give the token the telescope:ingest:relay capability.', docs: DOCS }
-          : {}),
-        partition: body.partition,
-        ...(body.environment !== undefined ? { environment: body.environment } : {}),
-        ...(relay !== undefined ? { relay } : {}),
-      };
-    }
-    return {
-      status: 'error',
-      message: `The server refused this app's token (${response.status}).`,
-      fix:
-        response.status === 403
-          ? 'Give the token the telescope:ingest capability.'
-          : 'Check tenant.token here and verifyTenant on the server.',
-      docs: DOCS,
-    };
+    return { kind: 'answered', response, body };
   } catch (error) {
-    return {
-      status: 'error',
-      message: `The server at ${prefix} cannot be reached: ${error instanceof Error ? error.message : String(error)}`,
-      fix: 'Check tenant.url.',
-      docs: DOCS,
-    };
+    return { kind: 'unreachable', error };
   }
 }

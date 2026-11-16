@@ -1,4 +1,5 @@
 import { type ResolvedTopology, serverPrefix } from '../topology/config.js';
+import { ServerUrl } from '../topology/server_url.js';
 import { DiscoveryClient } from './client.js';
 import { defaultSnapshotPath, type ResolvedDiscoveryConfig } from './config.js';
 import { publishDirectory, ServiceDirectory } from './directory.js';
@@ -29,14 +30,21 @@ export interface RunningDiscovery {
   stop(): Promise<void>;
 }
 
-/** The central server's prefix a tenant reads the map from, or `null`. */
-function tenantPrefix(config: ResolvedDiscoveryConfig, topology: ResolvedTopology): string | null {
+/** The central server a tenant reads the map from (its prefix, or its lazy URL), or `null`. */
+function tenantPrefix(
+  config: ResolvedDiscoveryConfig,
+  topology: ResolvedTopology,
+): string | ServerUrl | null {
   if (topology.topology !== 'tenant') return null;
   if (config.serverUrl !== null) return serverPrefix(config.serverUrl);
-  const transport = topology.transport as { driver: string; options?: { url?: unknown } };
-  if (transport.driver === 'http' && typeof transport.options?.url === 'string') {
-    return serverPrefix(transport.options.url);
-  }
+  const transport = topology.transport as {
+    driver: string;
+    server?: unknown;
+    options?: { url?: unknown };
+  };
+  if (transport.driver !== 'http') return null;
+  if (transport.server instanceof ServerUrl) return transport.server;
+  if (typeof transport.options?.url === 'string') return serverPrefix(transport.options.url);
   return null;
 }
 

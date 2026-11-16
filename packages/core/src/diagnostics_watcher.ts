@@ -195,7 +195,14 @@ export function buildDiagnosticEntry(msg: DiagnosticEvent): RecordInput<Diagnost
     type: DIAGNOSTIC_ENTRY_TYPE,
     // Group by lib + event so a dashboard can roll up "billing:invoice-paid".
     familyHash: `${msg.lib}:${msg.event}`,
-    tags: [`lib:${msg.lib}`, `event:${msg.event}`, ...(traceId ? [`trace:${traceId}`] : [])],
+    tags: [
+      `lib:${msg.lib}`,
+      `event:${msg.event}`,
+      ...(traceId ? [`trace:${traceId}`] : []),
+      // The tenant app the event is about: the console's App picker lists it. A tenant with
+      // `relay: true` keeps it on the way to the control plane (else the server re-tags it).
+      ...(typeof msg.app === 'string' && msg.app !== '' ? [`app:${msg.app}`] : []),
+    ],
     content,
     // Carry the producer-resolved trace id (it knows the emitting context best).
     traceId,
