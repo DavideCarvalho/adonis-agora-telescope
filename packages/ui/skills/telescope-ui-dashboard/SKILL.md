@@ -100,7 +100,8 @@ Organization picker (`?tenant=<id>`); the client sends it on every call (default
 to the page URL, overridable via `new TelescopeClient({ tenant })`) and
 `client.tenants()` describes the viewer's scope. The App picker works the same way
 (`?app=<id>`, `new TelescopeClient({ app })`, `client.apps()`); it is hidden when no
-entry carries an `app:<id>` tag.
+entry carries an `app:<id>` tag (on a control plane the fleet's apps also count, so a
+quiet app still shows).
 
 ```ts
 import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
