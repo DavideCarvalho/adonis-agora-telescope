@@ -1,16 +1,23 @@
 /** Keep in sync with this package's `version` in package.json. */
 export const VERSION = '1.0.0-rc.28';
 
-export type { CacheEntryContent, CacheEventLike, CacheOperation } from './cache_watcher.js';
+export type {
+  CacheEntryContent,
+  CacheEventLike,
+  CacheOperation,
+  CacheWatcherOptions,
+} from './cache_watcher.js';
 // — cache watcher —
 export { buildCacheEntry, CACHE_EVENTS, CacheWatcher } from './cache_watcher.js';
 export { nextCronRunMs } from './cron_next_run.js';
 export type {
+  CacheWatcherConfig,
   HttpClientWatcherConfig,
   ProfilingWatcherConfig,
   QueryWatcherConfig,
   QueueManagerWatcherConfig,
   RedisWatcherConfig,
+  ResolvedCacheWatcherConfig,
   ResolvedHttpClientWatcherConfig,
   ResolvedProfilingWatcherConfig,
   ResolvedQueryWatcherConfig,

@@ -3,6 +3,7 @@ import { resolveConfig } from '../src/define_config.js';
 import {
   getTelescopeRuntime,
   resetTelescopeRuntime,
+  setTelescopeIgnoreRequestPaths,
   setTelescopePaused,
   setTelescopeRuntime,
 } from '../src/registry.js';
@@ -169,6 +170,31 @@ describe('TelescopeMiddleware', () => {
       id: 'u-7',
       email: 'ada@example.com',
     });
+  });
+
+  it('skips requests on ignoreRequestPaths but still serves them', async () => {
+    const store = new InMemoryTelescopeStore();
+    setTelescopeRuntime(store, true);
+    setTelescopeIgnoreRequestPaths(['/assets', /^\/sitemap/]);
+    const mw = new TelescopeMiddleware();
+    const ctx = (url: string) =>
+      ({
+        request: { method: () => 'GET', url: () => url },
+        response: { statusCode: 200 },
+      }) as never;
+    let served = 0;
+    for (const url of ['/assets/app.js', '/sitemap-1.xml', '/assets-old', '/users?page=2']) {
+      await mw.handle(ctx(url), async () => {
+        served++;
+      });
+    }
+    expect(served).toBe(4);
+    const urls = (await store.list({ type: 'request' }))
+      .map((e) => (e.content as { url: string }).url)
+      .sort();
+    expect(urls).toEqual(['/assets-old', '/users']);
+    expect(resolveConfig({ ignoreRequestPaths: ['/x'] }).ignoreRequestPaths).toEqual(['/x']);
+    expect(resolveConfig().ignoreRequestPaths).toEqual([]);
   });
 
   it('does not record when the request watcher is disabled', async () => {

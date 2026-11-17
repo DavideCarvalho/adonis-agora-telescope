@@ -94,6 +94,22 @@ Captured bodies go through the normal [redaction](/docs/telescope/concepts/prote
 any other content, so configured sensitive keys are still masked — but a body you never capture
 is the only body that definitely cannot leak.
 
+### Ignoring request paths
+
+Static assets, a sitemap a crawler hits all day, an internal ping: list them in
+`ignoreRequestPaths` and the request watcher does not record them.
+
+```ts title="config/telescope.ts"
+export default defineConfig({
+  ignoreRequestPaths: ['/assets', '/favicon.ico', /^\/sitemap.*\.xml$/],
+})
+```
+
+A string matches the path (the query string is ignored) as a prefix on a segment boundary:
+`'/assets'` matches `/assets` and `/assets/app.js`, not `/assets-old`. A RegExp is tested
+against the path. The request is still served, and the queries and other entries it makes are
+still recorded.
+
 ### Muting noisy diagnostics
 
 The diagnostics watcher records every event any Agora library publishes, which for a chatty
@@ -155,6 +171,7 @@ export default defineConfig({
 | `diagnostics`| `{ exclude: [], recordClaimed: false }` | [Mutes noisy events](#muting-noisy-diagnostics) and decides whether already-claimed ones are recorded twice. |
 | `logs`       | `{ minLevel: 'trace', tags: [] }` | Floor and extra tags for the `logs` watcher.                    |
 | `requestCapture` | _off_                     | [Request body capture](#request-body-capture) and its gates.          |
+| `ignoreRequestPaths` | `[]`                  | [Paths the request watcher skips](#ignoring-request-paths).           |
 | `extensions` | `[]`                          | [Extensions](/docs/telescope/concepts/extensions) to register at boot. |
 
 The full key list — sampling, pulse, prune, overload, redaction, client errors — is on the

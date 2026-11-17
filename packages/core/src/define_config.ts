@@ -158,6 +158,16 @@ export interface TelescopeConfig extends TelescopeTopologyConfig {
   requestCapture?: RequestCaptureOptions;
 
   /**
+   * Request paths the `request` watcher never records — health checks, static
+   * assets, a crawler-only sitemap. A string matches the path (query string ignored)
+   * as a PREFIX on a segment boundary (`'/assets'` matches `/assets` and
+   * `/assets/app.js`, not `/assets-old`); a RegExp is tested against the path.
+   * Queries and other entries made while serving the request are still recorded.
+   * Default `[]`.
+   */
+  ignoreRequestPaths?: Array<string | RegExp>;
+
+  /**
    * Host hook that enriches every `request` entry with information only the app
    * has — most usefully, a tag for the front-end screen that issued the call, so
    * the dashboard can slice requests by screen. Synchronous, and a throw is
@@ -465,6 +475,7 @@ export interface ResolvedTelescopeConfig {
   logs: { minLevel: LogLevel; tags: string[] };
   /** Opt-in request body-capture gates, or `null` when body capture is off (default). */
   requestCapture: RequestCaptureOptions | null;
+  ignoreRequestPaths: Array<string | RegExp>;
   /** Host enrichment hook for request entries, or `null` when unset (default). */
   requestEnrichment: RequestEnrichment | null;
   extensions: TelescopeExtension[];
@@ -579,6 +590,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
       tags: [...(config.logs?.tags ?? [])],
     },
     requestCapture: config.requestCapture ?? null,
+    ignoreRequestPaths: config.ignoreRequestPaths ?? [],
     requestEnrichment: config.requestEnrichment ?? null,
     extensions: config.extensions ?? [],
     tenancy: resolveTenancy(config.tenancy),

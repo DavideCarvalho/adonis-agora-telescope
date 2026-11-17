@@ -51,6 +51,30 @@ export function isUnder(url: string, prefix: string): boolean {
 }
 
 /**
+ * Whether `url`'s path matches one of `ignoreRequestPaths`: a string as a
+ * segment-boundary prefix (see {@link isUnder}), a RegExp tested against the path
+ * without its query string.
+ */
+export function isIgnoredRequestPath(url: string, patterns: Array<string | RegExp>): boolean {
+  if (patterns.length === 0) return false;
+  const query = url.indexOf('?');
+  const path = query === -1 ? url : url.slice(0, query);
+  for (const pattern of patterns) {
+    if (typeof pattern === 'string') {
+      // An empty prefix (e.g. an unset env var) would match every path and silently
+      // stop all request recording — skip it instead.
+      if (pattern.trim() === '') continue;
+      if (isUnder(path, pattern)) return true;
+    } else {
+      // A /g or /y pattern keeps `lastIndex` between calls; reset it so each test starts fresh.
+      pattern.lastIndex = 0;
+      if (pattern.test(path)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Records each inbound HTTP request as a `request` telescope entry (method, url,
  * status, duration, traceId), and auto-captures any exception thrown by the
  * downstream pipeline as an `exception` entry (message, name, stack, a stable
@@ -99,6 +123,9 @@ export default class TelescopeMiddleware {
       runtime.probePaths.size > 0 &&
       runtime.probePaths.has(ctx.request.url().split('?')[0] ?? '')
     ) {
+      return next();
+    }
+    if (isIgnoredRequestPath(ctx.request.url(), runtime.ignoreRequestPaths)) {
       return next();
     }
 

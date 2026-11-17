@@ -18,6 +18,8 @@
  * helpers are a zero-cost no-op.
  */
 
+import { clampRate } from '../sampling/trace_sampler.js';
+
 /** The per-technology watchers this package ships. */
 export type WatcherName =
   | 'query'
@@ -98,6 +100,45 @@ export interface QueryWatcherConfig {
    * `"public"."durable_workflow_runs"`).
    */
   ignoreTables?: string[];
+  /**
+   * Queries faster than this many ms are not recorded. Queries at/above `slowMs` and
+   * failed queries are always recorded. A fast query repeated in a loop is what an
+   * N+1 looks like, so a floor hides those loops; prefer `sampleRate` when N+1
+   * detection matters. Default 0 (record every query).
+   */
+  minMs?: number;
+  /**
+   * Fraction (0..1) of queries recorded, decided per trace: a kept request keeps all
+   * of its queries (so its timeline and N+1 detection stay complete) and a dropped one
+   * keeps none. Queries at/above `slowMs` and failed queries are always recorded.
+   * Queries outside any trace are sampled at random. Default 1.
+   */
+  sampleRate?: number;
+}
+
+/**
+ * Tuning for the `cache` watcher (`@adonisjs/cache` events).
+ */
+export interface CacheWatcherConfig {
+  /**
+   * Fraction (0..1) of cache HITS recorded, decided per trace like `query.sampleRate`.
+   * Misses, writes, deletes and clears are always recorded. The Pulse hit-ratio card
+   * counts recorded entries, so it reads lower than reality while this is below 1.
+   * Default 1.
+   */
+  hitSampleRate?: number;
+  /** Store names (exact, case-insensitive) whose operations are not recorded. */
+  ignoreStores?: string[];
+  /** Keys never recorded — a string matches as a PREFIX, a RegExp as-is. Same shape as
+   *  `redis.ignoreKeys`. */
+  ignoreKeys?: Array<string | RegExp>;
+}
+
+/** The fully-resolved `cache` watcher config (no optionals). */
+export interface ResolvedCacheWatcherConfig {
+  hitSampleRate: number;
+  ignoreStores: string[];
+  ignoreKeys: Array<string | RegExp>;
 }
 
 /**
@@ -146,6 +187,8 @@ export interface ResolvedQueryWatcherConfig {
   normalize: boolean;
   ignore: Array<string | RegExp>;
   ignoreTables: string[];
+  minMs: number;
+  sampleRate: number;
 }
 
 /** Default slow-query threshold (ms). Databases are hotter than outbound HTTP, so
@@ -250,6 +293,9 @@ export interface TelescopeWatchersConfig {
   /** Tuning for the `redis` watcher (ignore commands/keys/connections, sampling). */
   redis?: RedisWatcherConfig;
 
+  /** Tuning for the `cache` watcher (hit sampling, ignore stores/keys). */
+  cache?: CacheWatcherConfig;
+
   /** Tuning for the `http-client` watcher (slow threshold, ignore-hosts, body sizes). */
   httpClient?: HttpClientWatcherConfig;
 
@@ -269,6 +315,7 @@ export interface ResolvedTelescopeWatchersConfig {
   watchers: Set<WatcherName>;
   query: ResolvedQueryWatcherConfig;
   redis: ResolvedRedisWatcherConfig;
+  cache: ResolvedCacheWatcherConfig;
   httpClient: ResolvedHttpClientWatcherConfig;
   profiling: ResolvedProfilingWatcherConfig;
   schedule: ResolvedScheduleWatcherConfig;
@@ -294,6 +341,7 @@ export function resolveConfig(
   const httpClient = config.httpClient ?? {};
   const profiling = config.profiling ?? {};
   const redis = config.redis ?? {};
+  const cache = config.cache ?? {};
   const schedule = config.schedule ?? {};
   const queueManager = config.queueManager ?? {};
   return {
@@ -306,6 +354,13 @@ export function resolveConfig(
       normalize: query.normalize ?? true,
       ignore: query.ignore ?? [],
       ignoreTables: query.ignoreTables ?? [],
+      minMs: Math.max(0, query.minMs ?? 0),
+      sampleRate: clampRate(query.sampleRate),
+    },
+    cache: {
+      hitSampleRate: clampRate(cache.hitSampleRate),
+      ignoreStores: cache.ignoreStores ?? [],
+      ignoreKeys: cache.ignoreKeys ?? [],
     },
     redis: {
       ignoreCommands: redis.ignoreCommands ?? [],
