@@ -114,6 +114,8 @@ export interface TelescopeRuntime {
   reporter: InstanceReporter | null;
   /** The unauthenticated probe routes (`health.readiness`/`liveness`): never recorded as requests. */
   probePaths: Set<string>;
+  /** `ignoreRequestPaths` from `config/telescope.ts`: requests on these paths are not recorded. */
+  ignoreRequestPaths: Array<string | RegExp>;
 }
 
 const RUNTIME_KEY = Symbol.for('@agora/telescope:runtime');
@@ -138,12 +140,14 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   healthChecks: null,
   reporter: null,
   probePaths: new Set<string>(),
+  ignoreRequestPaths: [],
 };
 // A runtime published by an older copy of this module has no fleet slots yet.
 runtime.fleet ??= null;
 runtime.healthChecks ??= null;
 runtime.reporter ??= null;
 runtime.probePaths ??= new Set<string>();
+runtime.ignoreRequestPaths ??= [];
 globalStore[RUNTIME_KEY] = runtime;
 
 /** The shared runtime handle. */
@@ -239,6 +243,11 @@ export function setTelescopeRecordHeartbeat(record: boolean): void {
   runtime.recordHeartbeat = record;
 }
 
+/** Publish the request paths that are never recorded (called by the provider from config). */
+export function setTelescopeIgnoreRequestPaths(patterns: Array<string | RegExp>): void {
+  runtime.ignoreRequestPaths = [...patterns];
+}
+
 /** Publish (or clear) the fleet, the health checks and this process's heartbeat. */
 export function setTelescopeFleet(handles: {
   fleet: FleetRegistry | null;
@@ -270,4 +279,5 @@ export function resetTelescopeRuntime(): void {
   runtime.healthChecks = null;
   runtime.reporter = null;
   runtime.probePaths.clear();
+  runtime.ignoreRequestPaths = [];
 }

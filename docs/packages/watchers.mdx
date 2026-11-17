@@ -69,7 +69,8 @@ export default defineConfig({
 | -------------- | ----------- | ---------------------------------------------------------------------- |
 | `enabled`      | `true`      | Master switch; `false` starts no per-technology watcher.              |
 | `watchers`     | `['query']` | Which watchers run — any of `'query'`, `'mail'`, `'cache'`, `'http-client'`, `'logs'`, `'queue'`, `'events'`, `'redis'`, `'profiling'`, `'schedule'`, `'queue-manager'`. |
-| `query`        | see below   | Lucid `query` watcher tuning — `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `ignore`, `ignoreTables`, `normalize` (`true`). |
+| `query`        | see below   | Lucid `query` watcher tuning — `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `ignore`, `ignoreTables`, `normalize` (`true`), `minMs` (0), `sampleRate` (1). |
+| `cache`        | see below   | `cache` watcher tuning — `hitSampleRate` (1), `ignoreStores`, `ignoreKeys`. |
 | `redis`        | see below   | `redis` watcher tuning — `captureValues` (`false`), `ignoreCommands`, `ignoreKeys`, `ignoreConnections`, `sampleRate` (1), `floodWarnPerMinute` (600). |
 | `httpClient`   | see below   | `http-client` watcher tuning — `slowMs` (1000), `ignoreHosts`, `captureBodies` (`false`). |
 | `profiling`    | see below   | `profiling` watcher tuning — `slowMs` (100), `minDurationMs` (0).       |
@@ -102,12 +103,13 @@ interface QueryEntryContent {
   method: string | null          // 'select', 'insert', ...
   inTransaction: boolean | null
   traceId: string | null
+  error?: string                 // the message, when the query failed
 }
 ```
 
 Tags: `connection:<name>`, `method:<method>`, `model:<model>` when Lucid reports them, and
 `slow` when the query is at/above `query.slowMs` (default 500ms — this feeds the Pulse
-slow-query card). The `familyHash` is a `queryFamilyHash(sql)` — the SQL normalized to a
+slow-query card), and `failed` when the query threw. The `familyHash` is a `queryFamilyHash(sql)` — the SQL normalized to a
 template (literals replaced by `?`, whitespace collapsed) and FNV-1a hashed — so every
 execution of `select * from users where id = ?` rolls up into one family regardless of the id.
 Set `query.normalize: false` to hash the raw SQL verbatim (no grouping across literals), and
@@ -137,6 +139,39 @@ A string pattern is normalized the same way as the SQL, so case and spacing do n
 `'select * from "durable_workflow_runs"'` drops every select on that table (the closing quote
 keeps `durable_workflow_runs_archive` out). `ignoreTables` keeps a query that only joins the
 table.
+
+### Recording fewer queries
+
+On a busy app most queries are fast index lookups. Two knobs record fewer of them while
+keeping the ones you look for:
+
+```ts title="config/telescope_watchers.ts"
+export default defineConfig({
+  query: {
+    slowMs: 500,
+    sampleRate: 0.1,   // keep the queries of 10% of the requests
+    minMs: 2,          // and, in those, skip anything under 2ms
+  },
+})
+```
+
+- **`sampleRate`** (0..1, default 1) is decided per trace: a request that is kept keeps
+  **all** of its queries, so its timeline and the N+1 detector stay complete for it; a
+  request that is dropped keeps none. Queries outside any request or job are sampled at
+  random.
+- **`minMs`** (default 0) drops queries faster than this.
+- Queries at/above `slowMs` and failed queries are **always** recorded, whatever the two
+  knobs say.
+
+<Callout type="info">
+An N+1 loop is usually many *fast* queries, so `minMs` hides it. Prefer `sampleRate` when
+N+1 detection matters: it shows fewer loops (only those in kept requests) but each one in
+full.
+</Callout>
+
+The `sampling` option of `config/telescope.ts` also drops entries per type, but at random per
+entry — a request may keep 2 of its 30 queries. The watcher options above decide per request
+and skip the work of building the dropped entries.
 
 <Callout type="warn">
 Bindings routinely carry PII / secrets (emails, tokens, password hashes), so by default they
@@ -197,6 +232,29 @@ Tagged `cache:<operation>` and `store:<store>`; `familyHash` is `operation:key` 
 `operation` when no key). The default event-name → operation map is exported as
 `CACHE_EVENTS` (`cache:hit`, `cache:miss`, `cache:written`, `cache:deleted`,
 `cache:cleared`).
+
+### Recording fewer cache events
+
+```ts title="config/telescope_watchers.ts"
+export default defineConfig({
+  watchers: ['query', 'cache'],
+  cache: {
+    hitSampleRate: 0.1,                 // keep the hits of 10% of the requests
+    ignoreStores: ['memory'],           // store names, case-insensitive
+    ignoreKeys: ['session:', /^rl:/],   // a string is a key prefix, a RegExp is tested as-is
+  },
+})
+```
+
+`hitSampleRate` (0..1, default 1) applies to **hits** only; misses, writes, deletes and
+clears are always recorded. It is decided per trace like `query.sampleRate`, so with the
+same rate (or a higher one) the hits of every request whose queries were kept are kept too.
+`ignoreStores` and `ignoreKeys` drop every operation on the matching stores or keys.
+
+<Callout type="info">
+The Pulse cache hit-ratio card counts recorded entries, so it reads lower than the real
+ratio while `hitSampleRate` is below 1.
+</Callout>
 
 <Callout type="warn">
 `@adonisjs/cache` is not installed in this repository, so these event names and payloads

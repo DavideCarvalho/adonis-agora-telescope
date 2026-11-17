@@ -241,6 +241,7 @@ export {
   setTelescopeDiagnosisCoordinator,
   setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
+  setTelescopeIgnoreRequestPaths,
   setTelescopePaused,
   setTelescopeRecordHeartbeat,
   setTelescopeRuntime,

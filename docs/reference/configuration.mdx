@@ -42,6 +42,7 @@ export default defineConfig({
 | `diagnostics`| `{ exclude?, recordClaimed? }`   | `{ exclude: [], recordClaimed: false }` | Mute noisy `lib:event` keys with `exclude`; `recordClaimed` also records events a lib-specific watcher already recorded as a typed entry. |
 | `logs`       | `{ minLevel?, tags? }`           | `{ minLevel: 'trace', tags: [] }` | Tuning for the `logs` watcher: raise the floor (`'warn'` drops debug/info) and append tags to every log entry. |
 | `requestCapture` | `{ maxBodyBytes?, skipBodyContentTypes?, skipBody? }` | _off_ | Opt-in request BODY capture. See [Request body capture](/docs/telescope/packages/core#request-body-capture). |
+| `ignoreRequestPaths` | `Array<string \| RegExp>`   | `[]`                          | Request paths never recorded as `request` entries. See [Ignoring request paths](/docs/telescope/packages/core#ignoring-request-paths). |
 | `extensions` | `TelescopeExtension[]`           | `[]`                          | [Extensions](/docs/telescope/concepts/extensions) registered at boot. |
 | `redact`     | `{ enabled?, keys?, perType? }`  | `{ enabled: true, keys: [], perType: {} }` | [Sensitive-data redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction) — masks sensitive keys in every entry's content before persistence. `perType` raises the numeric size bounds for one entry type. |
 | `sampling`   | `number \| SamplingConfig`       | _record everything_           | Tail-sampling on the write path (bare keep-rate, or per-type rules keeping errors/slow). |
@@ -101,7 +102,8 @@ export default defineConfig({
 | ------------ | --------------------------- | ----------- | ------------------------------------------------------- |
 | `enabled`    | `boolean`                   | `true`      | Master switch for per-technology watchers.             |
 | `watchers`   | `WatcherName[]`             | `['query']` | Any of `query`, `mail`, `cache`, `http-client`, `logs`, `queue`, `events`, `redis`, `profiling`, `schedule`, `queue-manager`. |
-| `query`      | `QueryWatcherConfig`        | see below   | `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `ignore` (SQL prefixes / RegExps), `ignoreTables`, `normalize` (`true`). |
+| `query`      | `QueryWatcherConfig`        | see below   | `slowMs` (500), `captureBindings` (`false`), `ignoreConnections`, `ignore` (SQL prefixes / RegExps), `ignoreTables`, `normalize` (`true`), `minMs` (0), `sampleRate` (1, per trace; slow and failed queries always kept). |
+| `cache`      | `CacheWatcherConfig`        | see below   | `hitSampleRate` (1, per trace; misses/writes/deletes/clears always kept), `ignoreStores`, `ignoreKeys` (prefixes / RegExps). |
 | `redis`      | `RedisWatcherConfig`        | see below   | `captureValues` (`false`: key kept, other arguments `[REDACTED]`), `ignoreCommands`, `ignoreKeys`, `ignoreConnections`, `sampleRate` (1), `floodWarnPerMinute` (600). |
 | `httpClient` | `HttpClientWatcherConfig`   | see below   | `slowMs` (1000), `ignoreHosts`, `captureBodies` (`false`). |
 | `profiling`  | `ProfilingWatcherConfig`    | see below   | `slowMs` (100), `minDurationMs` (0).                   |

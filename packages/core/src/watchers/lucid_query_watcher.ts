@@ -1,5 +1,6 @@
 import { currentTraceId } from '../context_accessor.js';
 import { EntryType, type RecordInput } from '../entry.js';
+import { clampRate, keepByTrace } from '../sampling/trace_sampler.js';
 import type { EmitterLike, Watcher } from './emitter.js';
 import { normalizeSql, queryFamilyHash } from './query_family_hash.js';
 import { safeRecord } from './record.js';
@@ -28,6 +29,10 @@ export interface LucidQueryWatcherOptions {
   ignore?: Array<string | RegExp>;
   /** Tables whose queries are not recorded (see {@link QueryIgnoreMatcher}). */
   ignoreTables?: string[];
+  /** Queries faster than this many ms are not recorded (slow and failed ones always are). Default 0. */
+  minMs?: number;
+  /** Fraction (0..1) of the not-slow, not-failed queries recorded, decided per trace. Default 1. */
+  sampleRate?: number;
 }
 
 /** Ignore decisions cached per raw SQL string; bounded like the family-hash cache. */
@@ -118,6 +123,8 @@ export interface DbQueryEventLike {
   model?: string;
   ddl?: boolean;
   inTransaction?: boolean;
+  /** Set by Lucid when the query failed. */
+  error?: unknown;
 }
 
 /** The recorded body of a `query` entry. */
@@ -136,6 +143,8 @@ export interface QueryEntryContent {
   inTransaction: boolean | null;
   /** The active trace id at query time, or `null`. */
   traceId: string | null;
+  /** The error message when the query failed; absent when it succeeded. */
+  error?: string;
 }
 
 /** Convert a `process.hrtime()` `[seconds, nanoseconds]` tuple to milliseconds. */
@@ -176,6 +185,8 @@ export class LucidQueryWatcher implements Watcher {
   private readonly ignoreConnections: Set<string>;
   private readonly normalize: boolean;
   private readonly ignore: QueryIgnoreMatcher;
+  private readonly minMs: number;
+  private readonly sampleRate: number;
 
   constructor(options: LucidQueryWatcherOptions = {}) {
     this.slowMs = options.slowMs ?? DEFAULT_SLOW_MS;
@@ -185,6 +196,8 @@ export class LucidQueryWatcher implements Watcher {
     );
     this.normalize = options.normalize ?? true;
     this.ignore = new QueryIgnoreMatcher(options.ignore, options.ignoreTables);
+    this.minMs = Math.max(0, options.minMs ?? 0);
+    this.sampleRate = clampRate(options.sampleRate);
   }
 
   start(emitter: EmitterLike): void {
@@ -204,6 +217,7 @@ export class LucidQueryWatcher implements Watcher {
     // hits the store's own DB, a replica used only for the timeline, etc.
     if (this.ignoreConnections.has(data.connection.toLowerCase())) return;
     if (this.ignore.ignores(data.sql)) return;
+    if (!this.keeps(data)) return;
     safeRecord(
       () =>
         buildQueryEntry(data, {
@@ -213,6 +227,33 @@ export class LucidQueryWatcher implements Watcher {
         }),
       'LucidQueryWatcher',
     );
+  }
+
+  /**
+   * The volume knobs: a failed query and a slow one are always kept; below `minMs`
+   * a query is dropped; the rest are kept for `sampleRate` of the traces. A query
+   * with no reported duration is never dropped by `minMs`.
+   */
+  private keeps(data: DbQueryEventLike): boolean {
+    if (this.minMs === 0 && this.sampleRate >= 1) return true;
+    if (data.error !== undefined && data.error !== null) return true;
+    const durationMs = hrtimeToMs(data.duration);
+    if (durationMs !== null) {
+      if (durationMs >= this.slowMs) return true;
+      if (durationMs < this.minMs) return false;
+    }
+    return keepByTrace(currentTraceId(), this.sampleRate);
+  }
+}
+
+/** The message of a Lucid query error, whatever shape it was thrown in. */
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
   }
 }
 
@@ -241,12 +282,15 @@ export function buildQueryEntry(
     inTransaction: typeof event.inTransaction === 'boolean' ? event.inTransaction : null,
     traceId,
   };
+  const failed = event.error !== undefined && event.error !== null;
+  if (failed) content.error = errorMessage(event.error);
   const tags: string[] = [
     `connection:${event.connection}`,
     ...(method ? [`method:${method}`] : []),
     ...(event.model ? [`model:${event.model}`] : []),
   ];
   if (durationMs !== null && durationMs >= slowMs) tags.push('slow');
+  if (failed) tags.push('failed');
 
   let familyHash: string | undefined;
   return {

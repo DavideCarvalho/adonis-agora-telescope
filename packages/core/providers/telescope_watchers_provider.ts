@@ -4,7 +4,7 @@ import {
   registerEnabledWatchers,
   setTelescopeQueueManager,
 } from '../src/registry.js';
-import { CacheWatcher } from '../src/watchers/cache_watcher.js';
+import { CACHE_EVENTS, CacheWatcher } from '../src/watchers/cache_watcher.js';
 import {
   type ResolvedTelescopeWatchersConfig,
   resolveConfig,
@@ -94,12 +94,16 @@ export default class TelescopeWatchersProvider {
           normalize: config.query.normalize,
           ignore: config.query.ignore,
           ignoreTables: config.query.ignoreTables,
+          minMs: config.query.minMs,
+          sampleRate: config.query.sampleRate,
         }),
         emitter,
       );
     }
     if (config.watchers.has('mail')) this.startWatcher(new MailWatcher(), emitter);
-    if (config.watchers.has('cache')) this.startWatcher(new CacheWatcher(), emitter);
+    if (config.watchers.has('cache')) {
+      this.startWatcher(new CacheWatcher(CACHE_EVENTS, config.cache), emitter);
+    }
     if (config.watchers.has('http-client')) this.startHttpClientWatcher(config);
     if (config.watchers.has('logs')) await this.startLogsWatcher();
     if (config.watchers.has('queue')) this.startQueueWatcher();

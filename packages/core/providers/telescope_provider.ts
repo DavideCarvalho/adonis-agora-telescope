@@ -53,6 +53,7 @@ import {
   setTelescopeEntryEvents,
   setTelescopeExtensionRegistry,
   setTelescopeFleet,
+  setTelescopeIgnoreRequestPaths,
   setTelescopePaused,
   setTelescopeRecordHeartbeat,
   setTelescopeRuntime,
@@ -174,6 +175,7 @@ export default class TelescopeProvider {
     // Tracing across apps: incoming `traceparent`, outgoing calls to `propagation.targets`, jobs.
     this.stopPropagation = installPropagation(config.propagation, config.propagationConfigured);
     setTelescopeRecordHeartbeat(config.recordHeartbeat);
+    setTelescopeIgnoreRequestPaths(config.ignoreRequestPaths);
 
     await this.startAiMetrics(config);
 
