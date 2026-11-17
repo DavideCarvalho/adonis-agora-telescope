@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { NuqsHashAdapter } from '../agora-kit/url-state/nuqs-hash-adapter';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type { TraceSummary, Waterfall } from '../client/types.js';
 import { TelescopeQueryProvider } from './query-provider.js';
@@ -57,7 +58,9 @@ function client(overrides: Partial<Record<keyof TelescopeClient, unknown>> = {})
 function renderWith(c: TelescopeClient, ui: ReactNode) {
   return render(
     <TelescopeQueryProvider>
-      <TelescopeClientContext.Provider value={c}>{ui}</TelescopeClientContext.Provider>
+      <NuqsHashAdapter>
+        <TelescopeClientContext.Provider value={c}>{ui}</TelescopeClientContext.Provider>
+      </NuqsHashAdapter>
     </TelescopeQueryProvider>,
   );
 }

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { writeHashSearch } from '../agora-kit/url-state/hash-url';
 import { DEFAULT_ROUTE, formatHash, parseHash, useHashRoute } from './use-hash-route.js';
 
 function Probe() {
@@ -85,6 +86,15 @@ describe('useHashRoute', () => {
     });
     expect(screen.getByTestId('route').textContent).toBe(
       JSON.stringify({ name: 'entries', type: 'query' }),
+    );
+  });
+
+  it('follows a query-only write (a page filter), which fires no hashchange', () => {
+    window.history.replaceState(null, '', '/#/entries');
+    render(<Probe />);
+    act(() => writeHashSearch('?type=cache&q=users'));
+    expect(screen.getByTestId('route').textContent).toBe(
+      JSON.stringify({ name: 'entries', type: 'cache' }),
     );
   });
 });

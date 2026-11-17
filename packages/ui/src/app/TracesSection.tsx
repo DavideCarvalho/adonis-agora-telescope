@@ -4,7 +4,8 @@ import type { TraceSummary } from '../client/types.js';
 import { appLabel } from './AppPicker.js';
 import { DataTable } from './primitives/data_table.js';
 import { AsyncBlock, PageHeader, Panel, SectionTitle, typeStyle } from './ui.js';
-import { useApps, useCursorPager, useTracesPage } from './use-telescope.js';
+import { useCursorPager } from './url-state.js';
+import { useApps, useTracesPage } from './use-telescope.js';
 
 /** The apps a trace crossed, the one that started it first: `shop → billing`. */
 export function TraceApps({ apps, labelOf }: { apps: string[]; labelOf: (id: string) => string }) {

@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { parseAsStringLiteral, useQueryState } from 'nuqs';
+import { useMemo } from 'react';
 import { Toolbar } from '../agora-kit/blocks/page-header';
 import { Button } from '../agora-kit/ui/button';
 import { formatCount, formatDuration, formatRelative } from '../client/format.js';
 import type { ScreenStats } from '../client/types.js';
 import { DataTable } from './primitives/data_table.js';
 import { AsyncBlock, PageHeader, Panel, SectionTitle } from './ui.js';
+import { useWindowParam } from './url-state.js';
 import { useScreens } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
 
@@ -27,8 +29,13 @@ const KINDS = [
  * (`content.kind`), and this screen is what it is for.
  */
 export function ScreensSection({ onOpenType }: { onOpenType: (type: string) => void }) {
-  const [windowMs, setWindowMs] = useState(3_600_000);
-  const [kind, setKind] = useState<string>('page');
+  const [windowMs, setWindowMs] = useWindowParam('1h');
+  const [kind, setKind] = useQueryState(
+    'kind',
+    parseAsStringLiteral(KINDS.map((k) => k.key))
+      .withDefault('page')
+      .withOptions({ history: 'push' }),
+  );
   const state = useScreens(windowMs, kind);
 
   const columns = useMemo(
@@ -105,7 +112,7 @@ export function ScreensSection({ onOpenType }: { onOpenType: (type: string) => v
             key={k.key}
             variant="chip"
             aria-pressed={kind === k.key}
-            onClick={() => setKind(k.key)}
+            onClick={() => void setKind(k.key)}
           >
             {k.label}
           </Button>

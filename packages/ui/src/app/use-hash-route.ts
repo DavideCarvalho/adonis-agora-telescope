@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { splitHash, subscribeHashUrl } from '../agora-kit/url-state/hash-url';
 
 /**
  * The SPA's hash-routed navigation state. Sections map to `#/<section>`; the deep links
@@ -36,8 +37,7 @@ function decodeSegment(raw: string): string {
 
 /** Parse a `window.location.hash` value into a {@link TelescopeRoute}. Pure (no `window` access). */
 export function parseHash(hash: string): TelescopeRoute {
-  const clean = hash.replace(/^#/, '');
-  const [path = '', query] = clean.split('?');
+  const { path, search: query } = splitHash(hash);
   const parts = path.split('/').filter((segment) => segment !== '');
   const first = parts[0];
 
@@ -129,9 +129,14 @@ export function useHashRoute(): {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const onHashChange = () => setRoute(parseHash(window.location.hash));
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    // Also follows query-only writes (a page's URL filters, written with `history.replaceState`,
+    // fire no `hashchange`): `#/entries?type=query` lights the watcher in the sidebar.
+    const onChange = () =>
+      setRoute((prev) => {
+        const next = parseHash(window.location.hash);
+        return formatHash(next) === formatHash(prev) ? prev : next;
+      });
+    return subscribeHashUrl(onChange);
   }, []);
 
   const navigate = useCallback((next: TelescopeRoute) => {

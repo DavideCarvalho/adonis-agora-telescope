@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs';
+import { useEffect, useMemo, useState } from 'react';
 import { Toolbar } from '../agora-kit/blocks/page-header';
 import { RefreshIcon, SearchIcon, XIcon } from '../agora-kit/icons';
 import { Badge } from '../agora-kit/ui/badge';
@@ -19,13 +20,8 @@ import {
 } from './primitives/select.js';
 import { tenantLabel } from './TenantPicker.js';
 import { AsyncBlock, PageHeader, Panel, SectionTitle, TypeBadge, typeLabel } from './ui.js';
-import {
-  useApps,
-  useCursorPager,
-  useEntriesPage,
-  useLiveTail,
-  useTenants,
-} from './use-telescope.js';
+import { searchParam, useCursorPager } from './url-state.js';
+import { useApps, useEntriesPage, useLiveTail, useTenants } from './use-telescope.js';
 
 /** Rows per page. The list is scanned, not read in bulk. */
 const PAGE_SIZE = 50;
@@ -34,22 +30,27 @@ const PAGE_SIZE = 50;
  * The entries list: filter by type + free-text search, with an SSE live-tail toggle that prepends
  * newly-recorded entries as they arrive. Rows deep-link to the entry detail; a `trace:` pill jumps to
  * the trace waterfall.
+ *
+ * Every filter is in the URL (`#/entries?type=query&q=users&live=true&after=<cursor>`), so a
+ * filtered view can be shared, bookmarked and stepped through with back/forward. The sidebar's
+ * watchers link to `#/entries?type=<type>`.
  */
 export function EntriesSection({
   onOpenEntry,
   onOpenTrace,
-  presetType,
 }: {
   onOpenEntry: (id: string) => void;
   onOpenTrace: (traceId: string) => void;
-  /** Initial type filter (e.g. from the command palette's "Entries: &lt;type&gt;" actions). Only
-   *  read once on mount — pass a remounting `key` from the caller to re-apply a new preset. */
-  presetType?: string;
 }) {
-  const [type, setType] = useState<string>(presetType ?? '');
-  const [search, setSearch] = useState<string>('');
-  const [draft, setDraft] = useState<string>('');
-  const [live, setLive] = useState(false);
+  const [type, setType] = useQueryState(
+    'type',
+    parseAsString.withDefault('').withOptions({ history: 'push' }),
+  );
+  const [search, setSearch] = useQueryState('q', searchParam);
+  // What is in the box; it becomes `search` on Enter / blur. Follows the URL (back/forward, a link).
+  const [draft, setDraft] = useState<string>(search);
+  useEffect(() => setDraft(search), [search]);
+  const [live, setLive] = useQueryState('live', parseAsBoolean.withDefault(false));
 
   const pager = useCursorPager();
   const page = pager.page;
@@ -74,11 +75,12 @@ export function EntriesSection({
    *  to do with page 4 of the new one, and landing on an empty page reads as "no
    *  results" when there are plenty. */
   const changeType = (next: string) => {
-    setType(next);
+    void setType(next);
     pager.reset();
   };
   const changeSearch = (next: string) => {
-    setSearch(next);
+    if (next === search) return;
+    void setSearch(next);
     pager.reset();
   };
 
@@ -220,7 +222,7 @@ export function EntriesSection({
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={presetType ? `Entries · ${typeLabel(presetType)}` : 'Entries'}
+        title={type ? `Entries · ${typeLabel(type)}` : 'Entries'}
         description="Everything Telescope recorded, newest first. A row opens the entry; a trace pill its waterfall."
         actions={
           <>
@@ -231,7 +233,7 @@ export function EntriesSection({
             <Button
               variant={live ? 'brand' : 'outline'}
               aria-pressed={live}
-              onClick={() => setLive((v) => !v)}
+              onClick={() => void setLive((v) => !v)}
             >
               {live ? <span className="live-dot" /> : null} Live tail
             </Button>
@@ -267,7 +269,7 @@ export function EntriesSection({
           containerClassName="w-full sm:w-72"
           onClear={() => {
             setDraft('');
-            commitSearch();
+            changeSearch('');
           }}
         />
         {type && (

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { NuqsHashAdapter } from '../agora-kit/url-state/nuqs-hash-adapter';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type {
   Entry,
@@ -192,7 +193,9 @@ function renderWith(
 ) {
   const tree = (
     <TelescopeQueryProvider>
-      <TelescopeClientContext.Provider value={client}>{ui}</TelescopeClientContext.Provider>
+      <NuqsHashAdapter>
+        <TelescopeClientContext.Provider value={client}>{ui}</TelescopeClientContext.Provider>
+      </NuqsHashAdapter>
     </TelescopeQueryProvider>
   );
   return render(
@@ -492,5 +495,115 @@ describe('ScreensSection', () => {
 
     const calls = (client.screens as unknown as { mock: { calls: unknown[][] } }).mock.calls;
     await waitFor(() => expect(calls.some((call) => call[1] === 'api')).toBe(true));
+  });
+});
+
+describe('filters in the URL', () => {
+  type Calls = { mock: { calls: unknown[][] } };
+
+  it('Entries opens filtered from a shared link', async () => {
+    window.history.replaceState(null, '', '/telescope#/entries?type=query&q=users');
+    const client = fakeClient();
+    renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
+    await waitFor(() =>
+      expect(
+        (client.listEntriesPage as unknown as Calls).mock.calls.some((call) => {
+          const q = call[0] as { type?: string; search?: string };
+          return q.type === 'query' && q.search === 'users';
+        }),
+      ).toBe(true),
+    );
+    expect((screen.getByLabelText('search entries') as HTMLInputElement).value).toBe('users');
+    expect(screen.getByText('type: query')).toBeTruthy();
+  });
+
+  it('Entries writes its search to the URL and drops it when cleared', async () => {
+    window.history.replaceState(null, '', '/telescope#/entries?type=query');
+    const client = fakeClient();
+    renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
+    const input = screen.getByLabelText('search entries');
+    fireEvent.change(input, { target: { value: 'orders' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(window.location.hash).toBe('#/entries?type=query&q=orders'));
+    expect(window.location.pathname).toBe('/telescope');
+
+    fireEvent.click(screen.getByRole('button', { name: 'clear search' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/entries?type=query'));
+    fireEvent.click(screen.getByRole('button', { name: 'clear type' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/entries'));
+  });
+
+  it('Entries follows back to the previous search', async () => {
+    window.history.replaceState(null, '', '/telescope#/entries');
+    const client = fakeClient();
+    renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />);
+    // A search typed and committed rewrites the entry; a page picked pushes one.
+    const input = screen.getByLabelText('search entries') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'users' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(window.location.hash).toBe('#/entries?q=users'));
+    act(() => {
+      window.location.hash = '#/entries?q=orders';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    await waitFor(() => expect(input.value).toBe('orders'));
+    act(() => window.history.back());
+    await waitFor(() => expect(input.value).toBe('users'));
+  });
+
+  it('Traces keeps the page cursor in the URL; back returns to page 1', async () => {
+    window.history.replaceState(null, '', '/telescope#/traces');
+    const tracesPage = vi.fn().mockResolvedValue({
+      data: [traceSummary],
+      meta: { nextCursor: 'cursor-2', prevCursor: null, hasNext: true, hasPrev: false },
+    });
+    const client = fakeClient({ tracesPage });
+    renderWith(client, <TracesSection onOpenTrace={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('GET /users')).toBeTruthy());
+
+    fireEvent.click(screen.getByText(/Next/));
+    await waitFor(() => expect(window.location.hash).toBe('#/traces?after=cursor-2'));
+    await waitFor(() => expect(screen.getByText(/Prev/).closest('button')?.disabled).toBe(false));
+
+    act(() => window.history.back());
+    await waitFor(() => expect(window.location.hash).toBe('#/traces'));
+    await waitFor(() => expect(screen.getByText(/Prev/).closest('button')?.disabled).toBe(true));
+  });
+
+  it('Traces opens on the page a shared link points at', async () => {
+    window.history.replaceState(null, '', '/telescope#/traces?after=cursor-2');
+    const tracesPage = vi.fn().mockResolvedValue({
+      data: [traceSummary],
+      meta: { nextCursor: null, prevCursor: null, hasNext: false, hasPrev: true },
+    });
+    renderWith(fakeClient({ tracesPage }), <TracesSection onOpenTrace={vi.fn()} />);
+    await waitFor(() =>
+      expect(tracesPage.mock.calls.some((call) => call[0]?.after === 'cursor-2')).toBe(true),
+    );
+  });
+
+  it('Screens: kind and window round-trip through the URL, back/forward included', async () => {
+    window.history.replaceState(null, '', '/telescope#/screens?window=24h');
+    const client = fakeClient();
+    renderWith(client, <ScreensSection onOpenType={vi.fn()} />);
+    const calls = (client.screens as unknown as Calls).mock.calls;
+    await waitFor(() =>
+      expect(calls.some((c) => c[0] === 86_400_000 && c[1] === 'page')).toBe(true),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'API' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/screens?window=24h&kind=api'));
+    await waitFor(() => expect(calls.some((c) => c[1] === 'api')).toBe(true));
+
+    act(() => window.history.back());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Screens' }).getAttribute('aria-pressed')).toBe(
+        'true',
+      ),
+    );
+    act(() => window.history.forward());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'API' }).getAttribute('aria-pressed')).toBe('true'),
+    );
   });
 });

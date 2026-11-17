@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { MetricGridSkeleton } from '../agora-kit/blocks/metric-card';
 import { Sparkline as KitSparkline } from '../agora-kit/charts/sparkline';
 import { formatCount, formatDuration, formatPercent, formatTime } from '../client/format.js';
@@ -20,6 +19,7 @@ import {
   typeStyle,
   WatcherOff,
 } from './ui.js';
+import { useWindowParam } from './url-state.js';
 import { usePulse, useWatcherEnabled } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
 
@@ -29,7 +29,7 @@ import { WindowSelect } from './WindowSelect.js';
  * for slowest entries, slow routes, exceptions, N+1 hotspots, load-by-user, and cache hit ratio.
  */
 export function PulseSection({ onOpenTrace }: { onOpenTrace: (traceId: string) => void }) {
-  const [windowMs, setWindowMs] = useState(3_600_000);
+  const [windowMs, setWindowMs] = useWindowParam('1h');
   const state = usePulse(windowMs);
 
   return (

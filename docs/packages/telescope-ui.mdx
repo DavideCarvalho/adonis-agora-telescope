@@ -112,6 +112,39 @@ you which config key turns it on rather than a button that would fail.
   that spends a fresh model call) when [`ai`](/docs/telescope/packages/ai) is configured; a
   request's detail view offers **Replay request**. Both are always user-initiated.
 
+### Share a filtered view
+
+Filters live in the URL, so to show someone what you are looking at, copy the address bar and send
+the link. It opens on the same page with the same filters, and survives a reload; back and forward
+step through the filters you picked.
+
+```txt
+/telescope#/entries?type=query&q=users       queries whose summary or content mentions "users"
+/telescope#/traces?after=<cursor>            the second page of traces
+/telescope#/pulse?window=24h                 Pulse over the last 24 hours
+/telescope#/fleet?role=queue:work            only the queue workers
+/telescope#/traces/<traceId>?tab=nplusone    a trace, opened on its N+1 tab
+/telescope?app=shop#/screens?kind=api        one app's API routes
+```
+
+| Page        | In the URL                                                    |
+| ----------- | ------------------------------------------------------------- |
+| Entries     | `type`, `q` (search), `live` (live tail on), `after` (page)   |
+| Traces      | `after` (page)                                                |
+| Trace       | `tab` (`entries`, `nplusone`)                                 |
+| Pulse       | `window` (`5m`, `15m`, `1h`, `6h`, `24h`, `7d`)               |
+| Exceptions  | `window`                                                      |
+| Screens     | `window`, `kind` (`api`, `asset`)                             |
+| AI          | `window`                                                      |
+| Fleet       | `role`                                                        |
+| Queues      | `queue` (the open queue)                                      |
+| Profiles    | `profile` (the open profile)                                  |
+| Exports     | `type`, `q`, `limit`, `format`                                |
+
+A filter at its default is left out of the URL, so `#/entries` is the unfiltered list and older
+links keep working. The App and organization pickers stay in the page's own query
+(`?app=`, `?tenant=`), in front of the `#`.
+
 ### Exports
 
 The Exports section is entirely client-side — there is no server export endpoint. It runs one

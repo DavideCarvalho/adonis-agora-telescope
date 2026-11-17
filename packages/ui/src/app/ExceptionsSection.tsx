@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { formatCount, formatRelative } from '../client/format.js';
 import type { ExceptionGroupStats } from '../client/types.js';
 import { DataTable } from './primitives/data_table.js';
 import { AsyncBlock, PageHeader, Panel, SectionTitle, Sparkline } from './ui.js';
+import { useWindowParam } from './url-state.js';
 import { useMetricsStats } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
 
@@ -25,7 +26,7 @@ const PAGE_SIZE = 15;
  * contain it — "0 shown" on a row that had just said the error happened 26 times.
  */
 export function ExceptionsSection({ onOpenType }: { onOpenType: (type: string) => void }) {
-  const [windowMs, setWindowMs] = useState(3_600_000);
+  const [windowMs, setWindowMs] = useWindowParam('1h');
   const state = useMetricsStats('exception', windowMs, GROUPS);
 
   const columns = useMemo(

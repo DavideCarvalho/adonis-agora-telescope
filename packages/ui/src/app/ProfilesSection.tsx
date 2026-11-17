@@ -1,3 +1,4 @@
+import { parseAsString, useQueryState } from 'nuqs';
 import { useState } from 'react';
 import { Badge } from '../agora-kit/ui/badge';
 import { Button } from '../agora-kit/ui/button';
@@ -164,7 +165,11 @@ export function ProfilesSection() {
   const meta = useMeta();
   const status = useProfilerStatus();
   const { data: profiles, loading, error, reload } = useProfiles(100);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The open profile is in the URL (`#/profiles?profile=<id>`); none opens the newest.
+  const [selectedId, setSelectedId] = useQueryState(
+    'profile',
+    parseAsString.withOptions({ history: 'push' }),
+  );
 
   const enabled = meta.data?.profiling?.enabled ?? false;
   const list = profiles ?? [];
@@ -226,7 +231,7 @@ export function ProfilesSection() {
                     key={profile.id}
                     profile={profile}
                     selected={profile.id === activeId}
-                    onSelect={() => setSelectedId(profile.id)}
+                    onSelect={() => void setSelectedId(profile.id)}
                   />
                 ))
               }

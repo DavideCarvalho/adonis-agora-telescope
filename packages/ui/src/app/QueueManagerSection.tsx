@@ -1,3 +1,4 @@
+import { parseAsString, useQueryState } from 'nuqs';
 import { useState } from 'react';
 import { EmptyState } from '../agora-kit/blocks/empty-state';
 import { Badge } from '../agora-kit/ui/badge';
@@ -164,7 +165,11 @@ export function QueueManagerSection() {
   const meta = useMeta();
   const { data, loading, error, reload } = useLiveQueues();
   const client = useTelescopeClient();
-  const [selected, setSelected] = useState<string | null>(null);
+  // The open queue is in the URL (`#/queues?queue=emails`).
+  const [selected, setSelected] = useQueryState(
+    'queue',
+    parseAsString.withOptions({ history: 'push' }),
+  );
   const [jobIdInput, setJobIdInput] = useState('');
   const [job, setJob] = useState<QueueJobDetail | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
@@ -256,7 +261,7 @@ export function QueueManagerSection() {
                       key={q.queue}
                       aria-pressed={selected === q.queue}
                       onClick={() => {
-                        setSelected(q.queue);
+                        void setSelected(q.queue);
                         setJob(null);
                         setJobIdInput('');
                         setJobError(null);
