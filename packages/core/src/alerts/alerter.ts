@@ -339,6 +339,7 @@ function buildExceptionContext(entry: Entry, occurrences: number): ExceptionAler
     geo: null,
     durationMs: pickNumber(content, ['durationMs']),
     user: userFromTags(entry.tags),
+    app: appFromTags(entry.tags),
     occurrences,
     // First occurrence of the family in the window vs a recurrence.
     isNew: occurrences === 1,
@@ -411,6 +412,14 @@ function pickRecord(
 function clipStackFrames(stack: string | null): string | null {
   if (stack === null) return null;
   return stack.split('\n').slice(0, ALERT_STACK_FRAME_LIMIT).join('\n');
+}
+
+/** The `app:<name>` tag of an entry (the app that recorded it), or `null`. */
+function appFromTags(tags: string[]): string | null {
+  for (const tag of tags) {
+    if (tag.startsWith('app:') && tag.length > 'app:'.length) return tag.slice('app:'.length);
+  }
+  return null;
 }
 
 /** Extract the user id from a `user:<id>` tag, or `null` when none is present. */

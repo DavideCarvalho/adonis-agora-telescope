@@ -62,6 +62,20 @@ function resolved(overrides: Partial<ResolvedAlerts> = {}): ResolvedAlerts {
   };
 }
 
+describe('Alerter — the app an exception came from', () => {
+  it('carries the `app:` tag of the entry (the tenant on a control plane), null when untagged', async () => {
+    const { channel, payloads } = capturingChannel();
+    const alerter = new Alerter({ alerts: resolved({ channels: [channel] }), now: () => 1_000 });
+    await alerter.evaluate([
+      exceptionEntry('fam-T', { tags: ['user:42', 'app:entre-textos'] }),
+      exceptionEntry('fam-U'),
+    ]);
+    const byFamily = new Map(payloads.map((p) => [p.exception?.familyHash, p.exception?.app]));
+    expect(byFamily.get('fam-T')).toBe('entre-textos');
+    expect(byFamily.get('fam-U')).toBeNull();
+  });
+});
+
 describe('Alerter — new-exception', () => {
   it('fires once for a new family and dispatches to channels with rich context', async () => {
     const { channel, payloads } = capturingChannel();

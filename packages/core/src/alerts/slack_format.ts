@@ -253,6 +253,9 @@ export function formatSlackMessage(
 
   const exception = payload.exception;
   if (exception !== undefined) {
+    if (typeof exception.app === 'string' && exception.app !== '') {
+      contextFields.push(field('App', exception.app));
+    }
     contextFields.push(field('Error', `${exception.class}: ${exception.message}`));
     if (exception.route !== null) {
       const method = exception.method ?? '';

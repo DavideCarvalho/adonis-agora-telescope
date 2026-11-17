@@ -1,4 +1,5 @@
 import type { AlertPayload, AlertSeverity } from './alert_rule.js';
+import { appOf } from './integrations/incident.js';
 import { formatSlackMessage, type SlackChannelOptions } from './slack_format.js';
 
 /**
@@ -120,7 +121,7 @@ export type ConsoleSink = (message: string) => void;
 
 /** One-line human summary of an alert for the console channel. */
 function summarize(alert: AlertPayload): string {
-  const base = `[telescope-alert] ${alert.rule.type} on ${alert.instanceId}`;
+  const base = `[telescope-alert] ${alert.rule.type} on ${appOf(alert)}`;
   if (alert.exception !== undefined) {
     const { class: cls, message, route, occurrences } = alert.exception;
     const where = route !== null ? ` (${route})` : '';

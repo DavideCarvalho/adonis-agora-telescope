@@ -65,9 +65,12 @@ function str(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null;
 }
 
-/** The app an alert is about: the fleet alert's app, else the reporting instance. */
+/**
+ * The app an alert is about: the fleet alert's app, else the app that recorded the exception (its
+ * `app:` tag — on a control plane, the tenant), else the reporting instance.
+ */
 export function appOf(alert: AlertPayload): string {
-  return str(subjectOf(alert)?.app) ?? alert.instanceId;
+  return str(subjectOf(alert)?.app) ?? str(alert.exception?.app) ?? alert.instanceId;
 }
 
 /** A fleet alert's one-line detail (e.g. "Redis down for 12 min"), or `null`. */
