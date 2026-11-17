@@ -149,7 +149,8 @@ Source: `docs/concepts/protection.mdx` (Pausing on purpose).
 
 Implement the six required methods (`record`/`get`/`list`/`count`/`prune`/`clear`)
 and pass an instance as `store` — add the optional fast paths (`pageTraceIds`, `listTraceIds`,
-`countByBucket`, `countFamilies`, `countTags`, `listSlowest`, `countTraceRepeats`; set
+`countByBucket`, `countFamilies`, `countTags`, `listSlowest`, `countTraceRepeats`,
+`listDurations`; set
 `honorsTagGroups` only if they filter by `tagGroups`) when you can, or decorators and the
 dashboard fall back to a full scan. Three
 responsibilities are easy to miss: `record` must resolve `traceId`/`origin`,
@@ -187,7 +188,7 @@ export class MongoTelescopeStore implements TelescopeStore {
                                contentText: JSON.stringify(entry.content) }) // search target
     return entry
   }
-  /* get / list / count / prune(olderThan, keepLast?) / clear + optional pageTraceIds/listTraceIds/countByBucket/countFamilies/countTags/listSlowest/countTraceRepeats */
+  /* get / list / count / prune(olderThan, keepLast?) / clear + optional pageTraceIds/listTraceIds/countByBucket/countFamilies/countTags/listSlowest/countTraceRepeats/listDurations */
 }
 
 // config/telescope.ts
