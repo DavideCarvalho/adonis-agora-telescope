@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.20
+
+### Minor Changes
+
+- [#361](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/361) [`c52456d`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/c52456d401b7c002667e4622231e9b24624e588b) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console filters now live in the URL, so a filtered view can be shared, bookmarked and reloaded, and back/forward step through it: Entries (`type`, `q`, `live`, page cursor), Traces (page cursor), a trace's tab, the time window on Pulse, Exceptions, Screens and AI, the Screens kind, the Fleet role, the open queue and profile, and the Exports form. They sit in the hash's query (`#/entries?type=query&q=users`); a value at its default is left out, so existing `#/<page>` links open as before.
+
 ## 3.0.0-rc.19
 
 ### Minor Changes
