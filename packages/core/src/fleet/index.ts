@@ -36,7 +36,7 @@ export {
   restartLoopsOf,
 } from './derive.js';
 export type { InstanceHeartbeat, InstanceState, ShippingStats } from './heartbeat.js';
-export { DEFAULT_ROLE, normalizeHeartbeat, normalizeRole } from './heartbeat.js';
+export { DEFAULT_ROLE, normalizeHeartbeat, normalizeRole, normalizeWatchers } from './heartbeat.js';
 export type { ProbeResponse } from './probes.js';
 export { liveness, readiness } from './probes.js';
 export type { FleetRegistryOptions, InstanceReporterOptions } from './registry.js';
@@ -56,3 +56,5 @@ export type {
   RelatedException,
 } from './view.js';
 export { readFleet } from './view.js';
+export type { FleetWatchersInput } from './watchers.js';
+export { fleetWatchers } from './watchers.js';

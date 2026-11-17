@@ -81,6 +81,18 @@ describe.each(Object.keys(kinds))('%s fleet store', (kind) => {
     ]);
   });
 
+  it('keeps the watchers an instance reports, and none for an older sender', async () => {
+    const store = await make();
+    await store.upsert(record({ watchers: ['query', 'request'] }));
+    await store.upsert(record({ instanceId: 'old' }));
+    const rows = await store.list();
+    expect(rows.find((r) => r.instanceId === 'web-1-1-aaaa')?.watchers).toEqual([
+      'query',
+      'request',
+    ]);
+    expect(rows.find((r) => r.instanceId === 'old')).not.toHaveProperty('watchers');
+  });
+
   it('lists by app and since; prunes by last seen', async () => {
     const store = await make();
     await store.upsert(record({ instanceId: 'old', lastSeenAt: NOW - 100_000 }));

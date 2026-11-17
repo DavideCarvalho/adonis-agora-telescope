@@ -86,6 +86,7 @@ export class FleetRegistry {
       url: heartbeat.url ?? null,
       // Older senders send no role: they only reported their web process.
       role: heartbeat.role ?? DEFAULT_ROLE,
+      ...(heartbeat.watchers !== undefined ? { watchers: heartbeat.watchers } : {}),
     };
     try {
       await this.store.upsert(record);
@@ -133,6 +134,8 @@ export interface InstanceReporterOptions {
   url?: string | null;
   /** `web`, or the ace command this process runs (`durable:work`). Default `web`. */
   role?: string;
+  /** The watcher names this process runs, read on every heartbeat. Absent: not reported. */
+  watchers?: () => string[];
   /** The state of the first heartbeat. Default `starting`. */
   state?: InstanceState;
   /** The shipping stats of a tenant's buffer, or `null`. */
@@ -220,6 +223,7 @@ export class InstanceReporter {
       shipping: this.options.shipping?.() ?? null,
       url: this.options.url ?? null,
       role: this.role,
+      ...(this.options.watchers !== undefined ? { watchers: this.options.watchers() } : {}),
     };
   }
 

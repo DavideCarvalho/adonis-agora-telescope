@@ -6,7 +6,8 @@ import {
 } from '../src/dev_tools/telescope_dev_tools.js';
 import { scopedTelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import type { Entry } from '../src/entry.js';
-import { getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
+import { fleetWatchers } from '../src/fleet/watchers.js';
+import { getEnabledWatchers, getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { entryInScope, scopedStore, scopeKey } from '../src/tenancy_store.js';
@@ -610,6 +611,30 @@ export default class TelescopeUiProvider {
       })
       .as('telescope_ui.apps');
 
+    // On a control plane the entries come from the tenants, so "is the `query` watcher on" is a
+    // question about them: the union of what the instances of the apps in view report. A
+    // standalone app answers with its own watchers (`{}` keeps that default).
+    const controlPlaneWatchers = async (
+      appTags: string[] | null,
+    ): Promise<{ watchers?: string[] | null }> => {
+      const fleet = getTelescopeRuntime().fleet;
+      if (fleet === null || coreConfig.topology.topology !== 'control-plane') return {};
+      const apps = appsOfTags(appTags);
+      const window = coreConfig.prune.enabled ? coreConfig.prune.afterMs : 86_400_000;
+      try {
+        return {
+          watchers: fleetWatchers({
+            instances: await fleet.instances(apps),
+            since: Date.now() - window,
+            own: apps === null ? getEnabledWatchers() : null,
+          }),
+        };
+      } catch {
+        // The instances table is unreachable: unknown, rather than this process's own list.
+        return { watchers: null };
+      }
+    };
+
     // `GET <path>/api/meta` — always registered (unlike the extension-only routes above), because
     // the dashboard's `ai.enabled` flag lives here too. `entryTypes`/`dashboards` are empty when no
     // extension registry booted; the client already treats a 404 here as "nothing contributed", so
@@ -621,7 +646,7 @@ export default class TelescopeUiProvider {
         return ctx.response
           .status(200)
           .header('content-type', 'application/json')
-          .send({ data: consoleMeta(a) });
+          .send({ data: consoleMeta(a, await controlPlaneWatchers(a.selected.appTags)) });
       })
       .as('telescope_ui.meta');
   }

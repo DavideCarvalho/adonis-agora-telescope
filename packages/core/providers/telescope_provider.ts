@@ -46,6 +46,7 @@ import { OverloadGuard, type PauseController } from '../src/overload_guard.js';
 import { TelescopePruner } from '../src/pruner.js';
 import { RedactingTelescopeStore } from '../src/redaction/redacting_store.js';
 import {
+  getEnabledWatchers,
   getTelescopeRuntime,
   registerEnabledWatchers,
   resetTelescopeRuntime,
@@ -299,6 +300,8 @@ export default class TelescopeProvider {
         state,
         version: () => resolveVersion(fleetConfig.version, appRoot),
         checks: this.healthChecks,
+        // So a control plane knows which entry types this app records at all.
+        watchers: getEnabledWatchers,
         ...(remote !== null ? { shipping: () => remote.shippingStats() } : {}),
         send: (heartbeat) => {
           if (remote !== null) remote.heartbeat(heartbeat);

@@ -8,7 +8,7 @@ import {
 } from '../stores/sql_schema.js';
 import type { CheckState } from './checks.js';
 import type { InstanceRecord } from './derive.js';
-import { DEFAULT_ROLE, normalizeRole, type ShippingStats } from './heartbeat.js';
+import { DEFAULT_ROLE, normalizeRole, normalizeWatchers, type ShippingStats } from './heartbeat.js';
 
 /** Where the fleet keeps its instances. */
 export interface FleetStore {
@@ -107,7 +107,14 @@ interface Payload {
   shipping: ShippingStats | null;
   url?: string | null;
   role?: string;
+  watchers?: string[];
 }
+
+/** `{ watchers }` when the row stored a list (newer senders), else `null` (unknown). */
+const watchersOf = (value: unknown): { watchers: string[] } | null => {
+  const watchers = normalizeWatchers(value);
+  return watchers === undefined ? null : { watchers };
+};
 
 const toInt = (value: unknown) => (typeof value === 'number' ? value : Number(value ?? 0));
 
@@ -167,6 +174,7 @@ export class LucidFleetStore implements FleetStore {
       shipping: record.shipping,
       url: record.url ?? null,
       role: record.role ?? DEFAULT_ROLE,
+      ...(record.watchers !== undefined ? { watchers: record.watchers } : {}),
     };
     const row = {
       id,
@@ -228,6 +236,7 @@ export class LucidFleetStore implements FleetStore {
         url: payload.url ?? null,
         // Rows written before roles existed were web processes.
         role: normalizeRole(payload.role),
+        ...(watchersOf(payload.watchers) ?? {}),
       };
     });
   }

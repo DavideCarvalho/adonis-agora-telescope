@@ -24,6 +24,8 @@ export interface InstanceRecord {
   url?: string | null;
   /** `web`, or the ace command the process runs (`durable:work`). `web` for older senders. */
   role?: string;
+  /** The watcher names the instance runs; absent (unknown) for older senders. */
+  watchers?: string[];
 }
 
 /** What the fleet says about an instance right now. */

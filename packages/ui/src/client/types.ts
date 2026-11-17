@@ -496,9 +496,11 @@ export interface TelescopeMeta {
    *
    * Lets a panel distinguish "nothing happened" from "nothing is being measured".
    * Absent on a server predating this field — panels then keep their old wording
-   * rather than claiming a watcher is off when they cannot know.
+   * rather than claiming a watcher is off when they cannot know. On a server collecting several
+   * apps it is the union of what their instances report, and absent (or `null`) when an app in
+   * view never said.
    */
-  watchers?: string[];
+  watchers?: string[] | null;
 }
 
 // ── CPU profiling (`GET/POST <base>/profiles*`) ─────────────────────────────

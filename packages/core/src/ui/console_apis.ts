@@ -147,8 +147,18 @@ export const QUEUE_ACTIONS_DISABLED =
   'Queue actions are disabled (set telescope_ui `queueActions.enabled: true`).';
 
 /** What `GET <path>/api/meta` answers: the features that are on, and what extensions contributed. */
-export function consoleMeta(apis: ConsoleApis): Record<string, unknown> {
+export function consoleMeta(
+  apis: ConsoleApis,
+  options: {
+    /**
+     * The watchers behind the entries in view, when this process's own are not the answer (a
+     * control plane: see {@link fleetWatchers}). `null`: unknown, the field is left out.
+     */
+    watchers?: string[] | null;
+  } = {},
+): Record<string, unknown> {
   const runtime = getTelescopeRuntime();
+  const watchers = options.watchers === undefined ? getEnabledWatchers() : options.watchers;
   const registry = runtime.registry;
   return {
     entryTypes: registry?.entryTypes() ?? [],
@@ -159,7 +169,8 @@ export function consoleMeta(apis: ConsoleApis): Record<string, unknown> {
     queueManager: { enabled: apis.queueManagerApi.isConfigured() },
     fleet: { enabled: runtime.fleet !== null, checks: runtime.healthChecks?.size ?? 0 },
     // The watcher names actually running, so a panel can say "the `query` watcher is off" instead
-    // of reporting its own blindness as good news.
-    watchers: getEnabledWatchers(),
+    // of reporting its own blindness as good news. Left out when unknown: the console then claims
+    // nothing.
+    ...(watchers !== null ? { watchers } : {}),
   };
 }

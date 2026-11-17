@@ -46,6 +46,11 @@ export interface InstanceHeartbeat {
    * Absent from older senders, which only reported their web process.
    */
   role?: string;
+  /**
+   * The watcher names this process runs (`query`, `queue`, …), so a control plane can tell "this
+   * app does not record queries" from "no slow query". Absent from older senders: unknown.
+   */
+  watchers?: string[];
 }
 
 /** The role of an instance whose heartbeat carries none (older senders only reported web). */
@@ -67,6 +72,19 @@ const STATES: readonly InstanceState[] = ['starting', 'ready', 'draining'];
 const CHECK_STATUSES: readonly CheckStatus[] = ['ok', 'warn', 'down', 'unknown'];
 const ID_RE = /^[\x21-\x7e]{1,128}$/;
 const MAX_CHECKS = 50;
+const MAX_WATCHERS = 64;
+const WATCHER_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+/** A watcher list as a heartbeat may carry it (sorted, deduped, bounded), else `undefined`. */
+export function normalizeWatchers(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const names = new Set<string>();
+  for (const name of value) {
+    if (typeof name === 'string' && WATCHER_RE.test(name)) names.add(name);
+    if (names.size >= MAX_WATCHERS) break;
+  }
+  return [...names].sort();
+}
 
 const str = (value: unknown, max: number): string | null =>
   typeof value === 'string' && value.length > 0 ? value.slice(0, max) : null;
@@ -139,6 +157,7 @@ export function normalizeHeartbeat(raw: unknown): InstanceHeartbeat | null {
       lastError: str(s.lastError, 300),
     };
   }
+  const watchers = normalizeWatchers(h.watchers);
   return {
     v: 1,
     instanceId: h.instanceId,
@@ -154,5 +173,6 @@ export function normalizeHeartbeat(raw: unknown): InstanceHeartbeat | null {
     shipping,
     url: normalizeAppUrl(h.url),
     role: normalizeRole(h.role),
+    ...(watchers !== undefined ? { watchers } : {}),
   };
 }
