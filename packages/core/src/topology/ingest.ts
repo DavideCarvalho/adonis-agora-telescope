@@ -271,6 +271,11 @@ export function createIngestHandler(options: IngestHandlerOptions) {
 
     const relay = relayScope(verified.capabilities);
     const result: IngestResult = { accepted: 0, duplicates: 0, rejected: 0 };
+    // Every entry of the batch is handed to the store before any is awaited: a store that buffers
+    // writes (the lucid one writes everything recorded in one tick as one multi-row INSERT) stores
+    // the batch in a handful of statements instead of one per entry.
+    const writes: Array<{ id: string; write: Promise<unknown> }> = [];
+    const inBatch = new Set<string>();
     for (const raw of body.entries) {
       const normalized = normalize(raw, verified, relay, limits);
       if (normalized === null) {
@@ -287,21 +292,27 @@ export function createIngestHandler(options: IngestHandlerOptions) {
         result.rejected += 1;
         continue;
       }
-      if (recent.has(id)) {
+      if (recent.has(id) || inBatch.has(id)) {
         result.duplicates += 1;
         continue;
       }
+      inBatch.add(id);
       const input: RecordInput & { id: string; createdAt?: string } = { ...entry, id };
       // Telescope's own work: nothing the write causes (its INSERT) is recorded again.
-      try {
-        await runAsTelescopeWork(() => store.record(input));
-      } catch {
-        // The store is down: the sender retries the batch, and what was stored is deduped.
-        return deny(503, 'the store could not write the entries right now');
-      }
-      recent.add(id);
-      result.accepted += 1;
+      writes.push({ id, write: runAsTelescopeWork(() => store.record(input)) });
     }
+    const outcomes = await Promise.allSettled(writes.map((w) => w.write));
+    let failed = false;
+    outcomes.forEach((outcome, i) => {
+      if (outcome.status === 'fulfilled') {
+        recent.add(writes[i]!.id);
+        result.accepted += 1;
+      } else {
+        failed = true;
+      }
+    });
+    // The store is down: the sender retries the batch, and what was stored is deduped.
+    if (failed) return deny(503, 'the store could not write the entries right now');
     return { status: 202, body: { ...result } };
   }
 
