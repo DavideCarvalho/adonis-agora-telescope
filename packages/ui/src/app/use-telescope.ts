@@ -155,9 +155,11 @@ export function useNPlusOne(traceId: string) {
   return useTelescopeQuery(['n-plus-one', traceId], () => client.nPlusOne(traceId));
 }
 
-export function usePulse(windowMs: number, topN?: number) {
+export function usePulse(windowMs: number, topN?: number, cards?: readonly string[]) {
   const client = useTelescopeClient();
-  return useTelescopeQuery(['pulse', windowMs, topN ?? null], () => client.pulse(windowMs, topN));
+  return useTelescopeQuery(['pulse', windowMs, topN ?? null, cards?.join(',') ?? null], () =>
+    cards === undefined ? client.pulse(windowMs, topN) : client.pulse(windowMs, topN, cards),
+  );
 }
 
 export function useMetricsStats(type: string, windowMs: number, topExceptions?: number) {

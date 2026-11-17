@@ -315,17 +315,23 @@ export class TelescopeApi {
   }
 
   /**
-   * `GET <path>/api/metrics/pulse?windowMs=&topN=` — the aggregated "at a glance"
+   * `GET <path>/api/metrics/pulse?windowMs=&topN=&cards=` — the aggregated "at a glance"
    * health rollup (slowest, error rate, throughput, top exceptions, cache hit
    * ratio, slow route/outgoing/job hotspots, N+1, load-by-user) over a window.
+   * `cards=a,b` computes only those cards (of the configured ones).
    */
   async metricsPulse(ctx: UiHttpContext): Promise<unknown> {
     const windowMs = readNumber(ctx.request, 'windowMs');
     const topN = readNumber(ctx.request, 'topN');
+    const cards = readString(ctx.request, 'cards')
+      ?.split(',')
+      .map((card) => card.trim())
+      .filter((card) => card !== '');
     try {
       const data = await this.pulse.getHealth({
         ...(windowMs !== undefined ? { windowMs } : {}),
         ...(topN !== undefined ? { topN } : {}),
+        ...(cards !== undefined && cards.length > 0 ? { cards } : {}),
       });
       return ctx.response.status(200).header('content-type', 'application/json').send({ data });
     } catch (err) {

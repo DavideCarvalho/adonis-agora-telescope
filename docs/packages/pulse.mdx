@@ -128,6 +128,9 @@ GET <path>/api/metrics/pulse?windowMs=<ms>
 
 behind the dashboard [auth guard](/docs/telescope/dashboard/auth), returning the same
 `PulseSummary`. The `windowMs` query param overrides the configured window for that request.
+`cards=requests,nPlusOne,…` computes only those of the configured cards, which skips the reads
+the others need (the console's Overview asks for the cards it shows). The others come back
+empty.
 The bundled [dashboard SPA](/docs/telescope/packages/telescope-ui) renders it as the **Pulse**
 section; the [`telescope_get_health` MCP tool](/docs/telescope/packages/mcp) returns it to a coding agent.
 

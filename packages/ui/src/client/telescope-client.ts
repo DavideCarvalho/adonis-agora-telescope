@@ -328,8 +328,15 @@ export class TelescopeClient {
     );
   }
 
-  pulse(windowMs?: number, topN?: number): Promise<PulseSummary> {
-    return this.data<PulseSummary>('/metrics/pulse', toQuery({ windowMs, topN }));
+  /**
+   * The Pulse rollup. `cards` asks for only those cards, so the server skips the reads the others
+   * need (a server predating it ignores the parameter and computes them all).
+   */
+  pulse(windowMs?: number, topN?: number, cards?: readonly string[]): Promise<PulseSummary> {
+    return this.data<PulseSummary>(
+      '/metrics/pulse',
+      toQuery({ windowMs, topN, cards: cards && cards.length > 0 ? cards.join(',') : undefined }),
+    );
   }
 
   // ── retention / extension dashboards ────────────────────────────────────

@@ -121,6 +121,12 @@ diagnosis has a model to call, whether CPU profiling is available, and whether a
 driver is wired. The shipped console uses them to decide whether to render the **Diagnose**
 button, the **Profiles** view and the queue console at all.
 
+`watchers` lists the watchers that recorded what the console shows, so a panel can say "the
+`query` watcher is off" instead of "nothing found". On a [central server](/docs/telescope/concepts/central-server)
+it is what the apps in view report with their heartbeats (narrowed by `?app=`), plus the server's
+own watchers when every app is in view. It is left out when an app in view runs a version that
+does not report its watchers: the console then claims nothing.
+
 ### Retention
 
 `GET <path>/api/retention` reports the retention posture — how aggressively data is deleted and
