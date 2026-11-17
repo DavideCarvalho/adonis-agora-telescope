@@ -218,6 +218,12 @@ describe('ignoreRequestPaths', () => {
     expect(isIgnoredRequestPath('/users', [])).toBe(false);
   });
 
+  it('skips empty string patterns instead of ignoring every path', () => {
+    expect(isIgnoredRequestPath('/users', [''])).toBe(false);
+    expect(isIgnoredRequestPath('/users', ['  ', '/assets'])).toBe(false);
+    expect(isIgnoredRequestPath('/assets/x', ['', '/assets'])).toBe(true);
+  });
+
   it('tests RegExps against the path', () => {
     const patterns = [/\.(png|css)$/g];
     expect(isIgnoredRequestPath('/img/logo.png', patterns)).toBe(true);

@@ -61,6 +61,9 @@ export function isIgnoredRequestPath(url: string, patterns: Array<string | RegEx
   const path = query === -1 ? url : url.slice(0, query);
   for (const pattern of patterns) {
     if (typeof pattern === 'string') {
+      // An empty prefix (e.g. an unset env var) would match every path and silently
+      // stop all request recording — skip it instead.
+      if (pattern.trim() === '') continue;
       if (isUnder(path, pattern)) return true;
     } else {
       // A /g or /y pattern keeps `lastIndex` between calls; reset it so each test starts fresh.
