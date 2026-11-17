@@ -1,3 +1,4 @@
+import { parseAsInteger, parseAsString, parseAsStringLiteral, useQueryState } from 'nuqs';
 import { useState } from 'react';
 import { Button } from '../agora-kit/ui/button';
 import { downloadText, entriesToCsv, toPrettyJson } from '../client/export.js';
@@ -22,7 +23,8 @@ import {
 import { Empty, PageHeader, Panel, SectionTitle } from './ui.js';
 import { useTelescopeClient } from './use-telescope.js';
 
-type Format = 'json' | 'csv';
+const FORMATS = ['json', 'csv'] as const;
+type Format = (typeof FORMATS)[number];
 
 interface RecentExport {
   filename: string;
@@ -42,10 +44,14 @@ const MAX_LIMIT = 500;
  */
 export function ExportsSection() {
   const client = useTelescopeClient();
-  const [type, setType] = useState('');
-  const [search, setSearch] = useState('');
-  const [limit, setLimit] = useState(200);
-  const [format, setFormat] = useState<Format>('json');
+  // The export's filters are in the URL (`#/exports?type=query&q=users&limit=500&format=csv`).
+  const [type, setType] = useQueryState('type', parseAsString.withDefault(''));
+  const [search, setSearch] = useQueryState('q', parseAsString.withDefault(''));
+  const [limit, setLimit] = useQueryState('limit', parseAsInteger.withDefault(200));
+  const [format, setFormat] = useQueryState(
+    'format',
+    parseAsStringLiteral(FORMATS).withDefault('json'),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentExport[]>([]);
@@ -96,7 +102,7 @@ export function ExportsSection() {
         <div className="flex flex-wrap items-center gap-2.5">
           <Select
             value={type}
-            onValueChange={(next) => setType(typeof next === 'string' ? next : '')}
+            onValueChange={(next) => void setType(typeof next === 'string' ? next : '')}
           >
             <SelectTrigger aria-label="export type" className="min-w-36">
               <SelectValue>{(v: string | null) => (v ? v : 'All types')}</SelectValue>
@@ -115,7 +121,7 @@ export function ExportsSection() {
             placeholder="Search summary + content…"
             aria-label="export search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => void setSearch(e.target.value)}
             containerClassName="w-full sm:w-auto sm:min-w-[220px]"
           />
           <Input
@@ -124,12 +130,12 @@ export function ExportsSection() {
             max={MAX_LIMIT}
             aria-label="row limit"
             value={limit}
-            onChange={(e) => setLimit(Number(e.target.value) || 1)}
+            onChange={(e) => void setLimit(Number(e.target.value) || 1)}
             className="mono tnum w-[90px]"
           />
           <Select
             value={format}
-            onValueChange={(next) => setFormat(next === 'csv' ? 'csv' : 'json')}
+            onValueChange={(next) => void setFormat(next === 'csv' ? 'csv' : 'json')}
           >
             <SelectTrigger aria-label="export format">
               <SelectValue>{(v: string | null) => (v === 'csv' ? 'CSV' : 'JSON')}</SelectValue>

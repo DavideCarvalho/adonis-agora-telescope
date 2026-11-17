@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { NuqsHashAdapter } from '../agora-kit/url-state/nuqs-hash-adapter';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type { PulseSummary } from '../client/types.js';
 import { PulseSection } from './PulseSection.js';
@@ -46,9 +47,11 @@ function renderPulse(watchers: string[] | undefined): void {
 
   render(
     <TelescopeQueryProvider>
-      <TelescopeClientContext.Provider value={client}>
-        <PulseSection onOpenTrace={vi.fn()} />
-      </TelescopeClientContext.Provider>
+      <NuqsHashAdapter>
+        <TelescopeClientContext.Provider value={client}>
+          <PulseSection onOpenTrace={vi.fn()} />
+        </TelescopeClientContext.Provider>
+      </NuqsHashAdapter>
     </TelescopeQueryProvider>,
   );
 }

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { parseAsStringLiteral, useQueryState } from 'nuqs';
+import { useMemo } from 'react';
 import { Button } from '../agora-kit/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../agora-kit/ui/tabs';
 import { formatCount, formatDuration, formatRelative } from '../client/format.js';
@@ -50,6 +51,10 @@ export function flattenWaterfall(waterfall: Waterfall): FlatSpan[] {
   return out;
 }
 
+const TRACE_TABS = ['waterfall', 'entries', 'nplusone'] as const;
+const isTraceTab = (v: string): v is (typeof TRACE_TABS)[number] =>
+  (TRACE_TABS as readonly string[]).includes(v);
+
 /** The per-trace view: a Waterfall | Entries toggle over one trace. */
 export function TraceDetail({
   traceId,
@@ -60,7 +65,11 @@ export function TraceDetail({
   onOpenEntry: (id: string) => void;
   onBack: () => void;
 }) {
-  const [view, setView] = useState<'waterfall' | 'entries' | 'nplusone'>('waterfall');
+  // The open tab is in the URL (`#/traces/<id>?tab=nplusone`); the waterfall has no param.
+  const [view, setView] = useQueryState(
+    'tab',
+    parseAsStringLiteral(TRACE_TABS).withDefault('waterfall').withOptions({ history: 'push' }),
+  );
   const entriesState = useTraceEntries(traceId);
   const userLabel = useMemo(() => {
     const list = entriesState.data ?? [];
@@ -81,7 +90,7 @@ export function TraceDetail({
         <Tabs
           value={view}
           onValueChange={(next: unknown) => {
-            if (typeof next === 'string') setView(next as typeof view);
+            if (typeof next === 'string' && isTraceTab(next)) void setView(next);
           }}
         >
           <TabsList className="mb-4">

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { NuqsHashAdapter } from '../agora-kit/url-state/nuqs-hash-adapter';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type { FleetApp, FleetInstance, FleetView } from '../client/types.js';
 import { FleetSection, humanDuration } from './FleetSection.js';
@@ -84,9 +85,11 @@ function renderFleet(view: FleetView, onOpenEntry = vi.fn()) {
   const client = { fleet: vi.fn().mockResolvedValue(view) } as unknown as TelescopeClient;
   render(
     <TelescopeQueryProvider>
-      <TelescopeClientContext.Provider value={client}>
-        <FleetSection onOpenEntry={onOpenEntry} />
-      </TelescopeClientContext.Provider>
+      <NuqsHashAdapter>
+        <TelescopeClientContext.Provider value={client}>
+          <FleetSection onOpenEntry={onOpenEntry} />
+        </TelescopeClientContext.Provider>
+      </NuqsHashAdapter>
     </TelescopeQueryProvider>,
   );
   return { client, onOpenEntry };

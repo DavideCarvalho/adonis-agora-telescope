@@ -4,6 +4,7 @@ import { MetricGridSkeleton } from '../agora-kit/blocks/metric-card';
 import { AppShell, type NavSection, PageBody } from '../agora-kit/shell/app-shell';
 import { readShellConfig } from '../agora-kit/shell-config';
 import { Skeleton } from '../agora-kit/ui/skeleton';
+import { NuqsHashAdapter } from '../agora-kit/url-state/nuqs-hash-adapter';
 import { CONFIG_ELEMENT_ID } from '../client/api-base.js';
 import type { DashboardSpec, ExtensionEntryType } from '../client/types.js';
 import { ENTRY_TYPES } from '../client/types.js';
@@ -250,8 +251,19 @@ function PageSkeleton() {
  * Routing stays on the URL hash (`#/entries?type=…`, `#/entries/<id>`, `#/traces/<id>` …): it is
  * the single source of truth, so deep links, browser back/forward and programmatic navigation all
  * converge on the same state. A selected entry or trace replaces the page with its detail view.
+ * A page's view state (filters, search, tab, window, page) is the hash's query
+ * (`#/entries?type=query&q=users`), read and written with nuqs through the kit's
+ * `NuqsHashAdapter`, so a filtered view is a link.
  */
 export function App() {
+  return (
+    <NuqsHashAdapter>
+      <Console />
+    </NuqsHashAdapter>
+  );
+}
+
+function Console() {
   const { route, navigate } = useHashRoute();
   const meta = useMeta();
   // What the provider put in the page: switcher, ⌘K search, viewer, sign-out (all optional).
@@ -343,12 +355,7 @@ export function App() {
             ) : route.name === 'fleet' ? (
               <FleetSection onOpenEntry={openEntry} />
             ) : route.name === 'entries' ? (
-              <EntriesSection
-                key={route.type ?? 'default'}
-                onOpenEntry={openEntry}
-                onOpenTrace={openTrace}
-                {...(route.type !== undefined ? { presetType: route.type } : {})}
-              />
+              <EntriesSection onOpenEntry={openEntry} onOpenTrace={openTrace} />
             ) : route.name === 'screens' ? (
               <ScreensSection onOpenType={openType} />
             ) : route.name === 'ai' ? (

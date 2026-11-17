@@ -7,14 +7,16 @@ import {
 } from './primitives/select.js';
 
 /** A small trailing-window picker (5m … 7d) shared by the Pulse and Exceptions views. */
-const WINDOWS: { label: string; ms: number }[] = [
+export const WINDOWS = [
   { label: '5m', ms: 300_000 },
   { label: '15m', ms: 900_000 },
   { label: '1h', ms: 3_600_000 },
   { label: '6h', ms: 21_600_000 },
   { label: '24h', ms: 86_400_000 },
   { label: '7d', ms: 604_800_000 },
-];
+] as const;
+
+export type WindowLabel = (typeof WINDOWS)[number]['label'];
 
 export function WindowSelect({
   value,

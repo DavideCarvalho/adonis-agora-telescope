@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { parseAsString, useQueryState } from 'nuqs';
+import { useEffect } from 'react';
 import { MetricCard, MetricGrid } from '../agora-kit/blocks/metric-card';
 import { Toolbar } from '../agora-kit/blocks/page-header';
 import { Badge } from '../agora-kit/ui/badge';
@@ -386,7 +387,8 @@ export function FleetSection({ onOpenEntry }: { onOpenEntry: (id: string) => voi
   const state = useFleet();
   const { reload } = state;
   // `null`: every role. Web servers and workers (`durable:work`, `queue:work`) side by side.
-  const [role, setRole] = useState<string | null>(null);
+  // In the URL (`#/fleet?role=queue:work`).
+  const [role, setRole] = useQueryState('role', parseAsString.withOptions({ history: 'push' }));
   useEffect(() => {
     const timer = setInterval(reload, REFRESH_MS);
     return () => clearInterval(timer);
@@ -409,7 +411,12 @@ export function FleetSection({ onOpenEntry }: { onOpenEntry: (id: string) => voi
               <p className="text-sm text-muted-foreground">{view.notice}</p>
             </Panel>
           ) : (
-            <FleetApps view={view} role={role} onRole={setRole} onOpenEntry={onOpenEntry} />
+            <FleetApps
+              view={view}
+              role={role}
+              onRole={(next) => void setRole(next)}
+              onOpenEntry={onOpenEntry}
+            />
           )
         }
       </AsyncBlock>

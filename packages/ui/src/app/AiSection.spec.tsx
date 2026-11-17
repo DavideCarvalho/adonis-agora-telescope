@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { NuqsHashAdapter } from '../agora-kit/url-state/nuqs-hash-adapter';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type { AiRunRow, AiUsageSummary } from '../client/types.js';
 import { AiSection, formatUsd } from './AiSection.js';
@@ -105,9 +106,11 @@ function renderAi(data: AiUsageSummary, onOpenTrace = vi.fn()) {
   const client = { ai: vi.fn().mockResolvedValue(data) } as unknown as TelescopeClient;
   render(
     <TelescopeQueryProvider>
-      <TelescopeClientContext.Provider value={client}>
-        <AiSection onOpenTrace={onOpenTrace} onOpenEntry={vi.fn()} />
-      </TelescopeClientContext.Provider>
+      <NuqsHashAdapter>
+        <TelescopeClientContext.Provider value={client}>
+          <AiSection onOpenTrace={onOpenTrace} onOpenEntry={vi.fn()} />
+        </TelescopeClientContext.Provider>
+      </NuqsHashAdapter>
     </TelescopeQueryProvider>,
   );
   return { client, onOpenTrace };

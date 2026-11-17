@@ -37,6 +37,7 @@ import {
   ShareBar,
   Stat,
 } from './ui.js';
+import { useWindowParam } from './url-state.js';
 import { useAi } from './use-telescope.js';
 import { WindowSelect } from './WindowSelect.js';
 
@@ -75,7 +76,7 @@ export function AiSection({
   onOpenTrace: (traceId: string) => void;
   onOpenEntry: (id: string) => void;
 }) {
-  const [windowMs, setWindowMs] = useState(86_400_000);
+  const [windowMs, setWindowMs] = useWindowParam('24h');
   const state = useAi(windowMs);
 
   return (

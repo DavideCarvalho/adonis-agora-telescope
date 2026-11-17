@@ -124,27 +124,6 @@ export function useTracesPage(first: number, after: string | undefined) {
   );
 }
 
-/**
- * Prev/Next over a cursor feed: the cursors of the pages visited so far, so "Prev" goes back to a
- * page the server already served (the entry feed pages forward only). `page` is 1-based.
- */
-export function useCursorPager() {
-  const [cursors, setCursors] = useState<string[]>([]);
-  const page = cursors.length + 1;
-  return {
-    page,
-    /** The `after` cursor of the current page (absent on page 1). */
-    after: cursors[cursors.length - 1],
-    /** A DataTable `onPageChange`: forward pushes `nextCursor`, back pops. */
-    onPageChange: (next: number, nextCursor: string | null | undefined) => {
-      if (next > page && nextCursor) setCursors((c) => [...c, nextCursor]);
-      else if (next < page) setCursors((c) => c.slice(0, Math.max(0, next - 1)));
-    },
-    /** Back to page 1 (a filter changed). */
-    reset: () => setCursors([]),
-  };
-}
-
 export function useWaterfall(traceId: string) {
   const client = useTelescopeClient();
   return useTelescopeQuery(['waterfall', traceId], () => client.waterfall(traceId));
