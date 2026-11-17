@@ -1,5 +1,15 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.30
+
+### Minor Changes
+
+- [#363](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/363) [`ef2956a`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/ef2956abc15ea2822c77c933a6c2862d6b8debe2) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Overview on a central server: honest "Not measured" notes, and far fewer rows read.
+  
+  - Heartbeats carry the watchers each instance runs. On a control plane `/api/meta` `watchers` is the union of what the apps in view report (narrowed by `?app=`), so "N+1 query hotspots" and "Slowest jobs" stop saying "Not measured" when a tenant does record queries or jobs. When an app in view runs an older version that does not report them, `watchers` is left out and the console claims nothing.
+  - `/api/metrics/pulse` takes `cards=` to compute only some cards. The Overview asks for the cards it shows and draws its throughput chart from the same response, instead of a second whole-window scan through `/api/metrics/timeseries`.
+  - New migration `add_telescope_entries_overview_indexes` (published by `configure`): indexes for the Overview and Pulse reads, built `CONCURRENTLY` on Postgres, plus tighter autovacuum thresholds on the entries table. On a 4.3M-row table a 24-hour Overview read about 0.7 GB of buffers instead of about 9.7 GB (pulse + timeseries). Opt-in: run it once on existing installs.
+
 ## 1.0.0-rc.29
 
 ### Minor Changes
