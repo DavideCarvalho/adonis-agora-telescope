@@ -38,7 +38,10 @@ export interface TenantBufferOptions {
   batchSize?: number;
   /** Bytes per request (the JSON body). Default 512 KB. */
   maxBatchBytes?: number;
-  /** How often the buffer is sent. Default 1000 ms. */
+  /**
+   * How often the buffer is sent (a full `batchSize` is sent at once). Default 1000 ms; 5000 ms
+   * with the `redis` transport.
+   */
   flushIntervalMs?: number;
   /** Per-request timeout. Default 10,000 ms. */
   timeoutMs?: number;
@@ -208,11 +211,12 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
         `${PREFIX} tenant.local must name a store (a key of \`stores\`, or 'memory')`,
       );
     }
+    const transport = config.transport ?? httpTransport({ url: tenant.url as ServerUrlInput });
     return {
       topology,
       tenant,
-      buffer: resolveBufferOptions(tenant.buffer),
-      transport: config.transport ?? httpTransport({ url: tenant.url as ServerUrlInput }),
+      buffer: resolveBufferOptions({ ...transport.bufferDefaults, ...tenant.buffer }),
+      transport,
     };
   }
   return { topology: 'standalone' };

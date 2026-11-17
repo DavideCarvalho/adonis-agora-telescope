@@ -84,6 +84,95 @@ describe.skipIf(!url)('transports against a real Redis', () => {
     await redis.del(`${prefix}:ingest`, `${prefix}:ingest:dead`);
   });
 
+  it('redis: an idle consumer blocks on its own connection and closes at once', async () => {
+    const prefix = `telescope-test-${randomUUID()}`;
+    const redis = client();
+    /** Commands of the kinds a consumer sends, counted by the server over `ms`. */
+    async function idleCommands(options: Parameters<typeof transports.redis>[0], ms: number) {
+      const consumer = (await transports
+        .redis({ client: redis, prefix, ...options })
+        .controlPlane({})) as ControlPlaneChannel;
+      await consumer.start(async () => ({ kind: 'ok' }));
+      // Past the first round (group creation, the take-over of what a previous run left).
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await redis.config('RESETSTAT');
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      const stats = String(await redis.info('commandstats'));
+      const started = Date.now();
+      await consumer.close();
+      const closeMs = Date.now() - started;
+      const calls = (name: string) =>
+        Number(new RegExp(`cmdstat_${name}:calls=(\\d+)`).exec(stats)?.[1] ?? 0);
+      return { xreadgroup: calls('xreadgroup'), xpending: calls('xpending'), closeMs };
+    }
+
+    const polling = await idleCommands({ blockMs: 0, pollIntervalMs: 100 }, 2000);
+    const blocking = await idleCommands({ blockMs: 1000 }, 2000);
+    // Polling: ~20 reads (and an XPENDING each, before); blocking: ~2 reads, no XPENDING.
+    expect(polling.xreadgroup).toBeGreaterThanOrEqual(10);
+    expect(polling.xpending).toBe(0);
+    expect(blocking.xreadgroup).toBeLessThanOrEqual(3);
+    expect(blocking.xpending).toBe(0);
+    // close() does not wait out the blocked read.
+    expect(blocking.closeMs).toBeLessThan(500);
+
+    // A message is read as soon as it lands, not after blockMs.
+    const store = new InMemoryTelescopeStore();
+    const handler = createIngestHandler({ verifyTenant, store: () => store });
+    const transport = transports.redis({ client: redis, prefix, blockMs: 30_000 });
+    const consumer = (await transport.controlPlane({})) as ControlPlaneChannel;
+    closers.push(() => consumer.close());
+    await consumer.start((raw) => handler.message(raw));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const sender = new RemoteTelescopeStore({
+      channel: transport.tenant({}),
+      partition: 'shop',
+      token: 'shop-secret',
+      buffer: { flushIntervalMs: 60_000 },
+    });
+    closers.push(() => sender.close());
+    await sender.record({ type: 'log', content: { m: 'now' }, tags: [] });
+    await sender.flush();
+    await vi.waitFor(async () => expect(await store.count()).toBe(1), { timeout: 1000 });
+    const started = Date.now();
+    await consumer.close();
+    expect(Date.now() - started).toBeLessThan(500);
+    await redis.del(`${prefix}:ingest`, `${prefix}:ingest:dead`);
+  });
+
+  it('redis: one XACK per read, no XDEL, and acked messages trimmed in bulk', async () => {
+    const prefix = `telescope-test-${randomUUID()}`;
+    const redis = client();
+    const stream = `${prefix}:ingest`;
+    const consumer = (await transports
+      .redis({ client: redis, prefix, trimIntervalMs: 0, readCount: 50 })
+      .controlPlane({})) as ControlPlaneChannel;
+    let handled = 0;
+    await consumer.start(async () => {
+      handled += 1;
+      return { kind: 'ok' };
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await redis.config('RESETSTAT');
+    const pipeline = redis.pipeline();
+    for (let i = 0; i < 250; i += 1) pipeline.xadd(stream, '*', 'm', `{"i":${i}}`);
+    await pipeline.exec();
+    await vi.waitFor(() => expect(handled).toBe(250), { timeout: 10_000 });
+    await consumer.close();
+    const stats = String(await redis.info('commandstats'));
+    const calls = (name: string) =>
+      Number(new RegExp(`cmdstat_${name}:calls=(\\d+)`).exec(stats)?.[1] ?? 0);
+    expect(calls('xdel')).toBe(0);
+    // 250 messages read 50 at a time (or fewer, as they land): one XACK per read.
+    expect(calls('xack')).toBeLessThanOrEqual(calls('xreadgroup'));
+    expect(calls('xack')).toBeLessThan(250);
+    // Nothing pending, and the acked messages trimmed (`~`: whole nodes, so some may remain).
+    const [count] = (await redis.xpending(stream, 'telescope')) as [number];
+    expect(Number(count)).toBe(0);
+    expect(await redis.xlen(stream)).toBeLessThan(250);
+    await redis.del(stream);
+  });
+
   it('bullmq: one job per batch, a refused one stays in the failed set', async () => {
     const prefix = `telescope-test-${randomUUID()}`;
     const connection = client();

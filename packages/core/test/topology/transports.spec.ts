@@ -126,7 +126,7 @@ const kits: Record<string, () => Kit> = {
     return {
       transport: transports.redis({ client: redis }),
       async pump(channel, handler) {
-        while (await (channel as RedisControlPlaneChannel).once(handler)) {}
+        while (await (channel as RedisControlPlaneChannel).once(handler, { reclaim: true })) {}
       },
       setDown: (down) => {
         redis.down = down;
@@ -264,13 +264,13 @@ describe('redis: pending messages', () => {
     await store.flush();
 
     cp.state.storeDown = true;
-    await channel.once(handler);
+    await channel.once(handler, { reclaim: true });
     expect(redis.pending('telescope:ingest')).toBe(1);
 
     // Back up: the next take-over stores it.
     cp.state.storeDown = false;
     redis.clockOffset += 20_000;
-    await channel.once(handler);
+    await channel.once(handler, { reclaim: true });
     expect(await cp.store.count()).toBe(1);
     expect(redis.pending('telescope:ingest')).toBe(0);
 
@@ -278,10 +278,10 @@ describe('redis: pending messages', () => {
     await store.record(log('y'));
     await store.flush();
     cp.state.storeDown = true;
-    await channel.once(handler);
+    await channel.once(handler, { reclaim: true });
     for (let i = 0; i < 3; i += 1) {
       redis.clockOffset += 20_000;
-      await channel.once(handler);
+      await channel.once(handler, { reclaim: true });
     }
     expect(redis.pending('telescope:ingest')).toBe(0);
     const dead = redis.streams.get('telescope:ingest:dead') ?? [];
@@ -290,6 +290,204 @@ describe('redis: pending messages', () => {
     // The dead-letter copy keeps no bearer token.
     expect(dead[0]?.fields.join(' ')).not.toContain('shop-secret');
     expect(dead[0]?.fields.join(' ')).toContain('[redacted]');
+  });
+});
+
+describe('redis: blocking read', () => {
+  function setup(options: Parameters<typeof transports.redis>[0] = {}, redis = new FakeRedis()) {
+    const transport = transports.redis({ client: redis, ...options });
+    const cp = controlPlane();
+    return { redis, transport, cp, handler: ((raw) => cp.handler.message(raw)) as MessageHandler };
+  }
+
+  it('an idle consumer waits on the server: one read per blockMs, pending looked at once', async () => {
+    const { redis, transport, handler } = setup({ blockMs: 200 });
+    const channel = (await transport.controlPlane({})) as ControlPlaneChannel;
+    await channel.start(handler);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await channel.close();
+    // ~5 reads in a second instead of ~2 per pollIntervalMs (500 ms), plus an XPENDING each.
+    expect(redis.count('XREADGROUP')).toBeGreaterThanOrEqual(4);
+    expect(redis.count('XREADGROUP')).toBeLessThanOrEqual(6);
+    expect(redis.count('XPENDING')).toBe(1);
+    expect(redis.duplicates).toEqual([{ open: false }]);
+  });
+
+  it('reads a new message as soon as it lands', async () => {
+    const { transport, cp, handler } = setup({ blockMs: 60_000 });
+    const channel = (await transport.controlPlane({})) as ControlPlaneChannel;
+    await channel.start(handler);
+    const { store } = tenant(transport);
+    await store.record(log('now'));
+    await store.flush();
+    await vi.waitFor(async () => expect(await cp.store.count()).toBe(1), { timeout: 200 });
+    await channel.close();
+  });
+
+  it('close() cuts the blocked read short', async () => {
+    const { redis, transport, handler } = setup({ blockMs: 60_000 });
+    const channel = (await transport.controlPlane({})) as ControlPlaneChannel;
+    await channel.start(handler);
+    await vi.waitFor(() => expect(redis.count('XREADGROUP')).toBe(1));
+    const started = Date.now();
+    await channel.close();
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(redis.duplicates).toEqual([{ open: false }]);
+  });
+
+  it('pending messages are looked at every reclaimIntervalMs and after an error', async () => {
+    const errors: unknown[] = [];
+    const redis = new FakeRedis();
+    const channel = new RedisControlPlaneChannel(
+      redis,
+      { blockMs: 50, reclaimIntervalMs: 60_000, pollIntervalMs: 20 },
+      (error) => errors.push(error),
+    );
+    const cp = controlPlane();
+    await channel.start((raw) => cp.handler.message(raw));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(redis.count('XPENDING')).toBe(1);
+    redis.down = true;
+    await vi.waitFor(() => expect(errors.length).toBeGreaterThan(0));
+    redis.down = false;
+    const atRecovery = redis.count('XPENDING');
+    // Back up: one take-over, then quiet again until the next interval.
+    await vi.waitFor(() => expect(redis.count('XPENDING')).toBe(atRecovery + 1));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(redis.count('XPENDING')).toBe(atRecovery + 1);
+    await channel.close();
+  });
+
+  it('polls every pollIntervalMs with blockMs: 0', async () => {
+    const { redis, transport, cp, handler } = setup({ blockMs: 0, pollIntervalMs: 20 });
+    const channel = (await transport.controlPlane({})) as ControlPlaneChannel;
+    await channel.start(handler);
+    const { store } = tenant(transport);
+    await store.record(log('polled'));
+    await store.flush();
+    await vi.waitFor(async () => expect(await cp.store.count()).toBe(1));
+    await channel.close();
+    expect(redis.duplicates).toHaveLength(0);
+  });
+
+  it('polls when the client cannot open a connection (a plain `{ call }`)', async () => {
+    const redis = new FakeRedis();
+    const channel = (await transports
+      .redis({ client: { call: redis.call.bind(redis) }, pollIntervalMs: 20 })
+      .controlPlane({})) as ControlPlaneChannel;
+    await channel.start(async () => ({ kind: 'ok' }));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await channel.close();
+    expect(redis.duplicates).toHaveLength(0);
+    expect(redis.count('XREADGROUP')).toBeGreaterThan(3);
+    // Still only the first round looks at pending messages.
+    expect(redis.count('XPENDING')).toBe(1);
+  });
+
+  it('duplicates the ioredis client an @adonisjs/redis connection wraps', async () => {
+    const redis = new FakeRedis();
+    const adonisConnection = { call: redis.call.bind(redis), ioConnection: redis };
+    const channel = (await transports
+      .redis({ client: adonisConnection, blockMs: 50 })
+      .controlPlane({})) as ControlPlaneChannel;
+    await channel.start(async () => ({ kind: 'ok' }));
+    await channel.close();
+    expect(redis.duplicates).toEqual([{ open: false }]);
+  });
+});
+
+describe('redis: commands per batch', () => {
+  it('one XACK for every message of a read, and no XDEL', async () => {
+    const redis = new FakeRedis();
+    const transport = transports.redis({ client: redis });
+    const cp = controlPlane();
+    const channel = (await transport.controlPlane({})) as RedisControlPlaneChannel;
+    const { store } = tenant(transport, 'shop-secret', 'shop');
+    for (const m of ['a', 'b', 'c']) {
+      await store.record(log(m));
+      await store.flush();
+    }
+    await channel.once((raw) => cp.handler.message(raw), { reclaim: false });
+    expect(await cp.store.count()).toBe(3);
+    expect(redis.acks).toEqual([3]);
+    expect(redis.count('XDEL')).toBe(0);
+    expect(redis.pending('telescope:ingest')).toBe(0);
+  });
+
+  it('trims what every group acked, keeping pending and unread messages', async () => {
+    const redis = new FakeRedis();
+    const options = { client: redis, trimIntervalMs: 0, claimIdleMs: 1000 };
+    const cp = controlPlane();
+    const channel = (await transports.redis(options).controlPlane({})) as RedisControlPlaneChannel;
+    // A second group on the same stream that has read nothing yet.
+    const other = (await transports
+      .redis({ ...options, group: 'other' })
+      .controlPlane({})) as RedisControlPlaneChannel;
+    const { store } = tenant(transports.redis(options));
+    const send = async (m: string) => {
+      await store.record(log(m));
+      await store.flush();
+    };
+    const handler: MessageHandler = (raw) => cp.handler.message(raw);
+    await send('a');
+    await send('b');
+    await other.once(async () => ({ kind: 'retry', reason: 'not now' }), { reclaim: false });
+    // `other` holds a and b pending: nothing is trimmed though `telescope` acked them.
+    await channel.once(handler, { reclaim: false });
+    expect(redis.streams.get('telescope:ingest')).toHaveLength(2);
+
+    // `other` gets them stored on its take-over: both groups are done, the stream is trimmed.
+    redis.clockOffset += 20_000;
+    await other.once(async () => ({ kind: 'ok' }), { reclaim: true });
+    await send('c');
+    cp.state.storeDown = true;
+    await channel.once(handler, { reclaim: false });
+    // c is pending in `telescope` and unread in `other`: kept, a and b gone.
+    const ids = (redis.streams.get('telescope:ingest') ?? []).map((m) => m.id);
+    expect(ids).toEqual(['3-0']);
+    // The pending one is still taken over and stored.
+    cp.state.storeDown = false;
+    redis.clockOffset += 20_000;
+    await channel.once(handler, { reclaim: true });
+    expect(await cp.store.count()).toBe(3);
+    expect(redis.pending('telescope:ingest')).toBe(0);
+  });
+
+  it('trims at most every trimIntervalMs, and not while idle', async () => {
+    const redis = new FakeRedis();
+    const channel = (await transports
+      .redis({ client: redis, trimIntervalMs: 60_000 })
+      .controlPlane({})) as RedisControlPlaneChannel;
+    const cp = controlPlane();
+    const { store } = tenant(transports.redis({ client: redis }));
+    for (let i = 0; i < 5; i += 1) {
+      await store.record(log(`m${i}`));
+      await store.flush();
+      await channel.once((raw) => cp.handler.message(raw), { reclaim: false });
+    }
+    expect(redis.count('XTRIM')).toBe(0);
+    expect(redis.count('XINFO')).toBe(0);
+  });
+
+  it('the redis transport sends every 5 s by default; tenant.buffer still wins', () => {
+    const tenantOptions = { partition: 'shop', token: 't' };
+    const viaRedis = resolveTopology({
+      topology: 'tenant',
+      tenant: tenantOptions,
+      transport: transports.redis(),
+    });
+    expect(viaRedis.topology === 'tenant' && viaRedis.buffer.flushIntervalMs).toBe(5000);
+    const explicit = resolveTopology({
+      topology: 'tenant',
+      tenant: { ...tenantOptions, buffer: { flushIntervalMs: 1000 } },
+      transport: transports.redis(),
+    });
+    expect(explicit.topology === 'tenant' && explicit.buffer.flushIntervalMs).toBe(1000);
+    const viaHttp = resolveTopology({
+      topology: 'tenant',
+      tenant: { ...tenantOptions, url: 'https://t.test' },
+    });
+    expect(viaHttp.topology === 'tenant' && viaHttp.buffer.flushIntervalMs).toBe(1000);
   });
 });
 

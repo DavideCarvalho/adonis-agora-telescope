@@ -114,9 +114,20 @@ transport: transports.redis({ connection: 'main' }),
 | `prefix` | `telescope` | the stream is `<prefix>:ingest` |
 | `maxLength` | `100000` | stream length cap; past it the oldest messages are dropped |
 | `group` | `telescope` | server: consumer group |
-| `pollIntervalMs` | `500` | server: how often an empty stream is read |
+| `blockMs` | `10000` | server: how long one read waits for a message; `0` polls instead |
+| `pollIntervalMs` | `500` | server: how often an empty stream is read when the read cannot wait |
 | `claimIdleMs` | `60000` | server: a message unacknowledged this long is read again |
+| `reclaimIntervalMs` | `30000` | server: how often unacknowledged messages are looked at |
+| `trimIntervalMs` | `30000` | server: how often messages every group is done with are removed |
 | `maxAttempts` | `5` | server: deliveries before a message is dead-lettered |
+
+The server waits for new messages on a second connection it opens from yours (a copy of the
+`ioredis` client, same options), so a message is read as soon as it lands and an idle server sends
+about one read every `blockMs`. A `client` without `duplicate()` (only `call()`) is polled every
+`pollIntervalMs`. Keep any `commandTimeout` on the connection above `blockMs`.
+
+With this transport an app sends its buffer every 5 seconds (or as soon as a batch is full)
+instead of every second. Set `tenant.buffer.flushIntervalMs` to change it.
 
 Several control-plane instances can read the same stream: each message goes to one of them.
 Messages the server cannot use go to `<prefix>:ingest:dead`, with the reason.

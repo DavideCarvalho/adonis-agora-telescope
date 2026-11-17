@@ -142,7 +142,7 @@ on HTTP either way.
 
 ### Buffering and retries
 
-Recording never waits on the network. Entries go into a buffer sent every second, in batches. If
+Recording never waits on the network. Entries go into a buffer sent every second (every 5 seconds with the redis transport), in batches. If
 the server is unreachable, sends are retried with a growing delay. When the buffer is full, the
 oldest entries are dropped and counted. At shutdown the app sends what is left (five seconds at
 most).
