@@ -237,11 +237,7 @@ export function EntriesSection({
               <RefreshIcon />
               Refresh
             </Button>
-            <Button
-              variant={live ? 'brand' : 'outline'}
-              aria-pressed={live}
-              onClick={toggleLive}
-            >
+            <Button variant={live ? 'brand' : 'outline'} aria-pressed={live} onClick={toggleLive}>
               {live ? <span className="live-dot" /> : null} Live tail
             </Button>
           </>
