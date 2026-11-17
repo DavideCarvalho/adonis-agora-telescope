@@ -551,6 +551,20 @@ describe('filters in the URL', () => {
     await waitFor(() => expect(input.value).toBe('users'));
   });
 
+  it('Entries: ligar o live tail na página 2 volta para a página 1 (onde ele roda)', async () => {
+    window.history.replaceState(null, '', '/telescope#/entries?after=cursor-2');
+    const client = fakeClient();
+    let source: FakeEventSource | null = null;
+    const factory = () => {
+      source = new FakeEventSource();
+      return source;
+    };
+    renderWith(client, <EntriesSection onOpenEntry={vi.fn()} onOpenTrace={vi.fn()} />, factory);
+    fireEvent.click(screen.getByRole('button', { name: /live tail/i }));
+    await waitFor(() => expect(window.location.hash).toBe('#/entries?live=true'));
+    await waitFor(() => expect(source).not.toBeNull());
+  });
+
   it('Traces keeps the page cursor in the URL; back returns to page 1', async () => {
     window.history.replaceState(null, '', '/telescope#/traces');
     const tracesPage = vi.fn().mockResolvedValue({

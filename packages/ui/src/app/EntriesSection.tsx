@@ -83,6 +83,13 @@ export function EntriesSection({
     void setSearch(next);
     pager.reset();
   };
+  /** Live tail streams only on page 1, so turning it on goes back there — otherwise the button
+   *  lights up (and `live=true` lands in the URL) while nothing streams. */
+  const toggleLive = () => {
+    const next = !live;
+    void setLive(next);
+    if (next) pager.reset();
+  };
 
   // Merge live-tail entries (newest-first) ahead of the fetched page, de-duped by id, and respect the
   // active type/search filter so the tail never shows rows the filter would exclude.
@@ -233,7 +240,7 @@ export function EntriesSection({
             <Button
               variant={live ? 'brand' : 'outline'}
               aria-pressed={live}
-              onClick={() => void setLive((v) => !v)}
+              onClick={toggleLive}
             >
               {live ? <span className="live-dot" /> : null} Live tail
             </Button>
