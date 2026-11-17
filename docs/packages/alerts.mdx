@@ -114,7 +114,7 @@ export default defineConfig({
 | `dashboardUrl` | _unset_                  | External dashboard URL — Slack alerts deep-link to the entry.         |
 | `every`        | `'30s'`                  | Poll cadence (duration string).                                       |
 | `cooldown`     | `'15m'`                  | Per-rule / per-family re-notify suppression.                          |
-| `instanceId`   | `'telescope'`            | Reporting instance id carried on every payload.                       |
+| `instanceId`   | `'telescope'`            | Reporting instance id carried on every payload. An alert's **App** is the fleet app, else the exception's `app`, else this id. |
 | `geoLookup`    | _unset_                  | Host IP→geo resolver for exception alerts — see [Geo-enrichment](#geo-enrichment). |
 | `heartbeats`   | _unset_                  | Heartbeat monitors — see [Heartbeats](/docs/telescope/integrations/heartbeats). |
 | `statusPages`  | _unset_                  | Status pages — see [Status pages](/docs/telescope/integrations/status-pages). |
@@ -283,7 +283,7 @@ rather than thrown into the host.
 
 | Channel                            | Sends                                                                        |
 | ---------------------------------- | --------------------------------------------------------------------------- |
-| `{ type: 'slack', url, options? }` | Block Kit JSON to a Slack incoming webhook — severity header with a **New / Recurring** badge, fielded context (route/method/status, UA, referer, duration, user, client IP, location, occurrences), a truncated stack, `client_exception` component-stack + `extra` blocks, and an "Open in Telescope" deep link when `dashboardUrl` is set. |
+| `{ type: 'slack', url, options? }` | Block Kit JSON to a Slack incoming webhook — severity header with a **New / Recurring** badge, fielded context (app, route/method/status, UA, referer, duration, user, client IP, location, occurrences), a truncated stack, `client_exception` component-stack + `extra` blocks, and an "Open in Telescope" deep link when `dashboardUrl` is set. |
 | `{ type: 'webhook', url }`         | The raw `AlertPayload` as JSON.                                             |
 | `{ type: 'console' }`              | A one-line summary (the zero-config default).                              |
 | `customChannel(fn, name?)`         | An arbitrary async sink — SNS, an internal API, …                          |
@@ -336,6 +336,7 @@ interface AlertPayload {
     geo: AlertGeoLocation | null   // populated only when a geoLookup hook is configured (see below)
     durationMs: number | null      // request duration, when captured
     user: string | null            // from a `user:<id>` tag, when present
+    app?: string | null            // from the entry's `app:<name>` tag (on a control plane: the tenant); null when untagged
     occurrences: number            // times this family was seen in the window (>= 1)
     isNew: boolean                 // occurrences === 1 — a first occurrence vs a recurrence
     entryId: string                // for the dashboard deep link
@@ -383,7 +384,7 @@ Beyond the core error fields, the Slack channel renders these enriched fields as
 
 <Callout type="info">
 Slack caps a section's `fields` array at 10 items, and a fully-enriched exception (instance,
-observed, error, route, UA, referer, duration, user, client IP, location, occurrences)
+observed, app, error, route, UA, referer, duration, user, client IP, location, occurrences)
 exceeds that — the formatter automatically spreads the fields across multiple section blocks
 so the message never trips Slack's `invalid_blocks` rejection. The `componentStack` and
 `extra` blocks are clipped to Slack's per-section character budget. The raw `webhook`

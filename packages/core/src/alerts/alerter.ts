@@ -414,7 +414,6 @@ function clipStackFrames(stack: string | null): string | null {
   return stack.split('\n').slice(0, ALERT_STACK_FRAME_LIMIT).join('\n');
 }
 
-/** Extract the user id from a `user:<id>` tag, or `null` when none is present. */
 /** The `app:<name>` tag of an entry (the app that recorded it), or `null`. */
 function appFromTags(tags: string[]): string | null {
   for (const tag of tags) {
@@ -423,6 +422,7 @@ function appFromTags(tags: string[]): string | null {
   return null;
 }
 
+/** Extract the user id from a `user:<id>` tag, or `null` when none is present. */
 function userFromTags(tags: string[]): string | null {
   for (const tag of tags) {
     if (tag.startsWith('user:')) {
