@@ -16,13 +16,23 @@ const pulseSummary = {
   nPlusOne: [],
   slowJobs: [],
   loadByUser: [],
+  throughput: {
+    total: 10,
+    perMinute: 0.2,
+    overTime: {
+      windowStart: '2026-11-17T09:00:00.000Z',
+      windowEnd: '2026-11-17T10:00:00.000Z',
+      bucketMs: 60_000,
+      buckets: [{ t: '2026-11-17T09:00:00.000Z', total: 10, byType: { request: 7, query: 3 } }],
+    },
+  },
 } as unknown as Awaited<ReturnType<TelescopeClient['pulse']>>;
 
 function client(overrides: Partial<TelescopeClient> = {}): TelescopeClient {
   return {
     pulse: vi.fn().mockResolvedValue(pulseSummary),
     liveQueues: vi.fn().mockResolvedValue({ queues: [] }),
-    metricsTimeseries: vi.fn().mockResolvedValue({ buckets: [] }),
+    metricsTimeseries: vi.fn().mockRejectedValue(new Error('the Overview must not call it')),
     retention: vi
       .fn()
       .mockResolvedValue({ enabled: true, afterMs: 1000, intervalMs: 1000, sampling: [] }),
@@ -172,5 +182,27 @@ describe('Overview — containers', () => {
     );
 
     await waitFor(() => expect(liveQueues).toHaveBeenCalled());
+  });
+
+  it('uma única leitura do pulse, só com os cards que o Overview mostra, alimenta também o gráfico', async () => {
+    // Antes o Throughput/By type pediam /metrics/timeseries: um segundo scan da janela inteira,
+    // em paralelo ao pulse. Agora vêm do `throughput.overTime` do mesmo pulse.
+    const pulse = vi.fn().mockResolvedValue(pulseSummary);
+    const metricsTimeseries = vi.fn();
+    renderOverview(
+      client({
+        pulse: pulse as unknown as TelescopeClient['pulse'],
+        metricsTimeseries: metricsTimeseries as unknown as TelescopeClient['metricsTimeseries'],
+      }),
+    );
+
+    await waitFor(() => expect(screen.getByText('1 buckets')).toBeTruthy());
+    expect(pulse).toHaveBeenCalledTimes(1);
+    const cards = pulse.mock.calls[0]?.[2] as string[];
+    expect(cards).toContain('nPlusOne');
+    expect(cards).not.toContain('cache');
+    expect(cards).not.toContain('slowOutgoing');
+    expect(metricsTimeseries).not.toHaveBeenCalled();
+    expect(screen.getAllByText('query').length).toBeGreaterThan(0);
   });
 });

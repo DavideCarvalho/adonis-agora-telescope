@@ -693,6 +693,11 @@ export interface PulseServiceOptions {
 export interface PulseQuery {
   windowMs?: number;
   topN?: number;
+  /**
+   * Only these cards (of the configured ones): a page that shows a few of them skips the reads
+   * the others need. Unknown names are ignored; none left means every configured card.
+   */
+  cards?: readonly string[];
 }
 
 /**
@@ -745,6 +750,7 @@ export class PulseService {
     const options: PulseOptions = {
       ...this.base,
       topN: query.topN ?? this.base.topN,
+      cards: narrowCards(this.base.cards, query.cards),
     };
 
     const inputs = hasPulseFastPaths(this.store)
@@ -924,6 +930,19 @@ function hasPulseFastPaths(
     typeof store.listSlowest === 'function' &&
     typeof store.countTraceRepeats === 'function'
   );
+}
+
+/** `configured` narrowed to `asked` (unknown names dropped); `configured` when none is left. */
+function narrowCards(
+  configured: ReadonlySet<PulseCardName>,
+  asked: readonly string[] | undefined,
+): ReadonlySet<PulseCardName> {
+  if (asked === undefined) return configured;
+  const narrowed = new Set<PulseCardName>();
+  for (const card of asked) {
+    if (configured.has(card as PulseCardName)) narrowed.add(card as PulseCardName);
+  }
+  return narrowed.size > 0 ? narrowed : configured;
 }
 
 /** The entry types whose content the enabled cards aggregate over. */

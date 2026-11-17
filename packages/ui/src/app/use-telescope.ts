@@ -134,9 +134,11 @@ export function useNPlusOne(traceId: string) {
   return useTelescopeQuery(['n-plus-one', traceId], () => client.nPlusOne(traceId));
 }
 
-export function usePulse(windowMs: number, topN?: number) {
+export function usePulse(windowMs: number, topN?: number, cards?: readonly string[]) {
   const client = useTelescopeClient();
-  return useTelescopeQuery(['pulse', windowMs, topN ?? null], () => client.pulse(windowMs, topN));
+  return useTelescopeQuery(['pulse', windowMs, topN ?? null, cards?.join(',') ?? null], () =>
+    cards === undefined ? client.pulse(windowMs, topN) : client.pulse(windowMs, topN, cards),
+  );
 }
 
 export function useMetricsStats(type: string, windowMs: number, topExceptions?: number) {
@@ -164,11 +166,12 @@ export function useRetention() {
  *
  * Three-valued on purpose. `null` means "the server did not say" (an older core, or
  * `/meta` still loading), and a panel must NOT claim a watcher is off in that case —
- * replacing one confident wrong answer with another is not an improvement.
+ * replacing one confident wrong answer with another is not an improvement. On a control plane
+ * the server answers for the apps in view (what their instances report), not for itself.
  */
 export function useWatcherEnabled(name: string): boolean | null {
   const { data } = useMeta();
-  if (!data || data.watchers === undefined) return null;
+  if (!data || data.watchers === undefined || data.watchers === null) return null;
   return data.watchers.includes(name);
 }
 

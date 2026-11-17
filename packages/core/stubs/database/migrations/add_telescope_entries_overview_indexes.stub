@@ -1,0 +1,79 @@
+{{{
+  exports({ to: app.migrationsPath(`${new Date().getTime() + 2}_add_telescope_entries_overview_indexes.ts`) })
+}}}
+import { BaseSchema } from '@adonisjs/lucid/schema'
+
+/**
+ * Indexes for the console's Overview and Pulse reads (counts per minute, slowest entries, N+1
+ * repeats, per-family durations), so they read an index instead of every row of the window.
+ *
+ * On Postgres the indexes are built CONCURRENTLY (writes go on while they build, which is why this
+ * migration runs outside a transaction), and autovacuum is told to visit the table more often,
+ * which keeps the index-only reads from falling back to the table for recent rows.
+ */
+/**
+ * The database schema the table lives in: the same value as 'schema' in storage.lucid().
+ * Leave it undefined to use the connection's current schema. On MySQL a schema is a database.
+ */
+const schema: string | undefined = undefined
+
+export default class extends BaseSchema {
+  static disableTransactions = true
+
+  protected tableName = 'telescope_entries'
+
+  async up() {
+    const table = schema ? schema + '.' + this.tableName : this.tableName
+    if (this.db.dialect.name === 'postgres') {
+      this.defer(async (db) => {
+        await db.rawQuery(
+          'CREATE INDEX CONCURRENTLY IF NOT EXISTS ?? ON ?? (duration_ms) WHERE duration_ms IS NOT NULL',
+          [this.tableName + '_duration_ms_idx', table]
+        )
+        await db.rawQuery(
+          'CREATE INDEX CONCURRENTLY IF NOT EXISTS ?? ON ?? (created_at, type)',
+          [this.tableName + '_created_at_type_idx', table]
+        )
+        await db.rawQuery(
+          'CREATE INDEX CONCURRENTLY IF NOT EXISTS ?? ON ?? (type, created_at) INCLUDE (family_hash, trace_id, duration_ms)',
+          [this.tableName + '_type_created_at_cover_idx', table]
+        )
+        await db.rawQuery(
+          'ALTER TABLE ?? SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_vacuum_insert_scale_factor = 0.02)',
+          [table]
+        )
+      })
+      return
+    }
+    this.builder().alterTable(this.tableName, (t) => {
+      t.index(['duration_ms'], this.tableName + '_duration_ms_idx')
+      t.index(['created_at', 'type'], this.tableName + '_created_at_type_idx')
+    })
+  }
+
+  async down() {
+    const table = schema ? schema + '.' + this.tableName : this.tableName
+    if (this.db.dialect.name === 'postgres') {
+      this.defer(async (db) => {
+        for (const suffix of ['_duration_ms_idx', '_created_at_type_idx', '_type_created_at_cover_idx']) {
+          const name = schema ? schema + '.' + this.tableName + suffix : this.tableName + suffix
+          await db.rawQuery('DROP INDEX CONCURRENTLY IF EXISTS ??', [name])
+        }
+        await db.rawQuery(
+          'ALTER TABLE ?? RESET (autovacuum_vacuum_scale_factor, autovacuum_vacuum_insert_scale_factor)',
+          [table]
+        )
+      })
+      return
+    }
+    this.builder().alterTable(this.tableName, (t) => {
+      t.dropIndex(['duration_ms'], this.tableName + '_duration_ms_idx')
+      t.dropIndex(['created_at', 'type'], this.tableName + '_created_at_type_idx')
+    })
+  }
+
+  /** The schema builder, pointed at 'schema' when it is set. */
+  private builder() {
+    return schema ? this.schema.withSchema(schema) : this.schema
+  }
+}

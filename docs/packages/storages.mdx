@@ -189,6 +189,103 @@ export default class extends BaseSchema {
 With `autoCreateTable` there is nothing to do: the schema fingerprint changes and the store
 adds the new indexes on its next boot.
 
+#### Indexes for the Overview
+
+`node ace configure @adonis-agora/telescope` also publishes
+`add_telescope_entries_overview_indexes`. It adds the indexes the console's Overview and Pulse
+read through (counts per minute, slowest entries, N+1 repeats, per-family durations), so a
+24-hour window reads an index instead of every row in it. An app configured before it shipped
+adds it as a migration of its own (`node ace make:migration add_telescope_entries_overview_indexes`)
+and runs `node ace migration:run`:
+
+```ts title="database/migrations/xxxx_add_telescope_entries_overview_indexes.ts"
+import { BaseSchema } from '@adonisjs/lucid/schema'
+
+/**
+ * Indexes for the console's Overview and Pulse reads (counts per minute, slowest entries, N+1
+ * repeats, per-family durations), so they read an index instead of every row of the window.
+ *
+ * On Postgres the indexes are built CONCURRENTLY (writes go on while they build, which is why this
+ * migration runs outside a transaction), and autovacuum is told to visit the table more often,
+ * which keeps the index-only reads from falling back to the table for recent rows.
+ */
+/**
+ * The database schema the table lives in: the same value as 'schema' in storage.lucid().
+ * Leave it undefined to use the connection's current schema. On MySQL a schema is a database.
+ */
+const schema: string | undefined = undefined
+
+export default class extends BaseSchema {
+  static disableTransactions = true
+
+  protected tableName = 'telescope_entries'
+
+  async up() {
+    const table = schema ? schema + '.' + this.tableName : this.tableName
+    if (this.db.dialect.name === 'postgres') {
+      this.defer(async (db) => {
+        await db.rawQuery(
+          'CREATE INDEX CONCURRENTLY IF NOT EXISTS ?? ON ?? (duration_ms) WHERE duration_ms IS NOT NULL',
+          [this.tableName + '_duration_ms_idx', table]
+        )
+        await db.rawQuery(
+          'CREATE INDEX CONCURRENTLY IF NOT EXISTS ?? ON ?? (created_at, type)',
+          [this.tableName + '_created_at_type_idx', table]
+        )
+        await db.rawQuery(
+          'CREATE INDEX CONCURRENTLY IF NOT EXISTS ?? ON ?? (type, created_at) INCLUDE (family_hash, trace_id, duration_ms)',
+          [this.tableName + '_type_created_at_cover_idx', table]
+        )
+        await db.rawQuery(
+          'ALTER TABLE ?? SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_vacuum_insert_scale_factor = 0.02)',
+          [table]
+        )
+      })
+      return
+    }
+    this.builder().alterTable(this.tableName, (t) => {
+      t.index(['duration_ms'], this.tableName + '_duration_ms_idx')
+      t.index(['created_at', 'type'], this.tableName + '_created_at_type_idx')
+    })
+  }
+
+  async down() {
+    const table = schema ? schema + '.' + this.tableName : this.tableName
+    if (this.db.dialect.name === 'postgres') {
+      this.defer(async (db) => {
+        for (const suffix of ['_duration_ms_idx', '_created_at_type_idx', '_type_created_at_cover_idx']) {
+          const name = schema ? schema + '.' + this.tableName + suffix : this.tableName + suffix
+          await db.rawQuery('DROP INDEX CONCURRENTLY IF EXISTS ??', [name])
+        }
+        await db.rawQuery(
+          'ALTER TABLE ?? RESET (autovacuum_vacuum_scale_factor, autovacuum_vacuum_insert_scale_factor)',
+          [table]
+        )
+      })
+      return
+    }
+    this.builder().alterTable(this.tableName, (t) => {
+      t.dropIndex(['duration_ms'], this.tableName + '_duration_ms_idx')
+      t.dropIndex(['created_at', 'type'], this.tableName + '_created_at_type_idx')
+    })
+  }
+
+  /** The schema builder, pointed at 'schema' when it is set. */
+  private builder() {
+    return schema ? this.schema.withSchema(schema) : this.schema
+  }
+}
+```
+
+On Postgres it builds the indexes `CONCURRENTLY` (writes go on while they build; the migration
+runs outside a transaction) and lowers the table's autovacuum thresholds, so the newest rows are
+read from the index too. They add about 10% to the table's size. On MySQL and SQLite it adds
+the `duration_ms` and `(created_at, type)` indexes. Set the migration's `schema` constant to the
+same value as `storage.lucid({ schema })`.
+
+`autoCreateTable` does not add these indexes: on a table that already holds entries, building
+them blocks writes, so they only come from the migration.
+
 <Callout type="info">
 For tests and scripts, you can skip the migration: pass `autoCreateTable: true` (the store
 runs idempotent `CREATE TABLE IF NOT EXISTS` DDL on first use), or call the exported

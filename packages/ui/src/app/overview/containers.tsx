@@ -16,13 +16,7 @@ import {
   typeStyle,
   WatcherOff,
 } from '../ui.js';
-import {
-  useLiveQueues,
-  usePulse,
-  useRetention,
-  useTimeseries,
-  useWatcherEnabled,
-} from '../use-telescope.js';
+import { useLiveQueues, usePulse, useRetention, useWatcherEnabled } from '../use-telescope.js';
 
 /**
  * The Overview's containers: each one fetches what it needs and owns its own loading
@@ -39,6 +33,27 @@ import {
  * dedupes by key, which is what makes splitting a page into self-fetching containers
  * a parallelization instead of a multiplication.
  */
+
+/**
+ * The Pulse cards the Overview shows. Asking for these only spares the server the reads behind
+ * the others (the cache and outgoing-call lists), and the throughput chart comes from the same
+ * response instead of a second scan of the window.
+ */
+export const OVERVIEW_PULSE_CARDS = [
+  'throughput',
+  'requests',
+  'slowest',
+  'slowRoutes',
+  'slowJobs',
+  'exceptions',
+  'nPlusOne',
+  'loadByUser',
+] as const;
+
+/** The Overview's one Pulse read (every container shares it). */
+function useOverviewPulse(windowMs: number) {
+  return usePulse(windowMs, undefined, OVERVIEW_PULSE_CARDS);
+}
 
 /** A queue backlog at/above this is "needs attention" even with zero failures. */
 const QUEUE_WAITING_ATTENTION_THRESHOLD = 100;
@@ -116,7 +131,7 @@ export function RequestsStat({
   windowMs: number;
   onOpenType: (type: string) => void;
 }) {
-  const { data } = usePulse(windowMs);
+  const { data } = useOverviewPulse(windowMs);
   if (data === null) return <PendingStat label="Requests" />;
   return (
     <Stat
@@ -135,7 +150,7 @@ export function ErrorRateStat({
   windowMs: number;
   onOpenExceptions: () => void;
 }) {
-  const { data } = usePulse(windowMs);
+  const { data } = useOverviewPulse(windowMs);
   if (data === null) return <PendingStat label="Error rate" />;
   const rate = data.requests.errorRate;
   const errorClass =
@@ -185,7 +200,7 @@ export function SlowRoutesStat({
   windowMs: number;
   onOpenPulse: () => void;
 }) {
-  const { data } = usePulse(windowMs);
+  const { data } = useOverviewPulse(windowMs);
   if (data === null) return <PendingStat label="Slow routes" sub="over the slow p99 threshold" />;
   return (
     <Stat
@@ -202,7 +217,7 @@ export function SlowRoutesStat({
 }
 
 export function RecentFailuresPanel({ windowMs }: { windowMs: number }) {
-  const state = usePulse(windowMs);
+  const state = useOverviewPulse(windowMs);
   return (
     <Panel>
       <SectionTitle title="Recent failures" />
@@ -234,7 +249,7 @@ export function NPlusOnePanel({
   windowMs: number;
   onOpenTrace: (traceId: string) => void;
 }) {
-  const state = usePulse(windowMs);
+  const state = useOverviewPulse(windowMs);
   // N+1 é derivado de entries `query`. Sem esse watcher o painel não pode detectar
   // nada — e dizer "nenhum detectado" seria afirmar saúde a partir de cegueira.
   const queryWatcher = useWatcherEnabled('query');
@@ -278,7 +293,7 @@ export function SlowestPanel({
   windowMs: number;
   onOpenEntry: (id: string) => void;
 }) {
-  const state = usePulse(windowMs);
+  const state = useOverviewPulse(windowMs);
   return (
     <Panel>
       <SectionTitle title="Slowest" hint="across all types" />
@@ -364,7 +379,7 @@ export function QueuesAttentionPanel({ onOpenQueues }: { onOpenQueues: () => voi
 }
 
 export function SlowestJobsPanel({ windowMs }: { windowMs: number }) {
-  const state = usePulse(windowMs);
+  const state = useOverviewPulse(windowMs);
   const queueWatcher = useWatcherEnabled('queue');
   if (queueWatcher === false) {
     return (
@@ -394,7 +409,7 @@ export function SlowestJobsPanel({ windowMs }: { windowMs: number }) {
 }
 
 export function LoadByUserPanel({ windowMs }: { windowMs: number }) {
-  const state = usePulse(windowMs);
+  const state = useOverviewPulse(windowMs);
   return (
     <Panel>
       <SectionTitle title="Load by user" />
@@ -414,8 +429,14 @@ export function LoadByUserPanel({ windowMs }: { windowMs: number }) {
   );
 }
 
+/** The bucketed throughput inside the Overview's Pulse read. */
+function useOverviewSeries(windowMs: number) {
+  const state = useOverviewPulse(windowMs);
+  return { ...state, data: state.data?.throughput?.overTime ?? null };
+}
+
 export function ThroughputPanel({ windowMs }: { windowMs: number }) {
-  const state = useTimeseries(windowMs, 60);
+  const state = useOverviewSeries(windowMs);
   return (
     <Panel>
       <SectionTitle title="Throughput" hint={`${state.data?.buckets.length ?? 0} buckets`} />
@@ -438,7 +459,7 @@ export function ThroughputPanel({ windowMs }: { windowMs: number }) {
 }
 
 export function ByTypePanel({ windowMs }: { windowMs: number }) {
-  const state = useTimeseries(windowMs, 60);
+  const state = useOverviewSeries(windowMs);
   return (
     <Panel>
       <SectionTitle title="By type" />

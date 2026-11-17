@@ -34,7 +34,7 @@ const pulseSummary: PulseSummary = {
   truncated: false,
 };
 
-function renderPulse(watchers: string[] | undefined): void {
+function renderPulse(watchers: string[] | null | undefined): void {
   const client = {
     pulse: vi.fn().mockResolvedValue(pulseSummary),
     meta: vi.fn().mockResolvedValue({
@@ -87,6 +87,12 @@ describe('painéis que dependem de watcher opcional', () => {
     // Sem `watchers` no /meta não dá pra saber, e afirmar "desligado" seria trocar
     // uma resposta confiante errada por outra. Mantém o texto antigo.
     renderPulse(undefined);
+    await waitFor(() => expect(screen.getByText('No N+1 loops detected.')).toBeTruthy());
+    expect(screen.queryByText(/Not measured/)).toBeNull();
+  });
+
+  it('watchers desconhecidos (null, control plane com app antigo) também não afirmam nada', async () => {
+    renderPulse(null);
     await waitFor(() => expect(screen.getByText('No N+1 loops detected.')).toBeTruthy());
     expect(screen.queryByText(/Not measured/)).toBeNull();
   });

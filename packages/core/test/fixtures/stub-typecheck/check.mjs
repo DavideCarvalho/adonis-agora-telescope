@@ -65,6 +65,10 @@ const STUBS = [
     stub: 'database/migrations/create_telescope_instances_table.stub',
     uncomment: false,
   },
+  {
+    stub: 'database/migrations/add_telescope_entries_overview_indexes.stub',
+    uncomment: false,
+  },
 ];
 
 /**
