@@ -1,3 +1,4 @@
+import { encodeCursor } from '@adonis-agora/filter';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Entry } from '../../src/entry.js';
 import { TelescopeService } from '../../src/service.js';
@@ -5,7 +6,7 @@ import type { EntryQuery } from '../../src/store.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import { TelescopeApi } from '../../src/ui/api.js';
 import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
-import { parseEntryListRequest, readEntryPage } from '../../src/ui/list_api.js';
+import { encodeTraceCursor, parseEntryListRequest, readEntryPage } from '../../src/ui/list_api.js';
 
 function ctx(qs: Record<string, unknown> = {}): { ctx: UiHttpContext; res: RecordingResponse } {
   const res = new RecordingResponse();
@@ -144,10 +145,48 @@ describe('GET /api/metrics/traces', () => {
     expect(page2.meta.hasNext).toBe(false);
   });
 
+  it('reads the next page from the last trace shown, not from a position', async () => {
+    vi.useFakeTimers();
+    const store = new InMemoryTelescopeStore();
+    const record = async (traceId: string, second: number) => {
+      vi.setSystemTime(new Date(Date.UTC(2026, 10, 13, 12, 0, second)));
+      await store.record({ type: 'request', content: {}, traceId });
+    };
+    for (let i = 0; i < 5; i++) await record(`trace-${i}`, i);
+    const api = new TelescopeApi(new TelescopeService(store));
+
+    const p1 = ctx({ first: '2' });
+    await api.metricsTraces(p1.ctx);
+    const page1 = p1.res.body as CursorBody<{ traceId: string }>;
+    expect(page1.data.map((t) => t.traceId)).toEqual(['trace-4', 'trace-3']);
+
+    // Two new traces arrive: an offset cursor would show trace-3 and trace-4 again.
+    await record('trace-5', 10);
+    await record('trace-6', 11);
+    vi.useRealTimers();
+
+    const p2 = ctx({ first: '2', after: page1.meta.nextCursor });
+    await api.metricsTraces(p2.ctx);
+    const page2 = p2.res.body as CursorBody<{ traceId: string }>;
+    expect(page2.data.map((t) => t.traceId)).toEqual(['trace-2', 'trace-1']);
+    expect(page2.meta).toMatchObject({ hasNext: true, hasPrev: true });
+  });
+
+  it('still accepts a cursor that carries only a position', async () => {
+    const api = await seeded(5);
+    const { ctx: c, res } = ctx({ first: '2', after: encodeTraceCursor(2) });
+    await api.metricsTraces(c);
+    const page = res.body as CursorBody<{ traceId: string }>;
+    expect(page.data.map((t) => t.traceId)).toEqual(['trace-2', 'trace-1']);
+    expect(page.meta).toMatchObject({ hasNext: true, hasPrev: true });
+  });
+
   it.each([
     [{ filter: { traceId: 'x' } }, 'Unknown filter field'],
     [{ sort: 'traceId' }, 'Unknown sort field'],
     [{ after: 'nope' }, 'Invalid cursor'],
+    [{ after: encodeCursor(['t', 2, 'soon', 'trace-1']) }, 'Invalid cursor'],
+    [{ after: encodeCursor(['t', 2, 1_000, '']) }, 'Invalid cursor'],
   ])('answers 400 for %j', async (qs, message) => {
     const api = await seeded(1);
     const { ctx: c, res } = ctx(qs);

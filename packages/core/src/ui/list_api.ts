@@ -11,7 +11,7 @@ import {
   resolveSort,
 } from '@adonis-agora/filter';
 import type { Entry } from '../entry.js';
-import type { EntryQuery } from '../store.js';
+import type { EntryQuery, TraceIdRow } from '../store.js';
 import { compareNewestFirst } from '../stores/parquet_format.js';
 
 /** Default page size (`first`) of the entry feeds when the request sends none. */
@@ -314,21 +314,24 @@ export function entryFeedPage<T>(rows: T[], nextCursor: string | null): CursorPa
   });
 }
 
-// ─── traces: an opaque offset cursor ─────────────────────────────────────────
+// ─── traces: an opaque cursor ────────────────────────────────────────────────
 
 /**
- * Cursor paging over the traces list. A trace's "last seen" moves while it is being read, so a
- * keyset over it would skip or repeat traces; the cursor carries the position in the list instead,
- * which also lets it page backward.
+ * Cursor paging over the traces list. A forward cursor carries the last trace of the page (its
+ * last-seen time and id) and the position in the list: the next page is read from that trace on
+ * (a keyset, so its cost does not grow with depth, and a trace that became active again is not
+ * shown twice). The position alone pages backward, and is all an older cursor carries.
  */
 export interface TraceListRequest {
   /** Index of the first trace of the page. */
   offset: number;
   /** Page size. */
   size: number;
+  /** The last trace of the previous page, when paging forward with a cursor that carries it. */
+  cursor?: TraceIdRow;
 }
 
-function decodeTraceCursor(cursor: string): number {
+function decodeTraceCursor(cursor: string): { offset: number; last?: TraceIdRow } {
   const values = decodeCursor(cursor);
   if (
     values === null ||
@@ -339,12 +342,27 @@ function decodeTraceCursor(cursor: string): number {
   ) {
     throw new InvalidColumnFilterError('Invalid cursor.');
   }
-  return values[1];
+  const [, offset, at, traceId] = values;
+  if (at === undefined && traceId === undefined) return { offset };
+  if (
+    typeof at !== 'number' ||
+    !Number.isSafeInteger(at) ||
+    typeof traceId !== 'string' ||
+    traceId === ''
+  ) {
+    throw new InvalidColumnFilterError('Invalid cursor.');
+  }
+  return { offset, last: { traceId, lastAt: new Date(at) } };
 }
 
-/** Opaque cursor for a position in the traces list. */
-export function encodeTraceCursor(offset: number): string {
-  return encodeCursor(['t', offset]);
+/**
+ * Opaque cursor for a position in the traces list; with `last` (the trace right before that
+ * position), the next page is read by keyset from it.
+ */
+export function encodeTraceCursor(offset: number, last?: TraceIdRow | null): string {
+  return last
+    ? encodeCursor(['t', offset, last.lastAt.getTime(), last.traceId])
+    : encodeCursor(['t', offset]);
 }
 
 /**
@@ -372,12 +390,11 @@ export async function parseTraceListRequest(
 
   const paging = parseCursorParams(qs, { defaultSize, maxSize: MAX_LIST_SIZE });
   if (paging.before !== undefined) {
-    const end = decodeTraceCursor(paging.before);
+    const end = decodeTraceCursor(paging.before).offset;
     const offset = Math.max(0, end - paging.size);
     return { offset, size: end - offset };
   }
-  return {
-    offset: paging.after !== undefined ? decodeTraceCursor(paging.after) : 0,
-    size: paging.size,
-  };
+  if (paging.after === undefined) return { offset: 0, size: paging.size };
+  const { offset, last } = decodeTraceCursor(paging.after);
+  return { offset, size: paging.size, ...(last !== undefined ? { cursor: last } : {}) };
 }

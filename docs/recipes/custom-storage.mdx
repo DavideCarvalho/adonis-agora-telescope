@@ -172,7 +172,7 @@ because they all only know the contract.
 ## Optional fast paths
 
 The contract is intentionally minimal — no rollups, no cursors. If your backend has cheap
-server-side aggregation, implement any of the optional reads (`listTraceIds`,
+server-side aggregation, implement any of the optional reads (`pageTraceIds`, `listTraceIds`,
 `countByBucket`, `countFamilies`, `countTags`, `listSlowest`, `countTraceRepeats`, see
 [Storage](/docs/telescope/concepts/storage#optional-fast-paths)). Each one replaces a scan of
 `list` on a dashboard screen; leave one out and that screen falls back to the scan.

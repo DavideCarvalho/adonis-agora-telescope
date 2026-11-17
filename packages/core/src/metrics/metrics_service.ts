@@ -8,7 +8,7 @@ import {
   type NPlusOnePattern,
 } from '../query/n_plus_one.js';
 import type { RequestKind } from '../request_watcher.js';
-import type { EntryQuery, TelescopeStore } from '../store.js';
+import type { EntryQuery, TelescopeStore, TraceIdRow } from '../store.js';
 import { type ScreenStats, summarizeScreens } from './screens.js';
 import {
   estimateLatencyPercentiles,
@@ -31,6 +31,8 @@ const DEFAULT_SLOW_MS = 100;
 /** Safety cap on entries scanned per analytics request; surfaced via `truncated`. */
 const DEFAULT_SCAN_CAP = 50_000;
 const DEFAULT_NPLUSONE_THRESHOLD = 3;
+/** The content fields a trace summary reads (a request's `method`, `url` and `user`). */
+const TRACE_SUMMARY_FIELDS = ['method', 'url', 'user'];
 
 export interface StatsQuery {
   /** Required — stats are computed per entry type. */
@@ -195,7 +197,8 @@ export class MetricsService {
    * size and `page` is 1-based — the `{ page, size }` shape every `@adonis-agora/*`
    * library paginates with (mirrors `@adonis-agora/filter`).
    *
-   * The store picks the page of trace ids (an indexed `GROUP BY` when it can — see
+   * The store picks the page of trace ids (a newest-first walk when it can — see
+   * {@link TelescopeStore.pageTraceIds}, else a `GROUP BY` — see
    * {@link TelescopeStore.listTraceIds}) and only THEN do we fetch the entries of
    * those traces. That ordering is the whole point: grouping first meant reading up
    * to `scanCap` entries to answer a request for 50 traces, and on a busy table the
@@ -210,21 +213,19 @@ export class MetricsService {
     const pageNumber = Math.max(1, Math.floor(page));
     const skip = (pageNumber - 1) * pageSize;
 
+    if (typeof this.store.pageTraceIds === 'function') {
+      if (pageSize === 0) return [];
+      const ids = await this.store.pageTraceIds({ size: skip + pageSize });
+      return this.summarizeTraceIds(ids.slice(skip));
+    }
+
     if (typeof this.store.listTraceIds !== 'function') {
       const { entries } = await this.collect({});
       return summarizeTraces(entries, { limit: pageSize + skip }).slice(skip);
     }
 
     const rows = await this.store.listTraceIds({ size: pageSize, page: pageNumber });
-    if (rows.length === 0) return [];
-
-    const entries = await this.store.list({
-      traceIds: rows.map((row) => row.traceId),
-      size: this.scanCap,
-    });
-    // summarizeTraces re-derives the ordering from the entries it is given, so the
-    // page order survives without the store and the summarizer having to agree on it.
-    return summarizeTraces(entries, { limit: pageSize });
+    return this.summarizeTraceIds(rows);
   }
 
   /**
@@ -238,6 +239,13 @@ export class MetricsService {
   async getTracesPage(size = 50, page = 1): Promise<{ rows: TraceSummary[]; hasMore: boolean }> {
     const pageSize = Math.max(0, Math.floor(size));
     const pageNumber = Math.max(1, Math.floor(page));
+    if (typeof this.store.pageTraceIds === 'function') {
+      const { rows, hasMore } = await this.getTracesSlice({
+        offset: (pageNumber - 1) * pageSize,
+        size: pageSize,
+      });
+      return { rows, hasMore };
+    }
     const rows = await this.getTraces(pageSize, pageNumber);
     if (pageSize === 0 || rows.length < pageSize) return { rows, hasMore: false };
 
@@ -250,6 +258,74 @@ export class MetricsService {
         ? (await this.store.listTraceIds({ size: 1, page: nextPage })).length > 0
         : (await this.getTraces(1, nextPage)).length > 0;
     return { rows, hasMore };
+  }
+
+  /**
+   * The traces list from position `offset`, or right after `cursor` (the last trace of the
+   * previous page) — what the cursor-paged `/metrics/traces` serves. `last` is the page's last
+   * trace as the store ordered it: the cursor of the next page.
+   *
+   * With a store that pages by keyset ({@link TelescopeStore.pageTraceIds}), a cursor costs one
+   * page of rows whatever its depth; an offset (paging backward, or an older cursor) walks the
+   * traces before it once. One extra trace id tells whether a next page exists. A store without
+   * it pages by offset and ignores the cursor.
+   */
+  async getTracesSlice(query: {
+    offset: number;
+    size: number;
+    cursor?: TraceIdRow;
+  }): Promise<{ rows: TraceSummary[]; hasMore: boolean; last: TraceIdRow | null }> {
+    const offset = Math.max(0, Math.floor(query.offset));
+    const size = Math.max(0, Math.floor(query.size));
+    if (size === 0) return { rows: [], hasMore: false, last: null };
+
+    if (typeof this.store.pageTraceIds === 'function') {
+      const ids =
+        query.cursor !== undefined
+          ? await this.store.pageTraceIds({ size: size + 1, cursor: query.cursor })
+          : (await this.store.pageTraceIds({ size: offset + size + 1 })).slice(offset);
+      const page = ids.slice(0, size);
+      return {
+        rows: await this.summarizeTraceIds(page),
+        hasMore: ids.length > size,
+        last: page[page.length - 1] ?? null,
+      };
+    }
+
+    // `getTracesPage` pages by `{ page, size }`; an offset that is not a multiple of the size (a
+    // client that changed `first` mid-walk) reads from the top and drops the head.
+    const aligned = offset % size === 0;
+    const result = aligned
+      ? await this.getTracesPage(size, offset / size + 1)
+      : await this.getTracesPage(offset + size, 1);
+    return {
+      rows: aligned ? result.rows : result.rows.slice(offset),
+      hasMore: result.hasMore,
+      last: null,
+    };
+  }
+
+  /**
+   * Summaries of these traces, in this order, from their entries: one `trace_id IN (...)` read.
+   * Only `method`, `url` and `user` of the content are read (the request label and user of the
+   * summary); a store that cannot project content returns all of it, to the same effect.
+   */
+  private async summarizeTraceIds(rows: TraceIdRow[]): Promise<TraceSummary[]> {
+    if (rows.length === 0) return [];
+    const entries = await this.store.list({
+      traceIds: rows.map((row) => row.traceId),
+      size: this.scanCap,
+      contentFields: TRACE_SUMMARY_FIELDS,
+    });
+    const byId = new Map(
+      summarizeTraces(entries, { limit: rows.length }).map((summary) => [summary.traceId, summary]),
+    );
+    // The page keeps the order the store chose for it, so the cursor taken from its last row
+    // matches the last row shown.
+    return rows.flatMap((row) => {
+      const summary = byId.get(row.traceId);
+      return summary === undefined ? [] : [summary];
+    });
   }
 
   /**

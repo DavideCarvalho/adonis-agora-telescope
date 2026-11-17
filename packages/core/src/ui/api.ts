@@ -191,7 +191,9 @@ export class TelescopeApi {
   /**
    * `GET <path>/api/metrics/traces` — recent traces, most recently active first, cursor-paged both
    * ways (`after`/`first`, `before`/`last`); `sort=-lastAt` is the only order and there are no
-   * filters. Answers `{ data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }`.
+   * filters. Answers `{ data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }`. A forward
+   * cursor reads the next page by keyset from the last trace shown (see
+   * {@link MetricsService.getTracesSlice}).
    *
    * No total: counting distinct traces means a `COUNT(DISTINCT trace_id)` over the same table this
    * endpoint exists to stop scanning. One extra trace id tells whether a next page exists.
@@ -203,26 +205,24 @@ export class TelescopeApi {
     } catch (err) {
       return rejectList(ctx, err);
     }
-    const { offset, size } = request;
-    let data: Awaited<ReturnType<MetricsService['getTraces']>> = [];
-    let hasNext = false;
-    if (size > 0) {
-      // The service pages by `{ page, size }`; an offset that is not a multiple of the size (a
-      // client that changed `first` mid-walk) reads from the top and drops the head.
-      const aligned = offset % size === 0;
-      const result = aligned
-        ? await this.metrics.getTracesPage(size, offset / size + 1)
-        : await this.metrics.getTracesPage(offset + size, 1);
-      data = aligned ? result.rows : result.rows.slice(offset);
-      hasNext = result.hasMore;
-    }
+    const { offset, size, cursor } = request;
+    const result =
+      size > 0
+        ? await this.metrics.getTracesSlice({
+            offset,
+            size,
+            ...(cursor !== undefined ? { cursor } : {}),
+          })
+        : { rows: [], hasMore: false, last: null };
+    const data = result.rows;
+    const hasNext = result.hasMore;
     const end = offset + data.length;
     return ctx.response
       .status(200)
       .header('content-type', 'application/json')
       .send(
         cursorPage(data, {
-          nextCursor: hasNext ? encodeTraceCursor(end) : null,
+          nextCursor: hasNext ? encodeTraceCursor(end, result.last) : null,
           prevCursor: offset > 0 ? encodeTraceCursor(offset) : null,
           hasNext,
           hasPrev: offset > 0,
