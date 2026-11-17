@@ -3,10 +3,12 @@ import {
   consoleWatchers,
   FleetRegistry,
   fleetWatchers,
+  getTenantWatchers,
   InstanceReporter,
   MemoryFleetStore,
   normalizeHeartbeat,
   normalizeWatchers,
+  registerTenantWatchers,
 } from '../../src/index.js';
 import { consoleMeta } from '../../src/ui/console_apis.js';
 
@@ -155,6 +157,40 @@ describe('consoleWatchers (what /meta says)', () => {
         own,
       }),
     ).toEqual({ watchers: ['query', 'request'] });
+  });
+
+  it('control plane: the watchers it runs for its tenants count for the app in view', async () => {
+    // durable's control-plane watcher records ET's workflow steps here; no ET instance reports it.
+    expect(
+      await consoleWatchers({
+        controlPlane: true,
+        fleet: fleetOf([instance('et', ['request', 'query'])]),
+        apps: ['et'],
+        since: NOW - 1000,
+        own: () => ['request'],
+        forTenants: () => ['durable'],
+      }),
+    ).toEqual({ watchers: ['durable', 'query', 'request'] });
+  });
+
+  it('tenant watchers do not turn an unknown answer into a list', async () => {
+    expect(
+      await consoleWatchers({
+        controlPlane: true,
+        fleet: fleetOf([instance('et')]),
+        apps: ['et'],
+        since: NOW - 1000,
+        own,
+        forTenants: () => ['durable'],
+      }),
+    ).toEqual({ watchers: null });
+  });
+
+  it('registerTenantWatchers adds to the runtime list until released', () => {
+    const release = registerTenantWatchers(['durable']);
+    expect(getTenantWatchers()).toContain('durable');
+    release();
+    expect(getTenantWatchers()).not.toContain('durable');
   });
 
   it('control plane with the fleet unreachable: unknown', async () => {

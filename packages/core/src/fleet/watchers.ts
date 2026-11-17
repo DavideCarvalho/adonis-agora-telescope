@@ -58,6 +58,11 @@ export interface ConsoleWatchersInput {
   since: number;
   /** This process's own watchers. */
   own: () => readonly string[];
+  /**
+   * The watchers this process runs for its tenants (`durable` on a durable control plane): on for
+   * every app in view, whatever its instances report.
+   */
+  forTenants?: () => readonly string[];
 }
 
 /**
@@ -72,13 +77,15 @@ export async function consoleWatchers(
   if (!input.controlPlane) return {};
   if (input.fleet === null) return { watchers: null };
   try {
-    return {
-      watchers: fleetWatchers({
-        instances: await input.fleet.instances(input.apps),
-        since: input.since,
-        own: input.apps === null ? input.own() : null,
-      }),
-    };
+    const watchers = fleetWatchers({
+      instances: await input.fleet.instances(input.apps),
+      since: input.since,
+      own: input.apps === null ? input.own() : null,
+    });
+    // Unknown stays unknown: naming only the tenant watchers would claim the rest are off.
+    const forTenants = input.forTenants?.() ?? [];
+    if (watchers === null || forTenants.length === 0) return { watchers };
+    return { watchers: [...new Set([...watchers, ...forTenants])].sort() };
   } catch {
     return { watchers: null };
   }

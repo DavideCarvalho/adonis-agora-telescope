@@ -112,9 +112,39 @@ async function seed(store: LucidTelescopeStore): Promise<void> {
       familyHash: `job-${t % 3}`,
       content: { queue: 'q', name: `j${t % 3}` },
       durationMs: 10 + t,
-      tags: [app],
+      tags: [app, ...(t === 5 ? ['failed'] : [])],
+    });
+    // A durable step: the name in the family, completions and failures of one step together.
+    await record({
+      type: 'diagnostic',
+      familyHash: `durable:step.${t % 4 === 0 ? 'failed' : 'completed'}:index-${t % 2}`,
+      content: { lib: 'durable', event: 'step.completed', payload: { name: `index-${t % 2}` } },
+      durationMs: 1_000 + t * 100,
+      tags: [app, 'lib:durable'],
     });
   }
+  // From an older durable: the step is unnamed.
+  await record({
+    type: 'diagnostic',
+    familyHash: 'durable:step.completed',
+    content: { lib: 'durable', event: 'step.completed' },
+    durationMs: 40,
+    tags: ['app:a', 'lib:durable'],
+  });
+  // Not durable steps: untimed, or another lib's timed event.
+  await record({
+    type: 'diagnostic',
+    familyHash: 'durable:run.started',
+    content: { lib: 'durable', event: 'run.started' },
+    tags: ['app:a', 'lib:durable'],
+  });
+  await record({
+    type: 'diagnostic',
+    familyHash: 'billing:invoice-paid',
+    content: { lib: 'billing', event: 'invoice-paid' },
+    durationMs: 50_000,
+    tags: ['app:a'],
+  });
   await record({
     type: 'exception',
     familyHash: 'boom',
@@ -231,6 +261,35 @@ for (const target of targets) {
       expect(fast.loadByUser.length).toBeGreaterThan(0);
       expect(fast.cache?.topKeys.length).toBeGreaterThan(0);
       expect(fast.requests.status['5xx']).toBe(2);
+    });
+
+    it('slowest jobs merges queue jobs and durable steps by p95, from family and duration only', async () => {
+      const fast = await new PulseService(store).getHealth({ windowMs: HOUR, cards: ['slowJobs'] });
+      const list = vi.spyOn(store, 'list');
+      const durations = vi.spyOn(store, 'listDurations');
+      await new PulseService(store).getHealth({ windowMs: HOUR, cards: ['slowJobs'] });
+      // The durable steps come from the family/duration read, never a content list.
+      expect(durations).toHaveBeenCalledTimes(1);
+      expect(list.mock.calls.every(([query]) => query?.type !== 'diagnostic')).toBe(true);
+      list.mockRestore();
+      durations.mockRestore();
+
+      const rows = fast.slowWork;
+      expect(rows.slice(0, 2).map((row) => [row.source, row.name])).toEqual([
+        ['durable', 'index-1'],
+        ['durable', 'index-0'],
+      ]);
+      // index-0 ran at t = 0, 2, …, 10; t = 0, 4, 8 failed.
+      expect(rows[1]).toMatchObject({ count: 6, failures: 3, max: 2_000 });
+      expect(rows[0]).toMatchObject({ count: 6, failures: 0, max: 2_100 });
+      expect(rows.find((row) => row.name === '')).toMatchObject({ source: 'durable', count: 1 });
+      expect(rows.find((row) => row.name === 'job-2')).toMatchObject({
+        source: 'queue',
+        failures: 1,
+      });
+      expect(rows.some((row) => row.name.includes('billing') || row.name === 'run.started')).toBe(
+        false,
+      );
     });
 
     it('a smaller topN and a subset of cards stay identical', async () => {

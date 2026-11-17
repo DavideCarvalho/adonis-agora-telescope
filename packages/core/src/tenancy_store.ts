@@ -2,6 +2,8 @@ import type { Entry, RecordInput } from './entry.js';
 import {
   type BucketCountQuery,
   type BucketCountRow,
+  type DurationQuery,
+  type DurationRow,
   type EntryQuery,
   forwardOptionalReads,
   type SlowestQuery,
@@ -59,7 +61,7 @@ export class TenantTaggingStore implements TelescopeStore {
  * viewer may see) and, for each extra group in `also`, one of that group's tags too (the apps the
  * viewer may see). Every aggregate the console shows is computed from the viewer's own entries
  * only: no cross-tenant counts. The store's windowed aggregate fast paths (bucket counts, slowest
- * entries, per-trace repeats) are forwarded with the scope as `tagGroups` only when the store
+ * entries, per-trace repeats, timed families) are forwarded with the scope as `tagGroups` only when the store
  * declares it honors them ({@link TelescopeStore.honorsTagGroups}); the others (family/tag
  * counts, trace-id pages) never are. `get` answers `null` for an entry outside the scope. Writes
  * are refused.
@@ -78,7 +80,7 @@ export class TenantScopedStore implements TelescopeStore {
     if (inner.honorsTagGroups === true) {
       const groups = [[...this.tags], ...this.also.map((group) => [...group])];
       const self = this as unknown as Record<string, unknown>;
-      const { countByBucket, listSlowest, countTraceRepeats } = inner;
+      const { countByBucket, listSlowest, countTraceRepeats, listDurations } = inner;
       if (countByBucket !== undefined) {
         self.countByBucket = (query: BucketCountQuery): Promise<BucketCountRow[]> =>
           countByBucket.call(inner, {
@@ -93,6 +95,13 @@ export class TenantScopedStore implements TelescopeStore {
       if (countTraceRepeats !== undefined) {
         self.countTraceRepeats = (query: TraceRepeatQuery): Promise<TraceRepeatRow[]> =>
           countTraceRepeats.call(inner, {
+            ...query,
+            tagGroups: [...(query.tagGroups ?? []), ...groups],
+          });
+      }
+      if (listDurations !== undefined) {
+        self.listDurations = (query: DurationQuery): Promise<DurationRow[]> =>
+          listDurations.call(inner, {
             ...query,
             tagGroups: [...(query.tagGroups ?? []), ...groups],
           });

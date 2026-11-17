@@ -1,5 +1,5 @@
 import { type Entry, EntryType, EXCEPTION_ENTRY_TYPES, isExceptionType } from '../entry.js';
-import type { TelescopeStore, TraceRepeatRow } from '../store.js';
+import type { DurationRow, TelescopeStore, TraceRepeatRow } from '../store.js';
 import {
   type CacheStats,
   type LatencyStats,
@@ -91,6 +91,43 @@ export interface PulseHotspot {
   p50: number;
 }
 
+/** Where a {@link PulseSlowWork} row was measured. */
+export type PulseSlowWorkSource = 'queue' | 'durable';
+
+/**
+ * A kind of background work that ran in the window, with how long it took: a queue job (the
+ * `queue` watcher's `job` entries, by `queue:name`) or a durable workflow step (the `durable`
+ * diagnostics entries of `@adonis-agora/durable`, by step name).
+ */
+export interface PulseSlowWork {
+  source: PulseSlowWorkSource;
+  /** The job (`queue:name`) or the durable step name; `''` for durable steps recorded unnamed. */
+  name: string;
+  /** Executions that finished in the window. */
+  count: number;
+  /** How many of them failed (a durable `step.failed`, a job tagged `failed`). */
+  failures: number;
+  p50: number;
+  p95: number;
+  max: number;
+}
+
+/** The family prefix of the timed durable step entries (`durable:step.completed:<name>`). */
+export const DURABLE_STEP_FAMILY_PREFIX = 'durable:step.';
+
+const DURABLE_STEP_FAMILY = /^durable:step\.(completed|failed)(?::(.*))?$/s;
+
+/**
+ * The step name and outcome of a durable step entry's family: `durable:step.completed:<name>`
+ * (`@adonis-agora/durable` 1.0.0-rc.X+), or `durable:step.completed` from an older recorder,
+ * whose steps all share the name `''`. `null` for any other family.
+ */
+export function durableStepOf(familyHash: string): { name: string; failed: boolean } | null {
+  const match = DURABLE_STEP_FAMILY.exec(familyHash);
+  if (match === null) return null;
+  return { name: match[2] ?? '', failed: match[1] === 'failed' };
+}
+
 /** An N+1 query hotspot aggregated across traces. */
 export interface PulseNPlusOne {
   familyHash: string;
@@ -148,7 +185,13 @@ export interface PulseSummary {
   slowest: PulseSlowEntry[];
   slowRoutes: PulseHotspot[];
   slowOutgoing: PulseHotspot[];
+  /** Queue jobs only (by p99); {@link slowWork} has them with the durable steps. */
   slowJobs: PulseHotspot[];
+  /**
+   * The slowest background work of the window, by p95: queue jobs and durable workflow steps
+   * together, each labelled with its source. Computed with the `slowJobs` card.
+   */
+  slowWork: PulseSlowWork[];
   topExceptions: PulseExceptionGroup[];
   nPlusOne: PulseNPlusOne[];
   loadByUser: PulseUserLoad[];
@@ -279,6 +322,8 @@ interface PulseInputs {
   httpClient: Entry[];
   /** Job entries; content unused. */
   jobs: Entry[];
+  /** The timed durable step entries (family + duration only). */
+  durableSteps: DurationRow[];
   /** The slowest entries, slowest first, at most `topN`; content unused. */
   slowest: Entry[];
   /** Query families repeated within one trace at least `nPlusOneThreshold` times. */
@@ -305,6 +350,7 @@ function inputsFromEntries(
   const exceptions: Entry[] = [];
   const httpClient: Entry[] = [];
   const jobs: Entry[] = [];
+  const durableSteps: DurationRow[] = [];
   const timed: Entry[] = [];
   const repeats = new Map<string, TraceRepeatRow>();
 
@@ -314,7 +360,13 @@ function inputsFromEntries(
     if (entry.type === EntryType.Request) requests.push(entry);
     else if (entry.type === EntryType.HttpClient) httpClient.push(entry);
     else if (entry.type === EntryType.Job) jobs.push(entry);
-    else if (entry.type === EntryType.Cache) cache.push(entry);
+    else if (
+      entry.type === EntryType.Diagnostic &&
+      typeof entry.durationMs === 'number' &&
+      entry.familyHash?.startsWith(DURABLE_STEP_FAMILY_PREFIX) === true
+    ) {
+      durableSteps.push({ familyHash: entry.familyHash, durationMs: entry.durationMs });
+    } else if (entry.type === EntryType.Cache) cache.push(entry);
     // Server `exception` AND browser `client_exception` — see EXCEPTION_ENTRY_TYPES.
     // Counting only the server one made a front-end outage invisible here while
     // the alert poller was already paging on it.
@@ -350,6 +402,7 @@ function inputsFromEntries(
     exceptions,
     httpClient,
     jobs,
+    durableSteps,
     slowest: timed.sort(bySlowest).slice(0, options.topN),
     repeats: [...repeats.values()].filter((r) => r.count >= options.nPlusOneThreshold),
     truncated,
@@ -437,6 +490,7 @@ function finishPulse(
     slowRoutes: summary.slowRoutes,
     slowOutgoing: summary.slowOutgoing,
     slowJobs: summary.slowJobs,
+    slowWork: summary.slowWork,
     topExceptions: summary.topExceptions,
     nPlusOne: draft.nPlusOne.map((h) => {
       const sample = sampleOf(h.sampleTraceId, h.familyHash);
@@ -620,6 +674,9 @@ function draftPulse(
     : [];
   // Jobs are not gated by the slow-ms threshold — the slowest jobs always matter.
   const slowJobs = enabled('slowJobs') ? toHotspots(jobDurations, options, 0) : [];
+  const slowWork = enabled('slowJobs')
+    ? rankSlowWork(inputs.jobs, inputs.durableSteps, options.topN)
+    : [];
 
   // Load by user — top users by total request time.
   const loadByUser: PulseUserLoad[] = enabled('loadByUser')
@@ -646,6 +703,7 @@ function draftPulse(
       slowRoutes,
       slowOutgoing,
       slowJobs,
+      slowWork,
       topExceptions,
       loadByUser,
       scanned: inputs.total,
@@ -654,6 +712,67 @@ function draftPulse(
     slowest: enabled('slowest') ? inputs.slowest.slice(0, options.topN) : [],
     nPlusOne: enabled('nPlusOne') ? nPlusOneOf(inputs.repeats, options.topN) : [],
   };
+}
+
+/** Accumulates one {@link PulseSlowWork} row. */
+interface SlowWorkAccumulator {
+  source: PulseSlowWorkSource;
+  name: string;
+  durations: number[];
+  failures: number;
+}
+
+/**
+ * The slowest kinds of background work, by p95 (then max, then executions): queue jobs grouped by
+ * family, durable steps by name (completions and failures together). Not gated by a slow
+ * threshold: the slowest background work always matters.
+ */
+export function rankSlowWork(
+  jobs: readonly Entry[],
+  durableSteps: readonly DurationRow[],
+  topN: number,
+): PulseSlowWork[] {
+  const groups = new Map<string, SlowWorkAccumulator>();
+  const add = (source: PulseSlowWorkSource, name: string, durationMs: number, failed: boolean) => {
+    const key = `${source}\u0000${name}`;
+    let group = groups.get(key);
+    if (group === undefined) {
+      group = { source, name, durations: [], failures: 0 };
+      groups.set(key, group);
+    }
+    group.durations.push(durationMs);
+    if (failed) group.failures += 1;
+  };
+  for (const job of jobs) {
+    if (job.familyHash === null || typeof job.durationMs !== 'number') continue;
+    add('queue', job.familyHash, job.durationMs, job.tags.includes('failed'));
+  }
+  for (const row of durableSteps) {
+    const step = durableStepOf(row.familyHash);
+    if (step !== null) add('durable', step.name, row.durationMs, step.failed);
+  }
+  return [...groups.values()]
+    .map((group) => {
+      const sorted = group.durations.sort((a, b) => a - b);
+      return {
+        source: group.source,
+        name: truncate(group.name),
+        count: sorted.length,
+        failures: group.failures,
+        p50: percentile(sorted, 0.5),
+        p95: percentile(sorted, 0.95),
+        max: sorted[sorted.length - 1] ?? 0,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.p95 - a.p95 ||
+        b.max - a.max ||
+        b.count - a.count ||
+        a.source.localeCompare(b.source) ||
+        a.name.localeCompare(b.name),
+    )
+    .slice(0, Math.max(0, topN));
 }
 
 /** Durations per `familyHash` (entries with both), for a hotspot card. */
@@ -791,7 +910,7 @@ export class PulseService {
     const needsRequests =
       cards.has('requests') || cards.has('slowRoutes') || cards.has('loadByUser');
 
-    const [buckets, slowest, repeats, requests, cache, exceptions, httpClient, jobs] =
+    const [buckets, slowest, repeats, requests, cache, exceptions, httpClient, jobs, durableSteps] =
       await Promise.all([
         store.countByBucket({
           ...window,
@@ -812,6 +931,9 @@ export class PulseService {
           : Promise.resolve([] as Entry[][]),
         cards.has('slowOutgoing') ? listOf(EntryType.HttpClient, null) : none,
         cards.has('slowJobs') ? listOf(EntryType.Job, null) : none,
+        cards.has('slowJobs')
+          ? this.durableStepDurations(store, windowStart, windowEnd)
+          : Promise.resolve([] as DurationRow[]),
       ]);
 
     const counts: Record<string, number> = {};
@@ -830,10 +952,50 @@ export class PulseService {
       exceptions: exceptions.flat(),
       httpClient,
       jobs,
+      durableSteps,
       slowest,
       repeats,
-      truncated: lists.some((list) => list.length >= this.scanCap),
+      truncated:
+        lists.some((list) => list.length >= this.scanCap) || durableSteps.length >= this.scanCap,
     };
+  }
+
+  /**
+   * The family and duration of the window's timed durable steps: from the store's
+   * {@link TelescopeStore.listDurations} (an index read, no row content), else from the window's
+   * diagnostic entries listed without content.
+   */
+  private async durableStepDurations(
+    store: TelescopeStore,
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<DurationRow[]> {
+    if (typeof store.listDurations === 'function') {
+      return store.listDurations({
+        after: windowStart,
+        before: windowEnd,
+        type: EntryType.Diagnostic,
+        familyPrefixes: [DURABLE_STEP_FAMILY_PREFIX],
+        limit: this.scanCap,
+      });
+    }
+    const entries = await store.list({
+      type: EntryType.Diagnostic,
+      after: windowStart,
+      before: new Date(windowEnd.getTime() + 1),
+      size: this.scanCap,
+      omitContent: true,
+    });
+    const rows: DurationRow[] = [];
+    for (const entry of entries) {
+      if (
+        typeof entry.durationMs === 'number' &&
+        entry.familyHash?.startsWith(DURABLE_STEP_FAMILY_PREFIX) === true
+      ) {
+        rows.push({ familyHash: entry.familyHash, durationMs: entry.durationMs });
+      }
+    }
+    return rows;
   }
 
   /**

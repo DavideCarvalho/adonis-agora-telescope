@@ -141,11 +141,20 @@ export type {
   PulseRequestHealth,
   PulseServiceOptions,
   PulseSlowEntry,
+  PulseSlowWork,
+  PulseSlowWorkSource,
   PulseSummary,
   PulseThroughput,
   PulseUserLoad,
 } from './metrics/pulse.js';
-export { PULSE_CARDS, PulseService, summarizePulse } from './metrics/pulse.js';
+export {
+  DURABLE_STEP_FAMILY_PREFIX,
+  durableStepOf,
+  PULSE_CARDS,
+  PulseService,
+  rankSlowWork,
+  summarizePulse,
+} from './metrics/pulse.js';
 export {
   buildHistogram,
   emptyHistogram,
@@ -237,6 +246,8 @@ export type { TelescopeRuntime } from './registry.js';
 // — runtime (advanced) —
 export {
   getTelescopeRuntime,
+  getTenantWatchers,
+  registerTenantWatchers,
   resetTelescopeRuntime,
   setTelescopeDiagnosisCoordinator,
   setTelescopeEntryEvents,
@@ -277,7 +288,7 @@ export type { CountBucket } from './service.js';
 // — query API —
 export { TelescopeService } from './service.js';
 // — storage —
-export type { EntryQuery, TelescopeStore } from './store.js';
+export type { DurationQuery, DurationRow, EntryQuery, TelescopeStore } from './store.js';
 export type {
   ColdStoreProvider,
   LucidStoreConfig,

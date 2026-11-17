@@ -285,6 +285,18 @@ export interface PulseHotspot {
   p50: number;
 }
 
+/** A kind of background work: a queue job or a durable workflow step (server 0.x+ `slowWork`). */
+export interface PulseSlowWork {
+  source: 'queue' | 'durable';
+  /** The job (`queue:name`) or the durable step name (`''` for unnamed steps). */
+  name: string;
+  count: number;
+  failures: number;
+  p50: number;
+  p95: number;
+  max: number;
+}
+
 export interface PulseExceptionGroup {
   key: string;
   class: string;
@@ -321,6 +333,8 @@ export interface PulseSummary {
   slowRoutes: PulseHotspot[];
   slowOutgoing: PulseHotspot[];
   slowJobs: PulseHotspot[];
+  /** Queue jobs and durable steps by p95. Absent from an older server. */
+  slowWork?: PulseSlowWork[];
   topExceptions: PulseExceptionGroup[];
   nPlusOne: PulseNPlusOne[];
   loadByUser: PulseUserLoad[];
