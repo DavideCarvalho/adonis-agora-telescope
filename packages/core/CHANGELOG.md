@@ -1,5 +1,16 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.29
+
+### Minor Changes
+
+- [#360](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/360) [`0b6f97a`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/0b6f97a9ee3794de8c23c106f1e2f55f119b445c) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Knobs to record fewer entries on busy apps. Defaults are unchanged (everything is recorded).
+  
+  - `query.sampleRate` (0..1) keeps the queries of that fraction of traces — a kept request keeps all of its queries, so its timeline and N+1 detection stay complete — and `query.minMs` skips queries faster than the given ms. Queries at/above `slowMs` and failed queries are always recorded.
+  - Failed Lucid queries are now tagged `failed` and carry the error message in `content.error`.
+  - `cache.hitSampleRate` (0..1, per trace) samples cache hits; misses, writes, deletes and clears are always recorded. `cache.ignoreStores` and `cache.ignoreKeys` (prefixes / RegExps) drop operations on those stores or keys.
+  - `ignoreRequestPaths` in `config/telescope.ts` (segment-boundary prefixes / RegExps) keeps the request watcher from recording those paths.
+
 ## 1.0.0-rc.28
 
 ### Minor Changes
