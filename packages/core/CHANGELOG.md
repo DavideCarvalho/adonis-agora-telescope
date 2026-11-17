@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.27
+
+### Patch Changes
+
+- [#358](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/358) [`03f8d04`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/03f8d04ad7ffb1cb2be9232292147d72aaed1a93) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - A control plane stores a tenant's batch in a handful of INSERTs instead of one per entry: the ingest hands every entry of the batch to the store before awaiting any write, so the lucid store's buffered writes put them in one multi-row INSERT. Duplicates inside one batch are still counted once, and a failed write still answers 503 with the stored entries deduped on the retry.
+
 ## 1.0.0-rc.26
 
 ### Minor Changes
