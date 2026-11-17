@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.33
+
+### Patch Changes
+
+- [#366](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/366) [`31085a1`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/31085a1484f42e067bd2f1807b0352d5fb575b39) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Alerts about an exception now name the app that recorded it (its `app:` tag) instead of the server that evaluated the rule: on a control plane, an exception from a tenant used to be reported as the central server. The exception context carries `app`, the chat/incident integrations' `App` and the console summary use it, and the Slack card adds an `App` field.
+
 ## 1.0.0-rc.32
 
 ### Minor Changes
