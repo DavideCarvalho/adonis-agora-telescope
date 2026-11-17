@@ -1,7 +1,13 @@
 import { Sparkline as KitSparkline } from '../../agora-kit/charts/sparkline';
 import { Skeleton } from '../../agora-kit/ui/skeleton';
 import { formatCount, formatDuration, formatPercent, formatTime } from '../../client/format.js';
-import type { QueueSummary, TimeseriesBucket, TimeseriesReport } from '../../client/types.js';
+import type {
+  PulseSlowWork,
+  PulseSummary,
+  QueueSummary,
+  TimeseriesBucket,
+  TimeseriesReport,
+} from '../../client/types.js';
 import { cn } from '../primitives/cn.js';
 import {
   AsyncBlock,
@@ -378,31 +384,105 @@ export function QueuesAttentionPanel({ onOpenQueues }: { onOpenQueues: () => voi
   );
 }
 
+/**
+ * What "Slowest jobs" shows: the slowest background work, or why there is none. Rows win whatever
+ * the watcher flags say (the entries are the truth). With none: "not measured" only when neither
+ * source is on (`false` for both), a quiet window when one of them is, and a neutral line when the
+ * server did not say (`null`).
+ */
+export type SlowWorkView =
+  | { kind: 'rows'; rows: PulseSlowWork[] }
+  | { kind: 'off' }
+  | { kind: 'quiet'; message: string };
+
+export function slowWorkView(
+  pulse: Pick<PulseSummary, 'slowJobs' | 'slowWork'>,
+  sources: { durable: boolean | null; queue: boolean | null },
+): SlowWorkView {
+  // An older server has no `slowWork`: its queue hotspots, p99 standing in for p95/max.
+  const rows =
+    pulse.slowWork ??
+    pulse.slowJobs.map((job) => ({
+      source: 'queue' as const,
+      name: job.route,
+      count: job.count,
+      failures: 0,
+      p50: job.p50,
+      p95: job.p99,
+      max: job.p99,
+    }));
+  if (rows.length > 0) return { kind: 'rows', rows };
+  const { durable, queue } = sources;
+  if (durable === false && queue === false) return { kind: 'off' };
+  if (durable === true && queue === true) {
+    return { kind: 'quiet', message: 'No job or workflow step finished in this window.' };
+  }
+  if (durable === true) {
+    return {
+      kind: 'quiet',
+      message: 'Durable is reporting. No workflow step finished in this window.',
+    };
+  }
+  if (queue === true) return { kind: 'quiet', message: 'No jobs in window.' };
+  return { kind: 'quiet', message: 'No jobs or workflow steps in this window.' };
+}
+
+/** Neither durable nor the queue watcher reports: say how to turn either on. */
+function SlowWorkOff() {
+  return (
+    <div className="rounded-md border border-dashed border-line-strong bg-warn/5 px-3 py-3.5 text-[12.5px] leading-relaxed text-dim">
+      <span className="font-medium text-warn">Not measured.</span> No background work is being
+      recorded, so this panel has no data to show — which is not the same as nothing being wrong.
+      Work on <code className="mono text-fg">@adonis-agora/durable</code>: add{' '}
+      <code className="mono text-fg">durableTelescopeExtension()</code> to{' '}
+      <code className="mono text-fg">config/telescope.ts</code>. Jobs on{' '}
+      <code className="mono text-fg">@adonisjs/queue</code>: add{' '}
+      <code className="mono text-fg">'queue'</code> to{' '}
+      <code className="mono text-fg">config/telescope_watchers.ts</code>.
+    </div>
+  );
+}
+
+function slowWorkLabel(row: PulseSlowWork): React.ReactNode {
+  const source = row.source === 'durable' ? 'step' : 'job';
+  return (
+    <>
+      <span className="mono mr-1.5 text-[10.5px] text-faint">{source}</span>
+      <span className="text-foreground">{row.name === '' ? '(unnamed steps)' : row.name}</span>
+    </>
+  );
+}
+
+function slowWorkStats(row: PulseSlowWork): string {
+  const failed = row.failures > 0 ? ` · ${formatCount(row.failures)} failed` : '';
+  return `${formatDuration(row.p95)} p95 · ${formatDuration(row.max)} max · ×${formatCount(row.count)}${failed}`;
+}
+
 export function SlowestJobsPanel({ windowMs }: { windowMs: number }) {
   const state = useOverviewPulse(windowMs);
-  const queueWatcher = useWatcherEnabled('queue');
-  if (queueWatcher === false) {
-    return (
-      <Panel>
-        <SectionTitle title="Slowest jobs" />
-        <WatcherOff watcher="queue" config="config/telescope_watchers.ts" />
-      </Panel>
-    );
-  }
+  const sources = {
+    durable: useWatcherEnabled('durable'),
+    queue: useWatcherEnabled('queue'),
+  };
   return (
     <Panel>
-      <SectionTitle title="Slowest jobs" />
+      <SectionTitle title="Slowest jobs" hint="queue jobs · durable steps" />
       <AsyncBlock state={state} empty="No data in this window." skeletonRows={3}>
-        {(pulse) => (
-          <ListRows
-            rows={pulse.slowJobs.map((j) => ({
-              key: j.route,
-              label: <span className="text-foreground">{j.route}</span>,
-              right: `${formatDuration(j.p99)} p99 · ×${j.count}`,
-            }))}
-            empty="No jobs in window."
-          />
-        )}
+        {(pulse) => {
+          const view = slowWorkView(pulse, sources);
+          if (view.kind === 'off') return <SlowWorkOff />;
+          if (view.kind === 'quiet') return <Empty>{view.message}</Empty>;
+          return (
+            <ListRows
+              rows={view.rows.map((row) => ({
+                key: `${row.source}:${row.name}`,
+                label: slowWorkLabel(row),
+                right: slowWorkStats(row),
+              }))}
+              empty="No jobs in window."
+            />
+          );
+        }}
       </AsyncBlock>
     </Panel>
   );

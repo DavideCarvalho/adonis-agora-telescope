@@ -116,6 +116,28 @@ export interface SlowestQuery {
   tagGroups?: TagGroups;
 }
 
+/** What {@link TelescopeStore.listDurations} reads. */
+export interface DurationQuery {
+  /** Window start (exclusive). */
+  after: Date;
+  /** Window end (inclusive). */
+  before: Date;
+  /** Only entries of this type. */
+  type: string;
+  /** Only entries whose `familyHash` starts with one of these (all families when omitted). */
+  familyPrefixes?: readonly string[];
+  /** At most this many rows, newest first. */
+  limit: number;
+  /** Only entries inside these tag groups (see {@link TagGroups}). */
+  tagGroups?: TagGroups;
+}
+
+/** One timed entry from {@link TelescopeStore.listDurations}. */
+export interface DurationRow {
+  familyHash: string;
+  durationMs: number;
+}
+
 /** What {@link TelescopeStore.countTraceRepeats} counts. */
 export interface TraceRepeatQuery {
   /** Window start (exclusive). */
@@ -303,8 +325,16 @@ export interface TelescopeStore {
   countTraceRepeats?(query: TraceRepeatQuery): Promise<TraceRepeatRow[]>;
 
   /**
-   * Whether {@link countByBucket}, {@link listSlowest}, {@link countTraceRepeats} and
-   * {@link pageTraceIds} honor a query's `tagGroups`. A view narrowed to some tenants or apps uses those fast paths
+   * OPTIONAL fast path for the Pulse "slowest jobs" card: the `familyHash` and `durationMs` of
+   * the entries of `type` in the window that have both, newest first, at most `limit`. Nothing
+   * else of the row is read, so a covering index answers it. Without it Pulse lists the entries.
+   */
+  listDurations?(query: DurationQuery): Promise<DurationRow[]>;
+
+  /**
+   * Whether {@link countByBucket}, {@link listSlowest}, {@link countTraceRepeats},
+   * {@link listDurations} and {@link pageTraceIds} honor a query's `tagGroups`. A view narrowed to
+   * some tenants or apps uses those fast paths
    * only when this is `true`: a store that ignored the groups would count entries the
    * viewer may not see.
    */
@@ -320,6 +350,7 @@ const OPTIONAL_READS = [
   'countTags',
   'listSlowest',
   'countTraceRepeats',
+  'listDurations',
 ] as const;
 
 /**

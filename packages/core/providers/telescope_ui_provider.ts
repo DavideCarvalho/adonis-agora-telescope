@@ -7,7 +7,12 @@ import {
 import { scopedTelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import type { Entry } from '../src/entry.js';
 import { consoleWatchers } from '../src/fleet/watchers.js';
-import { getEnabledWatchers, getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
+import {
+  getEnabledWatchers,
+  getTelescopeRuntime,
+  getTenantWatchers,
+  setTelescopeSelfPath,
+} from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { entryInScope, scopedStore, scopeKey } from '../src/tenancy_store.js';
@@ -621,6 +626,7 @@ export default class TelescopeUiProvider {
         apps: appsOfTags(appTags),
         since: Date.now() - (coreConfig.prune.enabled ? coreConfig.prune.afterMs : 86_400_000),
         own: getEnabledWatchers,
+        forTenants: getTenantWatchers,
       });
 
     // `GET <path>/api/meta` — always registered (unlike the extension-only routes above), because

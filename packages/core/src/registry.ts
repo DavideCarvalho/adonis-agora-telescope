@@ -54,6 +54,13 @@ export interface TelescopeRuntime {
    * walks away reassured.
    */
   enabledWatchers: Set<string>;
+  /**
+   * Watchers this process runs on behalf of the tenants whose entries it holds: on a control
+   * plane, a sibling library that records its tenants' work here (`@adonis-agora/durable`'s
+   * control-plane watcher adds `durable`). The console counts them on for every app in view,
+   * since no tenant instance reports them. Libraries add to it through the runtime slot.
+   */
+  tenantWatchers: Set<string>;
   /** The booted extension registry (entry types / dashboards / data providers), or `null`. */
   registry: ExtensionRegistry | null;
   /**
@@ -128,6 +135,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   requestEnrichment: null,
   selfPath: null,
   enabledWatchers: new Set<string>(),
+  tenantWatchers: new Set<string>(),
   registry: null,
   entryEvents: null,
   paused: false,
@@ -148,6 +156,7 @@ runtime.healthChecks ??= null;
 runtime.reporter ??= null;
 runtime.probePaths ??= new Set<string>();
 runtime.ignoreRequestPaths ??= [];
+runtime.tenantWatchers ??= new Set<string>();
 globalStore[RUNTIME_KEY] = runtime;
 
 /** The shared runtime handle. */
@@ -176,6 +185,23 @@ export function registerEnabledWatchers(names: Iterable<string>): void {
 /** The watcher names currently running. */
 export function getEnabledWatchers(): string[] {
   return [...runtime.enabledWatchers].sort();
+}
+
+/**
+ * Add watcher names this process runs for its tenants (see {@link TelescopeRuntime.tenantWatchers}).
+ * Returns the release, which removes them again.
+ */
+export function registerTenantWatchers(names: Iterable<string>): () => void {
+  const added = [...names];
+  for (const name of added) runtime.tenantWatchers.add(name);
+  return () => {
+    for (const name of added) runtime.tenantWatchers.delete(name);
+  };
+}
+
+/** The watcher names this process runs for its tenants. */
+export function getTenantWatchers(): string[] {
+  return [...runtime.tenantWatchers].sort();
 }
 
 /** Publish (or clear) the dashboard's own path so the request middleware can skip it. */
@@ -268,6 +294,7 @@ export function resetTelescopeRuntime(): void {
   runtime.registry = null;
   runtime.selfPath = null;
   runtime.enabledWatchers.clear();
+  runtime.tenantWatchers.clear();
   runtime.entryEvents = null;
   runtime.paused = false;
   runtime.recordHeartbeat = false;

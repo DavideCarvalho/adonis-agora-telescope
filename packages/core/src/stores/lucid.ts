@@ -13,6 +13,8 @@ import { runAsTelescopeWork } from '../self_scope.js';
 import type {
   BucketCountQuery,
   BucketCountRow,
+  DurationQuery,
+  DurationRow,
   EntryQuery,
   FamilyCountQuery,
   KeyCountRow,
@@ -409,7 +411,7 @@ interface RowPosition {
  * `@adonisjs/lucid` only when the `lucid` driver is the active one.
  */
 export class LucidTelescopeStore implements TelescopeStore {
-  /** {@link countByBucket}, {@link listSlowest} and {@link countTraceRepeats} filter by `tagGroups`. */
+  /** {@link countByBucket}, {@link listSlowest}, {@link countTraceRepeats} and {@link listDurations} filter by `tagGroups`. */
   readonly honorsTagGroups = true;
   private readonly tableName: string;
   /** The configured `schema`, or `undefined` for the connection's current one. */
@@ -664,6 +666,47 @@ export class LucidTelescopeStore implements TelescopeStore {
         .limit(limit)
         .select(...COLUMNS_WITHOUT_CONTENT);
       return rows.map((r) => hydrate(r as unknown as TelescopeColumns));
+    });
+  }
+
+  /**
+   * The family and duration of the timed entries of one type in a window — see
+   * {@link TelescopeStore.listDurations}. Only `type`, `created_at`, `family_hash` and
+   * `duration_ms` are read, all of them in the covering `(type, created_at) INCLUDE
+   * (family_hash, duration_ms)` index on Postgres, so the table is not visited (unless a tag
+   * scope is asked for).
+   */
+  listDurations(query: DurationQuery): Promise<DurationRow[]> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const limit = Math.max(0, Math.floor(query.limit));
+      const prefixes = query.familyPrefixes;
+      if (limit === 0 || (prefixes !== undefined && prefixes.length === 0)) return [];
+      let builder = this.db
+        .from(this.table)
+        .where('type', query.type)
+        .where('created_at', '>', query.after.getTime())
+        .where('created_at', '<=', query.before.getTime())
+        .whereNotNull('family_hash')
+        .whereNotNull('duration_ms');
+      if (prefixes !== undefined) {
+        const clauses = prefixes.map(() => `?? LIKE ? ESCAPE '!'`).join(' OR ');
+        const bindings = prefixes.flatMap((prefix) => ['family_hash', `${likeEscape(prefix)}%`]);
+        builder = builder.whereRaw(`(${clauses})`, bindings);
+      }
+      const scoped = withTagGroups(builder, query.tagGroups);
+      if (scoped === null) return [];
+      const rows = (await scoped
+        .orderBy('created_at', 'desc')
+        .limit(limit)
+        .select('family_hash', 'duration_ms')) as unknown as Array<{
+        family_hash: string;
+        duration_ms: unknown;
+      }>;
+      return rows.map((row) => ({
+        familyHash: row.family_hash,
+        durationMs: toInt(row.duration_ms),
+      }));
     });
   }
 
