@@ -180,6 +180,24 @@ export interface TraceIdQuery {
 }
 
 /**
+ * One page of {@link TelescopeStore.pageTraceIds}: traces ordered most recently active first
+ * (`lastAt` desc, then `traceId` desc), starting after `cursor`.
+ */
+export interface TracePageQuery {
+  /** How many trace ids to return. Ask for one more than you show to learn whether a next page exists. */
+  size: number;
+  /**
+   * The last trace of the previous page: only traces ordered after it are returned, i.e. traces
+   * whose newest entry is older than `cursor.lastAt` (or as old, with a smaller id). A trace that
+   * became active again since that page was read sorts before the cursor now and is left out
+   * (it is on the first page again) instead of being shown twice.
+   */
+  cursor?: TraceIdRow;
+  /** Only entries carrying one tag of each group count; honored only by a store that declares {@link TelescopeStore.honorsTagGroups}. */
+  tagGroups?: TagGroups;
+}
+
+/**
  * The storage abstraction Telescope records through and the headless query API
  * reads from. Adapted from `nestjs-telescope`'s `StorageProvider`, trimmed to the
  * headless slice (no rollups, keyset cursors, or family-seen alerting — those are
@@ -231,6 +249,17 @@ export interface TelescopeStore {
   listTraceIds?(query: TraceIdQuery): Promise<TraceIdRow[]>;
 
   /**
+   * OPTIONAL keyset fast path for the traces screen: the next `size` trace ids, most recently
+   * active first, after `cursor` — see {@link TracePageQuery}.
+   *
+   * Unlike {@link listTraceIds} it never groups the whole table: a SQL store walks the entries
+   * newest-first from the cursor and stops once it has seen `size` traces, so a page costs about
+   * as many rows as those traces hold, on the first page and on the hundredth. The metrics
+   * service prefers it over {@link listTraceIds}.
+   */
+  pageTraceIds?(query: TracePageQuery): Promise<TraceIdRow[]>;
+
+  /**
    * OPTIONAL fast path for the throughput chart: per-bucket, per-type COUNTS,
    * without loading the entries.
    *
@@ -274,8 +303,8 @@ export interface TelescopeStore {
   countTraceRepeats?(query: TraceRepeatQuery): Promise<TraceRepeatRow[]>;
 
   /**
-   * Whether {@link countByBucket}, {@link listSlowest} and {@link countTraceRepeats} honor
-   * a query's `tagGroups`. A view narrowed to some tenants or apps uses those fast paths
+   * Whether {@link countByBucket}, {@link listSlowest}, {@link countTraceRepeats} and
+   * {@link pageTraceIds} honor a query's `tagGroups`. A view narrowed to some tenants or apps uses those fast paths
    * only when this is `true`: a store that ignored the groups would count entries the
    * viewer may not see.
    */
@@ -285,6 +314,7 @@ export interface TelescopeStore {
 /** The optional read methods a store may implement on top of the required contract. */
 const OPTIONAL_READS = [
   'listTraceIds',
+  'pageTraceIds',
   'countByBucket',
   'countFamilies',
   'countTags',

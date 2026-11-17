@@ -18,6 +18,7 @@ import type {
   TelescopeStore,
   TraceIdQuery,
   TraceIdRow,
+  TracePageQuery,
 } from '../store.js';
 
 /** Options for {@link InMemoryTelescopeStore}. */
@@ -136,6 +137,36 @@ export class InMemoryTelescopeStore implements TelescopeStore {
       .sort((a, b) => b[1] - a[1])
       .slice(offset, offset + size)
       .map(([traceId, at]) => ({ traceId, lastAt: new Date(at) }));
+  }
+
+  /**
+   * The keyset counterpart of {@link listTraceIds} (see {@link TelescopeStore.pageTraceIds}).
+   * `tagGroups` is not honored here, like the other aggregate reads of this store.
+   */
+  async pageTraceIds(query: TracePageQuery): Promise<TraceIdRow[]> {
+    const size = Math.max(0, Math.floor(query.size));
+    if (size === 0) return [];
+    const lastAt = new Map<string, number>();
+    for (const entry of this.newestFirst()) {
+      if (entry.traceId === null || lastAt.has(entry.traceId)) continue;
+      lastAt.set(entry.traceId, entry.createdAt.getTime());
+    }
+    const cursor = query.cursor;
+    const rows = [...lastAt.entries()].map(([traceId, at]) => ({ traceId, lastAt: new Date(at) }));
+    rows.sort(
+      (a, b) =>
+        b.lastAt.getTime() - a.lastAt.getTime() ||
+        (a.traceId < b.traceId ? 1 : a.traceId > b.traceId ? -1 : 0),
+    );
+    const after =
+      cursor === undefined
+        ? rows
+        : rows.filter(
+            (row) =>
+              row.lastAt.getTime() < cursor.lastAt.getTime() ||
+              (row.lastAt.getTime() === cursor.lastAt.getTime() && row.traceId < cursor.traceId),
+          );
+    return after.slice(0, size);
   }
 
   /** The in-memory counterpart of the projected bucket count. Nothing to project

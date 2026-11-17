@@ -23,7 +23,13 @@ const DECORATORS: Array<[string, (inner: TelescopeStore) => TelescopeStore]> = [
   ['otel', (inner) => new OtelEmittingTelescopeStore(inner, emitter, ['query'])],
 ];
 
-const OPTIONAL = ['listTraceIds', 'countByBucket', 'countFamilies', 'countTags'] as const;
+const OPTIONAL = [
+  'listTraceIds',
+  'pageTraceIds',
+  'countByBucket',
+  'countFamilies',
+  'countTags',
+] as const;
 
 /** A store with only the required methods. */
 function minimalStore(): TelescopeStore {
@@ -50,6 +56,7 @@ describe.each(DECORATORS)('%s store decorator', (_name, decorate) => {
     expect(spy).toHaveBeenCalledTimes(1);
     expect(await store.countTags!({ limit: 5 })).toEqual([{ key: 't', count: 1 }]);
     expect(await store.listTraceIds!({ size: 5 })).toHaveLength(1);
+    expect(await store.pageTraceIds!({ size: 5 })).toHaveLength(1);
   });
 
   it('does not claim optional reads the inner store lacks', () => {
