@@ -25,7 +25,7 @@ sources:
 # Setting up @adonis-agora/telescope
 
 `@adonis-agora/telescope` is Laravel Telescope-style **headless** observability for
-AdonisJS: it records every inbound HTTP request, every unhandled exception and every
+AdonisJS: it records every inbound HTTP request (unless listed in `ignoreRequestPaths`), every unhandled exception and every
 `agora:<lib>:<event>` diagnostics publish as a queryable `Entry`. The core ships no
 page — mounting a UI is a separate package (`telescope-ui-dashboard` skill).
 

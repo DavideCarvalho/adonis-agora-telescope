@@ -75,7 +75,7 @@ export default defineConfig({
   // ignoreTables: ['job_heartbeats'] — the table a statement reads first or writes.
   // sampleRate: 0.1 — keep the queries of 10% of the traces (whole traces; slow + failed always kept).
   // minMs: 2 — skip queries under 2ms (hides fast N+1 loops; prefer sampleRate for N+1).
-  // cache: { hitSampleRate: 0.1, ignoreStores: ['memory'], ignoreKeys: ['session:'] } — misses/writes always kept.
+  // cache: { hitSampleRate: 0.1, ignoreStores: ['memory'], ignoreKeys: ['session:'] } — misses/writes/deletes/clears always kept.
   // (The store's own INSERTs/reads/prunes are excluded automatically.)
   // redis: { captureValues: false } — the key (first argument) is kept, every other argument is '[REDACTED]'
   // (arity preserved); AUTH / HELLO / CONFIG / ACL / MIGRATE redact every argument, key included;
