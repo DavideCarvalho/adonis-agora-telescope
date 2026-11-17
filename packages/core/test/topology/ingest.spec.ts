@@ -108,6 +108,58 @@ describe('server: ingest', () => {
     expect(await store.count()).toBe(3);
   });
 
+  it('hands the whole batch to the store before awaiting any write (one INSERT, not one per entry)', async () => {
+    const { store, handler } = setup();
+    const original = store.record.bind(store);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    store.record = (async (input: Parameters<typeof original>[0]) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      return original(input);
+    }) as typeof store.record;
+    const body = { entries: [wire('a'), wire('b'), wire('c'), wire('d')] };
+    expect((await handler.ingest({ token: 'shop-secret', app: 'shop', body })).body).toEqual({
+      accepted: 4,
+      duplicates: 0,
+      rejected: 0,
+    });
+    expect(maxInFlight).toBe(4);
+    expect(await store.count()).toBe(4);
+  });
+
+  it('a failed write answers 503; the entries that were stored are deduped on the retry', async () => {
+    const { store, handler } = setup();
+    const original = store.record.bind(store);
+    let failOnce = true;
+    store.record = (async (input: Parameters<typeof original>[0]) => {
+      if (input.id === 'shop:b' && failOnce) {
+        failOnce = false;
+        throw new Error('database blip');
+      }
+      return original(input);
+    }) as typeof store.record;
+    const body = { entries: [wire('a'), wire('b'), wire('c')] };
+    expect((await handler.ingest({ token: 'shop-secret', app: 'shop', body })).status).toBe(503);
+    expect((await handler.ingest({ token: 'shop-secret', app: 'shop', body })).body).toEqual({
+      accepted: 1,
+      duplicates: 2,
+      rejected: 0,
+    });
+    expect(await store.count()).toBe(3);
+  });
+
+  it('a store that throws synchronously answers 503 instead of escaping', async () => {
+    const { store, handler } = setup();
+    store.record = (() => {
+      throw new Error('not async');
+    }) as unknown as typeof store.record;
+    const body = { entries: [wire('a'), wire('b')] };
+    expect((await handler.ingest({ token: 'shop-secret', app: 'shop', body })).status).toBe(503);
+  });
+
   it('validates every entry and size-limits the batch', async () => {
     const { store, handler } = setup({
       limits: { maxEntries: 3, maxEntryBytes: 100, maxBodyBytes: 1000 },
