@@ -6,7 +6,7 @@ import {
 } from '../src/dev_tools/telescope_dev_tools.js';
 import { scopedTelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import type { Entry } from '../src/entry.js';
-import { fleetWatchers } from '../src/fleet/watchers.js';
+import { consoleWatchers } from '../src/fleet/watchers.js';
 import { getEnabledWatchers, getTelescopeRuntime, setTelescopeSelfPath } from '../src/registry.js';
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
@@ -614,26 +614,14 @@ export default class TelescopeUiProvider {
     // On a control plane the entries come from the tenants, so "is the `query` watcher on" is a
     // question about them: the union of what the instances of the apps in view report. A
     // standalone app answers with its own watchers (`{}` keeps that default).
-    const controlPlaneWatchers = async (
-      appTags: string[] | null,
-    ): Promise<{ watchers?: string[] | null }> => {
-      const fleet = getTelescopeRuntime().fleet;
-      if (fleet === null || coreConfig.topology.topology !== 'control-plane') return {};
-      const apps = appsOfTags(appTags);
-      const window = coreConfig.prune.enabled ? coreConfig.prune.afterMs : 86_400_000;
-      try {
-        return {
-          watchers: fleetWatchers({
-            instances: await fleet.instances(apps),
-            since: Date.now() - window,
-            own: apps === null ? getEnabledWatchers() : null,
-          }),
-        };
-      } catch {
-        // The instances table is unreachable: unknown, rather than this process's own list.
-        return { watchers: null };
-      }
-    };
+    const controlPlaneWatchers = (appTags: string[] | null) =>
+      consoleWatchers({
+        controlPlane: coreConfig.topology.topology === 'control-plane',
+        fleet: getTelescopeRuntime().fleet,
+        apps: appsOfTags(appTags),
+        since: Date.now() - (coreConfig.prune.enabled ? coreConfig.prune.afterMs : 86_400_000),
+        own: getEnabledWatchers,
+      });
 
     // `GET <path>/api/meta` — always registered (unlike the extension-only routes above), because
     // the dashboard's `ai.enabled` flag lives here too. `entryTypes`/`dashboards` are empty when no

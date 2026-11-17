@@ -43,3 +43,43 @@ export function fleetWatchers(input: FleetWatchersInput): string[] | null {
   }
   return [...union].sort();
 }
+
+/** Inputs of {@link consoleWatchers}. */
+export interface ConsoleWatchersInput {
+  /** Whether this process is a control plane (the entries on screen are the tenants'). */
+  controlPlane: boolean;
+  /** The fleet, or `null` when it is off (`fleet.enabled: false`). */
+  fleet: {
+    instances(apps: string[] | null): Promise<FleetWatchersInput['instances']>;
+  } | null;
+  /** The apps in view, or `null` for all of them. */
+  apps: string[] | null;
+  /** See {@link FleetWatchersInput.since}. */
+  since: number;
+  /** This process's own watchers. */
+  own: () => readonly string[];
+}
+
+/**
+ * What `/meta` says about the watchers. `{}` outside a control plane (the console keeps its own
+ * list); on a control plane the union the instances report, or `{ watchers: null }` (unknown) when
+ * the fleet is off or unreachable — never this process's own list, which says nothing about the
+ * tenants whose entries are on screen.
+ */
+export async function consoleWatchers(
+  input: ConsoleWatchersInput,
+): Promise<{ watchers?: string[] | null }> {
+  if (!input.controlPlane) return {};
+  if (input.fleet === null) return { watchers: null };
+  try {
+    return {
+      watchers: fleetWatchers({
+        instances: await input.fleet.instances(input.apps),
+        since: input.since,
+        own: input.apps === null ? input.own() : null,
+      }),
+    };
+  } catch {
+    return { watchers: null };
+  }
+}

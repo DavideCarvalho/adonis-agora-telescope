@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  consoleWatchers,
   FleetRegistry,
   fleetWatchers,
   InstanceReporter,
@@ -123,5 +124,43 @@ describe('consoleMeta watchers', () => {
     expect(consoleMeta(apis, { watchers: ['query'] }).watchers).toEqual(['query']);
     expect(consoleMeta(apis, { watchers: null })).not.toHaveProperty('watchers');
     expect(Array.isArray(consoleMeta(apis).watchers)).toBe(true);
+  });
+});
+
+describe('consoleWatchers (what /meta says)', () => {
+  const own = () => ['request'];
+  const fleetOf = (instances: ReturnType<typeof instance>[]) => ({
+    instances: async () => instances,
+  });
+
+  it('outside a control plane: {} (the console keeps its own list)', async () => {
+    expect(
+      await consoleWatchers({ controlPlane: false, fleet: null, apps: null, since: 0, own }),
+    ).toEqual({});
+  });
+
+  it('control plane without the fleet: unknown, never its own list', async () => {
+    expect(
+      await consoleWatchers({ controlPlane: true, fleet: null, apps: null, since: 0, own }),
+    ).toEqual({ watchers: null });
+  });
+
+  it('control plane: the union the instances report', async () => {
+    expect(
+      await consoleWatchers({
+        controlPlane: true,
+        fleet: fleetOf([instance('et', ['query'])]),
+        apps: null,
+        since: NOW - 1000,
+        own,
+      }),
+    ).toEqual({ watchers: ['query', 'request'] });
+  });
+
+  it('control plane with the fleet unreachable: unknown', async () => {
+    const fleet = { instances: async () => Promise.reject(new Error('down')) };
+    expect(await consoleWatchers({ controlPlane: true, fleet, apps: null, since: 0, own })).toEqual(
+      { watchers: null },
+    );
   });
 });

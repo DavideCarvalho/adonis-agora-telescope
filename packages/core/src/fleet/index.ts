@@ -56,5 +56,5 @@ export type {
   RelatedException,
 } from './view.js';
 export { readFleet } from './view.js';
-export type { FleetWatchersInput } from './watchers.js';
-export { fleetWatchers } from './watchers.js';
+export type { ConsoleWatchersInput, FleetWatchersInput } from './watchers.js';
+export { consoleWatchers, fleetWatchers } from './watchers.js';
