@@ -148,7 +148,7 @@ Source: `docs/concepts/protection.mdx` (Pausing on purpose).
 ### Pattern 5 — a custom store
 
 Implement the six required methods (`record`/`get`/`list`/`count`/`prune`/`clear`)
-and pass an instance as `store` — add the optional fast paths (`listTraceIds`,
+and pass an instance as `store` — add the optional fast paths (`pageTraceIds`, `listTraceIds`,
 `countByBucket`, `countFamilies`, `countTags`, `listSlowest`, `countTraceRepeats`; set
 `honorsTagGroups` only if they filter by `tagGroups`) when you can, or decorators and the
 dashboard fall back to a full scan. Three
@@ -187,7 +187,7 @@ export class MongoTelescopeStore implements TelescopeStore {
                                contentText: JSON.stringify(entry.content) }) // search target
     return entry
   }
-  /* get / list / count / prune(olderThan, keepLast?) / clear + optional listTraceIds/countByBucket/countFamilies/countTags/listSlowest/countTraceRepeats */
+  /* get / list / count / prune(olderThan, keepLast?) / clear + optional pageTraceIds/listTraceIds/countByBucket/countFamilies/countTags/listSlowest/countTraceRepeats */
 }
 
 // config/telescope.ts

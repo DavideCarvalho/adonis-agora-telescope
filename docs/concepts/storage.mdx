@@ -45,6 +45,7 @@ when it is absent, so a store without them is correct, just slower on a large ta
 
 | Method | Serves | Fallback when absent |
 |--------|--------|----------------------|
+| `pageTraceIds({ size, cursor?, tagGroups? })` | the traces screen: the next `size` trace ids after `cursor` (the last `{ traceId, lastAt }` of the previous page), most recently seen first, ties by the larger id. A trace seen after `cursor.lastAt` is left out | `listTraceIds`, else the scan below |
 | `listTraceIds({ size, page?, before?, after? })` | the traces screen: a page of distinct trace ids, most recently seen first | scans entries (up to the metrics scan cap) and groups them by `traceId` |
 | `countByBucket({ after, before, bucketMs, type? })` | the throughput chart: per-bucket, per-type counts | lists the window without content and buckets it in JS |
 | `countFamilies({ limit, type? })` | `topFamilies`: busiest `familyHash` values, ties to the most recently seen | lists the whole table without content and counts in JS |
@@ -56,13 +57,13 @@ Pulse covers its whole window from SQL when the store has `countByBucket`, `list
 `countTraceRepeats`; without all three it scans the newest 50,000 entries of the window
 (`truncated: true` past that).
 
-`tagGroups` (on `countByBucket`, `listSlowest` and `countTraceRepeats`) narrows to entries
+`tagGroups` (on `pageTraceIds`, `countByBucket`, `listSlowest` and `countTraceRepeats`) narrows to entries
 carrying, for each group, one of its tags. A console viewer limited to some organizations or
 apps keeps those fast paths only when the store sets `honorsTagGroups: true`; otherwise its
 screens scan. `list` may also honour `contentFields: string[]` (return a `content` holding only
 those top-level fields) and `omitContent`; both are hints, and ignoring them is correct.
 
-The `memory` driver implements the first four; the `lucid` driver implements all of them,
+The `memory` driver implements the first five; the `lucid` driver implements all of them,
 `honorsTagGroups` and `contentFields` included. The redaction, sampling, streaming and
 OTel decorators the provider wraps around your store expose each method only when the store
 underneath has it.

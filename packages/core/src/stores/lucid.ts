@@ -22,6 +22,7 @@ import type {
   TelescopeStore,
   TraceIdQuery,
   TraceIdRow,
+  TracePageQuery,
   TraceRepeatQuery,
   TraceRepeatRow,
 } from '../store.js';
@@ -786,6 +787,114 @@ export class LucidTelescopeStore implements TelescopeStore {
   }
 
   /**
+   * The next page of traces, most recently active first — see {@link TelescopeStore.pageTraceIds}.
+   *
+   * Walks the entries newest-first on the `created_at` index (from the cursor down), reading only
+   * `id`, `trace_id` and `created_at`, in batches that grow until `size` traces are known. The first
+   * time a trace shows up in that walk is its newest entry, so no `GROUP BY` over the window is
+   * needed. Past a cursor, the candidates are checked once against the `trace_id` index for an
+   * entry newer than the cursor: such a trace sorts before the cursor (it was on an earlier page,
+   * or it became active again) and is left out.
+   */
+  pageTraceIds(query: TracePageQuery): Promise<TraceIdRow[]> {
+    return runAsTelescopeWork(async () => {
+      await this.init();
+      const size = Math.max(0, Math.floor(query.size));
+      if (size === 0) return [];
+      if (query.tagGroups?.some((group) => group.length === 0)) return [];
+      const cursor = query.cursor;
+      const cursorAt = cursor?.lastAt.getTime();
+
+      /** Each trace's newest entry, in the order the walk met them. */
+      const seen = new Map<string, number>();
+      /** Traces kept for the page (not newer than the cursor). */
+      const kept: TraceIdRow[] = [];
+      let last: { at: number; id: string } | null = null;
+      let batch = Math.min(TRACE_WALK_MAX_BATCH, Math.max(TRACE_WALK_MIN_BATCH, size * 30));
+
+      for (;;) {
+        let builder = this.db.from(this.table).whereNotNull('trace_id');
+        if (last !== null) {
+          // Keyset continuation on (created_at, id): rows of the boundary millisecond the
+          // previous batch did not reach are read, none twice.
+          const { at, id } = last;
+          builder = builder
+            .where('created_at', '<=', at)
+            .whereRaw('(?? < ? OR ?? < ?)', ['created_at', at, 'id', id]);
+        } else if (cursorAt !== undefined) {
+          builder = builder.where('created_at', '<=', cursorAt);
+        }
+        const scoped = withTagGroups(builder, query.tagGroups);
+        if (scoped === null) return [];
+        const rows = (await scoped
+          .orderBy('created_at', 'desc')
+          .orderBy('id', 'desc')
+          .limit(batch)
+          .select('id', 'trace_id', 'created_at')) as unknown as Array<{
+          id: string;
+          trace_id: string;
+          created_at: unknown;
+        }>;
+
+        const fresh: TraceIdRow[] = [];
+        for (const row of rows) {
+          if (seen.has(row.trace_id)) continue;
+          const at = toInt(row.created_at);
+          seen.set(row.trace_id, at);
+          // A trace whose newest entry sits on the cursor's millisecond comes after the cursor
+          // only when its id is smaller.
+          if (cursor !== undefined && at === cursorAt && !(row.trace_id < cursor.traceId)) {
+            continue;
+          }
+          fresh.push({ traceId: row.trace_id, lastAt: new Date(at) });
+        }
+        kept.push(...(await this.withoutNewerThan(fresh, cursorAt, query.tagGroups)));
+
+        const tail = rows[rows.length - 1];
+        const exhausted = rows.length < batch || tail === undefined;
+        if (tail !== undefined) last = { at: toInt(tail.created_at), id: tail.id };
+        kept.sort(compareTraceRows);
+        // Every trace the walk has not met yet is no newer than `last.at`: once the size-th kept
+        // trace is strictly newer, nothing unseen can sort before it.
+        const boundary = kept[size - 1];
+        if (
+          exhausted ||
+          (boundary !== undefined && last !== null && boundary.lastAt.getTime() > last.at)
+        ) {
+          return kept.slice(0, size);
+        }
+        batch = Math.min(TRACE_WALK_MAX_BATCH, batch * 2);
+      }
+    });
+  }
+
+  /**
+   * `rows` minus the traces with an entry newer than `cursorAt` (in the tag groups): those sort
+   * before the cursor. Reads the newest entry of each candidate on the `trace_id` index, with no
+   * `created_at` bound, so the cost follows the page and not how deep the cursor is. Nothing to
+   * check when there is no cursor.
+   */
+  private async withoutNewerThan(
+    rows: TraceIdRow[],
+    cursorAt: number | undefined,
+    tagGroups: TagGroups | undefined,
+  ): Promise<TraceIdRow[]> {
+    if (cursorAt === undefined || rows.length === 0) return rows;
+    const newer = new Set<string>();
+    for (let i = 0; i < rows.length; i += TRACE_ID_CHUNK) {
+      const ids = rows.slice(i, i + TRACE_ID_CHUNK).map((row) => row.traceId);
+      const scoped = withTagGroups(this.db.from(this.table).whereIn('trace_id', ids), tagGroups);
+      if (scoped === null) return [];
+      const found = (await scoped
+        .groupBy('trace_id')
+        .max('created_at as last_at')
+        .select('trace_id')) as unknown as Array<{ trace_id: string; last_at: unknown }>;
+      for (const row of found) if (toInt(row.last_at) > cursorAt) newer.add(row.trace_id);
+    }
+    return newer.size === 0 ? rows : rows.filter((row) => !newer.has(row.traceId));
+  }
+
+  /**
    * Per-bucket, per-type counts for the throughput chart, grouped in SQL so one row
    * per `(bucket, type)` leaves the database instead of one per entry.
    *
@@ -1281,6 +1390,16 @@ const CONTENT_FIELD = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Trace ids per `whereIn` when summing durations without `sum()`. */
 const TRACE_ID_CHUNK = 500;
+/** First batch of the traces walk is `size * 30` rows within these bounds; each next batch doubles, up to the max. */
+const TRACE_WALK_MIN_BATCH = 200;
+const TRACE_WALK_MAX_BATCH = 20_000;
+
+/** Most recently active first, then the larger trace id: the traces list order. */
+function compareTraceRows(a: TraceIdRow, b: TraceIdRow): number {
+  const at = b.lastAt.getTime() - a.lastAt.getTime();
+  if (at !== 0) return at;
+  return a.traceId < b.traceId ? 1 : a.traceId > b.traceId ? -1 : 0;
+}
 
 /**
  * SQL giving a content field's value as JSON text (`200`, `"GET"`, `null`), or SQL NULL
