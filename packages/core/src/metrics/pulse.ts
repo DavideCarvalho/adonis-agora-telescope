@@ -933,7 +933,7 @@ export class PulseService {
         cards.has('slowJobs') ? listOf(EntryType.Job, null) : none,
         cards.has('slowJobs')
           ? this.durableStepDurations(store, windowStart, windowEnd)
-          : Promise.resolve([] as DurationRow[]),
+          : Promise.resolve({ rows: [] as DurationRow[], truncated: false }),
       ]);
 
     const counts: Record<string, number> = {};
@@ -952,32 +952,34 @@ export class PulseService {
       exceptions: exceptions.flat(),
       httpClient,
       jobs,
-      durableSteps,
+      durableSteps: durableSteps.rows,
       slowest,
       repeats,
-      truncated:
-        lists.some((list) => list.length >= this.scanCap) || durableSteps.length >= this.scanCap,
+      truncated: lists.some((list) => list.length >= this.scanCap) || durableSteps.truncated,
     };
   }
 
   /**
    * The family and duration of the window's timed durable steps: from the store's
    * {@link TelescopeStore.listDurations} (an index read, no row content), else from the window's
-   * diagnostic entries listed without content.
+   * diagnostic entries listed without content. `truncated` when the read hit `scanCap` — for the
+   * fallback, BEFORE the durable-step filter: a window crowded with other diagnostics can push
+   * steps past the cap even when few of the listed rows are steps.
    */
   private async durableStepDurations(
     store: TelescopeStore,
     windowStart: Date,
     windowEnd: Date,
-  ): Promise<DurationRow[]> {
+  ): Promise<{ rows: DurationRow[]; truncated: boolean }> {
     if (typeof store.listDurations === 'function') {
-      return store.listDurations({
+      const rows = await store.listDurations({
         after: windowStart,
         before: windowEnd,
         type: EntryType.Diagnostic,
         familyPrefixes: [DURABLE_STEP_FAMILY_PREFIX],
         limit: this.scanCap,
       });
+      return { rows, truncated: rows.length >= this.scanCap };
     }
     const entries = await store.list({
       type: EntryType.Diagnostic,
@@ -995,7 +997,7 @@ export class PulseService {
         rows.push({ familyHash: entry.familyHash, durationMs: entry.durationMs });
       }
     }
-    return rows;
+    return { rows, truncated: entries.length >= this.scanCap };
   }
 
   /**
