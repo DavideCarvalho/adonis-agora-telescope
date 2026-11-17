@@ -64,8 +64,13 @@ export type { HttpTransportOptions } from './http.js';
 export { HttpTenantChannel } from './http.js';
 export type { QueueAdapterLike, QueueJobData, QueueTransportOptions } from './queue.js';
 export { QueueControlPlaneChannel, QueueTenantChannel } from './queue.js';
-export type { RedisCallClient, RedisTransportOptions } from './redis.js';
-export { RedisControlPlaneChannel, RedisTenantChannel } from './redis.js';
+export type {
+  BlockingClient,
+  RedisCallClient,
+  RedisReadRound,
+  RedisTransportOptions,
+} from './redis.js';
+export { dedicatedConnection, RedisControlPlaneChannel, RedisTenantChannel } from './redis.js';
 export type {
   ConsumeOutcome,
   ControlPlaneChannel,

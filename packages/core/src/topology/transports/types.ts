@@ -1,3 +1,4 @@
+import type { TenantBufferOptions } from '../config.js';
 /**
  * The tenant → control plane push channel: how a tenant's batches reach the control plane, and how
  * the control plane reads them. One {@link TelescopeTransport} is configured the same way on both
@@ -82,6 +83,11 @@ export interface TelescopeTransport {
   controlPlane(ctx: TransportContext): Promise<ControlPlaneChannel | null>;
   /** Whether the broker answers (the doctor). Throws with the reason when it does not. */
   ping(ctx: TransportContext): Promise<string>;
+  /**
+   * Defaults for the tenant's buffer with this transport (say, a longer flush interval where each
+   * send costs broker commands). `tenant.buffer` overrides them.
+   */
+  readonly bufferDefaults?: TenantBufferOptions;
 }
 
 export type TransportDriver = 'http' | 'queue' | 'bullmq' | 'redis' | 'durable';
