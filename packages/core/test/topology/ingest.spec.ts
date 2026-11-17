@@ -151,6 +151,15 @@ describe('server: ingest', () => {
     expect(await store.count()).toBe(3);
   });
 
+  it('a store that throws synchronously answers 503 instead of escaping', async () => {
+    const { store, handler } = setup();
+    store.record = (() => {
+      throw new Error('not async');
+    }) as unknown as typeof store.record;
+    const body = { entries: [wire('a'), wire('b')] };
+    expect((await handler.ingest({ token: 'shop-secret', app: 'shop', body })).status).toBe(503);
+  });
+
   it('validates every entry and size-limits the batch', async () => {
     const { store, handler } = setup({
       limits: { maxEntries: 3, maxEntryBytes: 100, maxBodyBytes: 1000 },

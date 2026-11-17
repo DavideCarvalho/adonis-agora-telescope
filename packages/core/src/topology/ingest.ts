@@ -299,7 +299,12 @@ export function createIngestHandler(options: IngestHandlerOptions) {
       inBatch.add(id);
       const input: RecordInput & { id: string; createdAt?: string } = { ...entry, id };
       // Telescope's own work: nothing the write causes (its INSERT) is recorded again.
-      writes.push({ id, write: runAsTelescopeWork(() => store.record(input)) });
+      // `new Promise` turns a store that throws synchronously into a rejection (a 503 below), and
+      // still calls `record` right away, so the batch stays in one tick.
+      const write = new Promise((resolve) =>
+        resolve(runAsTelescopeWork(() => store.record(input))),
+      );
+      writes.push({ id, write });
     }
     const outcomes = await Promise.allSettled(writes.map((w) => w.write));
     let failed = false;
