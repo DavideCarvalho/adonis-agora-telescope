@@ -222,7 +222,7 @@
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "26.6.6",
     "better-sqlite3": "13.1.1",
-    "bullmq": "6.7.5",
+    "bullmq": "6.7.6",
     "cron-parser": "5.10.5",
     "hyparquet": "1.33.0",
     "hyparquet-compressors": "1.1.3",
