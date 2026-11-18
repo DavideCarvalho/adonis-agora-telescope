@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.23
+
+### Patch Changes
+
+- [#369](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/369) [`b032c54`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/b032c54ce63dc22aa32badb8b5e4139d2c9e5c30) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console ⌘K: arrow keys now visibly move the selection. The highlighted item was styled with a bare `data-selected:` (cmdk marks every item `true` or `false`) and with the dialog's own surface color, so moving looked like nothing happened.
+
 ## 3.0.0-rc.22
 
 ### Minor Changes
