@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { TelescopeClient } from '../client/telescope-client.js';
-import type { EntriesQuery, EntrySummary } from '../client/types.js';
+import type { ArchitectureWindow, EntriesQuery, EntrySummary } from '../client/types.js';
 
 /**
  * The {@link TelescopeClient} the hooks call, provided at the app root. A default instance (deriving
@@ -237,6 +237,11 @@ export function useQueueJob(queue: string | null, id: string | null) {
 export function useFleet() {
   const client = useTelescopeClient();
   return useTelescopeQuery(['fleet'], () => client.fleet());
+}
+
+export function useArchitecture(window: ArchitectureWindow) {
+  const client = useTelescopeClient();
+  return useTelescopeQuery(['architecture', window], () => client.architecture(window));
 }
 
 export function useLiveSchedules() {

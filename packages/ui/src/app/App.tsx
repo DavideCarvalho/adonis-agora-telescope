@@ -11,6 +11,7 @@ import { ENTRY_TYPES } from '../client/types.js';
 import { AppEmptyNotice, AppPicker } from './AppPicker.js';
 import {
   AiIcon,
+  ArchitectureIcon,
   ClockIcon,
   DashboardIcon,
   EntriesIcon,
@@ -44,6 +45,10 @@ const EntryDetail = lazySection(() => import('./EntryDetail.js'), 'EntryDetail')
 const ExceptionsSection = lazySection(() => import('./ExceptionsSection.js'), 'ExceptionsSection');
 const ExportsSection = lazySection(() => import('./ExportsSection.js'), 'ExportsSection');
 const FleetSection = lazySection(() => import('./FleetSection.js'), 'FleetSection');
+const ArchitectureSection = lazySection(
+  () => import('./ArchitectureSection.js'),
+  'ArchitectureSection',
+);
 const ExtensionsSection = lazySection(() => import('./ExtensionsSection.js'), 'ExtensionsSection');
 const ProfilesSection = lazySection(() => import('./ProfilesSection.js'), 'ProfilesSection');
 const PulseSection = lazySection(() => import('./PulseSection.js'), 'PulseSection');
@@ -63,6 +68,7 @@ type SectionKey =
   | 'overview'
   | 'pulse'
   | 'fleet'
+  | 'architecture'
   | 'entries'
   | 'traces'
   | 'screens'
@@ -78,6 +84,7 @@ const TITLES: Record<TelescopeRoute['name'], string> = {
   overview: 'Overview',
   pulse: 'Pulse',
   fleet: 'Fleet',
+  architecture: 'Architecture',
   exceptions: 'Exceptions',
   entries: 'Entries',
   entry: 'Entry',
@@ -161,6 +168,13 @@ function buildNav(
           'deploys',
           'health checks',
           'restart loop',
+        ]),
+        page('architecture', 'Architecture', <ArchitectureIcon />, [
+          'apps',
+          'graph',
+          'calls between apps',
+          'permissions',
+          'grants',
         ]),
         page('exceptions', 'Exceptions', <ExceptionIcon />, ['errors', 'grouped by class']),
       ],
@@ -354,6 +368,8 @@ function Console() {
               <PulseSection onOpenTrace={openTrace} />
             ) : route.name === 'fleet' ? (
               <FleetSection onOpenEntry={openEntry} />
+            ) : route.name === 'architecture' ? (
+              <ArchitectureSection />
             ) : route.name === 'entries' ? (
               <EntriesSection onOpenEntry={openEntry} onOpenTrace={openTrace} />
             ) : route.name === 'screens' ? (

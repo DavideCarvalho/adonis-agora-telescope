@@ -15,6 +15,7 @@
     "tracing-across-apps",
     "service-discovery",
     "health-checks",
-    "fleet"
+    "fleet",
+    "architecture"
   ]
 }

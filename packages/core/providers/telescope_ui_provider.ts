@@ -567,6 +567,19 @@ export default class TelescopeUiProvider {
       })
       .as('telescope_ui.fleet');
 
+    // `GET <path>/api/architecture?window=1h|6h|24h` — the apps and what links them: the calls
+    // between them in the window, and (with authkit-server in this process) who may call whom.
+    router
+      .get(`${apiBase}/architecture`, async (ctx: GuardedContext) => {
+        const a = await gate(ctx);
+        if (a === null) return;
+        return a.fleetApi.architecture(ctx, {
+          apps: appsOfTags(a.selected.appTags),
+          hidden: a.scope !== null && !a.scope.all,
+        });
+      })
+      .as('telescope_ui.architecture');
+
     // `GET <path>/api/health` — this process's health checks, run now (cached per check).
     router
       .get(`${apiBase}/health`, async (ctx: GuardedContext) => {
