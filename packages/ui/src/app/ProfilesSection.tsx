@@ -1,9 +1,10 @@
 import { parseAsString, useQueryState } from 'nuqs';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { type ComboOption, ComboSelect } from '../agora-kit/blocks/combo-field';
 import { Badge } from '../agora-kit/ui/badge';
 import { Button } from '../agora-kit/ui/button';
 import { formatRelative } from '../client/format.js';
-import type { CpuProfileContent, EntrySummary, HotFrame } from '../client/types.js';
+import type { CpuProfileContent, EntrySummary, HotFrame, ScreenStats } from '../client/types.js';
 import { Flamegraph } from './Flamegraph.js';
 import { formatProfileMs } from './flamegraph.js';
 import { Input } from './primitives/input.js';
@@ -14,6 +15,7 @@ import {
   useProfile,
   useProfilerStatus,
   useProfiles,
+  useScreens,
 } from './use-telescope.js';
 
 /** Sidebar row for one captured profile. */
@@ -100,6 +102,28 @@ function ProfileDetail({ id }: { id: string }) {
   );
 }
 
+/** The window the route suggestions come from (the Screens page's default, so they share a fetch). */
+const SCREENS_WINDOW_MS = 3_600_000;
+
+/**
+ * Route suggestions for the arm control: the pages visited recently, as `GET <url>`, busiest
+ * first. A labelled arm matches `METHOD pattern` exactly and these are the visited urls, so a
+ * route with params still has to be typed as its pattern (the field is creatable).
+ */
+export function screenRouteOptions(
+  screens: readonly ScreenStats[] | null | undefined,
+): ComboOption[] {
+  const seen = new Set<string>();
+  const options: ComboOption[] = [];
+  for (const s of [...(screens ?? [])].sort((a, b) => b.count - a.count)) {
+    const value = `GET ${s.url}`;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    options.push({ value, hint: `${s.count} hits` });
+  }
+  return options;
+}
+
 /** A small control to arm an on-demand capture of the next N requests. */
 function ArmControl({ pendingManual }: { pendingManual: number }) {
   const [count, setCount] = useState(1);
@@ -107,6 +131,8 @@ function ArmControl({ pendingManual }: { pendingManual: number }) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [arming, setArming] = useState(false);
   const arm = useArmProfile();
+  const screens = useScreens(SCREENS_WINDOW_MS, 'page', 100);
+  const routeOptions = useMemo(() => screenRouteOptions(screens.data), [screens.data]);
 
   const submit = async () => {
     setArming(true);
@@ -133,13 +159,16 @@ function ArmControl({ pendingManual }: { pendingManual: number }) {
         className="mono w-16"
       />
       <span className="text-[11px] text-dim">request(s) matching</span>
-      <Input
-        type="text"
+      <ComboSelect
+        creatable
         placeholder="any route (e.g. GET /users/:id)"
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
+        options={routeOptions}
+        loading={screens.loading}
+        emptyText="Type a route, e.g. GET /users/:id"
+        value={label || null}
+        onValueChange={(next) => setLabel(next ?? '')}
         aria-label="route to capture"
-        className="mono w-full sm:w-56"
+        className="mono w-full sm:w-64"
       />
       <Button size="sm" variant="brand" disabled={arming} onClick={submit}>
         {arming ? 'Arming…' : 'Arm capture'}

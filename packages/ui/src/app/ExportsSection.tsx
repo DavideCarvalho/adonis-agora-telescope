@@ -1,8 +1,9 @@
 import { parseAsInteger, parseAsString, parseAsStringLiteral, useQueryState } from 'nuqs';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { ComboSelect } from '../agora-kit/blocks/combo-field';
 import { Button } from '../agora-kit/ui/button';
 import { downloadText, entriesToCsv, toPrettyJson } from '../client/export.js';
-import { ENTRY_TYPES } from '../client/types.js';
+import { entryTypeOptions } from './entry-type-options.js';
 import { ExportIcon } from './icons.js';
 import { Input, InputField } from './primitives/input.js';
 import {
@@ -21,7 +22,7 @@ import {
   TableRow,
 } from './primitives/table.js';
 import { Empty, PageHeader, Panel, SectionTitle } from './ui.js';
-import { useTelescopeClient } from './use-telescope.js';
+import { useMeta, useTelescopeClient } from './use-telescope.js';
 
 const FORMATS = ['json', 'csv'] as const;
 type Format = (typeof FORMATS)[number];
@@ -46,6 +47,8 @@ export function ExportsSection() {
   const client = useTelescopeClient();
   // The export's filters are in the URL (`#/exports?type=query&q=users&limit=500&format=csv`).
   const [type, setType] = useQueryState('type', parseAsString.withDefault(''));
+  const meta = useMeta();
+  const typeOptions = useMemo(() => entryTypeOptions(meta.data), [meta.data]);
   const [search, setSearch] = useQueryState('q', parseAsString.withDefault(''));
   const [limit, setLimit] = useQueryState('limit', parseAsInteger.withDefault(200));
   const [format, setFormat] = useQueryState(
@@ -100,22 +103,14 @@ export function ExportsSection() {
       <Panel>
         <SectionTitle title="New export" hint={`up to ${MAX_LIMIT} rows`} />
         <div className="flex flex-wrap items-center gap-2.5">
-          <Select
-            value={type}
-            onValueChange={(next) => void setType(typeof next === 'string' ? next : '')}
-          >
-            <SelectTrigger aria-label="export type" className="min-w-36">
-              <SelectValue>{(v: string | null) => (v ? v : 'All types')}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">All types</SelectItem>
-              {ENTRY_TYPES.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <ComboSelect
+            aria-label="export type"
+            className="min-w-44"
+            placeholder="All types"
+            options={typeOptions}
+            value={type || null}
+            onValueChange={(next) => void setType(next ?? '')}
+          />
           <InputField
             type="search"
             placeholder="Search summary + content…"
