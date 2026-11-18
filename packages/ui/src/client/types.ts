@@ -996,3 +996,52 @@ export interface FleetView {
     checks: FleetCheckState[];
   } | null;
 }
+
+// ── architecture ──────────────────────────────────────────────────────────
+
+export type ArchitectureHealth = 'ok' | 'warn' | 'down' | 'unknown';
+
+/** One app on the Architecture page. */
+export interface ArchitectureApp {
+  id: string;
+  /** Live instances, from the fleet; `null` when the fleet does not know it. */
+  instances: number | null;
+  health: ArchitectureHealth;
+  roles: string[];
+  /** Has a service-tenant client in authkit. */
+  hasClient: boolean;
+  /** What it accepts from the other apps (`null`: never published). */
+  accepts: string[] | null;
+}
+
+/** Calls from one app to another in the window. */
+export interface ArchitectureCall {
+  from: string;
+  to: string;
+  count: number;
+  failed: number;
+  avgMs: number;
+  p95Ms: number;
+  lastAt: number;
+}
+
+/** What one app may call on another (authkit). */
+export interface ArchitectureGrant {
+  from: string;
+  to: string;
+  capabilities: string[];
+  disabled: boolean;
+}
+
+export type ArchitectureWindow = '1h' | '6h' | '24h';
+
+/** `GET <path>/api/architecture`. */
+export interface ArchitectureView {
+  now: number;
+  windowMs: number;
+  apps: ArchitectureApp[];
+  calls: ArchitectureCall[];
+  grants: ArchitectureGrant[];
+  sources: { fleet: boolean; calls: boolean; grants: boolean };
+  truncated: boolean;
+}

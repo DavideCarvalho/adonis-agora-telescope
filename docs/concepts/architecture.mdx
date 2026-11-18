@@ -1,0 +1,53 @@
+---
+title: Architecture
+icon: Network
+description: A map of your apps and what links them, with the calls between them and, where authkit runs, what each app may call on the others.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+The **Architecture** page (`#/architecture`) draws your apps as a graph. Each layer comes from
+data telescope already has, and a layer is left out when its data is not there.
+
+| Layer | From | Needs |
+| --- | --- | --- |
+| Apps, health, instances | the [fleet](/docs/telescope/concepts/fleet) | a control plane, or a standalone app with `fleet` on |
+| Calls between apps: count, failures, avg and p95 latency | the outbound HTTP calls recorded in the window (1 h, 6 h or 24 h) | the HTTP client watcher |
+| Permissions: what each app may call on another | `@adonis-agora/authkit-server`, when it runs in the same process | calls between apps set up in authkit |
+| What each app accepts | the catalogs the apps publish to authkit | `service.catalog` in each app's authkit client |
+
+## Calls
+
+An outbound call is drawn between two apps when telescope knows the app it went to:
+
+- [service discovery](/docs/telescope/concepts/service-discovery) knew the origin when the call
+  was made (the entry carries a `to:<app>` tag);
+- or, for older entries, its host matches the URL of an instance in the fleet, or discovery now.
+
+Calls to anything else (a payment provider, an API) are left out. The page reads at most
+20,000 calls of the window, like the Pulse cards, and says so when it hits that cap.
+
+## Links
+
+Each link between two apps has one of four states:
+
+| State | Meaning |
+| --- | --- |
+| calls | calls in the window, covered by a grant (or permissions are not known here) |
+| calls without a grant | the app called, and authkit holds no grant for it |
+| granted, no call | a grant that was not used in the window |
+| failing | more than 5% of the calls failed (5xx or network) |
+
+Click a link to see its calls and the granted capabilities. A granted capability that the
+target app does not list in its published catalog is highlighted.
+
+<Callout>
+  Calls made with a user's token, or to public routes, need no grant: "calls without a grant"
+  points at something to look at, not always at a problem.
+</Callout>
+
+## API
+
+`GET <path>/api/architecture?window=1h|6h|24h` answers what the page draws:
+`{ apps, calls, grants, sources: { fleet, calls, grants }, truncated }`. Like the fleet, it
+is shared infrastructure: a viewer limited to some organizations gets `403`.

@@ -3,6 +3,8 @@ import { resolveApiBase } from './api-base.js';
 import type {
   AiUsageSummary,
   AppScope,
+  ArchitectureView,
+  ArchitectureWindow,
   ArmOutcome,
   ArmProfileResult,
   CursorPageResponse,
@@ -577,5 +579,10 @@ export class TelescopeClient {
   /** The fleet: instances per app, deploys, restart loops, failing checks (`?app=` narrows). */
   fleet(): Promise<FleetView> {
     return this.data<FleetView>('/fleet');
+  }
+
+  /** The apps and what links them: calls in `window`, and grants when authkit runs there. */
+  architecture(window: ArchitectureWindow = '1h'): Promise<ArchitectureView> {
+    return this.data<ArchitectureView>('/architecture', { window });
   }
 }

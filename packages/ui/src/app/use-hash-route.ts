@@ -11,6 +11,7 @@ export type TelescopeRoute =
   | { name: 'overview' }
   | { name: 'pulse' }
   | { name: 'fleet' }
+  | { name: 'architecture' }
   | { name: 'entries'; type?: string }
   | { name: 'entry'; id: string }
   | { name: 'traces' }
@@ -50,6 +51,8 @@ export function parseHash(hash: string): TelescopeRoute {
       return { name: 'pulse' };
     case 'fleet':
       return { name: 'fleet' };
+    case 'architecture':
+      return { name: 'architecture' };
     case 'traces': {
       const traceId = parts[1];
       return traceId === undefined

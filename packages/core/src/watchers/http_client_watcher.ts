@@ -1,4 +1,5 @@
 import { currentTraceId } from '../context_accessor.js';
+import { DISCOVERY_SLOT } from '../discovery/directory.js';
 import { EntryType, type RecordInput } from '../entry.js';
 import { runCoveredByTelescope } from '../otel/covered_scope.js';
 import { normalizeHttpTarget } from './normalize_http_target.js';
@@ -316,6 +317,20 @@ export function instrumentFetch(
   return watcher.instrumentFetch(fetchImpl);
 }
 
+/** The app `url` goes to, by the service discovery published on its global slot, or `undefined`. */
+function targetAppOf(url: string): string | undefined {
+  const discovery = (globalThis as Record<symbol, unknown>)[DISCOVERY_SLOT] as
+    | { appOf?: (origin: string) => string | undefined }
+    | undefined;
+  if (typeof discovery?.appOf !== 'function') return undefined;
+  try {
+    const app = discovery.appOf(new URL(url).origin);
+    return typeof app === 'string' && app !== '' ? app : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Map a captured outbound call to a telescope {@link RecordInput}. Exported so
  *  the entry shape can be unit-tested without instrumenting a real client. */
 export function buildHttpClientEntry(
@@ -336,6 +351,10 @@ export function buildHttpClientEntry(
   };
   const tags: string[] = ['http-client'];
   if (content.host) tags.push(`host:${content.host}`);
+  // The app this call went to, when service discovery knows the origin: the Architecture page's
+  // edges between apps.
+  const target = targetAppOf(content.url);
+  if (target) tags.push(`to:${target}`);
   // A 4xx is a valid response, not a transport failure — only 5xx / network errors are 'failed'.
   if (content.statusCode === null || content.statusCode >= 500) tags.push('failed');
   if (content.durationMs >= slowMs) tags.push('slow');

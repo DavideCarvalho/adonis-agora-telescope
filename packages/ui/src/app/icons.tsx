@@ -108,6 +108,14 @@ export const FleetIcon = stroke(
     <path d="M5 3.7h.01M5 8h.01M5 12.3h.01" />
   </>,
 );
+export const ArchitectureIcon = stroke(
+  <>
+    <rect x="1.8" y="6" width="4" height="4" rx="1" />
+    <rect x="10.2" y="2" width="4" height="4" rx="1" />
+    <rect x="10.2" y="10" width="4" height="4" rx="1" />
+    <path d="M5.8 8h2.2M8 4h2.2M8 12h2.2M8 4v8" />
+  </>,
+);
 export const PlayIcon = stroke(<path d="M4.5 2.8v10.4L13 8z" />);
 export const ArrowLeftIcon = stroke(<path d="M13 8H3M7 4 3 8l4 4" />);
 export const ExternalIcon = stroke(
