@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.34
+
+### Patch Changes
+
+- [#368](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/368) [`432c5b5`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/432c5b5b7f4a3896b54ec22120f69547cedfcf40) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Service-token capabilities accept wildcards everywhere a control plane checks them (HTTP ingest, the queue/Redis transports, relaying, `whoami`, discovery). A `*` segment matches one segment and a trailing `*` matches everything after it, the same rule as the rest of Agora, now exported as `capabilityAllows(granted, required)`. A token holding `*` (previously refused) now ingests and relays for every app; `telescope:ingest:relay:*` and `telescope:ingest:*` relay for every app too. `telescope:ingest:relay` still implies `telescope:ingest`, and `telescope:ingest:relay:<app>` still relays for that app only.
+
 ## 1.0.0-rc.33
 
 ### Patch Changes
