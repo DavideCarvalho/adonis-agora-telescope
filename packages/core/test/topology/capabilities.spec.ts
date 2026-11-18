@@ -151,3 +151,13 @@ describe('ingest and relay capabilities', () => {
     });
   });
 });
+
+describe('capabilityAllows: a `*` before the last one consumes a segment', () => {
+  it('does not let a non-trailing `*` run past the end of the required capability', () => {
+    expect(capabilityAllows(['telescope:*:*'], 'telescope')).toBe(false);
+    expect(capabilityAllows(['telescope:*:*:*'], 'telescope:a')).toBe(false);
+    expect(capabilityAllows(['telescope:*:*'], 'telescope:a')).toBe(true);
+    expect(capabilityAllows(['telescope:*:*'], 'telescope:a:b')).toBe(true);
+    expect(capabilityAllows(['telescope:*'], 'telescope')).toBe(true);
+  });
+});
