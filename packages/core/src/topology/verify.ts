@@ -9,7 +9,8 @@ export const INGEST_CAPABILITY = 'telescope:ingest';
 /**
  * The capability a token needs to send entries on behalf of other apps: an entry tagged
  * `app:<name>` is stored as `<name>`'s (plus `via:<sender>`). `telescope:ingest:relay:<name>`
- * allows that one app only; `telescope:*` allows every app. Implies `telescope:ingest`.
+ * allows that one app only; `telescope:ingest:relay:*`, `telescope:ingest:*`, `telescope:*` and `*`
+ * allow every app. Implies `telescope:ingest`.
  */
 export const RELAY_CAPABILITY = 'telescope:ingest:relay';
 
@@ -23,8 +24,9 @@ export interface VerifiedTenant {
   /** The environment, when the token has one. Entries are tagged `env:<environment>`. */
   environment?: string;
   /**
-   * What the token may do. Sending entries needs `telescope:ingest` (or `telescope:*`); sending
-   * them on behalf of other apps needs `telescope:ingest:relay[:<app>]` (or `telescope:*`).
+   * What the token may do, matched by {@link capabilityAllows} (wildcards accepted). Sending
+   * entries needs `telescope:ingest`; sending them on behalf of other apps needs
+   * `telescope:ingest:relay[:<app>]`.
    */
   capabilities: string[];
   /** The service-tenant client behind the token, when it says. */
@@ -154,27 +156,73 @@ export function resolveTenantVerifier(
   };
 }
 
-/** Whether `capabilities` allow sending entries (relaying for other apps implies it). */
-export function canIngest(capabilities: readonly string[]): boolean {
-  return (
-    capabilities.includes(INGEST_CAPABILITY) ||
-    capabilities.includes('telescope:*') ||
-    relayScope(capabilities) !== null
-  );
+/**
+ * Whether a token holding `granted` may do `required`. Mirrors the Agora-wide capability rule:
+ * capabilities are compared segment by segment (split on `:`); a granted `*` segment matches
+ * exactly one segment, and a grant ending in a `*` segment matches zero or more further segments.
+ * So `*` allows everything, `telescope:*` everything telescope, `telescope:ingest:*` also
+ * `telescope:ingest` itself, and `telescope:ingest:relay:*` relaying for every app. Otherwise the
+ * shapes must be equal. Empty or non-string grants are ignored.
+ */
+export function capabilityAllows(granted: readonly string[], required: string): boolean {
+  const want = required.split(':');
+  for (const capability of granted) {
+    if (typeof capability !== 'string' || capability === '') continue;
+    const have = capability.split(':');
+    let matched = true;
+    for (let index = 0; index < have.length; index += 1) {
+      const segment = have[index];
+      if (segment === '*') {
+        // A `*` before the last one stands for exactly one segment, so it needs one to consume;
+        // only the last `*` may match nothing (`a:*` covers `a`, `a:*:*` does not).
+        if (index >= want.length && index !== have.length - 1) {
+          matched = false;
+          break;
+        }
+        continue;
+      }
+      if (index >= want.length || segment !== want[index]) {
+        matched = false;
+        break;
+      }
+    }
+    if (!matched) continue;
+    // A trailing `*` covers the rest; otherwise the shapes must have the same length.
+    if (have.length === want.length || have[have.length - 1] === '*') return true;
+  }
+  return false;
 }
 
+/** Whether `capabilities` allow sending entries (relaying for other apps implies it). */
+export function canIngest(capabilities: readonly string[]): boolean {
+  return capabilityAllows(capabilities, INGEST_CAPABILITY) || relayScope(capabilities) !== null;
+}
+
+/** App names, as `PARTITION_RE`: anything else could never match an entry's app. */
+const APP_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+
 /**
- * The apps `capabilities` may relay entries for: `'*'` (`telescope:ingest:relay` or
- * `telescope:*`), the apps named by `telescope:ingest:relay:<app>`, or `null` (none).
+ * The apps `capabilities` may relay entries for: `'*'` (`telescope:ingest:relay`, or any wildcard
+ * covering every app such as `telescope:ingest:relay:*`, `telescope:*` or `*`), the apps named by
+ * `telescope:ingest:relay:<app>`, or `null` (none).
  */
 export function relayScope(capabilities: readonly string[]): '*' | string[] | null {
-  if (capabilities.includes('telescope:*') || capabilities.includes(RELAY_CAPABILITY)) return '*';
-  const prefix = `${RELAY_CAPABILITY}:`;
-  // Only valid app names (as `PARTITION_RE`): anything else could never match an entry's app.
-  const apps = capabilities
-    .filter((capability) => capability.startsWith(prefix))
-    .map((capability) => capability.slice(prefix.length))
-    .filter((app) => /^[A-Za-z0-9_.-]{1,64}$/.test(app));
+  if (
+    capabilityAllows(capabilities, RELAY_CAPABILITY) ||
+    capabilityAllows(capabilities, `${RELAY_CAPABILITY}:*`)
+  ) {
+    return '*';
+  }
+  const apps: string[] = [];
+  for (const capability of capabilities) {
+    if (typeof capability !== 'string') continue;
+    const segments = capability.split(':');
+    if (segments.length !== 4) continue;
+    const app = segments[3] as string;
+    if (APP_NAME_RE.test(app) && capabilityAllows([capability], `${RELAY_CAPABILITY}:${app}`)) {
+      apps.push(app);
+    }
+  }
   return apps.length > 0 ? [...new Set(apps)] : null;
 }
 

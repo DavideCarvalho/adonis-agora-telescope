@@ -202,12 +202,16 @@ tenant: { url, partition: 'shop', token: env.get('TELESCOPE_SECRET_SHOP') }
 ```
 
 **Your own:** `verifyTenant` also takes a class instance or a lazy import. It returns
-`{ partition, environment?, capabilities }` or `null`; sending needs `telescope:ingest` (or
-`telescope:*`).
+`{ partition, environment?, capabilities }` or `null`; sending needs `telescope:ingest`.
 
 ```ts
 verifyTenant: () => import('#auth/telescope_verifier'),
 ```
+
+Capabilities accept wildcards. A `*` segment matches one segment, and a trailing `*` matches
+everything after it, or nothing: `*` allows everything, `telescope:*` everything Telescope,
+`telescope:ingest:*` also `telescope:ingest`, and `telescope:ingest:relay:*` relaying for every app. The same rule applies to authkit tokens and to
+shared-secret `capabilities`.
 
 ## Relaying for other apps
 
@@ -223,8 +227,9 @@ node ace authkit:client create --client-id=durable --partition=durable \
   --capability=telescope:ingest:relay:shop --capability=telescope:ingest:relay:billing
 ```
 
-`telescope:*` relays for any app too. With a shared secret, pass the same strings in
-`capabilities`.
+`telescope:ingest:relay:*`, `telescope:ingest:*`, `telescope:*` and `*` relay for any app too, and
+every relay capability also allows sending the token's own entries. With a shared secret, pass the
+same strings in `capabilities`.
 
 Turn relaying on in the sender's config, and tag each entry with the app it belongs to:
 

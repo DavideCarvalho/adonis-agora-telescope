@@ -44,6 +44,7 @@ export type {
 export {
   canIngest,
   canRelayFor,
+  capabilityAllows,
   checkVerifiedTenant,
   INGEST_CAPABILITY,
   RELAY_CAPABILITY,
