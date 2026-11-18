@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.24
+
+### Patch Changes
+
+- [#372](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/372) [`bbd726f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/bbd726fd91b7192ce9d657aa00d7df0900c521ca) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console: the entry type filter (Entries, Exports) and the profiler's "route to capture" are now selects with autocomplete. Entry types whose watcher is not running are marked "watcher off"; the route field suggests recently visited pages and still accepts any typed `METHOD pattern`. Adds the kit's `ComboSelect` / `ComboMultiSelect`.
+
 ## 3.0.0-rc.23
 
 ### Patch Changes
