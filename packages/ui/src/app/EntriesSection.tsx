@@ -1,27 +1,22 @@
 import { parseAsBoolean, parseAsString, useQueryState } from 'nuqs';
 import { useEffect, useMemo, useState } from 'react';
+import { ComboSelect } from '../agora-kit/blocks/combo-field';
 import { Toolbar } from '../agora-kit/blocks/page-header';
 import { RefreshIcon, SearchIcon, XIcon } from '../agora-kit/icons';
 import { Badge } from '../agora-kit/ui/badge';
 import { Button } from '../agora-kit/ui/button';
 import { formatDuration, formatRelative, formatTime } from '../client/format.js';
 import { selectedApp, selectedTenant } from '../client/telescope-client.js';
-import { ENTRY_TYPES, type EntriesQuery, type EntrySummary } from '../client/types.js';
+import type { EntriesQuery, EntrySummary } from '../client/types.js';
 import { appLabel } from './AppPicker.js';
+import { entryTypeOptions } from './entry-type-options.js';
 import { cn } from './primitives/cn.js';
 import { DataTable } from './primitives/data_table.js';
 import { InputField } from './primitives/input.js';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './primitives/select.js';
 import { tenantLabel } from './TenantPicker.js';
 import { AsyncBlock, PageHeader, Panel, SectionTitle, TypeBadge, typeLabel } from './ui.js';
 import { searchParam, useCursorPager } from './url-state.js';
-import { useApps, useEntriesPage, useLiveTail, useTenants } from './use-telescope.js';
+import { useApps, useEntriesPage, useLiveTail, useMeta, useTenants } from './use-telescope.js';
 
 /** Rows per page. The list is scanned, not read in bulk. */
 const PAGE_SIZE = 50;
@@ -51,6 +46,8 @@ export function EntriesSection({
   const [draft, setDraft] = useState<string>(search);
   useEffect(() => setDraft(search), [search]);
   const [live, setLive] = useQueryState('live', parseAsBoolean.withDefault(false));
+  const meta = useMeta();
+  const typeOptions = useMemo(() => entryTypeOptions(meta.data), [meta.data]);
 
   const pager = useCursorPager();
   const page = pager.page;
@@ -244,22 +241,14 @@ export function EntriesSection({
         }
       />
       <Toolbar label="entry filters">
-        <Select
-          value={type}
-          onValueChange={(next) => changeType(typeof next === 'string' ? next : '')}
-        >
-          <SelectTrigger aria-label="filter by type" className="min-w-36">
-            <SelectValue>{(v: string | null) => (v ? v : 'All types')}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All types</SelectItem>
-            {ENTRY_TYPES.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <ComboSelect
+          aria-label="filter by type"
+          className="min-w-44"
+          placeholder="All types"
+          options={typeOptions}
+          value={type || null}
+          onValueChange={(next) => changeType(next ?? '')}
+        />
         <InputField
           type="search"
           glyph={<SearchIcon />}
