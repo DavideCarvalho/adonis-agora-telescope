@@ -119,7 +119,7 @@ export function screenRouteOptions(
     const value = `GET ${s.url}`;
     if (seen.has(value)) continue;
     seen.add(value);
-    options.push({ value, hint: `${s.count} hits` });
+    options.push({ value, hint: `${s.count} ${s.count === 1 ? 'hit' : 'hits'}` });
   }
   return options;
 }
