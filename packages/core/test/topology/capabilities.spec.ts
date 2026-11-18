@@ -24,13 +24,21 @@ describe('capabilityAllows', () => {
     expect(capabilityAllows(['*'], 'crypto:encrypt:orders')).toBe(true);
   });
 
-  it('a trailing `*` matches one or more further segments', () => {
+  it('a trailing `*` matches zero or more further segments', () => {
     expect(capabilityAllows(['telescope:*'], 'telescope:ingest')).toBe(true);
     expect(capabilityAllows(['telescope:*'], 'telescope:ingest:relay:shop')).toBe(true);
     expect(capabilityAllows(['telescope:*'], 'crypto:encrypt')).toBe(false);
     expect(capabilityAllows(['telescope:ingest:*'], 'telescope:ingest:relay')).toBe(true);
     expect(capabilityAllows(['telescope:ingest:*'], 'telescope:ingest:relay:shop')).toBe(true);
-    expect(capabilityAllows(['telescope:ingest:*'], 'telescope:ingest')).toBe(false);
+  });
+
+  it('a trailing `*` also matches zero further segments', () => {
+    expect(capabilityAllows(['telescope:ingest:*'], 'telescope:ingest')).toBe(true);
+    expect(capabilityAllows(['telescope:*'], 'telescope')).toBe(true);
+    expect(capabilityAllows(['telescope:ingest:relay:*'], 'telescope:ingest:relay')).toBe(true);
+    // Zero further segments, not fewer: the segments before the `*` must still be there.
+    expect(capabilityAllows(['telescope:ingest:*'], 'telescope')).toBe(false);
+    expect(capabilityAllows(['telescope:*:relay'], 'telescope')).toBe(false);
   });
 
   it('a `*` in the middle matches exactly one segment', () => {

@@ -209,8 +209,8 @@ verifyTenant: () => import('#auth/telescope_verifier'),
 ```
 
 Capabilities accept wildcards. A `*` segment matches one segment, and a trailing `*` matches
-everything after it: `*` allows everything, `telescope:*` everything Telescope, and
-`telescope:ingest:relay:*` relaying for every app. The same rule applies to authkit tokens and to
+everything after it, or nothing: `*` allows everything, `telescope:*` everything Telescope,
+`telescope:ingest:*` also `telescope:ingest`, and `telescope:ingest:relay:*` relaying for every app. The same rule applies to authkit tokens and to
 shared-secret `capabilities`.
 
 ## Relaying for other apps

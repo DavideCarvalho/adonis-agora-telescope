@@ -159,10 +159,10 @@ export function resolveTenantVerifier(
 /**
  * Whether a token holding `granted` may do `required`. Mirrors the Agora-wide capability rule:
  * capabilities are compared segment by segment (split on `:`); a granted `*` segment matches
- * exactly one segment, and a grant ending in a `*` segment also matches any number of further
- * segments. So `*` allows everything, `telescope:*` everything telescope, and
- * `telescope:ingest:relay:*` relaying for every app. Otherwise the shapes must be equal. Empty or
- * non-string grants are ignored.
+ * exactly one segment, and a grant ending in a `*` segment matches zero or more further segments.
+ * So `*` allows everything, `telescope:*` everything telescope, `telescope:ingest:*` also
+ * `telescope:ingest` itself, and `telescope:ingest:relay:*` relaying for every app. Otherwise the
+ * shapes must be equal. Empty or non-string grants are ignored.
  */
 export function capabilityAllows(granted: readonly string[], required: string): boolean {
   const want = required.split(':');
@@ -172,13 +172,7 @@ export function capabilityAllows(granted: readonly string[], required: string): 
     let matched = true;
     for (let index = 0; index < have.length; index += 1) {
       const segment = have[index];
-      if (segment === '*') {
-        if (index >= want.length) {
-          matched = false;
-          break;
-        }
-        continue;
-      }
+      if (segment === '*') continue;
       if (index >= want.length || segment !== want[index]) {
         matched = false;
         break;
