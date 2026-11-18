@@ -160,6 +160,19 @@ describe('readArchitecture', () => {
     expect(view.apps.map((a) => a.id)).toEqual(['a', 'b']);
   });
 
+  it('a malformed catalog drops the whole grants layer, not half of it', async () => {
+    slots[AUTHKIT_APP_GRAPH_SLOT] = {
+      snapshot: async () => ({
+        apps: [{ app: 'a', disabled: false, calls: { b: ['x'] } }],
+        catalogs: null,
+      }),
+    };
+    const view = await readArchitecture({ store: null, fleet: null });
+    expect(view.sources.grants).toBe(false);
+    expect(view.grants).toEqual([]);
+    expect(view.apps).toEqual([]);
+  });
+
   it('a failing authkit reader turns the grants layer off', async () => {
     slots[AUTHKIT_APP_GRAPH_SLOT] = {
       snapshot: async () => {

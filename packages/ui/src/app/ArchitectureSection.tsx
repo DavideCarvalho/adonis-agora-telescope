@@ -347,7 +347,7 @@ function ArchitectureGraph({ view, layers }: { view: ArchitectureView; layers: L
 }
 
 export function ArchitectureSection() {
-  const [window, setWindow] = useQueryState(
+  const [windowKey, setWindowKey] = useQueryState(
     'window',
     parseAsStringLiteral(WINDOWS).withDefault('1h').withOptions({ history: 'replace' }),
   );
@@ -355,7 +355,7 @@ export function ArchitectureSection() {
     'layers',
     parseAsStringLiteral(LAYERS).withDefault('all').withOptions({ history: 'replace' }),
   );
-  const state = useArchitecture(window as ArchitectureWindow);
+  const state = useArchitecture(windowKey as ArchitectureWindow);
   const { reload } = state;
   useEffect(() => {
     const timer = setInterval(reload, REFRESH_MS);
@@ -379,9 +379,9 @@ export function ArchitectureSection() {
             <Button
               key={w}
               size="sm"
-              variant={window === w ? 'default' : 'outline'}
-              aria-pressed={window === w}
-              onClick={() => void setWindow(w)}
+              variant={windowKey === w ? 'default' : 'outline'}
+              aria-pressed={windowKey === w}
+              onClick={() => void setWindowKey(w)}
             >
               {w}
             </Button>

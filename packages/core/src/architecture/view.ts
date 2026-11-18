@@ -230,21 +230,23 @@ export async function readArchitecture(
   const reader = appGraphReader();
   let grantsSource = false;
   if (reader) {
+    // Built into locals and kept only once the whole snapshot parsed: a malformed part turns the
+    // layer off without leaving half of it drawn.
     try {
       const snapshot = await reader.snapshot();
-      grantsSource = true;
+      const read: ArchitectureGrant[] = [];
+      const readClients = new Set<string>();
       for (const app of snapshot.apps) {
-        clients.add(app.app);
+        readClients.add(app.app);
         for (const [to, capabilities] of Object.entries(app.calls ?? {})) {
-          grants.push({
-            from: app.app,
-            to,
-            capabilities: [...capabilities],
-            disabled: app.disabled,
-          });
+          read.push({ from: app.app, to, capabilities: [...capabilities], disabled: app.disabled });
         }
       }
-      catalogs = new Map(snapshot.catalogs.map((c) => [c.app, [...c.capabilities]]));
+      const readCatalogs = new Map(snapshot.catalogs.map((c) => [c.app, [...c.capabilities]]));
+      grants = read;
+      for (const app of readClients) clients.add(app);
+      catalogs = readCatalogs;
+      grantsSource = true;
     } catch {
       grantsSource = false;
     }
