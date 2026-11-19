@@ -62,10 +62,13 @@ function hostOf(url: unknown): string {
   }
 }
 
-/** The stores a `default` (or `store`) key selects: that one when it names one, else all. */
+/**
+ * The stores a `default` (or `store`) key selects: that one; none when it names no store (the
+ * package fails on it anyway); all when there is no such key.
+ */
 function selected(stores: unknown, pick: unknown): Array<[string, unknown]> {
   if (!isRecord(stores)) return [];
-  if (typeof pick === 'string' && pick in stores) return [[pick, stores[pick]]];
+  if (typeof pick === 'string') return Object.hasOwn(stores, pick) ? [[pick, stores[pick]]] : [];
   return Object.entries(stores);
 }
 
@@ -265,10 +268,13 @@ const transmit: Mapper = (value, ctx) => {
     const connection = ctx.redisConnectionAt(t.config);
     if (connection !== undefined) return [{ tech: 'redis', connection }];
     const host = str(t.config.url) ? hostOf(t.config.url) : String(t.config.host ?? '');
+    // No address to tell it apart: not a server to draw.
+    if (host === '') return [];
     return [{ tech: 'redis', label: 'transmit', host: `${host}:${String(t.config.port ?? '')}` }];
   }
   if (t.driver === 'mqtt') {
-    return [{ tech: 'mqtt', label: 'transmit', host: hostOf(t.config.url) }];
+    const host = hostOf(t.config.url);
+    return host !== '' ? [{ tech: 'mqtt', label: 'transmit', host }] : [];
   }
   return [];
 };

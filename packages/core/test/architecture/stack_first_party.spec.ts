@@ -181,6 +181,19 @@ describe('describeStack: AdonisJS first-party packages', () => {
     expect(usesOf(stack, 'postgres', 'app')).toEqual(['app', 'limiter']);
   });
 
+  it('a default that names no store selects none; a transport with no address is not drawn', () => {
+    const stack = describeStack(
+      configOf({
+        redis,
+        lock: { default: 'gone', stores: { redis: lock.stores.redis({ connectionName: 'main' }) } },
+        transmit: transmit.defineConfig({
+          transport: { driver: transmitRedis({ password: 'pw' }), channel: 'transmit' },
+        }),
+      }),
+    );
+    expect(stack.flatMap((e) => e.uses)).toEqual([]);
+  });
+
   it('session: a cookie store uses nothing; a disabled session neither', () => {
     const cookie = describeStack(
       configOf({
