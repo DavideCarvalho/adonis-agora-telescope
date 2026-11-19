@@ -1,4 +1,5 @@
 import type { HttpContext } from '@adonisjs/core/http';
+import { rememberControlPlaneHost } from '../architecture/hosts.js';
 import type { DiscoveryPublisher } from '../discovery/server.js';
 import type { ResolvedIngestLimits } from './config.js';
 import type { IngestHandler, IngestResponse } from './ingest.js';
@@ -10,6 +11,12 @@ function bearer(ctx: HttpContext): string | undefined {
   if (typeof header !== 'string') return undefined;
   const match = /^bearer\s+(.+)$/i.exec(header.trim());
   return match?.[1]?.trim() || undefined;
+}
+
+/** The host a tenant called us at, for the Architecture page (only once it authenticated). */
+function learnHost(ctx: HttpContext, response: IngestResponse): void {
+  if (response.status >= 200 && response.status < 300)
+    rememberControlPlaneHost(ctx.request.header('host'));
 }
 
 function send(ctx: HttpContext, response: IngestResponse) {
@@ -40,15 +47,14 @@ export function registerIngestRoutes(
   router
     .post(`${limits.path}/ingest`, async (ctx: HttpContext) => {
       const length = Number(ctx.request.header('content-length'));
-      return send(
-        ctx,
-        await handler.ingest({
-          token: bearer(ctx),
-          app: ctx.request.header(APP_HEADER) ?? undefined,
-          contentLength: Number.isFinite(length) ? length : undefined,
-          body: ctx.request.body(),
-        }),
-      );
+      const response = await handler.ingest({
+        token: bearer(ctx),
+        app: ctx.request.header(APP_HEADER) ?? undefined,
+        contentLength: Number.isFinite(length) ? length : undefined,
+        body: ctx.request.body(),
+      });
+      learnHost(ctx, response);
+      return send(ctx, response);
     })
     .as('telescope.ingest');
   router

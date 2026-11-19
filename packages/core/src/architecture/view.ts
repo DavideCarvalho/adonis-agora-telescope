@@ -59,13 +59,30 @@ export interface ArchitectureGrant {
   disabled: boolean;
 }
 
+/** A backend the apps run on (a database, a Redis server, a bucket…), from the apps' heartbeats. */
+export interface ArchitectureInfra {
+  /** `<tech>:<hash>`: the same server reported by two apps is one node. */
+  id: string;
+  tech: string;
+  label: string;
+}
+
+/** What in an app uses a backend (`app`, `durable`, `cache: sessions`…). */
+export interface ArchitectureUse {
+  app: string;
+  infra: string;
+  uses: string[];
+}
+
 export interface ArchitectureView {
   now: number;
   windowMs: number;
   apps: ArchitectureApp[];
   calls: ArchitectureCall[];
   grants: ArchitectureGrant[];
-  sources: { fleet: boolean; calls: boolean; grants: boolean };
+  infra: ArchitectureInfra[];
+  uses: ArchitectureUse[];
+  sources: { fleet: boolean; calls: boolean; grants: boolean; stack: boolean };
   /** The calls window hit the scan cap: counts are a lower bound. */
   truncated: boolean;
 }
@@ -102,16 +119,31 @@ function tagValue(tags: readonly string[], prefix: string): string | undefined {
   return undefined;
 }
 
+/** A host as the graph compares it: lower case, no port, no leading `www.`. */
+export function hostKey(host: string): string {
+  return host
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, '')
+    .replace(/^www\./, '');
+}
+
 function hostOf(url: string): string | null {
   try {
-    return new URL(url).host.toLowerCase();
+    return hostKey(new URL(url).host);
   } catch {
     return null;
   }
 }
 
-/** host → app from the fleet's instance URLs, then discovery (both schemes) for the rest. */
-function hostResolver(fleet: FleetView | null): (host: string) => string | undefined {
+/**
+ * host → app: the fleet's instance URLs, the hosts other apps reached this control plane at
+ * (`selfHosts`, mapped to `selfApp`), then discovery (both schemes) for the rest.
+ */
+export function hostResolver(
+  fleet: FleetView | null,
+  self: { app: string | null; hosts: readonly string[] } = { app: null, hosts: [] },
+): (host: string) => string | undefined {
   const byHost = new Map<string, string>();
   for (const app of fleet?.apps ?? []) {
     for (const instance of app.instances) {
@@ -119,12 +151,19 @@ function hostResolver(fleet: FleetView | null): (host: string) => string | undef
       if (host && !byHost.has(host)) byHost.set(host, app.app);
     }
   }
+  if (self.app)
+    for (const host of self.hosts)
+      if (!byHost.has(hostKey(host))) byHost.set(hostKey(host), self.app);
   const memo = new Map<string, string | undefined>();
-  return (host) => {
-    const key = host.toLowerCase();
+  return (raw) => {
+    const key = hostKey(raw);
     if (byHost.has(key)) return byHost.get(key);
     if (memo.has(key)) return memo.get(key);
-    const found = discoveryAppOf(`https://${key}`) ?? discoveryAppOf(`http://${key}`);
+    const found =
+      discoveryAppOf(`https://${raw}`) ??
+      discoveryAppOf(`http://${raw}`) ??
+      discoveryAppOf(`https://${key}`) ??
+      discoveryAppOf(`http://${key}`);
     memo.set(key, found);
     return found;
   };
@@ -142,6 +181,7 @@ function percentile(sorted: number[], p: number): number {
 export function aggregateCalls(
   entries: readonly Entry[],
   resolveHost: (host: string) => string | undefined,
+  selfApp: string = SELF_APP,
 ): ArchitectureCall[] {
   const groups = new Map<
     string,
@@ -149,7 +189,7 @@ export function aggregateCalls(
   >();
   for (const entry of entries) {
     const tags = entry.tags ?? [];
-    const from = tagValue(tags, 'app:') ?? SELF_APP;
+    const from = tagValue(tags, 'app:') ?? selfApp;
     const host = tagValue(tags, 'host:');
     const to = tagValue(tags, 'to:') ?? (host ? resolveHost(host) : undefined);
     if (!to || to === from) continue;
@@ -192,6 +232,10 @@ export interface ReadArchitectureOptions {
   scanCap?: number;
   /** The apps the viewer may see (`null`: all). */
   apps?: readonly string[] | null;
+  /** This app's name (a control plane's own entries carry no `app:` tag). */
+  selfApp?: string | null;
+  /** The hosts other apps reached this control plane at. */
+  selfHosts?: readonly string[];
   now?: number;
 }
 
@@ -221,7 +265,12 @@ export async function readArchitecture(
       omitContent: true,
     });
     truncated = entries.length >= scanCap;
-    calls = aggregateCalls(entries, hostResolver(fleet)).filter((c) => sees(c.from) && sees(c.to));
+    const selfApp = options.selfApp ?? null;
+    calls = aggregateCalls(
+      entries,
+      hostResolver(fleet, { app: selfApp, hosts: options.selfHosts ?? [] }),
+      selfApp ?? SELF_APP,
+    ).filter((c) => sees(c.from) && sees(c.to));
   }
 
   let grants: ArchitectureGrant[] = [];
@@ -293,13 +342,56 @@ export async function readArchitecture(
     };
   });
 
+  const { infra, uses } = stackOf(fleet, sees);
+
   return {
     now,
     windowMs,
     apps,
     calls,
     grants,
-    sources: { fleet: fleet !== null, calls: options.store !== null, grants: grantsSource },
+    infra,
+    uses,
+    sources: {
+      fleet: fleet !== null,
+      calls: options.store !== null,
+      grants: grantsSource,
+      stack: infra.length > 0,
+    },
     truncated,
+  };
+}
+
+/** The backends from each app's live instances' heartbeats, and what in each app uses them. */
+export function stackOf(
+  fleet: FleetView | null,
+  sees: (app: string) => boolean = () => true,
+): { infra: ArchitectureInfra[]; uses: ArchitectureUse[] } {
+  const infra = new Map<string, ArchitectureInfra>();
+  const uses = new Map<string, ArchitectureUse>();
+  for (const app of fleet?.apps ?? []) {
+    if (!sees(app.app)) continue;
+    for (const instance of app.instances) {
+      if (instance.status === 'gone') continue;
+      for (const entry of instance.stack ?? []) {
+        if (!infra.has(entry.id))
+          infra.set(entry.id, { id: entry.id, tech: entry.tech, label: entry.label });
+        const key = `${app.app}\u0000${entry.id}`;
+        let use = uses.get(key);
+        if (!use) {
+          use = { app: app.app, infra: entry.id, uses: [] };
+          uses.set(key, use);
+        }
+        for (const by of entry.uses) if (!use.uses.includes(by)) use.uses.push(by);
+      }
+    }
+  }
+  return {
+    infra: [...infra.values()].sort(
+      (a, b) => a.tech.localeCompare(b.tech) || a.label.localeCompare(b.label),
+    ),
+    uses: [...uses.values()]
+      .map((u) => ({ ...u, uses: [...u.uses].sort() }))
+      .sort((a, b) => a.app.localeCompare(b.app) || a.infra.localeCompare(b.infra)),
   };
 }

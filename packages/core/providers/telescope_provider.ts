@@ -40,6 +40,7 @@ import type { InstanceState } from '../src/fleet/heartbeat.js';
 import { type ProbeRouter, registerProbeRoutes } from '../src/fleet/probes.js';
 import { FleetRegistry, InstanceReporter } from '../src/fleet/registry.js';
 import { observeShutdownSignals } from '../src/fleet/signals.js';
+import { describeStack, type StackEntry } from '../src/fleet/stack.js';
 import { type FleetStore, LucidFleetStore, MemoryFleetStore } from '../src/fleet/store.js';
 import { isGlobalOtelRegistered } from '../src/otel/detect.js';
 import { OverloadGuard, type PauseController } from '../src/overload_guard.js';
@@ -291,6 +292,7 @@ export default class TelescopeProvider {
       const remote = this.remote;
       const fleet = this.fleet;
       const selfApp = remote === null ? await resolveSelfApp(fleetConfig.app, appRoot) : null;
+      let stackCache: StackEntry[] | undefined;
       this.reporter = new InstanceReporter({
         intervalMs: fleetConfig.intervalMs,
         host: fleetConfig.host,
@@ -302,6 +304,11 @@ export default class TelescopeProvider {
         checks: this.healthChecks,
         // So a control plane knows which entry types this app records at all.
         watchers: getEnabledWatchers,
+        // What the app runs on, read once from its config (databases, Redis, lib descriptors).
+        stack: () => {
+          stackCache ??= describeStack(this.app.config as never);
+          return stackCache;
+        },
         ...(remote !== null ? { shipping: () => remote.shippingStats() } : {}),
         send: (heartbeat) => {
           if (remote !== null) remote.heartbeat(heartbeat);
@@ -314,6 +321,7 @@ export default class TelescopeProvider {
         fleet: this.fleet,
         healthChecks: this.healthChecks,
         reporter: this.reporter,
+        selfApp,
       });
     };
     if (fleetConfig.enabled && environment === 'console') {

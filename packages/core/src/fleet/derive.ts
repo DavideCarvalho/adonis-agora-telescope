@@ -1,5 +1,6 @@
 import type { CheckState, CheckStatus } from './checks.js';
 import { DEFAULT_ROLE, type InstanceState, type ShippingStats } from './heartbeat.js';
+import type { StackEntry } from './stack.js';
 
 /** One instance as the fleet store keeps it (one row per app + instance id). */
 export interface InstanceRecord {
@@ -26,6 +27,8 @@ export interface InstanceRecord {
   role?: string;
   /** The watcher names the instance runs; absent (unknown) for older senders. */
   watchers?: string[];
+  /** What the app runs on, as the instance reported it; absent (unknown) for older senders. */
+  stack?: StackEntry[];
 }
 
 /** What the fleet says about an instance right now. */
