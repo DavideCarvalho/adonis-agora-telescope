@@ -140,6 +140,13 @@ enabled. A viewer limited to some organizations or some apps still gets `403`
 on CPU capture, queue actions, extension actions and Prometheus even when the
 gate is on — those reach every organization and every app, so they need access to all of them.
 
+On a picked federated app (`?app=` naming `apps.federated` in
+`config/telescope_ui.ts`) the gates live on the owning app instead:
+`consoleCommands.actions.replay` / `actions.queues` in its `config/telescope.ts` (each
+off by default). CPU capture, AI diagnosis, extension actions, Prometheus and the live
+tail answer `404` there, and a federated action is refused (`403`) for a viewer limited
+to some organizations — an app-limited viewer holding that app may still act.
+
 ```ts
 export default defineConfig({
   replay: { enabled: true },          // POST <path>/api/requests/:id/replay — re-runs a real request!
