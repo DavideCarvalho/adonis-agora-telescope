@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.28
+
+### Patch Changes
+
+- [#381](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/381) [`7b751c3`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7b751c368c4364b8c0ec9aec956ffa3428d2d200) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Going to another console from the switcher or ⌘K keeps the picked app and organization (`?app=`, `?tenant=`). The App and Organization pickers now come from the shared console kit, so they look the same in every console.
+
 ## 3.0.0-rc.27
 
 ### Minor Changes
