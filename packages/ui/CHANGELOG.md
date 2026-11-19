@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.29
+
+### Patch Changes
+
+- [#382](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/382) [`d512a09`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/d512a09bcfdc2c891612af31f7e0be8c0c1131a0) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - App and Organization pickers: screen readers hear "App: Hub" (not "AppHub"), search matches an option's hint, the highlight stays on a real option when the list shrinks, and focus returns to the button after a pick.
+
 ## 3.0.0-rc.28
 
 ### Patch Changes
