@@ -122,7 +122,9 @@ function AppNode({ data, selected }: NodeProps<Node<AppNodeData>>) {
           </div>
           <div className="truncate text-[11px] text-fg-2">
             {app.instances === null
-              ? 'not in the fleet'
+              ? app.mode === 'federated'
+                ? 'federated'
+                : 'not in the fleet'
               : plural(app.instances, 'instance', 'instances')}
             {hub ? ' · hub' : ''}
           </div>
@@ -466,7 +468,9 @@ function Details({
       </div>
       <div className="text-xs text-fg-2">
         {app.instances === null
-          ? 'not in the fleet'
+          ? app.mode === 'federated'
+            ? 'federated: read from its own store'
+            : 'not in the fleet'
           : `${plural(app.instances, 'live instance', 'live instances')}`}
         {app.roles.length > 0 ? ` · ${app.roles.join(', ')}` : ''}
         {app.hasClient ? ' · has a service client' : ''}

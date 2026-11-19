@@ -56,7 +56,11 @@ export class FleetApi {
    * grants and catalogs from authkit when it runs here). Shared infrastructure, like the fleet:
    * hidden from a viewer limited to some organizations.
    */
-  async architecture(ctx: UiHttpContext, scope: FleetScope): Promise<unknown> {
+  async architecture(
+    ctx: UiHttpContext,
+    scope: FleetScope,
+    federated: ReadonlyArray<{ id: string; store: () => Promise<TelescopeStore> }> = [],
+  ): Promise<unknown> {
     if (scope.hidden === true) {
       return ctx.response.status(403).send({
         error: 'The architecture is shared by every organization: it needs access to all of them.',
@@ -75,6 +79,7 @@ export class FleetApi {
       apps: scope.apps,
       selfApp: getTelescopeRuntime().selfApp,
       selfHosts: controlPlaneHosts(),
+      ...(federated.length > 0 ? { federated } : {}),
     });
     return ctx.response
       .status(200)

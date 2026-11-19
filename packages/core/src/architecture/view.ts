@@ -37,6 +37,8 @@ export interface ArchitectureApp {
   hasClient: boolean;
   /** What it accepts from the other apps, as it published it (`null`: never published). */
   accepts: string[] | null;
+  /** Read from its own store by this console (federated), rather than reporting here. */
+  mode?: 'federated';
 }
 
 export interface ArchitectureCall {
@@ -236,8 +238,16 @@ export interface ReadArchitectureOptions {
   selfApp?: string | null;
   /** The hosts other apps reached this control plane at. */
   selfHosts?: readonly string[];
+  /**
+   * Apps this console reads from their own stores: each is a node, and its outgoing calls in the
+   * window (at most {@link FEDERATED_ARCHITECTURE_SCAN_CAP} per app, newest first) are drawn.
+   */
+  federated?: ReadonlyArray<{ id: string; store: () => Promise<TelescopeStore> }>;
   now?: number;
 }
+
+/** Calls read per federated app for the Architecture page. */
+export const FEDERATED_ARCHITECTURE_SCAN_CAP = 5_000;
 
 export const DEFAULT_ARCHITECTURE_WINDOW_MS = 60 * 60 * 1000;
 export const DEFAULT_ARCHITECTURE_SCAN_CAP = 20_000;
@@ -265,9 +275,36 @@ export async function readArchitecture(
       omitContent: true,
     });
     truncated = entries.length >= scanCap;
+    // Each federated app's calls, from its own store: one bounded read of the type + time index.
+    // Its entries carry no `app:` tag there, so they are tagged with its key. One that fails is
+    // drawn without calls.
+    const federatedEntries = await Promise.all(
+      (options.federated ?? [])
+        .filter((app) => sees(app.id))
+        .map(async (app) => {
+          const cap = Math.min(scanCap, FEDERATED_ARCHITECTURE_SCAN_CAP);
+          try {
+            const rows = await (await app.store()).list({
+              type: EntryType.HttpClient,
+              after: new Date(now - windowMs),
+              before: new Date(now + 1),
+              size: cap,
+              omitContent: true,
+            });
+            if (rows.length >= cap) truncated = true;
+            return rows.map((row) =>
+              row.tags.some((tag) => tag.startsWith('app:'))
+                ? row
+                : { ...row, tags: [...row.tags, `app:${app.id}`] },
+            );
+          } catch {
+            return [];
+          }
+        }),
+    );
     const selfApp = options.selfApp ?? null;
     calls = aggregateCalls(
-      entries,
+      [...entries, ...federatedEntries.flat()],
       hostResolver(fleet, { app: selfApp, hosts: options.selfHosts ?? [] }),
       selfApp ?? SELF_APP,
     ).filter((c) => sees(c.from) && sees(c.to));
@@ -315,6 +352,8 @@ export async function readArchitecture(
     ids.add(g.to);
   }
   for (const app of clients) if (sees(app)) ids.add(app);
+  const federatedIds = new Set((options.federated ?? []).map((app) => app.id));
+  for (const id of federatedIds) if (sees(id)) ids.add(id);
 
   const fleetByApp = new Map((fleet?.apps ?? []).map((a) => [a.app, a]));
   const apps: ArchitectureApp[] = [...ids].sort().map((id) => {
@@ -339,6 +378,7 @@ export async function readArchitecture(
       roles,
       hasClient: clients.has(id),
       accepts: catalogs.get(id) ?? null,
+      ...(federatedIds.has(id) ? { mode: 'federated' as const } : {}),
     };
   });
 

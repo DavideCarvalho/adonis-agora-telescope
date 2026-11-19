@@ -120,6 +120,8 @@ export default class TelescopeProvider {
   private otelMetricsExporter: OtelMetricsExporter | null = null;
   private unsubscribePrometheus: (() => void) | null = null;
   private fleet: FleetRegistry | null = null;
+  /** Stops answering other consoles' commands (`consoleCommands`). */
+  private stopConsoleCommands: (() => void) | null = null;
   private reporter: InstanceReporter | null = null;
   private healthChecks: HealthChecks | null = null;
   private stopPropagation: (() => void) | null = null;
@@ -255,6 +257,61 @@ export default class TelescopeProvider {
     // encryption envelope) now sit outside the rewrite: put it back on top, so they see real origins.
     await this.discovery?.ready();
     await this.reporter?.setState('ready');
+    await this.startConsoleCommands();
+  }
+
+  /**
+   * `consoleCommands`: answer the commands another app's console sends (it reads this app's
+   * entries federated, from this app's store). Only the web process answers: a replay needs the
+   * HTTP server, and an ace command must not claim a command and exit.
+   */
+  private async startConsoleCommands(): Promise<void> {
+    const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
+    const commands = config.consoleCommands;
+    const store = this.store;
+    if (!config.enabled || commands === null || store === null || this.stopConsoleCommands) return;
+    const environment = (this.app as { getEnvironment?(): string }).getEnvironment?.();
+    if (environment !== 'web') return;
+    try {
+      const [{ answerConsoleCommands }, { consoleCommandHandler }, { buildConsoleApis }, fed] =
+        await Promise.all([
+          import('../src/federation/console_commands.js'),
+          import('../src/federation/answer.js'),
+          import('../src/ui/console_apis.js'),
+          import('../src/federation/federation.js'),
+        ]);
+      const client = commands.client ?? (await fed.redisConnection(this.app, commands.connection));
+      const actions = commands.actions ?? {};
+      const logger = await this.app.container
+        .make('logger')
+        .then((made) => made as unknown as { info(message: string): void })
+        .catch(() => null);
+      this.stopConsoleCommands = await answerConsoleCommands(
+        client,
+        (command) =>
+          consoleCommandHandler({
+            // Built per command: the queue manager and health checks are read from the runtime
+            // slots other providers fill.
+            apis: buildConsoleApis(store, {
+              coreConfig: config,
+              uiConfig: { replay: { enabled: actions.replay === true } },
+              container: { make: (token) => this.app.container.make(token as never) },
+              audit: () => {},
+            }),
+            actions,
+            log: (line) => logger?.info(line),
+          })(command),
+        {
+          ...(commands.prefix !== undefined ? { prefix: commands.prefix } : {}),
+          onError: (message) =>
+            void this.debug(`[@adonis-agora/telescope] console command failed: ${message}`),
+        },
+      );
+    } catch (error) {
+      await this.warn(
+        `[@adonis-agora/telescope] consoleCommands: not answering other consoles' commands: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**
@@ -746,6 +803,8 @@ export default class TelescopeProvider {
   }
 
   async shutdown() {
+    this.stopConsoleCommands?.();
+    this.stopConsoleCommands = null;
     await this.discovery?.stop();
     this.discovery = null;
     await this.discoveryPublisher?.close();

@@ -1,3 +1,4 @@
+import type { FederatedAppConfig } from '../federation/federation.js';
 import type {
   AccessDeniedInfo,
   AccessDeniedOption as GenericAccessDeniedOption,
@@ -149,7 +150,7 @@ export interface TelescopeUiConfig {
    * On a server that collects entries from several apps (each tagged `app:<id>`): the names the
    * console's App picker shows, as `{ id: label }` or a resolver given the ids. Default: the id.
    */
-  apps?: { labels?: AppLabels };
+  apps?: TelescopeUiAppsConfig;
   /**
    * The console SPA's own block, read by `@adonis-agora/telescope-ui` (ignored without it): turn
    * the SPA off or re-mount it, and set the sidebar footer's signed-in user and sign-out.
@@ -216,8 +217,24 @@ export interface ResolvedTelescopeUiConfig {
   cpuProfiling: { armEnabled: boolean };
   /** Resolved queue-console mutation gate (disabled by default). */
   queueActions: { enabled: boolean };
-  /** App picker labels (see {@link TelescopeUiConfig.apps}). */
-  apps: { labels?: AppLabels };
+  /** App picker labels and federated apps (see {@link TelescopeUiConfig.apps}). */
+  apps: TelescopeUiAppsConfig;
+}
+
+/** See {@link TelescopeUiConfig.apps}. */
+export interface TelescopeUiAppsConfig {
+  /** Picker names for the app ids entries carry: `{ id: label }`, or a resolver given the ids. */
+  labels?: AppLabels;
+  /**
+   * Other apps this console shows from their OWN stores (each keeps its entries where it
+   * records them): by app key, what `?app=` carries. See {@link FederatedAppConfig}.
+   */
+  federated?: Record<string, FederatedAppConfig>;
+  /**
+   * The picker's name for this console's own entries (no `?app=`), when federated apps are
+   * listed. Default `All apps` on a control plane, `This app` otherwise.
+   */
+  localLabel?: string;
 }
 
 /**
@@ -296,6 +313,10 @@ export function resolveConfig(
       // Safe default: queue mutations are OFF unless the host explicitly enables them.
       enabled: config.queueActions?.enabled ?? false,
     },
-    apps: config.apps?.labels !== undefined ? { labels: config.apps.labels } : {},
+    apps: {
+      ...(config.apps?.labels !== undefined ? { labels: config.apps.labels } : {}),
+      ...(config.apps?.federated !== undefined ? { federated: config.apps.federated } : {}),
+      ...(config.apps?.localLabel !== undefined ? { localLabel: config.apps.localLabel } : {}),
+    },
   };
 }

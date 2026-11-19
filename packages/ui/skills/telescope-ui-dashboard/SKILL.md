@@ -101,7 +101,10 @@ to the page URL, overridable via `new TelescopeClient({ tenant })`) and
 `client.tenants()` describes the viewer's scope. The App picker works the same way
 (`?app=<id>`, `new TelescopeClient({ app })`, `client.apps()`); it is hidden when no
 entry carries an `app:<id>` tag (on a control plane the fleet's apps also count, so a
-quiet app still shows).
+quiet app still shows) — unless federated apps are listed under `apps.federated` in
+`config/telescope_ui.ts`, which turn the picker on by themselves. `GET /api/apps` then
+lists each app's `mode` (`control-plane` | `federated`) and `actions`
+(`here` | `app` | `none`), plus `local` (this console's own entries) and `selected`.
 
 ```ts
 import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
@@ -147,6 +150,16 @@ actions need no flag — they run behind `authorize` once an extension contribut
 them. A viewer limited to some organizations or some apps still gets `403` on arm, queue
 actions, extension actions and Prometheus even when the gate is on — those reach
 every organization and every app. The console asks `<path>/api/meta` and renders which config key turns each surface on.
+
+On a picked federated app (`?app=` naming `apps.federated`), replay and queue
+retry/enqueue run on the owning app over its Redis — gated by its
+`consoleCommands.actions.replay` / `actions.queues` in `config/telescope.ts` (each off
+by default), not by the console's `replay` / `queueActions`. A federated app the console
+only browses answers `403` and its Replay button is disabled; CPU profiling, AI
+diagnosis, extension data/actions, the Prometheus scrape and the live tail answer
+`404` there, and `meta` reports `ai` / `profiling` as disabled with
+`federated: { app, actions }` (its `queueManager.enabled` mirrors whether the app
+answers commands).
 
 Source: `docs/packages/telescope-ui.mdx` (Acting on an entry, Getting around).
 

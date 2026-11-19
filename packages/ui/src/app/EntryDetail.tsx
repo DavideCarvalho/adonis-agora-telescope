@@ -8,6 +8,7 @@ import type {
   ReplayOutcome,
   RequestEntryContent,
 } from '../client/types.js';
+import { useAppActionsUnavailable } from './AppPicker.js';
 import { ArrowLeftIcon } from './icons.js';
 import { cn } from './primitives/cn.js';
 import { AsyncBlock, Panel, SectionTitle, TypeBadge } from './ui.js';
@@ -316,6 +317,7 @@ function ReplayPanel({ entryId }: { entryId: string }) {
   const client = useTelescopeClient();
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<ReplayOutcome | null>(null);
+  const unavailable = useAppActionsUnavailable();
 
   async function run(): Promise<void> {
     setPending(true);
@@ -330,7 +332,13 @@ function ReplayPanel({ entryId }: { entryId: string }) {
     <div className="mt-4 rounded-lg border border-border bg-panel-2 p-3.5">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">Replay</h3>
-        <Button variant="outline" size="micro" onClick={run} disabled={pending}>
+        <Button
+          variant="outline"
+          size="micro"
+          onClick={run}
+          disabled={pending || unavailable !== undefined}
+          title={unavailable}
+        >
           {pending ? 'Replaying…' : 'Replay request'}
         </Button>
       </div>

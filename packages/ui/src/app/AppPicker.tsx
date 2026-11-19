@@ -1,6 +1,11 @@
+import {
+  AppModeBadge,
+  actionsUnavailableReason,
+  FederatedNotice,
+} from '../agora-kit/blocks/app-mode';
 import { ScopeChip, ScopeMenu } from '../agora-kit/blocks/scope-menu';
 import { selectedApp } from '../client/telescope-client.js';
-import type { AppScope } from '../client/types.js';
+import type { AppOption, AppScope } from '../client/types.js';
 import { useApps } from './use-telescope.js';
 
 /** The page URL showing `app` (`undefined` = every app), the hash route kept. */
@@ -34,20 +39,63 @@ export function AppPicker() {
   const { data } = useApps();
   const current = selectedApp();
   if (data === null || !data.enabled) return null;
+  const picked = current === undefined ? undefined : data.apps.find((a) => a.id === current);
+  const badge = picked ? (
+    <AppModeBadge appLabel={picked.label} mode={picked.mode} actions={picked.actions} />
+  ) : null;
   if (!data.all && data.apps.length <= 1) {
     const only = data.apps[0];
-    return <ScopeChip noun={TEXT.noun} label={only ? only.label : 'none'} kind="app" />;
+    return (
+      <div className="flex items-center gap-1.5" data-app-picker>
+        <ScopeChip noun={TEXT.noun} label={only ? only.label : 'none'} kind="app" />
+        {only && <AppModeBadge appLabel={only.label} mode={only.mode} actions={only.actions} />}
+      </div>
+    );
   }
+  // With federated apps listed, "everything" is this console's own entries: name it.
+  const local = data.local?.label;
+  const text = local ? { ...TEXT, all: local, some: local } : TEXT;
   return (
-    <ScopeMenu
-      items={data.apps}
-      all={data.all}
-      current={current}
-      text={TEXT}
-      labelOf={(id) => appLabel(data, id)}
-      onChoose={(next) => window.location.assign(urlForApp(next))}
-    />
+    <div className="flex items-center gap-1.5" data-app-picker>
+      <ScopeMenu
+        items={data.apps.map((a) => ({
+          id: a.id,
+          label: a.label,
+          ...(a.mode === 'federated' ? { hint: 'federated' } : {}),
+        }))}
+        all={data.all}
+        current={current}
+        text={text}
+        labelOf={(id) => appLabel(data, id)}
+        onChoose={(next) => window.location.assign(urlForApp(next))}
+      />
+      {badge}
+    </div>
   );
+}
+
+/** The picked app (`?app=`) as `/apps` lists it, or undefined. */
+export function usePickedApp(): AppOption | undefined {
+  const { data } = useApps();
+  const current = selectedApp();
+  if (current === undefined || data === null || !Array.isArray(data.apps)) return undefined;
+  return data.apps.find((a) => a.id === current);
+}
+
+/**
+ * Why actions (replay, queue retry/enqueue) are unavailable for the picked app, or undefined
+ * when they are: a federated app this console only browses.
+ */
+export function useAppActionsUnavailable(): string | undefined {
+  const app = usePickedApp();
+  return app ? actionsUnavailableReason(app.label, app) : undefined;
+}
+
+/** The strip at the top of every page while a federated app is picked: whose data, who acts. */
+export function FederatedAppNotice() {
+  const app = usePickedApp();
+  if (!app) return null;
+  return <FederatedNotice appLabel={app.label} mode={app.mode} actions={app.actions} />;
 }
 
 /** Shown instead of data when the viewer is limited to apps and has none to look at. */

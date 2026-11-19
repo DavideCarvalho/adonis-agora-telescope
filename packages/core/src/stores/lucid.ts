@@ -345,7 +345,16 @@ export interface LucidStoreOptions {
    * unset, the connection's current schema.
    */
   schema?: string;
+  /**
+   * Only read: the store never creates its tables, never seeds its sequence (no
+   * `MAX(sequence)` read at first use) and refuses `record`, `prune` and `clear`. For a
+   * console reading another app's entries. Default `false`.
+   */
+  readOnly?: boolean;
 }
+
+/** Why a write was refused by a read-only store. */
+export const READ_ONLY_STORE_ERROR = 'This telescope store is read-only.';
 
 /** Rows per multi-row INSERT. Ten columns each keeps a statement at 900 bound values,
  *  under the smallest limit of any dialect Lucid drives (999 on older SQLite builds). */
@@ -422,6 +431,8 @@ export class LucidTelescopeStore implements TelescopeStore {
   private readonly metaTable: string;
   private readonly maxEntries: number | null;
   private readonly autoCreateTable: boolean;
+  /** Only read (see {@link LucidStoreOptions.readOnly}). */
+  readonly readOnly: boolean;
   /** Lazily-resolved init (table creation + sequence seed), run once — re-run after a failure. */
   private ready: Promise<void> | null = null;
   /** When the current {@link ready} attempt failed (epoch ms), or null while it has not. */
@@ -443,7 +454,21 @@ export class LucidTelescopeStore implements TelescopeStore {
     this.metaTable = qualifiedName(SCHEMA_META_TABLE_NAME, this.schema);
     this.maxEntries =
       options.maxEntries !== undefined && options.maxEntries > 0 ? options.maxEntries : null;
-    this.autoCreateTable = options.autoCreateTable ?? false;
+    this.readOnly = options.readOnly ?? false;
+    this.autoCreateTable = !this.readOnly && (options.autoCreateTable ?? false);
+  }
+
+  /**
+   * The same table on the same connection, only read: no DDL, no sequence seed, every write
+   * refused. What a console reading another app's entries builds from that app's store.
+   */
+  readOnlyView(): LucidTelescopeStore {
+    if (this.readOnly) return this;
+    return new LucidTelescopeStore(this.db, {
+      tableName: this.tableName,
+      ...(this.schema !== undefined ? { schema: this.schema } : {}),
+      readOnly: true,
+    });
   }
 
   /**
@@ -459,6 +484,7 @@ export class LucidTelescopeStore implements TelescopeStore {
   }
 
   async record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
+    if (this.readOnly) throw new Error(READ_ONLY_STORE_ERROR);
     await this.init();
     const traceId = input.traceId !== undefined ? input.traceId : currentTraceId();
     const origin: BatchOrigin = resolveOrigin(input.origin);
@@ -1094,6 +1120,7 @@ export class LucidTelescopeStore implements TelescopeStore {
    * is pruned in bounded statements that never approach a bind limit.
    */
   prune(olderThan: Date, keepLast?: number): Promise<number> {
+    if (this.readOnly) return Promise.reject(new Error(READ_ONLY_STORE_ERROR));
     return runAsTelescopeWork(async () => {
       await this.init();
       const cutoff = olderThan.getTime();
@@ -1133,6 +1160,7 @@ export class LucidTelescopeStore implements TelescopeStore {
   }
 
   clear(): Promise<void> {
+    if (this.readOnly) return Promise.reject(new Error(READ_ONLY_STORE_ERROR));
     return runAsTelescopeWork(async () => {
       await this.init();
       await this.flush();
@@ -1282,6 +1310,9 @@ export class LucidTelescopeStore implements TelescopeStore {
   }
 
   private async doInit(): Promise<void> {
+    // A read-only store writes nothing, so it needs no sequence: and seeding one would read
+    // `MAX(sequence)`, which no index answers (a scan of another app's whole table).
+    if (this.readOnly) return;
     if (this.autoCreateTable) {
       await this.reconcileSchema();
     }

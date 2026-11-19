@@ -6,6 +6,7 @@ import { Button } from '../agora-kit/ui/button';
 import { Textarea } from '../agora-kit/ui/textarea';
 import { formatCount } from '../client/format.js';
 import type { QueueJobDetail, QueueSummary } from '../client/types.js';
+import { usePickedApp } from './AppPicker.js';
 import { QueueIcon } from './icons.js';
 import { Input } from './primitives/input.js';
 import { AsyncBlock, Empty, PageHeader, Panel, SectionTitle } from './ui.js';
@@ -164,6 +165,7 @@ function EnqueueForm({ queue }: { queue: string }) {
 export function QueueManagerSection() {
   const meta = useMeta();
   const { data, loading, error, reload } = useLiveQueues();
+  const picked = usePickedApp();
   const client = useTelescopeClient();
   // The open queue is in the URL (`#/queues?queue=emails`).
   const [selected, setSelected] = useQueryState(
@@ -242,7 +244,9 @@ export function QueueManagerSection() {
           title="Queue Manager"
           hint={
             capabilities && !capabilities.mutationsEnabled
-              ? 'read-only · set telescope_ui.queueActions.enabled to allow retry/enqueue'
+              ? picked?.mode === 'federated'
+                ? `read-only · ${picked.label} allows retry/enqueue with consoleCommands.actions.queues`
+                : 'read-only · set telescope_ui.queueActions.enabled to allow retry/enqueue'
               : undefined
           }
         />

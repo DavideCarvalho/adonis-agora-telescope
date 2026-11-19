@@ -10,6 +10,8 @@ import {
   resolveDiscovery,
 } from './discovery/config.js';
 import type { TelescopeExtension } from './extension/types.js';
+import type { ConsoleCommandActions } from './federation/answer.js';
+import type { ConsoleRedisClient } from './federation/console_commands.js';
 import { isCheckInput, type TelescopeCheckInput } from './fleet/checks.js';
 import { type FleetConfig, type ResolvedFleetConfig, resolveFleetConfig } from './fleet/config.js';
 import { PULSE_CARDS, type PulseCardName } from './metrics/pulse.js';
@@ -330,6 +332,26 @@ export interface TelescopeConfig extends TelescopeTopologyConfig {
    * the central server knows from their heartbeats (`fleet.url`). See {@link DiscoveryConfig}.
    */
   discovery?: DiscoveryConfig | false;
+
+  /**
+   * Let another app's telescope console show this app federated (reading this app's entries
+   * from its own store) and send it actions: the console publishes them on this app's Redis and
+   * one instance runs each. Live queues, schedules and health checks are read this way too.
+   * Off by default. See {@link ConsoleCommandsConfig}.
+   */
+  consoleCommands?: ConsoleCommandsConfig | false;
+}
+
+/** See {@link TelescopeConfig.consoleCommands}. */
+export interface ConsoleCommandsConfig {
+  /** The `@adonisjs/redis` connection the commands come in on. Default the default connection. */
+  connection?: string;
+  /** Key prefix of the channels: the console names the same one. Default `telescope`. */
+  prefix?: string;
+  /** Escape hatch: an `ioredis` client used instead of `@adonisjs/redis`. */
+  client?: ConsoleRedisClient;
+  /** The actions other consoles may run here. Each is off by default. */
+  actions?: ConsoleCommandActions;
 }
 
 /** See {@link TelescopeConfig.health}. */
@@ -534,6 +556,8 @@ export interface ResolvedTelescopeConfig {
   propagationConfigured: boolean;
   /** Resolved discovery settings. */
   discovery: ResolvedDiscoveryConfig;
+  /** Console commands this app answers, `null` when off. */
+  consoleCommands: ConsoleCommandsConfig | null;
 }
 
 /** The resolved OTel settings (see {@link OtelConfig}). */
@@ -634,6 +658,10 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     propagation: resolvePropagation(config.propagation),
     propagationConfigured: config.propagation !== undefined,
     discovery: resolveDiscovery(config.discovery),
+    consoleCommands:
+      config.consoleCommands === undefined || config.consoleCommands === false
+        ? null
+        : { ...config.consoleCommands, actions: { ...config.consoleCommands.actions } },
   };
 }
 
