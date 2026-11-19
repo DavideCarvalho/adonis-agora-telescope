@@ -1,6 +1,6 @@
+import { ScopeChip, ScopeMenu } from '../agora-kit/blocks/scope-menu';
 import { selectedApp } from '../client/telescope-client.js';
 import type { AppScope } from '../client/types.js';
-import { ScopeChip, ScopeMenu } from './ScopeMenu.js';
 import { useApps } from './use-telescope.js';
 
 /** The page URL showing `app` (`undefined` = every app), the hash route kept. */

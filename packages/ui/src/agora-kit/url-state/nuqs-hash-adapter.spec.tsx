@@ -37,12 +37,12 @@ describe('splitHash / joinHash', () => {
 
 describe('writeHashSearch', () => {
   it('keeps the route path and the page query, and notifies subscribers', () => {
-    goTo('/telescope?app=shop#/entries');
+    goTo('/durable?app=shop#/entries');
     let calls = 0;
     const off = subscribeHashUrl(() => calls++);
     writeHashSearch('?type=query');
     off();
-    expect(window.location.pathname).toBe('/telescope');
+    expect(window.location.pathname).toBe('/durable');
     expect(window.location.search).toBe('?app=shop');
     expect(window.location.hash).toBe('#/entries?type=query');
     expect(readHashSearch().get('type')).toBe('query');
@@ -108,11 +108,11 @@ describe('NuqsHashAdapter', () => {
   });
 
   it('writes into the hash, keeping the route path and the page query', async () => {
-    goTo('/telescope?tenant=acme#/entries');
+    goTo('/durable?tenant=acme#/entries');
     renderProbe();
     fireEvent.change(screen.getByLabelText('q'), { target: { value: 'orders' } });
     await waitFor(() => expect(window.location.hash).toBe('#/entries?q=orders'));
-    expect(window.location.pathname).toBe('/telescope');
+    expect(window.location.pathname).toBe('/durable');
     expect(window.location.search).toBe('?tenant=acme');
   });
 
