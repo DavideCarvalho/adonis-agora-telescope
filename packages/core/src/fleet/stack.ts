@@ -3,10 +3,12 @@
  * uses each one. Read once at boot from the app's config and sent with the heartbeat, so the
  * Architecture page can draw the infrastructure next to the apps.
  *
- * Two sources:
+ * Three sources:
  *
  * - the AdonisJS `database` and `redis` configs (plain objects): each connection, its technology
  *   and the server it points at;
+ * - the AdonisJS first-party packages (`drive`, `mail`, `cache`, `lock`, `limiter`, `session`,
+ *   `queue`, `transmit`), whose options sit in ConfigProvider closures (see `stack_adonis.ts`);
  * - **descriptors**: a store, disk or transport factory can carry what it uses under the global
  *   symbol {@link STACK_DESCRIPTOR} (see {@link describeStackUse}), so a lib says
  *   "postgres via the `hub` connection, for run history" without the config showing it. Plain
@@ -16,13 +18,20 @@
  * database, and labelled by the database (or connection) name only.
  */
 import { createHash } from 'node:crypto';
+import { FIRST_PARTY } from './stack_adonis.js';
+import { createIntrospector, type Introspector } from './stack_introspect.js';
 
 /** The symbol a factory carries its {@link StackUse} under. */
 export const STACK_DESCRIPTOR = Symbol.for('@adonis-agora/stack');
 
 /** What a factory (store, disk, transport) uses. */
 export interface StackUse {
-  /** `postgres`, `mysql`, `sqlite`, `redis`, `s3`, `gcs`, `fs`, `resend`, `smtp`, `ses`, … */
+  /**
+   * `postgres`, `mysql`, `sqlite`, `redis`, `s3`, `gcs`, `fs`, `resend`, `smtp`, `ses`, … Two
+   * mean a connection of the app: `lucid` (a Lucid connection, whatever its database; the default
+   * one without `connection`) and `redis` without `connection`, `label` or `host` (the default
+   * Redis connection).
+   */
   tech: string;
   /** The Lucid or Redis connection it goes through, when it uses one. */
   connection?: string;
@@ -215,12 +224,37 @@ function walk(
 const SKIP_NAMESPACES = new Set(['database', 'redis', 'app', 'logger', 'hash', 'encryption']);
 
 /**
+ * A config that picks one of its `stores` with `store` (telescope's own): only that one is in use.
+ */
+function selectedStore(value: unknown): unknown {
+  if (!isRecord(value) || typeof value.store !== 'string' || !isRecord(value.stores)) return value;
+  if (!(value.store in value.stores)) return value;
+  return { ...value, stores: { [value.store]: value.stores[value.store] } };
+}
+
+export interface DescribeStackOptions {
+  /**
+   * Read the options the first-party packages keep in closures (through an in-process
+   * `node:inspector` session that runs none of their code). Default `true`.
+   */
+  introspect?: boolean;
+  /** How long reading them may take, in all. Default 100 ms. */
+  budgetMs?: number;
+}
+
+/**
  * The app's stack from its config. Never throws: a config it cannot read contributes nothing.
  */
-export function describeStack(config: ConfigLike): StackEntry[] {
+export function describeStack(
+  config: ConfigLike,
+  options: DescribeStackOptions = {},
+): StackEntry[] {
   const builder = new StackBuilder();
   const dbByName = new Map<string, StackEntry>();
   const redisByName = new Map<string, StackEntry>();
+  const redisTargets = new Map<string, string>();
+  let primaryDb: string | undefined;
+  let primaryRedis: string | undefined;
 
   try {
     const database = config.get('database') as Record<string, unknown> | undefined;
@@ -236,8 +270,8 @@ export function describeStack(config: ConfigLike): StackEntry[] {
       );
       dbByName.set(name, entry);
     }
-    const primary = str(database?.connection);
-    if (primary) builder.use(dbByName.get(primary), 'app');
+    primaryDb = str(database?.connection);
+    if (primaryDb) builder.use(dbByName.get(primaryDb), 'app');
   } catch {
     // no database config
   }
@@ -248,14 +282,50 @@ export function describeStack(config: ConfigLike): StackEntry[] {
     for (const [name, raw] of Object.entries(connections)) {
       if (!isRecord(raw)) continue;
       const target = redisTarget(raw);
-      redisByName.set(
-        name,
-        builder.add(`redis:${hash([target.host, target.port, target.db])}`, 'redis', name),
-      );
+      const key = hash([target.host, target.port, target.db]);
+      redisByName.set(name, builder.add(`redis:${key}`, 'redis', name));
+      if (!redisTargets.has(key)) redisTargets.set(key, name);
     }
+    primaryRedis = str(redis?.connection);
   } catch {
     // no redis config
   }
+
+  /** The entry a use goes through: one of the app's connections, when it names (or implies) one. */
+  const connectionOf = (use: StackUse): StackEntry | undefined => {
+    if (use.tech === 'lucid') {
+      const name = use.connection ?? primaryDb;
+      return name !== undefined ? dbByName.get(name) : undefined;
+    }
+    if (use.connection !== undefined) {
+      return use.tech === 'redis'
+        ? (redisByName.get(use.connection) ?? dbByName.get(use.connection))
+        : (dbByName.get(use.connection) ?? redisByName.get(use.connection));
+    }
+    if (use.tech === 'redis' && use.label === undefined && use.host === undefined) {
+      return primaryRedis !== undefined ? redisByName.get(primaryRedis) : undefined;
+    }
+    return undefined;
+  };
+
+  const record = (use: StackUse, namespace: string): void => {
+    if (!isRecord(use) || typeof use.tech !== 'string' || use.tech === '') return;
+    const by = use.purpose ? `${namespace}: ${use.purpose}` : namespace;
+    const entry = connectionOf(use);
+    if (entry) {
+      builder.use(entry, by);
+      return;
+    }
+    // A connection the app does not have (or an unknown default) is not a server to draw.
+    if (
+      use.tech === 'lucid' ||
+      (use.tech === 'redis' && use.label === undefined && use.host === undefined)
+    ) {
+      return;
+    }
+    const label = use.label ?? use.connection ?? use.tech;
+    builder.use(builder.add(`${use.tech}:${hash([use.host, label])}`, use.tech, label), by);
+  };
 
   let namespaces: Record<string, unknown> = {};
   try {
@@ -263,32 +333,46 @@ export function describeStack(config: ConfigLike): StackEntry[] {
   } catch {
     namespaces = {};
   }
-  for (const [namespace, value] of Object.entries(namespaces)) {
-    if (SKIP_NAMESPACES.has(namespace)) continue;
-    walk(value, (found) => {
-      if (found.connection !== undefined) {
-        const name = found.connection;
-        // A name both configs know is ambiguous: `connectionName` is Redis in the AdonisJS libs,
-        // but nothing here tells which key it came from, so a Lucid connection wins.
-        builder.use(dbByName.get(name) ?? redisByName.get(name), namespace);
-        return;
+
+  let introspector: Introspector | null | undefined;
+  const firstParty = {
+    get introspector(): Introspector | null {
+      // Opened only when a first-party config is there to read, and once.
+      if (introspector === undefined) {
+        introspector = options.introspect === false ? null : createIntrospector(options.budgetMs);
       }
-      for (const use of found.uses ?? []) {
-        const by = use.purpose ? `${namespace}: ${use.purpose}` : namespace;
-        if (use.connection !== undefined) {
-          const entry =
-            use.tech === 'redis'
-              ? (redisByName.get(use.connection) ?? dbByName.get(use.connection))
-              : (dbByName.get(use.connection) ?? redisByName.get(use.connection));
-          if (entry) {
-            builder.use(entry, by);
-            continue;
-          }
+      return introspector;
+    },
+    redisConnectionAt: (raw: Record<string, unknown>): string | undefined => {
+      const target = redisTarget(raw);
+      return redisTargets.get(hash([target.host, target.port, target.db]));
+    },
+  };
+
+  try {
+    for (const [namespace, value] of Object.entries(namespaces)) {
+      if (SKIP_NAMESPACES.has(namespace)) continue;
+      try {
+        const mapper = Object.hasOwn(FIRST_PARTY, namespace) ? FIRST_PARTY[namespace] : undefined;
+        if (mapper !== undefined) {
+          for (const use of mapper(value, firstParty)) record(use, namespace);
         }
-        const label = use.label ?? use.connection ?? use.tech;
-        builder.use(builder.add(`${use.tech}:${hash([use.host, label])}`, use.tech, label), by);
+        walk(selectedStore(value), (found) => {
+          if (found.connection !== undefined) {
+            const name = found.connection;
+            // A name both configs know is ambiguous: `connectionName` is Redis in the AdonisJS libs,
+            // but nothing here tells which key it came from, so a Lucid connection wins.
+            builder.use(dbByName.get(name) ?? redisByName.get(name), namespace);
+            return;
+          }
+          for (const use of found.uses ?? []) record(use, namespace);
+        });
+      } catch {
+        // a namespace that cannot be read contributes nothing
       }
-    });
+    }
+  } finally {
+    introspector?.dispose();
   }
 
   return builder.list();

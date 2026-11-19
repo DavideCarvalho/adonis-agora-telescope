@@ -15,6 +15,7 @@ data telescope already has, and a layer is left out when its data is not there.
 | Calls between apps: count, failures, avg and p95 latency | the outbound HTTP calls recorded in the window (1 h, 6 h or 24 h) | the HTTP client watcher |
 | Permissions: what each app may call on another | `@adonis-agora/authkit-server`, when it runs in the same process | calls between apps set up in authkit |
 | What each app accepts | the catalogs the apps publish to authkit | `service.catalog` in each app's authkit client |
+| What each app runs on | each app's config, sent with its heartbeat | the fleet |
 
 ## Calls
 
@@ -45,6 +46,53 @@ target app does not list in its published catalog is highlighted.
   Calls made with a user's token, or to public routes, need no grant: "calls without a grant"
   points at something to look at, not always at a problem.
 </Callout>
+
+## What each app runs on
+
+Next to the apps, the page draws their databases, Redis servers, buckets and mail providers,
+and what in each app uses them. Nothing to write: it comes from the app's config.
+
+| Config | Shows |
+| --- | --- |
+| `config/database.ts`, `config/redis.ts` | each server; the default database connection is used by `app` |
+| `config/drive.ts` | each S3, R2, GCS disk, labelled by its bucket; a local disk only when it is the default |
+| `config/mail.ts` | each mailer by provider (Resend, SES, Mailgun…; an SMTP server by its host) |
+| `config/cache.ts` | the Redis or database layer of each store, and its bus |
+| `config/lock.ts`, `config/limiter.ts`, `config/session.ts`, `config/queue.ts` | the store in use, through its connection |
+| `config/transmit.ts` | the Redis transport, as the connection on the same server |
+| `config/telescope.ts` | telescope's own store and its Redis ingest stream |
+| Agora libs | what each one uses (durable's run history, media's disks…) |
+
+Credentials, URLs and hosts never leave the app: a server is identified by a hash and labelled
+by its database, connection, bucket or mailer name.
+
+### Describing your own
+
+A store, disk or client the page cannot see can say what it uses with `describeStackUse`:
+
+```ts title="config/search.ts"
+import env from '#start/env'
+import { describeStackUse } from '@adonis-agora/telescope'
+
+export default {
+  // Shown as "search: catalog" on a Meilisearch node.
+  index: describeStackUse(() => new MeiliSearch({ host: env.get('MEILI_URL') }), {
+    tech: 'meilisearch',
+    label: 'catalog',
+    host: env.get('MEILI_URL'), // hashed, never sent
+  }),
+  // Shown on the `main` Redis connection of config/redis.ts.
+  cache: describeStackUse({ ttl: '1h' }, { tech: 'redis', connection: 'main', purpose: 'search cache' }),
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `tech` | `postgres`, `redis`, `s3`, `resend`, … (`lucid`: a Lucid connection, whatever its database) |
+| `connection` | a connection of `config/database.ts` or `config/redis.ts`; for `lucid` and `redis` the default one when left out |
+| `label` | the name shown on the node (a bucket, a provider) |
+| `host` | tells two servers apart; hashed, never sent |
+| `purpose` | what it is for, shown on the link |
 
 ## API
 

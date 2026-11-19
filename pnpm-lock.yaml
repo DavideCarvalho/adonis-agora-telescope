@@ -211,28 +211,46 @@ importers:
       '@adonis-agora/filter':
         specifier: ^1.0.0-rc.5
         version: 1.0.0-rc.5(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
-      '@adonisjs/cache':
-        specifier: ^2.1.0
-        version: 2.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
-      '@adonisjs/mail':
-        specifier: ^10.2.0
-        version: 10.4.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@types/node@26.6.6)(luxon@3.7.2)
       '@adonisjs/otel':
         specifier: ^2.0.0
-        version: 2.0.0(72c58a9fef828c8baf650fbddd719e27)
+        version: 2.0.0(25595eeef73652b679b7fd70fef151c4)
     devDependencies:
       '@adonis-agora/authkit-client':
         specifier: 1.0.0-rc.11
-        version: 1.0.0-rc.11(a9dcc618da6dcaad7f91664ae78c710c)
+        version: 1.0.0-rc.11(ae61864b65edd3767357873bddaaca05)
       '@adonisjs/assembler':
         specifier: 8.6.0
         version: 8.6.0(typescript@7.0.2)
+      '@adonisjs/cache':
+        specifier: 2.1.0
+        version: 2.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       '@adonisjs/core':
         specifier: 7.6.0
         version: 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
+      '@adonisjs/drive':
+        specifier: 4.0.0
+        version: 4.0.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@aws-sdk/client-s3@3.1167.0)
+      '@adonisjs/limiter':
+        specifier: 3.0.1
+        version: 3.0.1(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+      '@adonisjs/lock':
+        specifier: 2.1.0
+        version: 2.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(ioredis@6.0.0(supports-color@10.2.2))
       '@adonisjs/lucid':
         specifier: 22.4.2
         version: 22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
+      '@adonisjs/mail':
+        specifier: 10.4.0
+        version: 10.4.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@types/node@26.6.6)(luxon@3.7.2)
+      '@adonisjs/queue':
+        specifier: 0.6.2
+        version: 0.6.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+      '@adonisjs/session':
+        specifier: 8.1.0
+        version: 8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+      '@adonisjs/transmit':
+        specifier: 3.0.2
+        version: 3.0.2(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(ioredis@6.0.0(supports-color@10.2.2))
       '@anthropic-ai/sdk':
         specifier: 1.8.0
         version: 1.8.0
@@ -567,6 +585,28 @@ packages:
       youch:
         optional: true
 
+  '@adonisjs/drive@4.0.0':
+    resolution: {integrity: sha512-dJPmTKmYba05/e6x807VjL9m5JT56bZKqAgFknkS96kUSH52i9M+InsZTwUQ87cW9UQ1tED8ts++LgsyE3EkEQ==}
+    engines: {node: '>=24.0.0'}
+    peerDependencies:
+      '@adonisjs/assembler': ^8.0.0-next.7 || ^8.0.0
+      '@adonisjs/core': ^7.0.0-next.0 || ^7.0.0
+      '@aws-sdk/client-s3': ^3.884.0
+      '@aws-sdk/s3-request-presigner': ^3.884.0
+      '@google-cloud/storage': ^7.17.0
+      edge.js: ^6.4.0
+    peerDependenciesMeta:
+      '@adonisjs/assembler':
+        optional: true
+      '@aws-sdk/client-s3':
+        optional: true
+      '@aws-sdk/s3-request-presigner':
+        optional: true
+      '@google-cloud/storage':
+        optional: true
+      edge.js:
+        optional: true
+
   '@adonisjs/env@7.1.0':
     resolution: {integrity: sha512-DXKCDIDoHzjxx9O7HvFYYBGQENmF5ANTUXBGE65ygOcJTtXyrLBISUkjrIQGVAKUmcLPF9WInkXQfxMnfO2VJw==}
     engines: {node: '>=24.0.0'}
@@ -617,6 +657,40 @@ packages:
     engines: {node: '>=24.0.0'}
     peerDependencies:
       '@adonisjs/fold': ^11.0.0-next.2
+
+  '@adonisjs/limiter@3.0.1':
+    resolution: {integrity: sha512-U7drt/FPlB5PV84dnxQQSFGk75fDxgEHSkfT/eGwx/+Z4re7XlkVU4oros/VGefD72JTgXp7Kz97tS1XW7eEXA==}
+    peerDependencies:
+      '@adonisjs/assembler': ^8.0.0-next.9 || ^8.0.0
+      '@adonisjs/core': ^7.0.0-next.1 || ^7.0.0
+      '@adonisjs/i18n': ^3.0.0-next.0 || ^3.0.0
+      '@adonisjs/lucid': ^22.0.0-next.0 || ^22.0.0
+      '@adonisjs/redis': ^10.0.0-next.1 || ^10.0.0
+    peerDependenciesMeta:
+      '@adonisjs/assembler':
+        optional: true
+      '@adonisjs/i18n':
+        optional: true
+      '@adonisjs/lucid':
+        optional: true
+      '@adonisjs/redis':
+        optional: true
+
+  '@adonisjs/lock@2.1.0':
+    resolution: {integrity: sha512-Z0G8Tt6pZMYN4TbmKLa1/Da6qiPneBREYI+1xCxpfg8/SF0Lw+5oCz1+Q24KJQWRnRi80vQvfc1/ZJ5pwZgEeA==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@adonisjs/assembler': ^8.0.0-next.19 || ^8.0.0
+      '@adonisjs/core': ^7.0.0-next.13 || ^7.0.0
+      '@adonisjs/lucid': ^22.0.0-next.1 || ^22.0.0
+      '@adonisjs/redis': ^10.0.0-next.1 || ^10.0.0
+    peerDependenciesMeta:
+      '@adonisjs/assembler':
+        optional: true
+      '@adonisjs/lucid':
+        optional: true
+      '@adonisjs/redis':
+        optional: true
 
   '@adonisjs/logger@7.1.1':
     resolution: {integrity: sha512-MmUlp8xBMT6zZy0+vnQcQjHIlNfU4pUJARlINr7Bqha9BvhIn03QZgJL5QJ+kJe1tl6ZpNAryoRTJUiOk/wINQ==}
@@ -685,18 +759,32 @@ packages:
       '@adonisjs/assembler':
         optional: true
 
+  '@adonisjs/queue@0.6.2':
+    resolution: {integrity: sha512-je+ynSzFw2RWHZUYZYILCtfLh/VptrMaR6gs4WUjM0KHOa8EMfSAxQskIkDpgq7wEaJ1me1cNGF9xylq/O+sfQ==}
+    engines: {node: '>=24.0.0'}
+    peerDependencies:
+      '@adonisjs/assembler': ^8.0.0
+      '@adonisjs/core': ^7.0.0
+      '@adonisjs/lucid': ^20.0.0 || ^21.0.0 || ^22.0.0
+      '@adonisjs/redis': ^8.0.0 || ^9.0.0 || ^10.0.0
+    peerDependenciesMeta:
+      '@adonisjs/lucid':
+        optional: true
+      '@adonisjs/redis':
+        optional: true
+
   '@adonisjs/repl@5.0.0':
     resolution: {integrity: sha512-cPp0w5svYUA3M1gdxQBO2Mx5g+SZfPweqKCAxk7C1Os/Qu67JKgWqXqNnl1q0Tzv/l0L19Ms1C7ivzQxeBNajg==}
     engines: {node: '>=24.0.0'}
 
-  '@adonisjs/session@8.3.0':
-    resolution: {integrity: sha512-WHtCPtOVVVXQ1Ch40wdMLlO/CGZaORnf2QP7ndWDn5N0TspDfOwymKaaaYIAeocC5UWq5Jb0Vxayw41jKEWMGQ==}
+  '@adonisjs/session@8.1.0':
+    resolution: {integrity: sha512-hTd5m49Ro8XhxVQN0yyCeDOihDhj+mFIVltzeWPXkCxK19JHAtA++TAygxSUEhvcm56IVS43XWNE1lNIOPjMJA==}
     engines: {node: '>=24.0.0'}
     peerDependencies:
       '@adonisjs/assembler': ^8.0.0-next.26 || ^8.0.0
       '@adonisjs/core': ^7.0.0-next.16 || ^7.0.0
       '@adonisjs/lucid': ^22.0.0-next.0 || ^22.0.0
-      '@adonisjs/redis': ^10.0.0-next.2 || ^10.0.0 || ^11.0.0
+      '@adonisjs/redis': ^10.0.0-next.2 || ^10.0.0
       '@aws-sdk/client-dynamodb': ^3.955.0
       '@aws-sdk/util-dynamodb': ^3.955.0
       '@japa/api-client': ^3.1.0
@@ -722,6 +810,12 @@ packages:
         optional: true
       edge.js:
         optional: true
+
+  '@adonisjs/transmit@3.0.2':
+    resolution: {integrity: sha512-QCQFq8JdHhNCLpdVu56ErAmCridsmvgEU/yQwG4EETajPqKLZX+2l4713Sn/dppqvD2ZO379uCS2NhqdAa2snA==}
+    engines: {node: '>=20.11.1'}
+    peerDependencies:
+      '@adonisjs/core': ^7.0.0-next
 
   '@alloc/quick-lru@5.3.0':
     resolution: {integrity: sha512-U4+70Pc5ZS9osnCBCE5Jha/ciHM+Yp+CNMNC/7HvYbNRk1Ldd+f7qO65W5qfhu/TCv+/ozljlXXe9Nj8419DMA==}
@@ -1003,6 +1097,18 @@ packages:
   '@borewit/text-codec@0.2.3':
     resolution: {integrity: sha512-49CycTz1aAZmvFcwkeFyhud1HUmRIB5Tabf7ALV+VA4Iu85MTfz2cUwzPagMFAdVBvrWdkCxG67I30tUwwpKsw==}
 
+  '@boringnode/bus@0.10.0':
+    resolution: {integrity: sha512-Z3tKwDAJhixqwyxfzeaH42MckoBu0TKmYeTLGpH5ahkiXF+VRKDMnpBIy/1UC9hqnJz9E+eRNL9hHveyIxC8hw==}
+    engines: {node: '>=20.6'}
+    peerDependencies:
+      ioredis: ^5.0.0 || ^6.0.0
+      mqtt: ^5.16.0
+    peerDependenciesMeta:
+      ioredis:
+        optional: true
+      mqtt:
+        optional: true
+
   '@boringnode/bus@0.9.2':
     resolution: {integrity: sha512-HOnaLlXLvpB0jKGMjvqYQAdfxX1jjD4dDidr6jeZX+SBFGQXAgVgbD+hu+rynbAuKqPbow0z/DLdxXfqQM0yyw==}
     engines: {node: '>=20.6'}
@@ -1015,6 +1121,27 @@ packages:
   '@boringnode/encryption@1.0.1':
     resolution: {integrity: sha512-+UL9erFUngnxNEDdXSKCnGQA8D62C/x2vxLF5vc9zaX7T2JolV/bGjpZAvFLzlY2gIffHyw+KsqsEWod5+zV0w==}
     engines: {node: '>=20.6'}
+
+  '@boringnode/queue@0.6.0':
+    resolution: {integrity: sha512-hgd9zKJUgZH8Y6ua2UKS1LJ4/fonVkJJnXRUxgmEyPpsJcle27WJ4KS30LRtTlCzX188pLUlj4CBzGMNyzVlEA==}
+    engines: {node: '>=24.0.0'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
+      '@opentelemetry/core': ^1.30.0 || ^2.0.0
+      '@opentelemetry/instrumentation': ^0.200.0
+      ioredis: ^5.0.0
+      knex: ^3.0.0
+    peerDependenciesMeta:
+      '@opentelemetry/api':
+        optional: true
+      '@opentelemetry/core':
+        optional: true
+      '@opentelemetry/instrumentation':
+        optional: true
+      ioredis:
+        optional: true
+      knex:
+        optional: true
 
   '@boringnode/queue@0.9.1':
     resolution: {integrity: sha512-+uA9+fSRn7WcHZzQryNSFYXVYn4QzLoia0d0lPisbUbtp0evRN1M6G84hOOkc8Thj83AzC8JSOmEYg3Q5HJwPQ==}
@@ -1042,6 +1169,10 @@ packages:
 
   '@boringnode/route-matcher@0.1.2':
     resolution: {integrity: sha512-BXVxxF8oTPCRaIGtDgjssx/V4GbVu+3Vteo3y+xndN6GjXrMpfCPHuQbArHTm0tFUKGpwEYoK+dIjD8f8eZklA==}
+    engines: {node: '>=20.6'}
+
+  '@boringnode/transmit@0.4.3':
+    resolution: {integrity: sha512-YNMrgoaVKjx9WBBZmLRIwa8GxlTH4YURd+ekaFLG5rSXN7GPz6KZM/FQgkF1DpmuJ3vBjswcVQfX3XOpUbENAw==}
     engines: {node: '>=20.6'}
 
   '@braidai/lang@1.1.2':
@@ -1220,6 +1351,10 @@ packages:
     resolution: {integrity: sha512-wtF6h+DY6M3YaDBPAmvuuA6jV8Sif9MjtOI5euKFWRgCDl5PeDpPsHR9u2l6St5ceY8AZgoNDww5+HvEsXFsGg==}
     engines: {node: '>=6'}
     hasBin: true
+
+  '@humanwhocodes/retry@0.4.3':
+    resolution: {integrity: sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==}
+    engines: {node: '>=18.18'}
 
   '@ioredis/commands@2.0.0':
     resolution: {integrity: sha512-vrx0AE/T0h7cRZwfo1M39Cr+ZhZrkf0V8mQN75wucKCxCLD9l/VX6no3gFvrLqD1IlG/1LtzWovqEw3t0Vr9zg==}
@@ -1831,6 +1966,10 @@ packages:
 
   '@poppinss/types@1.2.1':
     resolution: {integrity: sha512-qUYnzl0m9HJTWsXtr8Xo7CwDx6wcjrvo14bOVbIMIlKJCzKrm3LX55dRTDr1/x4PpSvKVgmxvC6Ly2YiqXKOvQ==}
+
+  '@poppinss/utils@6.10.1':
+    resolution: {integrity: sha512-da+MMyeXhBaKtxQiWPfy7+056wk3lVIhioJnXHXkJ2/OHDaZfFcyKHNl1R06sdYO8lIRXcXdoZ6LO2ARmkAREA==}
+    engines: {node: '>=18.16.0'}
 
   '@poppinss/utils@7.1.2':
     resolution: {integrity: sha512-fliKjqqbgEWa4yqHV2Vj7mgNmsARtJ6QeYy5/l0fDWrJ+gHZ3pmwiOqixuejZDsF+h2gdn8MMA+oAy2GfvqDVQ==}
@@ -2735,6 +2874,17 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@verrou/core@0.5.2':
+    resolution: {integrity: sha512-RDitlGrKqU4PJzhPol0N54booiLABOpC1nsS6QDpgB2lCzyoDLdIG97zKEt/2bS6UElv3s+Gdm6kIA24WaeEyw==}
+    peerDependencies:
+      '@aws-sdk/client-dynamodb': ^3.484.0
+      ioredis: ^5.3.2
+    peerDependenciesMeta:
+      '@aws-sdk/client-dynamodb':
+        optional: true
+      ioredis:
+        optional: true
+
   '@vitejs/plugin-react@6.3.0':
     resolution: {integrity: sha512-H9E955aVvD2F4zNHCw4eIZbIfF6xKldlh7MNu+hSU7xwQzh65lI/N+CJWqmfhi0PEjDXIt/H7T7J/4wU63KJiw==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -3404,6 +3554,21 @@ packages:
     resolution: {integrity: sha512-9UbaD6XdAL97+k/n+N7JwX46K/M6Zc6KcFYskrYL8wbBV/Uyk0CTAMY0VT+qiK5PM7AIc9aTWYtq65U7T+aCNQ==}
     engines: {node: '>=8'}
 
+  flydrive@2.2.0:
+    resolution: {integrity: sha512-e4xYe+I1J0O0jufOS38jKPxdxzxcRzX+1GM4IP0xRcJtvwBizbJ3r5z1uGghfx1+FQLbQxD0LxHLQU6UbpegMg==}
+    engines: {node: '>=24.0.0'}
+    peerDependencies:
+      '@aws-sdk/client-s3': ^3.577.0 || ^3.1147.0
+      '@aws-sdk/s3-request-presigner': ^3.577.0 || ^3.1147.0
+      '@google-cloud/storage': ^7.10.2 || ^8.2.0
+    peerDependenciesMeta:
+      '@aws-sdk/client-s3':
+        optional: true
+      '@aws-sdk/s3-request-presigner':
+        optional: true
+      '@google-cloud/storage':
+        optional: true
+
   foreground-child@3.3.1:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
     engines: {node: '>=14'}
@@ -3916,6 +4081,10 @@ packages:
     engines: {node: '>= 16'}
     hasBin: true
 
+  matchit@1.1.0:
+    resolution: {integrity: sha512-+nGYoOlfHmxe5BW5tE0EMJppXEwdSf8uBA1GTZC7Q77kbT35+VKLYJMzVNWCHSsga1ps1tPYFtFyvxvKzWVmMA==}
+    engines: {node: '>=6'}
+
   media-typer@1.1.1:
     resolution: {integrity: sha512-yz3xRaG20c6/BOzvYoDaGtPmGscs7YivItZEEqe6GbwNfHuxu9YNmvnEkMzKldAGY4/80pRcQRZSEnhquk9XuQ==}
     engines: {node: '>= 0.8'}
@@ -4247,6 +4416,9 @@ packages:
   quick-format-unescaped@4.0.4:
     resolution: {integrity: sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg==}
 
+  rate-limiter-flexible@9.1.1:
+    resolution: {integrity: sha512-imxFjzPCmvDLMe7d2tsgiSQvs5EI2fI9SNymmslAfOqznZhsZ+PqbIjIYKpuSbd3pKovR1aMG47qfCLIO/adVg==}
+
   raw-body@3.0.2:
     resolution: {integrity: sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==}
     engines: {node: '>= 0.10'}
@@ -4378,6 +4550,9 @@ packages:
 
   scheduler@0.28.0:
     resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
+
+  secure-json-parse@4.1.1:
+    resolution: {integrity: sha512-lnd81MQEZKjhW/Gd2TQqdd4XP6QYNdDW/EP+I7nTrFHP9y2LmaGPIHk9xsnzcOiEr1c39c/e84xFgGviQKBTRw==}
 
   semver@7.8.6:
     resolution: {integrity: sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw==}
@@ -4936,12 +5111,12 @@ packages:
 
 snapshots:
 
-  '@adonis-agora/authkit-client@1.0.0-rc.11(a9dcc618da6dcaad7f91664ae78c710c)':
+  '@adonis-agora/authkit-client@1.0.0-rc.11(ae61864b65edd3767357873bddaaca05)':
     dependencies:
       '@adonis-agora/authkit-core': 1.0.0-rc.4
-      '@adonisjs/auth': 10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.3.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))
+      '@adonisjs/auth': 10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))
       '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
-      '@adonisjs/session': 8.3.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+      '@adonisjs/session': 8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       jose: 6.2.16
     optionalDependencies:
       '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
@@ -5020,7 +5195,7 @@ snapshots:
     transitivePeerDependencies:
       - babel-plugin-macros
 
-  '@adonisjs/auth@10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.3.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))':
+  '@adonisjs/auth@10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))':
     dependencies:
       '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
       '@adonisjs/presets': 3.0.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))
@@ -5028,7 +5203,7 @@ snapshots:
     optionalDependencies:
       '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
       '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
-      '@adonisjs/session': 8.3.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+      '@adonisjs/session': 8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
 
   '@adonisjs/bodyparser@11.0.5(@adonisjs/http-server@9.3.1(@adonisjs/application@9.1.1(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.1.1))(@adonisjs/events@10.2.0(@adonisjs/application@9.1.1(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.1.1))(@adonisjs/fold@11.1.1))(@adonisjs/fold@11.1.1)(@adonisjs/logger@7.1.1)(@boringnode/encryption@1.0.1)(youch@4.1.1))(supports-color@10.2.2)':
     dependencies:
@@ -5141,6 +5316,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@adonisjs/drive@4.0.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@aws-sdk/client-s3@3.1167.0)':
+    dependencies:
+      '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
+      flydrive: 2.2.0(@aws-sdk/client-s3@3.1167.0)
+    optionalDependencies:
+      '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
+      '@aws-sdk/client-s3': 3.1167.0
+
   '@adonisjs/env@7.1.0':
     dependencies:
       '@poppinss/utils': 7.1.2
@@ -5244,6 +5427,25 @@ snapshots:
       '@poppinss/exception': 1.2.3
       '@poppinss/types': 1.2.1
 
+  '@adonisjs/limiter@3.0.1(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
+    dependencies:
+      '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
+      rate-limiter-flexible: 9.1.1
+    optionalDependencies:
+      '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
+      '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
+
+  '@adonisjs/lock@2.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(ioredis@6.0.0(supports-color@10.2.2))':
+    dependencies:
+      '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
+      '@verrou/core': 0.5.2(ioredis@6.0.0(supports-color@10.2.2))
+    optionalDependencies:
+      '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
+      '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
+    transitivePeerDependencies:
+      - '@aws-sdk/client-dynamodb'
+      - ioredis
+
   '@adonisjs/logger@7.1.1':
     dependencies:
       '@poppinss/utils': 7.1.2
@@ -5306,7 +5508,7 @@ snapshots:
       - moment-timezone
       - rrule
 
-  '@adonisjs/otel@2.0.0(72c58a9fef828c8baf650fbddd719e27)':
+  '@adonisjs/otel@2.0.0(25595eeef73652b679b7fd70fef151c4)':
     dependencies:
       '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
       '@opentelemetry/api': 1.10.0
@@ -5328,7 +5530,7 @@ snapshots:
       import-in-the-middle: 3.6.0
     optionalDependencies:
       '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
-      '@adonisjs/auth': 10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.3.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))
+      '@adonisjs/auth': 10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))
     transitivePeerDependencies:
       - supports-color
 
@@ -5338,12 +5540,26 @@ snapshots:
     optionalDependencies:
       '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
 
+  '@adonisjs/queue@0.6.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
+    dependencies:
+      '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
+      '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
+      '@boringnode/queue': 0.6.0(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+    optionalDependencies:
+      '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+      - '@opentelemetry/core'
+      - '@opentelemetry/instrumentation'
+      - ioredis
+      - knex
+
   '@adonisjs/repl@5.0.0':
     dependencies:
       '@poppinss/colors': 4.1.6
       string-width: 8.3.0
 
-  '@adonisjs/session@8.3.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
+  '@adonisjs/session@8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
     dependencies:
       '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
       '@poppinss/macroable': 1.1.2
@@ -5351,6 +5567,14 @@ snapshots:
     optionalDependencies:
       '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
       '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
+
+  '@adonisjs/transmit@3.0.2(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(ioredis@6.0.0(supports-color@10.2.2))':
+    dependencies:
+      '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
+      '@boringnode/transmit': 0.4.3(ioredis@6.0.0(supports-color@10.2.2))
+    transitivePeerDependencies:
+      - ioredis
+      - mqtt
 
   '@alloc/quick-lru@5.3.0': {}
 
@@ -5674,6 +5898,14 @@ snapshots:
 
   '@borewit/text-codec@0.2.3': {}
 
+  '@boringnode/bus@0.10.0(ioredis@6.0.0(supports-color@10.2.2))':
+    dependencies:
+      '@paralleldrive/cuid2': 3.3.0
+      '@poppinss/utils': 7.1.2
+      object-hash: 3.0.0
+    optionalDependencies:
+      ioredis: 6.0.0(supports-color@10.2.2)
+
   '@boringnode/bus@0.9.2(ioredis@6.0.0(supports-color@10.2.2))':
     dependencies:
       '@paralleldrive/cuid2': 3.3.0
@@ -5685,6 +5917,17 @@ snapshots:
   '@boringnode/encryption@1.0.1':
     dependencies:
       '@poppinss/utils': 7.1.2
+
+  '@boringnode/queue@0.6.0(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
+    dependencies:
+      '@lukeed/ms': 2.0.2
+      '@poppinss/utils': 7.1.2
+      cron-parser: 5.10.6
+    optionalDependencies:
+      '@opentelemetry/api': 1.10.0
+      '@opentelemetry/core': 3.1.1(@opentelemetry/api@1.10.0)
+      ioredis: 6.0.0(supports-color@10.2.2)
+      knex: 3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
 
   '@boringnode/queue@0.9.1(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
     dependencies:
@@ -5698,6 +5941,16 @@ snapshots:
       knex: 3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
 
   '@boringnode/route-matcher@0.1.2': {}
+
+  '@boringnode/transmit@0.4.3(ioredis@6.0.0(supports-color@10.2.2))':
+    dependencies:
+      '@boringnode/bus': 0.10.0(ioredis@6.0.0(supports-color@10.2.2))
+      '@poppinss/utils': 7.1.2
+      emittery: 1.2.1
+      matchit: 1.1.0
+    transitivePeerDependencies:
+      - ioredis
+      - mqtt
 
   '@braidai/lang@1.1.2': {}
 
@@ -5908,6 +6161,8 @@ snapshots:
       long: 5.3.2
       protobufjs: 7.6.6
       yargs: 17.7.3
+
+  '@humanwhocodes/retry@0.4.3': {}
 
   '@ioredis/commands@2.0.0': {}
 
@@ -6712,6 +6967,15 @@ snapshots:
 
   '@poppinss/types@1.2.1': {}
 
+  '@poppinss/utils@6.10.1':
+    dependencies:
+      '@poppinss/exception': 1.2.3
+      '@poppinss/object-builder': 1.1.0
+      '@poppinss/string': 1.7.2
+      flattie: 1.1.1
+      safe-stable-stringify: 2.5.0
+      secure-json-parse: 4.1.1
+
   '@poppinss/utils@7.1.2':
     dependencies:
       '@poppinss/exception': 1.2.3
@@ -7395,6 +7659,14 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
+  '@verrou/core@0.5.2(ioredis@6.0.0(supports-color@10.2.2))':
+    dependencies:
+      '@julr/utils': 1.9.0
+      '@poppinss/utils': 6.10.1
+      async-mutex: 0.5.0
+    optionalDependencies:
+      ioredis: 6.0.0(supports-color@10.2.2)
+
   '@vitejs/plugin-react@6.3.0(vite@8.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.1))':
     dependencies:
       '@rolldown/pluginutils': 1.1.0
@@ -7966,6 +8238,15 @@ snapshots:
 
   flattie@1.1.1: {}
 
+  flydrive@2.2.0(@aws-sdk/client-s3@3.1167.0):
+    dependencies:
+      '@humanwhocodes/retry': 0.4.3
+      '@poppinss/utils': 7.1.2
+      etag: 1.8.1
+      mime-types: 3.0.2
+    optionalDependencies:
+      '@aws-sdk/client-s3': 3.1167.0
+
   foreground-child@3.3.1:
     dependencies:
       cross-spawn: 7.0.6
@@ -8403,6 +8684,10 @@ snapshots:
 
   marked@9.1.6: {}
 
+  matchit@1.1.0:
+    dependencies:
+      '@arr/every': 1.0.1
+
   media-typer@1.1.1: {}
 
   merge2@1.4.1: {}
@@ -8709,6 +8994,8 @@ snapshots:
 
   quick-format-unescaped@4.0.4: {}
 
+  rate-limiter-flexible@9.1.1: {}
+
   raw-body@3.0.2:
     dependencies:
       bytes: 3.1.2
@@ -8839,6 +9126,8 @@ snapshots:
       xmlchars: 2.2.0
 
   scheduler@0.28.0: {}
+
+  secure-json-parse@4.1.1: {}
 
   semver@7.8.6: {}
 

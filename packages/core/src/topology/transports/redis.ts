@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { describeStackUse } from '../../fleet/stack.js';
 import { runAsTelescopeWork } from '../../self_scope.js';
 import { PollingConsumer } from './polling.js';
 import {
@@ -485,7 +486,7 @@ export class RedisControlPlaneChannel implements ControlPlaneChannel {
 /** The Redis stream driver (`@adonisjs/redis`). */
 export function redisTransport(options: RedisTransportOptions = {}): TelescopeTransport {
   const { stream } = keys(options);
-  return {
+  const transport: TelescopeTransport = {
     driver: 'redis',
     // Each send is an XADD (and an XREADGROUP + XACK on the control plane): fewer, fuller batches.
     bufferDefaults: { flushIntervalMs: 5000 },
@@ -507,4 +508,12 @@ export function redisTransport(options: RedisTransportOptions = {}): TelescopeTr
       return `Redis answers (stream ${JSON.stringify(stream)}).`;
     },
   };
+  // A client of its own is a server the Architecture page cannot place: only a connection counts.
+  return options.client !== undefined
+    ? transport
+    : describeStackUse(transport, {
+        tech: 'redis',
+        ...(options.connection !== undefined ? { connection: options.connection } : {}),
+        purpose: 'ingest stream',
+      });
 }

@@ -1,5 +1,6 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import { durationToMs } from '../alerts/parse_duration.js';
+import { describeStackUse, STACK_DESCRIPTOR, type StackUse } from '../fleet/stack.js';
 import type { TelescopeStore } from '../store.js';
 import type { LucidDatabaseLike, LucidStoreOptions } from './lucid.js';
 import type { InMemoryStoreOptions } from './memory.js';
@@ -122,25 +123,11 @@ export const storage = {
 
   /** A persistent, SQL-backed store on `@adonisjs/lucid` (sqlite / Postgres / MySQL). */
   lucid(config: LucidStoreConfig = {}): StoreProvider {
-    return async ({ app }) => {
-      const { LucidTelescopeStore } = await import('./lucid.js');
-
-      // Resolve the `Database` singleton from the container (lucid aliases it as
-      // `lucid.db` in its REGISTER phase, so it is available here at provider boot).
-      // We deliberately do NOT read `@adonisjs/lucid/services/db`: that façade's
-      // default export is populated only inside `app.booted()`, which runs AFTER
-      // every provider's `boot()` — so at the moment the telescope provider builds
-      // the store it would still be `undefined` and crash on `.connection`.
-      const db = (await app.container.make('lucid.db')) as {
-        connection(name: string): unknown;
-      };
-
-      // Bind to a single connection client when named, else the Database facade. Both
-      // satisfy the structural LucidDatabaseLike surface the store consumes.
-      const client = config.connection ? db.connection(config.connection) : db;
-      const { connection: _connection, ...storeOptions } = config;
-      return new LucidTelescopeStore(client as unknown as LucidDatabaseLike, storeOptions);
-    };
+    return describeStackUse(lucidProvider(config), {
+      tech: 'lucid',
+      ...(config.connection !== undefined ? { connection: config.connection } : {}),
+      purpose: 'entries',
+    });
   },
 
   /**
@@ -150,37 +137,11 @@ export const storage = {
    * `@duckdb/node-api` too, and only for `engine: 'duckdb'`.
    */
   parquet(config: ParquetStoreConfig): ColdStoreProvider {
-    return async () => {
-      const [{ ParquetColdStore, loadParquetLibs }, locations] = await Promise.all([
-        import('./parquet.js'),
-        import('./parquet_location.js'),
-      ]);
-      const libs = await loadParquetLibs();
-      // A ready-made store comes first: a subclass may well keep a field named `s3` or `dir`, and
-      // reading it as options would silently replace the host's class with a plain location.
-      const location =
-        'write' in config.location && typeof config.location.write === 'function'
-          ? (config.location as ColdObjectStore)
-          : 'dir' in config.location && typeof config.location.dir === 'string'
-            ? new locations.DirectoryLocation(config.location.dir)
-            : new locations.S3Location(s3LocationOptions(config.location));
-      const engine = config.engine ?? 'hyparquet';
-      return ParquetColdStore.create({
-        location,
-        libs,
-        ...(config.instanceId !== undefined ? { instanceId: config.instanceId } : {}),
-        ...(config.rowGroupSize !== undefined ? { rowGroupSize: config.rowGroupSize } : {}),
-        ...(config.maxRowsPerFile !== undefined ? { maxRowsPerFile: config.maxRowsPerFile } : {}),
-        engine: async (context) => {
-          if (engine === 'hyparquet') {
-            const { HyparquetEngine } = await import('./parquet_hyparquet.js');
-            return new HyparquetEngine(context);
-          }
-          const { DuckDbEngine } = await import('./parquet_duckdb.js');
-          return DuckDbEngine.create(context, engine === 'duckdb' ? {} : engine.duckdb);
-        },
-      });
-    };
+    const location = config.location as { s3?: { bucket?: unknown } };
+    const provider = parquetProvider(config);
+    return typeof location.s3?.bucket === 'string'
+      ? describeStackUse(provider, { tech: 's3', label: location.s3.bucket, purpose: 'cold tier' })
+      : provider;
   },
 
   /**
@@ -200,24 +161,88 @@ export const storage = {
    * ```
    */
   tiered(config: TieredStoreConfig): StoreProvider {
-    return async (ctx) => {
-      const hotForMs = durationToMs(config.hotFor);
-      const [{ TieredTelescopeStore }, hot, cold] = await Promise.all([
-        import('./tiered.js'),
-        typeof config.hot === 'function' ? config.hot(ctx) : Promise.resolve(config.hot),
-        config.cold(ctx),
-      ]);
-      return new TieredTelescopeStore({
-        hot,
-        cold,
-        hotForMs,
-        ...(config.moveBatchSize !== undefined ? { moveBatchSize: config.moveBatchSize } : {}),
-        ...(config.moveFlushSize !== undefined ? { moveFlushSize: config.moveFlushSize } : {}),
-        ...(config.compact !== undefined ? { compact: config.compact } : {}),
-      });
-    };
+    const uses = [config.hot, config.cold].flatMap(
+      (part) => (part as { [STACK_DESCRIPTOR]?: StackUse[] })?.[STACK_DESCRIPTOR] ?? [],
+    );
+    const provider = tieredProvider(config);
+    return uses.length > 0 ? describeStackUse(provider, uses) : provider;
   },
 };
+
+function lucidProvider(config: LucidStoreConfig): StoreProvider {
+  return async ({ app }) => {
+    const { LucidTelescopeStore } = await import('./lucid.js');
+
+    // Resolve the `Database` singleton from the container (lucid aliases it as
+    // `lucid.db` in its REGISTER phase, so it is available here at provider boot).
+    // We deliberately do NOT read `@adonisjs/lucid/services/db`: that façade's
+    // default export is populated only inside `app.booted()`, which runs AFTER
+    // every provider's `boot()` — so at the moment the telescope provider builds
+    // the store it would still be `undefined` and crash on `.connection`.
+    const db = (await app.container.make('lucid.db')) as {
+      connection(name: string): unknown;
+    };
+
+    // Bind to a single connection client when named, else the Database facade. Both
+    // satisfy the structural LucidDatabaseLike surface the store consumes.
+    const client = config.connection ? db.connection(config.connection) : db;
+    const { connection: _connection, ...storeOptions } = config;
+    return new LucidTelescopeStore(client as unknown as LucidDatabaseLike, storeOptions);
+  };
+}
+
+function parquetProvider(config: ParquetStoreConfig): ColdStoreProvider {
+  return async () => {
+    const [{ ParquetColdStore, loadParquetLibs }, locations] = await Promise.all([
+      import('./parquet.js'),
+      import('./parquet_location.js'),
+    ]);
+    const libs = await loadParquetLibs();
+    // A ready-made store comes first: a subclass may well keep a field named `s3` or `dir`, and
+    // reading it as options would silently replace the host's class with a plain location.
+    const location =
+      'write' in config.location && typeof config.location.write === 'function'
+        ? (config.location as ColdObjectStore)
+        : 'dir' in config.location && typeof config.location.dir === 'string'
+          ? new locations.DirectoryLocation(config.location.dir)
+          : new locations.S3Location(s3LocationOptions(config.location));
+    const engine = config.engine ?? 'hyparquet';
+    return ParquetColdStore.create({
+      location,
+      libs,
+      ...(config.instanceId !== undefined ? { instanceId: config.instanceId } : {}),
+      ...(config.rowGroupSize !== undefined ? { rowGroupSize: config.rowGroupSize } : {}),
+      ...(config.maxRowsPerFile !== undefined ? { maxRowsPerFile: config.maxRowsPerFile } : {}),
+      engine: async (context) => {
+        if (engine === 'hyparquet') {
+          const { HyparquetEngine } = await import('./parquet_hyparquet.js');
+          return new HyparquetEngine(context);
+        }
+        const { DuckDbEngine } = await import('./parquet_duckdb.js');
+        return DuckDbEngine.create(context, engine === 'duckdb' ? {} : engine.duckdb);
+      },
+    });
+  };
+}
+
+function tieredProvider(config: TieredStoreConfig): StoreProvider {
+  return async (ctx) => {
+    const hotForMs = durationToMs(config.hotFor);
+    const [{ TieredTelescopeStore }, hot, cold] = await Promise.all([
+      import('./tiered.js'),
+      typeof config.hot === 'function' ? config.hot(ctx) : Promise.resolve(config.hot),
+      config.cold(ctx),
+    ]);
+    return new TieredTelescopeStore({
+      hot,
+      cold,
+      hotForMs,
+      ...(config.moveBatchSize !== undefined ? { moveBatchSize: config.moveBatchSize } : {}),
+      ...(config.moveFlushSize !== undefined ? { moveFlushSize: config.moveFlushSize } : {}),
+      ...(config.compact !== undefined ? { compact: config.compact } : {}),
+    });
+  };
+}
 
 function s3LocationOptions(location: ParquetLocationConfig): S3LocationOptions {
   if ('s3' in location && location.s3) return location.s3;
