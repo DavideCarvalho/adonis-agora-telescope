@@ -6,6 +6,12 @@ import {
 } from '../src/dev_tools/telescope_dev_tools.js';
 import { scopedTelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import type { Entry } from '../src/entry.js';
+import {
+  type FederatedApp,
+  Federation,
+  TraceMergingStore,
+  type TraceSource,
+} from '../src/federation/federation.js';
 import { consoleWatchers } from '../src/fleet/watchers.js';
 import {
   getEnabledWatchers,
@@ -17,12 +23,15 @@ import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { entryInScope, scopedStore, scopeKey } from '../src/tenancy_store.js';
 import {
+  appTag,
+  type ConsoleAppScope,
   consoleAppScope,
   describeAppScope,
   hiddenSpansCounter,
   KnownAppsCache,
   knownApps,
   selectAppScope,
+  withFederatedApps,
 } from '../src/ui/app_scope.js';
 import { callerOf } from '../src/ui/caller.js';
 import {
@@ -40,7 +49,7 @@ import {
 import type { ExtensionActionAudit } from '../src/ui/extension_api.js';
 import { appsOfTags } from '../src/ui/fleet_api.js';
 import { enforceGuardDecision } from '../src/ui/guard.js';
-import type { SseSink, UiHttpContext } from '../src/ui/http.js';
+import type { SseSink, UiHttpContext, UiResponse } from '../src/ui/http.js';
 import {
   consoleTenantScope,
   describeTenantScope,
@@ -62,6 +71,14 @@ import {
  */
 export default class TelescopeUiProvider {
   constructor(protected app: ApplicationService) {}
+
+  /** The apps this console reads from their own stores (`apps.federated`). */
+  private federation: Federation | null = null;
+
+  async shutdown() {
+    this.federation?.close();
+    this.federation = null;
+  }
 
   /** Log a warning through the app logger when one is bound, else the console. Never throws. */
   private async warn(message: string): Promise<void> {
@@ -156,19 +173,70 @@ export default class TelescopeUiProvider {
     // The App picker's list per scope, re-read at most every 30 s (see `GET <path>/api/apps`).
     const knownAppsCache = new KnownAppsCache();
     const scopedApis = new Map<string, ReturnType<typeof buildApis>>();
-    const apisFor = (tenantTags: string[] | null, appTags: string[] | null) => {
-      const key = scopeKey(tenantTags, appTags);
-      if (key === null) return shared;
+    const remember = (key: string, build: () => ReturnType<typeof buildApis>) => {
       let apis = scopedApis.get(key);
       if (apis === undefined) {
-        apis = buildApis(
-          scopedStore(store, tenantTags, appTags),
-          appTags === null ? undefined : hiddenSpansCounter(store, tenantTags, appTags),
-        );
+        apis = build();
         if (scopedApis.size >= 64) scopedApis.delete(scopedApis.keys().next().value as string);
         scopedApis.set(key, apis);
       }
       return apis;
+    };
+
+    // Federated apps: read from their own stores, actions sent to them (`apps.federated`).
+    const federation =
+      config.apps.federated !== undefined && Object.keys(config.apps.federated).length > 0
+        ? new Federation(config.apps.federated, { app: this.app })
+        : null;
+    this.federation = federation;
+    /** The federated apps this viewer may see, as the trace views and Architecture read them. */
+    const federatedSources = (
+      appScope: ConsoleAppScope,
+      tenantTags: string[] | null,
+    ): TraceSource[] =>
+      federation === null
+        ? []
+        : federation
+            .list()
+            .filter((app) => appScope.all || appScope.ids.includes(app.id))
+            .map((app) => ({
+              id: app.id,
+              store: async () => scopedStore(await app.store(), tenantTags, null),
+            }));
+
+    // `sources`: federated apps whose spans the trace views merge in (the view is not narrowed
+    // to one app).
+    const apisFor = (
+      tenantTags: string[] | null,
+      appTags: string[] | null,
+      sources: TraceSource[] = [],
+    ) => {
+      const key = scopeKey(tenantTags, appTags);
+      if (sources.length === 0) {
+        if (key === null) return shared;
+        return remember(key, () =>
+          buildApis(
+            scopedStore(store, tenantTags, appTags),
+            appTags === null ? undefined : hiddenSpansCounter(store, tenantTags, appTags),
+          ),
+        );
+      }
+      return remember(`${key ?? '*'}\u0000traces:${sources.map((s) => s.id).join(',')}`, () =>
+        buildApis(
+          new TraceMergingStore(scopedStore(store, tenantTags, appTags), sources),
+          appTags === null ? undefined : hiddenSpansCounter(store, tenantTags, appTags),
+        ),
+      );
+    };
+    /** The APIs over a federated app's store (as this viewer's organizations see it). */
+    const federatedApisFor = async (app: FederatedApp, tenantTags: string[] | null) => {
+      const source = scopedStore(await app.store(), tenantTags, null);
+      return {
+        source,
+        apis: remember(`federated:${app.id}\u0000${scopeKey(tenantTags, null) ?? '*'}`, () =>
+          buildApis(source),
+        ),
+      };
     };
 
     // Developer tools over MCP: when the app runs `@adonis-agora/agent/mcp_provider`, telescope's
@@ -218,12 +286,77 @@ export default class TelescopeUiProvider {
         restricted: tenantSelected.restricted || appSelected.restricted,
         forged: tenantSelected.forged || appSelected.forged,
       };
+      const asked =
+        typeof qs.app === 'string' && qs.app !== '' && qs.app !== '*' ? qs.app : undefined;
+      const federated = appSelected.forged ? undefined : federation?.get(asked);
+      if (federated !== undefined) {
+        let built: Awaited<ReturnType<typeof federatedApisFor>>;
+        try {
+          built = await federatedApisFor(federated, tenantSelected.tags);
+        } catch (error) {
+          ctx.response.status(503).send({
+            error: `Could not read ${federated.label}'s telescope store: ${asMessage(error)}`,
+          });
+          return null;
+        }
+        return {
+          ...built.apis,
+          scope,
+          appScope,
+          selected,
+          federated,
+          federatedStore: built.source,
+          tenantRestricted: tenantSelected.restricted,
+        };
+      }
       return {
-        ...apisFor(tenantSelected.tags, appSelected.tags),
+        ...apisFor(
+          tenantSelected.tags,
+          appSelected.tags,
+          // Not narrowed to one app: a trace shows the spans federated apps recorded too.
+          asked === undefined ? federatedSources(appScope, tenantSelected.tags) : [],
+        ),
         scope,
         appScope,
         selected,
+        federated: undefined as FederatedApp | undefined,
+        federatedStore: undefined as TelescopeStore | undefined,
+        tenantRestricted: tenantSelected.restricted,
       };
+    };
+    /** `404`: what the console's own process serves (profiles, AI, extensions, the live tail). */
+    const notForFederated = (ctx: UiHttpContext, app: FederatedApp, what: string) =>
+      ctx.response.status(404).send({
+        error: `${what} is not available for ${app.label}: this console reads ${app.label}'s entries from its own store.`,
+      });
+    /** `403`: an action on a federated app this console only browses. */
+    const readOnlyFederated = (ctx: UiHttpContext, app: FederatedApp) =>
+      ctx.response.status(403).send({
+        error: `${app.label} is federated and read-only here: change it in ${app.label} itself.`,
+      });
+    /** Run `verb` on the federated app; answer its status and body. */
+    const relay = async (
+      ctx: UiHttpContext,
+      app: FederatedApp,
+      verb: string,
+      args: unknown[],
+    ): Promise<unknown> => {
+      const out = await app.run(verb, args, callerOf(ctx).id);
+      return (ctx.response.status(out.status) as UiResponse)
+        .header('content-type', 'application/json')
+        .send(out.body);
+    };
+    /** An action on a federated app: refused when read-only, or when the viewer sees only some organizations. */
+    const federatedAction = async (
+      ctx: UiHttpContext,
+      a: { federated?: FederatedApp | undefined; tenantRestricted: boolean },
+      verb: string,
+      args: unknown[],
+    ): Promise<unknown> => {
+      const app = a.federated as FederatedApp;
+      if (a.tenantRestricted) return refuseRestricted(ctx);
+      if (app.actions === 'none') return readOnlyFederated(ctx, app);
+      return relay(ctx, app, verb, args);
     };
     /** `403` for an action that reaches every organization or app, asked by a viewer limited to some. */
     const refuseRestricted = (
@@ -289,6 +422,7 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/requests/:id/replay`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) return federatedAction(ctx, a, 'replay', [String(ctx.params.id)]);
         return a.api.replayRequest(ctx, String(ctx.params.id), localPortOf(ctx));
       })
       .as('telescope_ui.replay');
@@ -300,6 +434,7 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/exceptions/:id/diagnose`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) return notForFederated(ctx, a.federated, 'AI diagnosis');
         const force = String(ctx.request.qs().force ?? '') === 'true';
         return a.diagnosisApi.diagnose(ctx, String(ctx.params.id), force);
       })
@@ -311,6 +446,7 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/profiles/status`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) return notForFederated(ctx, a.federated, 'CPU profiling');
         return a.profilesApi.status(ctx);
       })
       .as('telescope_ui.profiles_status');
@@ -319,6 +455,7 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/profiles`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) return notForFederated(ctx, a.federated, 'CPU profiling');
         return a.profilesApi.list(ctx);
       })
       .as('telescope_ui.profiles');
@@ -327,6 +464,7 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/profiles/:id`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) return notForFederated(ctx, a.federated, 'CPU profiling');
         return a.profilesApi.show(ctx, String(ctx.params.id));
       })
       .as('telescope_ui.profile');
@@ -337,6 +475,7 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/profiles/arm`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) return notForFederated(ctx, a.federated, 'CPU profiling');
         if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.cpuProfiling.armEnabled) {
           return ctx.response.status(403).send({
@@ -353,6 +492,7 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/schedules/live`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) return relay(ctx, a.federated, 'schedules.live', []);
         return a.schedulesApi.live(ctx);
       })
       .as('telescope_ui.schedules_live');
@@ -363,6 +503,7 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/queues/live`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) return relay(ctx, a.federated, 'queues.list', []);
         return a.queueManagerApi.list(ctx, config.queueActions.enabled);
       })
       .as('telescope_ui.queues_live');
@@ -371,6 +512,12 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/queues/live/:queue/jobs/:id`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) {
+          return relay(ctx, a.federated, 'queues.job', [
+            String(ctx.params.queue),
+            String(ctx.params.id),
+          ]);
+        }
         return a.queueManagerApi.job(ctx, String(ctx.params.queue), String(ctx.params.id));
       })
       .as('telescope_ui.queues_live_job');
@@ -381,6 +528,12 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/queues/live/:queue/jobs/:id/retry`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) {
+          return federatedAction(ctx, a, 'queues.retry', [
+            String(ctx.params.queue),
+            String(ctx.params.id),
+          ]);
+        }
         if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
         return a.queueManagerApi.retry(ctx, String(ctx.params.queue), String(ctx.params.id));
@@ -391,6 +544,9 @@ export default class TelescopeUiProvider {
       .post(`${apiBase}/queues/live/:queue/enqueue`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) {
+          return federatedAction(ctx, a, 'queues.enqueue', [String(ctx.params.queue), bodyOf(ctx)]);
+        }
         if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
         return a.queueManagerApi.enqueue(ctx, String(ctx.params.queue), bodyOf(ctx));
@@ -463,6 +619,7 @@ export default class TelescopeUiProvider {
         .get(`${config.path}/metrics`, async (ctx: GuardedContext) => {
           const a = await gate(ctx);
           if (a === null) return;
+          if (a.federated) return notForFederated(ctx, a.federated, 'The Prometheus scrape');
           // Counters over every organization: not for a viewer limited to some.
           if (a.selected.restricted) return refuseRestricted(ctx, a);
           const registry = getTelescopeRuntime().aiMetrics ?? null;
@@ -499,6 +656,7 @@ export default class TelescopeUiProvider {
         .get(`${apiBase}/stream`, async (ctx: StreamContext) => {
           const a = await gate(ctx);
           if (a === null) return;
+          if (a.federated) return notForFederated(ctx, a.federated, 'The live tail');
           const raw = ctx.response.response;
           raw.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -530,6 +688,7 @@ export default class TelescopeUiProvider {
         .get(`${apiBase}/ext/:ext/data/:provider`, async (ctx: GuardedContext) => {
           const a = await gate(ctx);
           if (a === null) return;
+          if (a.federated) return notForFederated(ctx, a.federated, 'Extension data');
           return a.extApi?.data(ctx, String(ctx.params.ext), String(ctx.params.provider));
         })
         .as('telescope_ui.ext_data');
@@ -540,6 +699,7 @@ export default class TelescopeUiProvider {
         .post(`${apiBase}/ext/:ext/actions/:action`, async (ctx: GuardedContext) => {
           const a = await gate(ctx);
           if (a === null) return;
+          if (a.federated) return notForFederated(ctx, a.federated, 'Extension actions');
           if (a.selected.restricted) return refuseRestricted(ctx, a);
           return a.extApi?.action(
             ctx,
@@ -573,10 +733,23 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/architecture`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
-        return a.fleetApi.architecture(ctx, {
-          apps: appsOfTags(a.selected.appTags),
-          hidden: a.scope !== null && !a.scope.all,
-        });
+        const hidden = a.scope !== null && !a.scope.all;
+        const sources = hidden ? [] : federatedSources(a.appScope, a.selected.tags);
+        if (a.federated) {
+          // The graph is about links between apps: a federated app is shown among every app the
+          // viewer may see, read from this console's entries and each federated app's own.
+          const viewerTags = a.appScope.all ? null : a.appScope.ids.map(appTag);
+          return apisFor(a.selected.tags, viewerTags).fleetApi.architecture(
+            ctx,
+            { apps: appsOfTags(viewerTags), hidden },
+            sources,
+          );
+        }
+        return a.fleetApi.architecture(
+          ctx,
+          { apps: appsOfTags(a.selected.appTags), hidden },
+          sources,
+        );
       })
       .as('telescope_ui.architecture');
 
@@ -585,6 +758,9 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/health`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated && !(a.scope !== null && !a.scope.all)) {
+          return relay(ctx, a.federated, 'health', []);
+        }
         return a.fleetApi.health(ctx, a.scope !== null && !a.scope.all);
       })
       .as('telescope_ui.health');
@@ -597,7 +773,9 @@ export default class TelescopeUiProvider {
         return ctx.response
           .status(200)
           .header('cache-control', 'private, no-store')
-          .send({ data: await describeTenantScope(a.scope, coreConfig.tenancy, store) });
+          .send({
+            data: await describeTenantScope(a.scope, coreConfig.tenancy, a.federatedStore ?? store),
+          });
       })
       .as('telescope_ui.tenants');
 
@@ -622,10 +800,29 @@ export default class TelescopeUiProvider {
             `${sources.length}\u0000${scopeKey(a.selected.tags, null) ?? '*'}`,
             () => knownApps(source, { sources }),
           );
+        const description = await describeAppScope(a.appScope, source, config.apps.labels, known);
+        const qsApp = ctx.request.qs().app;
         return ctx.response
           .status(200)
           .header('cache-control', 'private, no-store')
-          .send({ data: await describeAppScope(a.appScope, source, config.apps.labels, known) });
+          .send({
+            data: withFederatedApps(
+              description,
+              a.appScope,
+              (federation?.list() ?? []).map((app) => ({
+                id: app.id,
+                label: app.label,
+                actions: app.actions,
+              })),
+              {
+                controlPlane: coreConfig.topology.topology === 'control-plane',
+                ...(config.apps.localLabel !== undefined
+                  ? { localLabel: config.apps.localLabel }
+                  : {}),
+                selected: typeof qsApp === 'string' && qsApp !== '' && qsApp !== '*' ? qsApp : null,
+              },
+            ),
+          });
       })
       .as('telescope_ui.apps');
 
@@ -650,6 +847,26 @@ export default class TelescopeUiProvider {
       .get(`${apiBase}/meta`, async (ctx: GuardedContext) => {
         const a = await gate(ctx);
         if (a === null) return;
+        if (a.federated) {
+          // What this process runs (AI, profiles, extensions) is not the federated app's; its
+          // queue console is there when it answers commands. Its watchers are unknown here.
+          const meta = consoleMeta(a, { watchers: null });
+          return ctx.response
+            .status(200)
+            .header('content-type', 'application/json')
+            .send({
+              data: {
+                ...meta,
+                entryTypes: [],
+                dashboards: [],
+                ...(meta.actions !== undefined ? { actions: [] } : {}),
+                ai: { enabled: false },
+                profiling: { enabled: false },
+                queueManager: { enabled: a.federated.actions === 'app' },
+                federated: { app: a.federated.id, actions: a.federated.actions },
+              },
+            });
+        }
         return ctx.response
           .status(200)
           .header('content-type', 'application/json')

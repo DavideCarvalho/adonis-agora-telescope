@@ -71,6 +71,13 @@ export type AppLabels =
 export interface AppOption {
   id: string;
   label: string;
+  /**
+   * How this console reaches it: `control-plane` (the app reports here), `federated` (read from
+   * the app's own store). Absent for an app that tags this console's own entries otherwise.
+   */
+  mode?: 'control-plane' | 'federated';
+  /** Who runs actions on its data: this console's server, the app itself, or nobody (read-only). */
+  actions?: 'here' | 'app' | 'none';
 }
 
 /** What `GET <path>/api/apps` answers. */
@@ -83,6 +90,56 @@ export interface AppScopeDescription {
   all: boolean;
   /** The apps the viewer may pick (for `all`: the ones telescope has entries for). */
   apps: AppOption[];
+  /** This console's own entries (no `?app=`), named; present when federated apps are listed. */
+  local?: { label: string };
+  /** The picked app (`?app=`), or `null`; present when federated apps are listed. */
+  selected?: string | null;
+}
+
+/** A federated app as the picker lists it. */
+export interface FederatedAppOption {
+  id: string;
+  label: string;
+  actions: 'app' | 'none';
+}
+
+/**
+ * Add the federated apps the viewer may see to a picker description (after the apps tagging this
+ * console's entries; a federated key wins over a tag of the same id). `controlPlane` marks the
+ * tag-known apps as reporting here.
+ */
+export function withFederatedApps(
+  description: AppScopeDescription,
+  scope: ConsoleAppScope,
+  federated: readonly FederatedAppOption[],
+  options: { controlPlane: boolean; localLabel?: string; selected?: string | null },
+): AppScopeDescription {
+  const own = description.apps.map((app) =>
+    options.controlPlane
+      ? { ...app, mode: 'control-plane' as const, actions: 'here' as const }
+      : app,
+  );
+  if (federated.length === 0) return { ...description, apps: own };
+  const visible = federated.filter((app) => scope.all || scope.ids.includes(app.id));
+  const keys = new Set(visible.map((app) => app.id));
+  const apps: AppOption[] = [
+    ...own.filter((app) => !keys.has(app.id)),
+    ...visible.map((app) => ({
+      id: app.id,
+      label: app.label,
+      mode: 'federated' as const,
+      actions: app.actions,
+    })),
+  ];
+  return {
+    ...description,
+    enabled: description.enabled || visible.length > 0,
+    apps,
+    local: {
+      label: options.localLabel ?? (options.controlPlane ? 'All apps' : 'This app'),
+    },
+    selected: options.selected ?? null,
+  };
 }
 
 /**

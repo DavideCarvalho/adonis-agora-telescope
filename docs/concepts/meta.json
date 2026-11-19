@@ -11,6 +11,7 @@
     "tenancy",
     "apps",
     "central-server",
+    "federated-console",
     "transports",
     "tracing-across-apps",
     "service-discovery",

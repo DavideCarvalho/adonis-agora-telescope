@@ -39,6 +39,7 @@ export type { ContextAccessor, UserRef } from './context_accessor.js';
 // — structural ecosystem readers —
 export { currentTraceId, currentUserRef, getContextAccessor } from './context_accessor.js';
 export type {
+  ConsoleCommandsConfig,
   DiagnosticsConfig,
   HealthRoutesConfig,
   NPlusOneConfig,
@@ -122,6 +123,8 @@ export type {
 } from './extension/types.js';
 // — extension SDK —
 export { defineTelescopeExtension } from './extension/types.js';
+// — federated console: another app's console reads this app's store and sends it commands —
+export * from './federation/index.js';
 // — fleet: health checks, heartbeats, instances per app —
 export * from './fleet/index.js';
 export type {

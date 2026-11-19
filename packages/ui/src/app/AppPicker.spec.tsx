@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { selectedApp, TelescopeClient } from '../client/telescope-client.js';
 import type { AppScope } from '../client/types.js';
-import { AppEmptyNotice, AppPicker, appLabel, urlForApp } from './AppPicker.js';
+import { AppEmptyNotice, AppPicker, appLabel, FederatedAppNotice, urlForApp } from './AppPicker.js';
 import { TelescopeQueryProvider } from './query-provider.js';
 import { TelescopeClientContext } from './use-telescope.js';
 
@@ -112,5 +112,53 @@ describe('AppPicker', () => {
   it('labels fall back to the id', () => {
     expect(appLabel(null, 'x')).toBe('x');
     expect(appLabel(two, 'shop')).toBe('Shop');
+  });
+});
+
+describe('federated apps', () => {
+  const federated: AppScope = {
+    enabled: true,
+    all: true,
+    apps: [
+      { id: 'shop', label: 'Shop', mode: 'control-plane', actions: 'here' },
+      { id: 'et', label: 'Entre Textos', mode: 'federated', actions: 'app' },
+      { id: 'edu', label: 'EduLiberta', mode: 'federated', actions: 'none' },
+    ],
+    local: { label: 'Hub' },
+    selected: null,
+  };
+
+  afterEach(() => window.history.replaceState(null, '', '/'));
+
+  it("names this console's own entries and hints the federated apps", async () => {
+    renderWith(federated, <AppPicker />);
+    fireEvent.click(await screen.findByRole('button', { name: /App/ }));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Hub',
+      'Shopshop',
+      'Entre Textosfederated',
+      'EduLibertafederated',
+    ]);
+  });
+
+  it('a picked federated app shows its badge and the notice', async () => {
+    window.history.replaceState(null, '', '/telescope?app=edu');
+    renderWith(
+      federated,
+      <>
+        <AppPicker />
+        <FederatedAppNotice />
+      </>,
+    );
+    expect(await screen.findByRole('note')).toBeTruthy();
+    expect(screen.getByRole('note').textContent).toContain('Read-only here');
+    expect(document.querySelector('[data-app-mode="federated"]')).not.toBeNull();
+  });
+
+  it("no notice for this console's own entries or a control-plane app", async () => {
+    window.history.replaceState(null, '', '/telescope?app=shop');
+    const { container } = renderWith(federated, <FederatedAppNotice />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(container.querySelector('[data-federated-notice]')).toBeNull();
   });
 });

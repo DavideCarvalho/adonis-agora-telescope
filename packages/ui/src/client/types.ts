@@ -515,6 +515,8 @@ export interface TelescopeMeta {
    * view never said.
    */
   watchers?: string[] | null;
+  /** The picked app is federated: read from its own store; `actions` says who runs actions. */
+  federated?: { app: string; actions: 'app' | 'none' };
 }
 
 // ── CPU profiling (`GET/POST <base>/profiles*`) ─────────────────────────────
@@ -851,6 +853,13 @@ export interface AiUsageSummary {
 export interface AppOption {
   id: string;
   label: string;
+  /**
+   * How the console reaches the app: `control-plane` (it reports here) or `federated` (read from
+   * its own store). Absent on older servers and for apps that only tag this console's entries.
+   */
+  mode?: 'control-plane' | 'federated';
+  /** Who runs actions on its data: this server (`here`), the app (`app`), nobody (`none`). */
+  actions?: 'here' | 'app' | 'none';
 }
 
 /** The viewer's app scope, for the App picker (a server collecting entries from several apps). */
@@ -863,6 +872,10 @@ export interface AppScope {
   all: boolean;
   /** The apps the viewer may pick. */
   apps: AppOption[];
+  /** The console's own entries (no `?app=`), named; sent when federated apps are listed. */
+  local?: { label: string };
+  /** The picked app (`?app=`), or `null`; sent when federated apps are listed. */
+  selected?: string | null;
 }
 
 // ── organizations (`GET <base>/tenants`) ─────────────────────────────────────
@@ -1012,6 +1025,8 @@ export interface ArchitectureApp {
   hasClient: boolean;
   /** What it accepts from the other apps (`null`: never published). */
   accepts: string[] | null;
+  /** Read from its own store by this console (federated). Absent on older servers. */
+  mode?: 'federated';
 }
 
 /** Calls from one app to another in the window. */

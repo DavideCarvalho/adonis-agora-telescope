@@ -8,7 +8,7 @@ import { NuqsHashAdapter } from '../agora-kit/url-state/nuqs-hash-adapter';
 import { CONFIG_ELEMENT_ID } from '../client/api-base.js';
 import type { DashboardSpec, ExtensionEntryType } from '../client/types.js';
 import { ENTRY_TYPES } from '../client/types.js';
-import { AppEmptyNotice, AppPicker } from './AppPicker.js';
+import { AppEmptyNotice, AppPicker, FederatedAppNotice } from './AppPicker.js';
 import {
   AiIcon,
   ArchitectureIcon,
@@ -344,6 +344,7 @@ function Console() {
     >
       <PageBody>
         <AppEmptyNotice />
+        <FederatedAppNotice />
         <TenantEmptyNotice />
         <ErrorBoundary label={TITLES[route.name]} resetKeys={[formatHash(route)]}>
           <Suspense fallback={<PageSkeleton />}>

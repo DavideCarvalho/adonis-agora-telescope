@@ -71,11 +71,13 @@ export class TieredTelescopeStore implements TelescopeStore {
   private readonly logger: TieredStoreLogger;
   private lastWarnAt = 0;
   private report: TieredPruneReport | null = null;
+  private readonly options: TieredStoreOptions;
 
   constructor(options: TieredStoreOptions) {
     if (!(options.hotForMs > 0)) {
       throw new Error('@adonis-agora/telescope: storage.tiered() needs a positive `hotFor`.');
     }
+    this.options = options;
     this.hot = options.hot;
     this.cold = options.cold;
     this.hotForMs = options.hotForMs;
@@ -87,6 +89,16 @@ export class TieredTelescopeStore implements TelescopeStore {
 
   record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
     return this.hot.record(input);
+  }
+
+  /**
+   * The same tiers with the hot store only read (see `LucidTelescopeStore.readOnlyView`), for a
+   * console reading another app's entries. Writes and prunes are refused by the hot store.
+   */
+  readOnlyView(): TieredTelescopeStore {
+    const hot = this.hot as TelescopeStore & { readOnlyView?: () => TelescopeStore };
+    if (typeof hot.readOnlyView !== 'function') return this;
+    return new TieredTelescopeStore({ ...this.options, hot: hot.readOnlyView() });
   }
 
   async get(id: string): Promise<Entry | null> {

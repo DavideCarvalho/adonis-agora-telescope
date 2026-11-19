@@ -27,6 +27,7 @@ export type {
   AppOption,
   AppScopeDescription,
   ConsoleAppScope,
+  FederatedAppOption,
   KnownAppsOptions,
   SelectedAppScope,
 } from './app_scope.js';
@@ -41,6 +42,7 @@ export {
   knownApps,
   selectAppScope,
   viewerStore,
+  withFederatedApps,
 } from './app_scope.js';
 export type {
   AuthorizeByTokenOptions,
@@ -61,6 +63,7 @@ export type {
   ResolvedTelescopeUiConfig,
   ResolveUiConfigOptions,
   TelescopeDashboardOptions,
+  TelescopeUiAppsConfig,
   TelescopeUiConfig,
 } from './define_config.js';
 // — config —

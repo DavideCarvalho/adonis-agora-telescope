@@ -292,3 +292,40 @@ describe('stack', () => {
     expect(stackOf(fleet, (app) => app !== 'b').infra).toEqual([]);
   });
 });
+
+describe('readArchitecture with federated apps', () => {
+  it("draws each federated app and its calls, read from the app's own store", async () => {
+    const hub = new InMemoryTelescopeStore();
+    const shop = new InMemoryTelescopeStore();
+    // The shop's entries carry no app tag in its own store.
+    await shop.record({
+      type: EntryType.HttpClient,
+      content: null,
+      tags: ['http-client', 'to:agora-hub'],
+      durationMs: 9,
+    });
+    const view = await readArchitecture({
+      store: hub,
+      fleet: null,
+      federated: [
+        { id: 'shop', store: async () => shop },
+        { id: 'ledger', store: async () => Promise.reject(new Error('down')) },
+      ],
+    });
+    expect(view.calls.map((c) => [c.from, c.to, c.count])).toEqual([['shop', 'agora-hub', 1]]);
+    const byId = Object.fromEntries(view.apps.map((a) => [a.id, a]));
+    expect(byId.shop).toMatchObject({ mode: 'federated' });
+    expect(byId.ledger).toMatchObject({ mode: 'federated' });
+    expect(byId['agora-hub']?.mode).toBeUndefined();
+  });
+
+  it('leaves out a federated app the viewer may not see', async () => {
+    const view = await readArchitecture({
+      store: new InMemoryTelescopeStore(),
+      fleet: null,
+      apps: ['other'],
+      federated: [{ id: 'shop', store: async () => new InMemoryTelescopeStore() }],
+    });
+    expect(view.apps.map((a) => a.id)).not.toContain('shop');
+  });
+});

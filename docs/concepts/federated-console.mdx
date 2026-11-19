@@ -1,0 +1,205 @@
+---
+title: Federated Console
+icon: Waypoints
+description: Show an app that keeps its entries in its own store in another app's console, without shipping them anywhere. Reads go to that app's store; actions are sent to that app, which runs them.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+A [central server](/docs/telescope/concepts/central-server) collects every app's entries in one
+store. Sometimes an app should keep its entries in its own store instead, for cost, privacy or
+volume. A **federated** app does that: it runs Telescope standalone and records into its own
+database, and another app's console still shows it in the **App** picker, next to the apps that
+report there.
+
+- **Reads** (entries, traces, Pulse, exceptions, the Overview, Architecture) come straight from
+  the federated app's store.
+- **Actions** (request replay, queue retry and enqueue) and live views (queues, schedules, health
+  checks) are sent to the federated app over its Redis. Exactly one of its instances runs each one.
+- The federated app opts in. Without that, the console can still browse it read-only.
+
+## Configure the console app
+
+List the other apps under `apps.federated` in the console app's `config/telescope_ui.ts`. Each one
+names its store, and optionally where its commands go:
+
+```ts title="config/telescope_ui.ts (the Hub)"
+import { storage } from '@adonis-agora/telescope'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
+  apps: {
+    localLabel: 'Hub',
+    federated: {
+      'entre-textos': {
+        label: 'Entre Textos',
+        store: storage.lucid({ connection: 'pg', schema: 'entretextos' }),
+        commands: { connection: 'main', prefix: 'entretextos' },
+      },
+      'eduliberta': {
+        label: 'EduLiberta',
+        store: storage.lucid({ connection: 'pg', schema: 'eduliberta' }),
+        // No `commands`: browsed read-only.
+      },
+    },
+  },
+})
+```
+
+| Option | Description |
+| --- | --- |
+| `apps.federated` | The other apps, by a key of 1–64 characters (`A-Z a-z 0-9 _ . -`). The key is what the URL carries: `?app=entre-textos`. |
+| `apps.federated.<key>.label` | The name in the picker. Defaults to the key. |
+| `apps.federated.<key>.store` | That app's store, with the `schema` (and `tableName`) it records into. Use `storage.tiered(...)` with the same tiers if it keeps a cold tier. The console only reads it. |
+| `apps.federated.<key>.commands` | Where actions go: `connection` (a Redis connection of the console app reaching that app's Redis) and the `prefix` that app answers on. Omit it to browse the app read-only. |
+| `apps.federated.<key>.timeoutMs` | How long an action waits for the app to answer. Default `15000`. |
+| `apps.federated.<key>.maxWindow` | The longest window a chart or Pulse card reads, e.g. `'24h'`. Default `'24h'`. |
+| `apps.federated.<key>.searchWindow` | How far back a search or tag filter looks when it has no start. Default `'24h'`. |
+| `apps.federated.<key>.maxRows` | Most rows one read returns. Default `5000`. |
+| `apps.federated.<key>.maxConcurrentReads` | Queries run at once against that app's database. Default `4`. |
+| `apps.localLabel` | The picker's name for the console's own entries. Default `All apps` on a control plane, `This app` otherwise. |
+
+The store and the command channel are built the first time someone picks the app, not at boot.
+
+<Callout type="info">
+Every read of a federated store is bounded: it walks an index the telescope table already has and
+stops at a page size or a time window. Totals and "top" lists are computed from the newest entries
+(`maxRows`), never over the whole table, so a busy app's database is never scanned from the
+console.
+</Callout>
+
+## Configure the federated app
+
+The federated app runs Telescope standalone, as usual. To answer the console's actions, turn on
+`consoleCommands` in its `config/telescope.ts`:
+
+```ts title="config/telescope.ts (Entre Textos)"
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  store: 'lucid',
+  stores: { lucid: storage.lucid({ connection: 'pg', schema: 'entretextos' }) },
+  consoleCommands: {
+    connection: 'main',
+    prefix: 'entretextos',
+    actions: { replay: true, queues: true },
+  },
+})
+```
+
+| Option | Description |
+| --- | --- |
+| `consoleCommands.connection` | The `@adonisjs/redis` connection commands come in on. Default the default connection. |
+| `consoleCommands.prefix` | The prefix of its channels. The console's `commands.prefix` must match. Default `telescope`. |
+| `consoleCommands.actions.replay` | Let other consoles replay a captured request against this app. Default `false`. |
+| `consoleCommands.actions.queues` | Let other consoles retry and enqueue jobs on this app's queues. Default `false`. |
+
+With `consoleCommands` set, the web instances of the app listen; reading its live queues,
+schedules and health checks works right away, and each action works once it is listed in
+`actions`. The app logs one line per action, with who took it:
+
+```
+[@adonis-agora/telescope] federated console: queues.retry emails/42 by user:7
+```
+
+Both apps must use the same Redis server. Anything that can publish on it can ask for these
+actions.
+
+## Database access
+
+The console reads the other app's table with its own connection. On Postgres, give that
+connection's role read access to the other app's schema, and nothing more:
+
+```sql
+GRANT USAGE ON SCHEMA entretextos TO hub_role;
+GRANT SELECT ON ALL TABLES IN SCHEMA entretextos TO hub_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE entretextos_role IN SCHEMA entretextos
+  GRANT SELECT ON TABLES TO hub_role;
+```
+
+The console never creates, migrates, writes or prunes that table. If the apps live in different
+databases, declare a Lucid connection to the other database in the console app's
+`config/database.ts` and name it in `storage.lucid({ connection })`.
+
+## Using the console
+
+The **App** picker lists the console's own entries first (named by `localLabel`), then the apps
+that report to it, then the federated apps, tagged **federated**. Picking one puts it in the URL
+(`?app=entre-textos`). While a federated app is picked, a notice at the top of every page says its
+data comes from its own store and who runs actions on it; on a read-only app the Replay button is
+disabled.
+
+For a picked federated app the console shows its entries, exception groups, traces and waterfalls,
+Pulse, the Overview, its live queues and schedules, and its health checks. Some views describe the
+console's own process and are not offered for a federated app: the live tail, CPU profiles, AI
+diagnosis, extension pages and the Prometheus scrape.
+
+**Traces across apps.** With no app picked, a trace's waterfall also shows the spans the federated
+apps recorded under the same trace id, each tagged with its app (see
+[Tracing across apps](/docs/telescope/concepts/tracing-across-apps)).
+
+**Architecture.** Every federated app is a node, with the calls it made in the window, read from its
+own store.
+
+When the app does not answer an action (it is down, or `consoleCommands` is off), the action fails
+with `503` and a message naming the app. Reading its entries keeps working.
+
+## Who sees which app
+
+An `authorize` that returns `apps` as a list also limits the federated apps: one whose key is not in
+the list is not offered, and `?app=` naming it shows nothing. See [Apps](/docs/telescope/concepts/apps).
+
+## The API
+
+Every console API route takes `?app=<key>`. `GET <path>/api/apps` lists federated apps with their
+mode and who runs actions on them:
+
+```json
+{
+  "enabled": true,
+  "tag": "app",
+  "all": true,
+  "apps": [
+    { "id": "shop", "label": "Shop", "mode": "control-plane", "actions": "here" },
+    { "id": "entre-textos", "label": "Entre Textos", "mode": "federated", "actions": "app" },
+    { "id": "eduliberta", "label": "EduLiberta", "mode": "federated", "actions": "none" }
+  ],
+  "local": { "label": "Hub" },
+  "selected": null
+}
+```
+
+`actions` is `here` (this console's server runs them), `app` (they are sent to the app) or `none`
+(the console only browses it).
+
+## In code
+
+The read-only store and the command channel are exported too, for a console of your own:
+
+```ts title="app/controllers/shop_telescope_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import redis from '@adonisjs/redis/services/main'
+import db from '@adonisjs/lucid/services/db'
+import {
+  ConsoleCommandSender,
+  FederatedReadStore,
+  LucidTelescopeStore,
+} from '@adonis-agora/telescope'
+
+const shop = new FederatedReadStore(
+  new LucidTelescopeStore(db.connection('pg'), { schema: 'shop', readOnly: true }),
+)
+const commands = new ConsoleCommandSender(redis.connection('main'), { app: 'shop', prefix: 'shop' })
+
+export default class ShopTelescopeController {
+  async errors({ response }: HttpContext) {
+    return response.ok(await shop.list({ type: 'exception', size: 20 }))
+  }
+
+  async retry({ params, response }: HttpContext) {
+    const reply = await commands.send('queues.retry', [params.queue, params.id])
+    return reply.ok ? response.status(reply.status).send(reply.body) : response.badGateway(reply.error)
+  }
+}
+```
