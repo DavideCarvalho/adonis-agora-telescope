@@ -119,6 +119,8 @@ export interface TelescopeRuntime {
   healthChecks: HealthChecks | null;
   /** This process's heartbeat, or `null` when the fleet is off. */
   reporter: InstanceReporter | null;
+  /** This app's own name on a control plane or a standalone app with a fleet (`null` otherwise). */
+  selfApp: string | null;
   /** The unauthenticated probe routes (`health.readiness`/`liveness`): never recorded as requests. */
   probePaths: Set<string>;
   /** `ignoreRequestPaths` from `config/telescope.ts`: requests on these paths are not recorded. */
@@ -147,6 +149,7 @@ const runtime: TelescopeRuntime = globalStore[RUNTIME_KEY] ?? {
   fleet: null,
   healthChecks: null,
   reporter: null,
+  selfApp: null,
   probePaths: new Set<string>(),
   ignoreRequestPaths: [],
 };
@@ -279,10 +282,12 @@ export function setTelescopeFleet(handles: {
   fleet: FleetRegistry | null;
   healthChecks: HealthChecks | null;
   reporter: InstanceReporter | null;
+  selfApp?: string | null;
 }): void {
   runtime.fleet = handles.fleet;
   runtime.healthChecks = handles.healthChecks;
   runtime.reporter = handles.reporter;
+  runtime.selfApp = handles.selfApp ?? null;
 }
 
 /** Tear down the runtime (called by the provider at shutdown). */

@@ -13,6 +13,7 @@ import {
   type InstanceState,
   type ShippingStats,
 } from './heartbeat.js';
+import type { StackEntry } from './stack.js';
 import type { FleetStore } from './store.js';
 
 /** Options of {@link FleetRegistry}. */
@@ -87,6 +88,7 @@ export class FleetRegistry {
       // Older senders send no role: they only reported their web process.
       role: heartbeat.role ?? DEFAULT_ROLE,
       ...(heartbeat.watchers !== undefined ? { watchers: heartbeat.watchers } : {}),
+      ...(heartbeat.stack !== undefined ? { stack: heartbeat.stack } : {}),
     };
     try {
       await this.store.upsert(record);
@@ -136,6 +138,8 @@ export interface InstanceReporterOptions {
   role?: string;
   /** The watcher names this process runs, read on every heartbeat. Absent: not reported. */
   watchers?: () => string[];
+  /** What the app runs on (read once at boot, see `describeStack`). */
+  stack?: () => StackEntry[];
   /** The state of the first heartbeat. Default `starting`. */
   state?: InstanceState;
   /** The shipping stats of a tenant's buffer, or `null`. */
@@ -224,6 +228,7 @@ export class InstanceReporter {
       url: this.options.url ?? null,
       role: this.role,
       ...(this.options.watchers !== undefined ? { watchers: this.options.watchers() } : {}),
+      ...(this.options.stack !== undefined ? { stack: this.options.stack() } : {}),
     };
   }
 

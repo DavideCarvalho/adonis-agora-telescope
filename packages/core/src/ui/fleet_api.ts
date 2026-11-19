@@ -1,3 +1,4 @@
+import { controlPlaneHosts } from '../architecture/hosts.js';
 import { readArchitecture } from '../architecture/view.js';
 import { summarizeChecks } from '../fleet/checks.js';
 import { type FleetScope, readFleet } from '../fleet/view.js';
@@ -72,6 +73,8 @@ export class FleetApi {
       fleet,
       windowMs,
       apps: scope.apps,
+      selfApp: getTelescopeRuntime().selfApp,
+      selfHosts: controlPlaneHosts(),
     });
     return ctx.response
       .status(200)

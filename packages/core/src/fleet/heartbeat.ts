@@ -1,5 +1,6 @@
 import type { CheckState, CheckStatus } from './checks.js';
 import { normalizeAppUrl } from './config.js';
+import { normalizeStack, type StackEntry } from './stack.js';
 
 /** The lifecycle state an instance reports: booting, serving, or shutting down. */
 export type InstanceState = 'starting' | 'ready' | 'draining';
@@ -51,6 +52,8 @@ export interface InstanceHeartbeat {
    * app does not record queries" from "no slow query". Absent from older senders: unknown.
    */
   watchers?: string[];
+  /** What the app runs on (databases, Redis, buckets…) and what uses each. Absent: unknown. */
+  stack?: StackEntry[];
 }
 
 /** The role of an instance whose heartbeat carries none (older senders only reported web). */
@@ -158,6 +161,7 @@ export function normalizeHeartbeat(raw: unknown): InstanceHeartbeat | null {
     };
   }
   const watchers = normalizeWatchers(h.watchers);
+  const stack = normalizeStack(h.stack);
   return {
     v: 1,
     instanceId: h.instanceId,
@@ -174,5 +178,6 @@ export function normalizeHeartbeat(raw: unknown): InstanceHeartbeat | null {
     url: normalizeAppUrl(h.url),
     role: normalizeRole(h.role),
     ...(watchers !== undefined ? { watchers } : {}),
+    ...(stack !== undefined ? { stack } : {}),
   };
 }

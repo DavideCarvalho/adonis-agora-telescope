@@ -4,7 +4,7 @@ import { NuqsHashAdapter } from '../agora-kit/url-state/nuqs-hash-adapter';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type { ArchitectureView } from '../client/types.js';
 import { ArchitectureSection } from './ArchitectureSection.js';
-import { buildLinks, capabilityCovers, layoutNodes } from './architecture-graph.js';
+import { buildLinks, capabilityCovers, layoutGraph, plural } from './architecture-graph.js';
 import { TelescopeQueryProvider } from './query-provider.js';
 import { formatHash, parseHash } from './use-hash-route.js';
 import { TelescopeClientContext } from './use-telescope.js';
@@ -81,7 +81,7 @@ const view: ArchitectureView = {
 
 describe('architecture graph model', () => {
   it('reads each link: ok, failing, ungranted, idle; flags grants outside the catalog', () => {
-    const links = buildLinks(view, { calls: true, grants: true });
+    const links = buildLinks(view, { calls: true, grants: true, infra: true });
     const state = Object.fromEntries(links.map((l) => [l.id, l.state]));
     expect(state).toEqual({
       'agora-hub→eduliberta': 'idle',
@@ -95,20 +95,45 @@ describe('architecture graph model', () => {
   });
 
   it('a layer off leaves its links out; without authkit nothing is "ungranted"', () => {
-    expect(buildLinks(view, { calls: false, grants: true }).every((l) => l.call === null)).toBe(
-      true,
-    );
+    expect(
+      buildLinks(view, { calls: false, grants: true, infra: true }).every((l) => l.call === null),
+    ).toBe(true);
     const noAuthkit = buildLinks(
       { ...view, grants: [], sources: { ...view.sources, grants: false } },
-      { calls: true, grants: true },
+      { calls: true, grants: true, infra: true },
     );
     expect(noAuthkit.map((l) => l.state)).not.toContain('ungranted');
   });
 
-  it('puts the most connected app in the middle', () => {
-    const nodes = layoutNodes(view.apps, buildLinks(view, { calls: true, grants: true }));
-    expect(nodes[0]).toMatchObject({ x: 0, y: 0, hub: true });
-    expect(nodes[0]?.app.id).toBe('agora-hub');
+  it('apps in a row with the most connected in the middle; backends below their users', () => {
+    const links = buildLinks(view, { calls: true, grants: true, infra: true });
+    const placed = layoutGraph(
+      view.apps,
+      links,
+      [
+        { id: 'postgres:a', tech: 'postgres', label: 'educacao' },
+        { id: 'redis:b', tech: 'redis', label: 'main' },
+      ],
+      [
+        { app: 'agora-hub', infra: 'postgres:a', uses: ['app'] },
+        { app: 'entre-textos', infra: 'postgres:a', uses: ['app'] },
+        { app: 'eduliberta', infra: 'redis:b', uses: ['durable'] },
+      ],
+    );
+    const apps = placed.filter((p) => p.kind === 'app');
+    const hub = apps.find((p) => p.kind === 'app' && p.app.id === 'agora-hub');
+    expect(hub).toMatchObject({ hub: true });
+    const xs = apps.map((p) => p.x).sort((a, b) => a - b);
+    expect(hub?.x).toBe(xs[1]);
+    const infra = placed.filter((p) => p.kind === 'infra');
+    expect(infra.every((p) => p.y > 0)).toBe(true);
+    const [a, b] = infra;
+    expect(Math.abs((a?.x ?? 0) - (b?.x ?? 0))).toBeGreaterThanOrEqual(190);
+  });
+
+  it('pluralizes', () => {
+    expect(plural(1, 'capability', 'capabilities')).toBe('1 capability');
+    expect(plural(3, 'capability', 'capabilities')).toBe('3 capabilities');
   });
 
   it('applies the Agora capability rule', () => {

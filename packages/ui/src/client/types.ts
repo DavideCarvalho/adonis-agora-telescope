@@ -1035,6 +1035,20 @@ export interface ArchitectureGrant {
 
 export type ArchitectureWindow = '1h' | '6h' | '24h';
 
+/** A backend the apps run on (database, Redis, bucket…). */
+export interface ArchitectureInfra {
+  id: string;
+  tech: string;
+  label: string;
+}
+
+/** What in an app uses a backend. */
+export interface ArchitectureUse {
+  app: string;
+  infra: string;
+  uses: string[];
+}
+
 /** `GET <path>/api/architecture`. */
 export interface ArchitectureView {
   now: number;
@@ -1042,6 +1056,9 @@ export interface ArchitectureView {
   apps: ArchitectureApp[];
   calls: ArchitectureCall[];
   grants: ArchitectureGrant[];
-  sources: { fleet: boolean; calls: boolean; grants: boolean };
+  /** Absent from older servers. */
+  infra?: ArchitectureInfra[];
+  uses?: ArchitectureUse[];
+  sources: { fleet: boolean; calls: boolean; grants: boolean; stack?: boolean };
   truncated: boolean;
 }

@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   AUTHKIT_APP_GRAPH_SLOT,
   aggregateCalls,
+  hostKey,
+  hostResolver,
   readArchitecture,
   SELF_APP,
+  stackOf,
 } from '../../src/architecture/view.js';
 import { DISCOVERY_SLOT } from '../../src/discovery/directory.js';
 import { type Entry, EntryType } from '../../src/entry.js';
@@ -34,7 +37,7 @@ function call(tags: string[], durationMs: number, at = Date.now()): Entry {
 }
 
 function fleetOf(
-  apps: Array<{ app: string; url?: string; up?: number; health?: string }>,
+  apps: Array<{ app: string; url?: string; up?: number; health?: string; stack?: unknown[] }>,
 ): FleetView {
   return {
     enabled: true,
@@ -52,6 +55,7 @@ function fleetOf(
           url: a.url,
           status: (a.up ?? 1) > 0 ? 'up' : 'gone',
           health: a.health ?? 'ok',
+          ...(a.stack ? { stack: a.stack } : {}),
         },
       ],
       roles: [{ role: 'web', counts: { up: 1, starting: 0, draining: 0, gone: 0 } }],
@@ -114,7 +118,7 @@ describe('readArchitecture', () => {
         { app: 'eduliberta', up: 0 },
       ]),
     });
-    expect(view.sources).toEqual({ fleet: true, calls: true, grants: true });
+    expect(view.sources).toEqual({ fleet: true, calls: true, grants: true, stack: false });
     expect(view.calls.map((c) => [c.from, c.to, c.count])).toEqual([
       ['agora-hub', 'entre-textos', 1],
     ]);
@@ -144,7 +148,7 @@ describe('readArchitecture', () => {
       apps: [],
       calls: [],
       grants: [],
-      sources: { fleet: false, calls: false, grants: false },
+      sources: { fleet: false, calls: false, grants: false, stack: false },
     });
   });
 
@@ -214,5 +218,77 @@ describe('outbound calls carry the target app', () => {
       durationMs: 5,
     } as never);
     expect(other.tags?.some((t) => t.startsWith('to:'))).toBe(false);
+  });
+});
+
+describe('hosts', () => {
+  it('compares hosts without www., port or case', () => {
+    expect(hostKey('WWW.Example.com:443')).toBe('example.com');
+  });
+
+  it('maps www. to the app, and the hosts other apps reached the control plane at to itself', () => {
+    const resolve = hostResolver(
+      fleetOf([{ app: 'entre-textos', url: 'https://entretextos.example.com' }]),
+      { app: 'agora-hub', hosts: ['hub-internal:3333'] },
+    );
+    expect(resolve('www.entretextos.example.com')).toBe('entre-textos');
+    expect(resolve('hub-internal')).toBe('agora-hub');
+    expect(resolve('api.stripe.com')).toBeUndefined();
+  });
+
+  it("a control plane's own untagged calls come from its app", async () => {
+    const store = new InMemoryTelescopeStore();
+    await store.record({
+      type: EntryType.HttpClient,
+      content: null,
+      tags: ['http-client', 'host:www.et.example.com'],
+      durationMs: 3,
+    });
+    const view = await readArchitecture({
+      store,
+      fleet: fleetOf([
+        { app: 'entre-textos', url: 'https://et.example.com' },
+        { app: 'agora-hub' },
+      ]),
+      selfApp: 'agora-hub',
+    });
+    expect(view.calls.map((c) => [c.from, c.to])).toEqual([['agora-hub', 'entre-textos']]);
+  });
+});
+
+describe('stack', () => {
+  it('one node per backend, shared across apps, with what each app uses it for', async () => {
+    const pg = { id: 'postgres:aaaa', tech: 'postgres', label: 'educacao' };
+    const view = await readArchitecture({
+      store: null,
+      fleet: fleetOf([
+        { app: 'agora-hub', stack: [{ ...pg, uses: ['app', 'durable'] }] },
+        {
+          app: 'entre-textos',
+          stack: [
+            { ...pg, uses: ['app'] },
+            { id: 'redis:bbbb', tech: 'redis', label: 'main', uses: ['cache'] },
+          ],
+        },
+      ]),
+    });
+    expect(view.sources.stack).toBe(true);
+    expect(view.infra).toEqual([
+      { id: 'postgres:aaaa', tech: 'postgres', label: 'educacao' },
+      { id: 'redis:bbbb', tech: 'redis', label: 'main' },
+    ]);
+    expect(view.uses).toEqual([
+      { app: 'agora-hub', infra: 'postgres:aaaa', uses: ['app', 'durable'] },
+      { app: 'entre-textos', infra: 'postgres:aaaa', uses: ['app'] },
+      { app: 'entre-textos', infra: 'redis:bbbb', uses: ['cache'] },
+    ]);
+  });
+
+  it('gone instances and hidden apps do not count', () => {
+    const fleet = fleetOf([
+      { app: 'a', up: 0, stack: [{ id: 'redis:1', tech: 'redis', label: 'x', uses: [] }] },
+      { app: 'b', stack: [{ id: 'redis:2', tech: 'redis', label: 'y', uses: [] }] },
+    ]);
+    expect(stackOf(fleet, (app) => app !== 'b').infra).toEqual([]);
   });
 });

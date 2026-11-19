@@ -2,6 +2,8 @@ import type {
   ArchitectureApp,
   ArchitectureCall,
   ArchitectureGrant,
+  ArchitectureInfra,
+  ArchitectureUse,
   ArchitectureView,
 } from '../client/types.js';
 
@@ -36,6 +38,7 @@ export interface GraphNode {
 export interface Layers {
   calls: boolean;
   grants: boolean;
+  infra: boolean;
 }
 
 const FAILING_RATIO = 0.05;
@@ -84,34 +87,106 @@ export function capabilityCovers(granted: string, required: string): boolean {
   return have.length === want.length;
 }
 
+export const APP_WIDTH = 230;
+export const INFRA_WIDTH = 200;
+const APP_GAP = 80;
+const INFRA_GAP = 20;
+const ROW_GAP = 200;
+
+export interface PlacedApp {
+  kind: 'app';
+  app: ArchitectureApp;
+  x: number;
+  y: number;
+  /** The most connected app: the middle of the row. */
+  hub: boolean;
+}
+
+export interface PlacedInfra {
+  kind: 'infra';
+  infra: ArchitectureInfra;
+  x: number;
+  y: number;
+  /** The apps using it. */
+  usedBy: string[];
+}
+
 /**
- * Where each app sits: the most connected app in the middle, the others on a circle around it
- * (alphabetical, so the picture stays put between refreshes). One or two apps sit side by side.
+ * The picture: apps in one row, the most connected in the middle and the others alternating
+ * around it by how connected they are; the backends in a row below, each under the apps that use
+ * it (the mean of their positions), pushed apart so none overlap. Same input, same picture.
  */
-export function layoutNodes(apps: ArchitectureApp[], links: GraphLink[]): GraphNode[] {
+export function layoutGraph(
+  apps: ArchitectureApp[],
+  links: GraphLink[],
+  infra: ArchitectureInfra[],
+  uses: ArchitectureUse[],
+): Array<PlacedApp | PlacedInfra> {
   const degree = new Map<string, number>();
+  const bump = (id: string) => degree.set(id, (degree.get(id) ?? 0) + 1);
   for (const link of links) {
-    degree.set(link.from, (degree.get(link.from) ?? 0) + 1);
-    degree.set(link.to, (degree.get(link.to) ?? 0) + 1);
+    bump(link.from);
+    bump(link.to);
   }
-  const sorted = [...apps].sort((a, b) => a.id.localeCompare(b.id));
-  if (sorted.length <= 2) {
-    return sorted.map((app, i) => ({ app, x: i * 360, y: 0, hub: false }));
+  for (const use of uses) bump(use.app);
+  const byDegree = [...apps].sort(
+    (a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || a.id.localeCompare(b.id),
+  );
+  // Most connected in the middle, then right, left, right…
+  const row: ArchitectureApp[] = [];
+  byDegree.forEach((app, i) => {
+    if (i % 2 === 0) row.push(app);
+    else row.unshift(app);
+  });
+  const step = APP_WIDTH + APP_GAP;
+  const offset = ((row.length - 1) * step) / 2;
+  const placedApps: PlacedApp[] = row.map((app, i) => ({
+    kind: 'app',
+    app,
+    x: Math.round(i * step - offset),
+    y: 0,
+    hub: app.id === byDegree[0]?.id && (degree.get(app.id) ?? 0) > 1 && row.length > 1,
+  }));
+  const appX = new Map(placedApps.map((p) => [p.app.id, p.x + APP_WIDTH / 2]));
+
+  const usedBy = new Map<string, string[]>();
+  for (const use of uses) {
+    const list = usedBy.get(use.infra) ?? [];
+    if (!list.includes(use.app)) list.push(use.app);
+    usedBy.set(use.infra, list);
   }
-  let hub = sorted[0] as ArchitectureApp;
-  for (const app of sorted) if ((degree.get(app.id) ?? 0) > (degree.get(hub.id) ?? 0)) hub = app;
-  const rest = sorted.filter((a) => a.id !== hub.id);
-  const radius = Math.max(260, rest.length * 70);
-  return [
-    { app: hub, x: 0, y: 0, hub: (degree.get(hub.id) ?? 0) > 0 },
-    ...rest.map((app, i) => {
-      const angle = -Math.PI / 2 + (2 * Math.PI * i) / rest.length;
-      return {
-        app,
-        x: Math.round(Math.cos(angle) * radius),
-        y: Math.round(Math.sin(angle) * radius),
-        hub: false,
-      };
-    }),
-  ];
+  const wanted = infra
+    .map((item) => {
+      const users = (usedBy.get(item.id) ?? []).filter((id) => appX.has(id)).sort();
+      const xs = users.map((id) => appX.get(id) as number);
+      const center = xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
+      return { item, users, center };
+    })
+    .sort((a, b) => a.center - b.center || a.item.id.localeCompare(b.item.id));
+  // Keep the order, push right on overlap, then centre the row under its wanted centre.
+  const xs: number[] = [];
+  const minStep = INFRA_WIDTH + INFRA_GAP;
+  for (const [i, w] of wanted.entries()) {
+    const left = w.center - INFRA_WIDTH / 2;
+    xs.push(i === 0 ? left : Math.max(left, (xs[i - 1] as number) + minStep));
+  }
+  if (wanted.length > 0) {
+    const shift =
+      wanted.reduce((acc, w, i) => acc + (w.center - INFRA_WIDTH / 2 - (xs[i] as number)), 0) /
+      wanted.length;
+    for (let i = 0; i < xs.length; i++) xs[i] = (xs[i] as number) + shift;
+  }
+  const placedInfra: PlacedInfra[] = wanted.map((w, i) => ({
+    kind: 'infra',
+    infra: w.item,
+    x: Math.round(xs[i] as number),
+    y: ROW_GAP,
+    usedBy: w.users,
+  }));
+  return [...placedApps, ...placedInfra];
+}
+
+/** `1 call`, `3 calls`. */
+export function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
 }
