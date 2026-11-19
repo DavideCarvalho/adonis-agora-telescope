@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.30
+
+### Minor Changes
+
+- [#383](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/383) [`7399b27`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7399b272b885d547a4b2ef6325079df75d87bd91) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Federated console: a console can show an app that keeps its entries in its own store. List it under `apps.federated` in `config/telescope_ui.ts` with its `store` (and optionally `commands`). Its entries, traces, Pulse, exceptions, Overview and Architecture are read straight from its store, every read bounded to an index and a page or time window. Actions (request replay, queue retry and enqueue) and live views (queues, schedules, health) are sent to the app over its Redis, where one instance runs each; the app opts in with `consoleCommands` in its `config/telescope.ts`. With no app picked, a trace's waterfall includes the spans federated apps recorded. The App picker tags federated apps and shows a notice while one is picked; `GET /api/apps` lists each app's `mode` and `actions`. `storage.lucid({ readOnly: true })` reads a table without creating or writing it.
+
 ## 3.0.0-rc.29
 
 ### Patch Changes
