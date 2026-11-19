@@ -41,7 +41,7 @@ export type { ProbeResponse } from './probes.js';
 export { liveness, readiness } from './probes.js';
 export type { FleetRegistryOptions, InstanceReporterOptions } from './registry.js';
 export { FleetRegistry, InstanceReporter } from './registry.js';
-export type { StackEntry, StackUse } from './stack.js';
+export type { DescribeStackOptions, StackEntry, StackUse } from './stack.js';
 export { describeStack, describeStackUse, normalizeStack, STACK_DESCRIPTOR } from './stack.js';
 export type { FleetStore, LucidFleetStoreOptions } from './store.js';
 export {

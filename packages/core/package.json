@@ -1,7 +1,7 @@
 {
   "name": "@adonis-agora/telescope",
   "version": "1.0.0-rc.36",
-  "description": "Laravel Telescope-style headless observability for AdonisJS \u2014 records HTTP requests and every Agora diagnostics event as queryable entries, plus opt-in subpaths for per-technology watchers, a web dashboard, AI exception diagnosis, and alerting.",
+  "description": "Laravel Telescope-style headless observability for AdonisJS — records HTTP requests and every Agora diagnostics event as queryable entries, plus opt-in subpaths for per-technology watchers, a web dashboard, AI exception diagnosis, and alerting.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -124,7 +124,7 @@
     "CHANGELOG.md",
     "skills"
   ],
-  "//sideEffects": "registry.ts publishes the telescope runtime handle on a Symbol.for() global slot at import time \u2014 process-global state a bundler told sideEffects:false could tree-shake. The rest is pure.",
+  "//sideEffects": "registry.ts publishes the telescope runtime handle on a Symbol.for() global slot at import time — process-global state a bundler told sideEffects:false could tree-shake. The rest is pure.",
   "sideEffects": [
     "**/registry.js",
     "**/registry.ts"
@@ -205,8 +205,16 @@
   "devDependencies": {
     "@adonis-agora/authkit-client": "1.0.0-rc.11",
     "@adonisjs/assembler": "8.6.0",
+    "@adonisjs/cache": "2.1.0",
     "@adonisjs/core": "7.6.0",
+    "@adonisjs/drive": "4.0.0",
+    "@adonisjs/limiter": "3.0.1",
+    "@adonisjs/lock": "2.1.0",
     "@adonisjs/lucid": "22.4.2",
+    "@adonisjs/mail": "10.4.0",
+    "@adonisjs/queue": "0.6.2",
+    "@adonisjs/session": "8.1.0",
+    "@adonisjs/transmit": "3.0.2",
     "@anthropic-ai/sdk": "1.8.0",
     "@aws-sdk/client-s3": "3.1167.0",
     "@boringnode/queue": "0.9.1",

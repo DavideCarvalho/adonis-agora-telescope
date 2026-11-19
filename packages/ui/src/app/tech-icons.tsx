@@ -1,17 +1,27 @@
 import {
+  siAnthropic,
+  siBrevo,
+  siClickhouse,
   siCloudflare,
+  siDigitalocean,
+  siDuckdb,
   siGooglecloudstorage,
+  siGooglegemini,
   siMailgun,
   siMariadb,
+  siMercadopago,
   siMinio,
   siMongodb,
+  siMqtt,
   siMysql,
   siPostgresql,
   siRedis,
   siResend,
+  siSparkpost,
   siSqlite,
   siStripe,
   siUpstash,
+  siVault,
 } from 'simple-icons';
 
 /** A technology as the Architecture page draws it. */
@@ -24,7 +34,7 @@ export interface TechStyle {
   path: string | null;
   /** Brand colour (`#rrggbb`), or `null` to use the theme's text colour. */
   hex: string | null;
-  glyph?: 'bucket' | 'folder' | 'mail' | 'database' | 'server';
+  glyph?: 'bucket' | 'folder' | 'mail' | 'database' | 'server' | 'key' | 'card' | 'spark';
 }
 
 const brand = (icon: { path: string; hex: string }, name: string, kind: string): TechStyle => ({
@@ -48,10 +58,30 @@ const TECH: Record<string, TechStyle> = {
   resend: brand(siResend, 'Resend', 'email'),
   mailgun: brand(siMailgun, 'Mailgun', 'email'),
   stripe: brand(siStripe, 'Stripe', 'payments'),
+  clickhouse: brand(siClickhouse, 'ClickHouse', 'analytics'),
+  duckdb: brand(siDuckdb, 'DuckDB', 'analytics'),
+  spaces: brand(siDigitalocean, 'Spaces', 'object storage'),
+  brevo: brand(siBrevo, 'Brevo', 'email'),
+  sparkpost: brand(siSparkpost, 'SparkPost', 'email'),
+  mqtt: brand(siMqtt, 'MQTT', 'messaging'),
+  anthropic: brand(siAnthropic, 'Anthropic', 'AI'),
+  gemini: brand(siGooglegemini, 'Gemini', 'AI'),
+  google: brand(siGooglegemini, 'Gemini', 'AI'),
+  mercadopago: brand(siMercadopago, 'Mercado Pago', 'payments'),
+  vault: brand(siVault, 'Vault', 'keys'),
   s3: { name: 'S3', kind: 'object storage', path: null, hex: '#E25444', glyph: 'bucket' },
   fs: { name: 'Disk', kind: 'files', path: null, hex: null, glyph: 'folder' },
   smtp: { name: 'SMTP', kind: 'email', path: null, hex: null, glyph: 'mail' },
   ses: { name: 'SES', kind: 'email', path: null, hex: '#DD344C', glyph: 'mail' },
+  sendgrid: { name: 'SendGrid', kind: 'email', path: null, hex: '#1A82E2', glyph: 'mail' },
+  postmark: { name: 'Postmark', kind: 'email', path: null, hex: null, glyph: 'mail' },
+  dynamodb: { name: 'DynamoDB', kind: 'database', path: null, hex: '#4053D6', glyph: 'database' },
+  mssql: { name: 'SQL Server', kind: 'database', path: null, hex: '#CC2927', glyph: 'database' },
+  oracle: { name: 'Oracle', kind: 'database', path: null, hex: '#F80000', glyph: 'database' },
+  openai: { name: 'OpenAI', kind: 'AI', path: null, hex: null, glyph: 'spark' },
+  asaas: { name: 'Asaas', kind: 'payments', path: null, hex: '#0030B9', glyph: 'card' },
+  pagarme: { name: 'Pagar.me', kind: 'payments', path: null, hex: '#65A300', glyph: 'card' },
+  kms: { name: 'KMS', kind: 'keys', path: null, hex: '#DD344C', glyph: 'key' },
 };
 
 /** How `tech` is drawn; an unknown one gets a neutral server glyph and its own name. */
@@ -79,6 +109,10 @@ const GLYPHS: Record<NonNullable<TechStyle['glyph']>, string> = {
   database:
     'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3v12c0 1.7-3.6 3-8 3s-8-1.3-8-3zM4 6c0 1.7 3.6 3 8 3s8-1.3 8-3M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
   server: 'M4 4h16v6H4zM4 14h16v6H4zM7 7h.01M7 17h.01',
+  key: 'M14.5 4a5.5 5.5 0 1 1-4.3 8.9L4 19v2h3v-2h2v-2h2l1.1-1.1A5.5 5.5 0 0 1 14.5 4zM16.5 7.5h.01',
+  card: 'M3 6.5A1.5 1.5 0 0 1 4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5zM3 10h18M7 15h3',
+  spark:
+    'M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M6.3 17.7l2.8-2.8M14.9 9.1l2.8-2.8',
 };
 
 /** The logo (or glyph) of `tech`, `size` px square. */
