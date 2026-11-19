@@ -62,6 +62,17 @@ describe.each(ENGINES)('tiered store (memory hot, %s cold)', (engine) => {
     tmp.cleanup();
   });
 
+  it('readOnlyView() reads both tiers and refuses record, prune and clear', async () => {
+    await recordSpread(store, 10);
+    const view = store.readOnlyView();
+    expect(view.readOnlyView()).toBe(view);
+    expect(await view.list({ size: 5 })).toHaveLength(5);
+    await expect(view.record({ type: 'log', content: {} })).rejects.toThrow(/read-only/);
+    await expect(view.prune(new Date())).rejects.toThrow(/read-only/);
+    await expect(view.clear()).rejects.toThrow(/read-only/);
+    expect(await hot.count()).toBe(10);
+  });
+
   it('moves entries older than hotFor to cold on prune, deleting them from hot', async () => {
     const all = await recordSpread(store, 600); // 10 minutes of entries
     vi.setSystemTime(START + 600 * 1000);

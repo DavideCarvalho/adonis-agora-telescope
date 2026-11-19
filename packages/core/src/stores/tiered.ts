@@ -61,6 +61,8 @@ export interface TieredPruneReport {
  *   tier boundary. If the cold tier cannot be read, hot results are returned and a
  *   warning is logged; the dashboard never fails because of the cold tier.
  */
+const READ_ONLY_TIERED = 'This telescope store is read-only.';
+
 export class TieredTelescopeStore implements TelescopeStore {
   readonly hot: TelescopeStore;
   readonly cold: ParquetColdStore;
@@ -72,6 +74,8 @@ export class TieredTelescopeStore implements TelescopeStore {
   private lastWarnAt = 0;
   private report: TieredPruneReport | null = null;
   private readonly options: TieredStoreOptions;
+  /** Only read: `record`, `prune` and `clear` are refused (see {@link readOnlyView}). */
+  private readOnly = false;
 
   constructor(options: TieredStoreOptions) {
     if (!(options.hotForMs > 0)) {
@@ -88,17 +92,23 @@ export class TieredTelescopeStore implements TelescopeStore {
   }
 
   record<TContent>(input: RecordInput<TContent>): Promise<Entry<TContent>> {
+    if (this.readOnly) return Promise.reject(new Error(READ_ONLY_TIERED));
     return this.hot.record(input);
   }
 
   /**
    * The same tiers with the hot store only read (see `LucidTelescopeStore.readOnlyView`), for a
-   * console reading another app's entries. Writes and prunes are refused by the hot store.
+   * console reading another app's entries. `record`, `prune` and `clear` are refused.
    */
   readOnlyView(): TieredTelescopeStore {
+    if (this.readOnly) return this;
     const hot = this.hot as TelescopeStore & { readOnlyView?: () => TelescopeStore };
-    if (typeof hot.readOnlyView !== 'function') return this;
-    return new TieredTelescopeStore({ ...this.options, hot: hot.readOnlyView() });
+    const view = new TieredTelescopeStore({
+      ...this.options,
+      hot: typeof hot.readOnlyView === 'function' ? hot.readOnlyView() : this.hot,
+    });
+    view.readOnly = true;
+    return view;
   }
 
   async get(id: string): Promise<Entry | null> {
@@ -191,6 +201,7 @@ export class TieredTelescopeStore implements TelescopeStore {
   }
 
   async prune(olderThan: Date, keepLast?: number): Promise<number> {
+    if (this.readOnly) throw new Error(READ_ONLY_TIERED);
     const hotCutoff = new Date(Date.now() - this.hotForMs);
     const report: TieredPruneReport = {
       moved: 0,
@@ -228,6 +239,7 @@ export class TieredTelescopeStore implements TelescopeStore {
   }
 
   async clear(): Promise<void> {
+    if (this.readOnly) throw new Error(READ_ONLY_TIERED);
     await Promise.all([this.hot.clear(), this.cold.clear()]);
   }
 

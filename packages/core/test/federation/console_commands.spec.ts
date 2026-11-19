@@ -5,6 +5,7 @@ import {
   ConsoleCommandSender,
   consoleChannels,
   FEDERATED_APP_UNREACHABLE,
+  parseReply,
 } from '../../src/federation/console_commands.js';
 import { FederatedApp, Federation, TraceMergingStore } from '../../src/federation/federation.js';
 import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
@@ -92,6 +93,56 @@ describe('console commands over Redis', () => {
     });
   });
 
+  it('drops a reply of neither shape', () => {
+    expect(parseReply('{"id":"x"}')).toBeNull();
+    expect(parseReply('{"id":"x","ok":false}')).toBeNull();
+    expect(parseReply('{"id":"x","ok":true}')).toBeNull();
+    expect(parseReply('not json')).toBeNull();
+    expect(parseReply('{"id":"x","ok":true,"status":200,"body":1}')).toEqual({
+      id: 'x',
+      ok: true,
+      status: 200,
+      body: 1,
+    });
+    expect(parseReply('{"id":"x","ok":false,"error":{"message":"m","code":7}}')).toEqual({
+      id: 'x',
+      ok: false,
+      error: { message: 'm' },
+    });
+  });
+
+  it('a malformed reply on the channel does not settle the command', async () => {
+    const redis = new FakeRedis();
+    const forger = redis.client().duplicate();
+    await forger.subscribe(consoleChannels('shop').commands);
+    forger.on('message', (_channel: string, message: string) => {
+      const { id } = JSON.parse(message) as { id: string };
+      void redis.client().call('PUBLISH', consoleChannels('shop').replies, JSON.stringify({ id }));
+    });
+    stops.push(() => forger.disconnect());
+    const sender = new ConsoleCommandSender(redis.client(), {
+      app: 'shop',
+      prefix: 'shop',
+      timeoutMs: 80,
+    });
+    stops.push(() => sender.close());
+    await expect(sender.send('health', [])).rejects.toThrow(/did not answer/);
+  });
+
+  it('close() fails the commands still waiting, at once', async () => {
+    const redis = new FakeRedis();
+    const deaf = redis.client().duplicate();
+    await deaf.subscribe(consoleChannels('shop').commands);
+    stops.push(() => deaf.disconnect());
+    const sender = new ConsoleCommandSender(redis.client(), { app: 'shop', prefix: 'shop' });
+    const waiting = sender.send('health', []);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const started = Date.now();
+    sender.close();
+    await expect(waiting).rejects.toThrow(/stopped waiting/);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
   it('prefixes keep two apps apart', async () => {
     const redis = new FakeRedis();
     const seen: string[] = [];
@@ -156,6 +207,30 @@ describe('FederatedApp', () => {
       () => new Federation({ 'a b': { store: new InMemoryTelescopeStore() } }, { app: null }),
     ).toThrow(/not a valid app key/);
     expect(() => new Federation({ shop: {} as never }, { app: null })).toThrow(/needs a `store`/);
+  });
+
+  it('refuses two apps sending commands on the same connection and prefix', () => {
+    const store = new InMemoryTelescopeStore();
+    expect(
+      () =>
+        new Federation(
+          {
+            a: { store, commands: { connection: 'main' } },
+            b: { store, commands: { connection: 'main' } },
+          },
+          { app: null },
+        ),
+    ).toThrow(/"a" and "b" send commands on the same Redis connection with the same prefix/);
+    expect(
+      () =>
+        new Federation(
+          {
+            a: { store, commands: { connection: 'main', prefix: 'a' } },
+            b: { store, commands: { connection: 'main', prefix: 'b' } },
+          },
+          { app: null },
+        ),
+    ).not.toThrow();
   });
 });
 

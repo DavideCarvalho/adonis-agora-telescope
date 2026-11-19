@@ -103,8 +103,17 @@ schedules and health checks works right away, and each action works once it is l
 [@adonis-agora/telescope] federated console: queues.retry emails/42 by user:7
 ```
 
-Both apps must use the same Redis server. Anything that can publish on it can ask for these
-actions.
+Both apps must use the same Redis server, and each federated app needs its own `prefix` (the
+console refuses two apps with the same connection and prefix). Anything that can publish on that
+Redis can ask for these actions, and the "by …" in the log line is what the console sent: read it
+as information, not as an audit trail.
+
+<Callout type="warn">
+Each delivery of an action runs on exactly one instance, but a failed action is not proof that
+nothing ran: a reply can be lost after the app acted, and on Redis Cluster the console only counts
+listeners on its own node, so it can report "no instance answers" while one does. Check before
+repeating an action that is not safe to run twice, such as an enqueue or a replay.
+</Callout>
 
 ## Database access
 

@@ -146,8 +146,8 @@ export class FederatedApp {
     }
     if (!reply.ok) {
       return {
-        status: reply.error.code === 'unsupported-request' ? 501 : 502,
-        body: { error: `${this.label}: ${reply.error.message}` },
+        status: reply.error?.code === 'unsupported-request' ? 501 : 502,
+        body: { error: `${this.label}: ${reply.error?.message ?? 'the app refused the command'}` },
       };
     }
     return { status: reply.status, body: reply.body };
@@ -208,6 +208,21 @@ export class Federation {
       }
       this.apps.set(id, new FederatedApp(id, config, context));
     }
+    // The prefix is all that tells two apps' commands apart on one Redis: a shared one would let
+    // either app claim (and run) the other's commands.
+    const byChannel = new Map<string, string>();
+    for (const [id, config] of Object.entries(configs)) {
+      const commands = config.commands;
+      if (!commands || commands.client !== undefined) continue;
+      const channel = `${commands.connection ?? ''}\u0000${commands.prefix ?? DEFAULT_CONSOLE_PREFIX}`;
+      const other = byChannel.get(channel);
+      if (other !== undefined) {
+        throw new Error(
+          `[@adonis-agora/telescope] apps.federated: "${other}" and "${id}" send commands on the same Redis connection with the same prefix "${commands.prefix ?? DEFAULT_CONSOLE_PREFIX}". Give each app its own \`consoleCommands.prefix\`.`,
+        );
+      }
+      byChannel.set(channel, id);
+    }
   }
 
   get size(): number {
@@ -258,12 +273,14 @@ export class TraceMergingStore implements TelescopeStore {
 
   async get(id: string): Promise<Entry | null> {
     const own = await this.primary.get(id);
-    if (own !== null) return own;
-    for (const source of this.sources) {
-      const found = await this.fromSource(source, (store) => store.get(id), null);
-      if (found !== null) return tagged(found, source.id);
-    }
-    return null;
+    if (own !== null || this.sources.length === 0) return own;
+    // Asked of every federated app at once: one slow app costs its timeout, not the sum.
+    const found = await Promise.all(
+      this.sources.map((source) => this.fromSource(source, (store) => store.get(id), null)),
+    );
+    const index = found.findIndex((entry) => entry !== null);
+    const source = this.sources[index];
+    return index === -1 || source === undefined ? null : tagged(found[index] as Entry, source.id);
   }
 
   async list(query: EntryQuery = {}): Promise<Entry[]> {

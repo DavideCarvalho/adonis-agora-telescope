@@ -86,7 +86,10 @@ export class ConsoleCommandSender {
   private readonly channels: ReturnType<typeof consoleChannels>;
   private subscriber: SubscriberConnection | null = null;
   private subscribed: Promise<void> | null = null;
-  private readonly pending = new Map<string, (reply: ConsoleCommandReply) => void>();
+  private readonly pending = new Map<
+    string,
+    { resolve: (reply: ConsoleCommandReply) => void; reject: (error: Error) => void }
+  >();
 
   constructor(
     private readonly client: ConsoleRedisClient,
@@ -107,7 +110,7 @@ export class ConsoleCommandSender {
     const timeoutMs = this.options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
     let timer: NodeJS.Timeout | undefined;
     const reply = new Promise<ConsoleCommandReply>((resolve, reject) => {
-      this.pending.set(command.id, resolve);
+      this.pending.set(command.id, { resolve, reject });
       timer = setTimeout(() => {
         this.pending.delete(command.id);
         reject(
@@ -148,10 +151,21 @@ export class ConsoleCommandSender {
     }
   }
 
+  /** Stop listening; commands still waiting for a reply fail at once. */
   close(): void {
     this.subscriber?.disconnect();
     this.subscriber = null;
     this.subscribed = null;
+    const waiting = [...this.pending.values()];
+    this.pending.clear();
+    for (const { reject } of waiting) {
+      reject(
+        new ConsoleCommandError(
+          `stopped waiting for the "${this.options.app}" app`,
+          FEDERATED_APP_UNREACHABLE,
+        ),
+      );
+    }
   }
 
   private settle(id: string, timer: NodeJS.Timeout | undefined): void {
@@ -167,10 +181,10 @@ export class ConsoleCommandSender {
         if (channel !== this.channels.replies) return;
         const reply = parseReply(message);
         if (reply === null) return;
-        const resolve = this.pending.get(reply.id);
-        if (resolve === undefined) return;
+        const waiting = this.pending.get(reply.id);
+        if (waiting === undefined) return;
         this.pending.delete(reply.id);
-        resolve(reply);
+        waiting.resolve(reply);
       });
       const attempt = Promise.resolve(subscriber.subscribe(this.channels.replies)).then(() => {});
       this.subscribed = attempt;
@@ -254,13 +268,30 @@ function parseCommand(message: string): ConsoleCommand | null {
   }
 }
 
-function parseReply(message: string): ConsoleCommandReply | null {
+/** A reply of either shape, or `null` (dropped like any other unreadable message). */
+export function parseReply(message: string): ConsoleCommandReply | null {
+  let value: unknown;
   try {
-    const value = JSON.parse(message) as ConsoleCommandReply;
-    return value !== null && typeof value === 'object' && typeof value.id === 'string'
-      ? value
-      : null;
+    value = JSON.parse(message);
   } catch {
     return null;
   }
+  if (value === null || typeof value !== 'object') return null;
+  const reply = value as Record<string, unknown>;
+  if (typeof reply.id !== 'string') return null;
+  if (reply.ok === true && typeof reply.status === 'number') {
+    return { id: reply.id, ok: true, status: reply.status, body: reply.body };
+  }
+  const error = reply.error as Record<string, unknown> | null | undefined;
+  if (reply.ok === false && typeof error?.message === 'string') {
+    return {
+      id: reply.id,
+      ok: false,
+      error: {
+        message: error.message,
+        ...(typeof error.code === 'string' ? { code: error.code } : {}),
+      },
+    };
+  }
+  return null;
 }
