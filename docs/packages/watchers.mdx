@@ -515,7 +515,7 @@ CSRF secret and tokens included. So by default only the first argument (the key)
 every other one is recorded as `[REDACTED]`, arity preserved: `SET session:abc '{…}' PX 7200000`
 is recorded as `['session:abc', '[REDACTED]', '[REDACTED]', '[REDACTED]']`. `AUTH`, `HELLO`,
 `CONFIG`, `ACL` and `MIGRATE` have every argument redacted, key position included. Set
-`redis.captureValues: true` to record the real values (the [redaction](/docs/telescope/concepts/redaction)
+`redis.captureValues: true` to record the real values (the [redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction)
 rules still apply to them).
 </Callout>
 
