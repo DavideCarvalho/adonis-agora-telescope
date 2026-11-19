@@ -32,4 +32,14 @@ describe('withPageScope', () => {
     const here = at('https://hub.example.com/telescope#/pulse');
     expect(withPageScope('/agent/dashboard/', here)).toBe('/agent/dashboard/');
   });
+
+  it('leaves hash-only links alone: they keep the page query by themselves', () => {
+    const here = at('https://hub.example.com/agent/?app=shop#overview');
+    expect(withPageScope('#runs', here)).toBe('#runs');
+  });
+
+  it('a same-console page link keeps the scope too', () => {
+    const here = at('https://hub.example.com/agent/?app=shop#overview');
+    expect(withPageScope('/agent/#runs', here)).toBe('/agent/?app=shop#runs');
+  });
 });

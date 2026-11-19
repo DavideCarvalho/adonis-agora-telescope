@@ -25,7 +25,7 @@ const CONSOLE_KEYWORDS: Record<ConsoleIconKey, string[]> = {
 /** Follow a nav item the way a click on it does. */
 function follow(item: NavItem): void {
   if (item.onSelect) item.onSelect();
-  else if (item.href !== undefined) window.location.assign(item.href);
+  else if (item.href !== undefined) window.location.assign(withPageScope(item.href));
 }
 
 /**

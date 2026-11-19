@@ -9,16 +9,17 @@ export const SCOPE_PARAMS = ['app', 'tenant'] as const;
  * `href` with this page's `?app=` / `?tenant=` added, when it points at this origin and does not
  * set them itself. Other origins, and an `href` that cannot be parsed, come back unchanged.
  */
-export function withPageScope(
-  href: string,
-  location: Pick<Location, 'href' | 'search'> = window.location,
-): string {
-  const here = new URLSearchParams(location.search);
+export function withPageScope(href: string, location?: Pick<Location, 'href' | 'search'>): string {
+  // A hash-only link keeps the page's query by itself; on the server there is no page scope.
+  if (href.startsWith('#')) return href;
+  const page = location ?? (typeof window === 'undefined' ? undefined : window.location);
+  if (page === undefined) return href;
+  const here = new URLSearchParams(page.search);
   if (!SCOPE_PARAMS.some((name) => here.get(name))) return href;
   let target: URL;
   let base: URL;
   try {
-    base = new URL(location.href);
+    base = new URL(page.href);
     target = new URL(href, base);
   } catch {
     return href;
