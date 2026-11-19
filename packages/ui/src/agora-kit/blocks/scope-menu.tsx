@@ -1,12 +1,14 @@
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronDownIcon } from '../agora-kit/icons';
-import { buttonVariants } from '../agora-kit/ui/button';
-import { cn } from './primitives/cn.js';
+import { ChevronDownIcon } from '../icons';
+import { cn } from '../lib/utils';
+import { buttonVariants } from '../ui/button';
 
 /** One choice in a {@link ScopeMenu}. */
 export interface ScopeOption {
   id: string;
   label: string;
+  /** Shown on the right instead of the id (`federated`). */
+  hint?: string;
 }
 
 /** The words a {@link ScopeMenu} shows. */
@@ -24,6 +26,11 @@ export interface ScopeMenuText {
 }
 
 const ALL = '*';
+
+/** The small text on an option's right: its hint, else its id when the label differs. */
+function sideText(option: ScopeOption): string | undefined {
+  return option.hint ?? (option.label !== option.id ? option.id : undefined);
+}
 
 /** Arrow navigation over `count` options (wraps around). */
 function moveIndex(current: number, key: string, count: number): number {
@@ -47,7 +54,7 @@ export function ScopeChip({ noun, label, kind }: { noun: string; label: string; 
 }
 
 /**
- * A searchable header picker: the button opens a combobox over a listbox (arrows move, Enter
+ * The header's App / Organization pickers of every console: one look everywhere. A searchable header picker: the button opens a combobox over a listbox (arrows move, Enter
  * picks, Escape closes), with the "everything" option first when `all` is offered.
  * `onChoose(undefined)` means everything.
  */
@@ -175,8 +182,10 @@ export function ScopeMenu({
                   )}
                 >
                   <span className="truncate">{option.label}</span>
-                  {option.id !== ALL && option.label !== option.id && (
-                    <span className="mono shrink-0 text-[10.5px] text-faint">{option.id}</span>
+                  {option.id !== ALL && sideText(option) !== undefined && (
+                    <span className="mono shrink-0 text-[10.5px] text-faint">
+                      {sideText(option)}
+                    </span>
                   )}
                 </li>
               );

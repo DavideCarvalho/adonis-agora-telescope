@@ -1,5 +1,6 @@
 import type { SwitcherConsole } from '../console-data';
 import { type ConsoleIconKey, ConsoleTile, consoleAccent } from '../icons';
+import { withPageScope } from '../lib/scope-carry';
 import type { NavItem, NavSection } from './app-shell';
 import type { SearchCommand } from './console-search';
 
@@ -63,6 +64,6 @@ export function consoleCommands(consoles: readonly SwitcherConsole[]): SearchCom
       ...(c.package ? [c.package, c.package.replace(/^@[^/]+\//, '')] : []),
       ...CONSOLE_KEYWORDS[c.icon],
     ],
-    onSelect: () => window.location.assign(c.href),
+    onSelect: () => window.location.assign(withPageScope(c.href)),
   }));
 }

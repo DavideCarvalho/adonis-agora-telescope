@@ -1,6 +1,6 @@
+import { ScopeChip, ScopeMenu } from '../agora-kit/blocks/scope-menu';
 import { selectedTenant } from '../client/telescope-client.js';
 import type { TenantScope } from '../client/types.js';
-import { ScopeChip, ScopeMenu } from './ScopeMenu.js';
 import { useTenants } from './use-telescope.js';
 
 /** The page URL showing `tenant` (`undefined` = every organization), the hash route kept. */
