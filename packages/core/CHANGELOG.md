@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.0.0-rc.39
+
+### Patch Changes
+
+- fix(deps): update dependency @adonis-agora/filter to ^1.0.0-rc ([#371](https://github.com/DavideCarvalho/adonis-agora-telescope/issues/371))
+
 ## 1.0.0-rc.38
 
 ### Minor Changes
