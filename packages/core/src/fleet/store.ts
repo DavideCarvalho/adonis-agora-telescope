@@ -26,6 +26,10 @@ export interface FleetStore {
 
 const key = (app: string, instanceId: string) => `${app}\u0000${instanceId}`;
 
+/** The earlier of a stored first-seen time and `candidate`; `candidate` when the stored one is damaged. */
+const earliest = (stored: number, candidate: number) =>
+  Number.isFinite(stored) && stored > 0 ? Math.min(stored, candidate) : candidate;
+
 /** Instances in this process (a standalone app, tests, or a control plane on the memory store). */
 export class MemoryFleetStore implements FleetStore {
   private readonly rows = new Map<string, InstanceRecord>();
@@ -37,7 +41,7 @@ export class MemoryFleetStore implements FleetStore {
     const previous = this.rows.get(id);
     this.rows.delete(id);
     const row = structuredClone(record);
-    if (previous !== undefined) row.firstSeenAt = Math.min(previous.firstSeenAt, row.firstSeenAt);
+    if (previous !== undefined) row.firstSeenAt = earliest(previous.firstSeenAt, row.firstSeenAt);
     this.rows.set(id, row);
     while (this.rows.size > this.maxInstances) {
       // Evict the least recently seen (insertion order = last upsert).
@@ -219,13 +223,13 @@ export class LucidFleetStore implements FleetStore {
   /** The stored `first_seen_at` of row `id` (the earlier of it and `candidate`), cached. */
   private async firstSeenOf(id: string, candidate: number): Promise<number> {
     const cached = this.firstSeen.get(id);
-    if (cached !== undefined) return Math.min(cached, candidate);
+    if (cached !== undefined) return earliest(cached, candidate);
     const stored = await runAsTelescopeWork(() =>
       this.db.from(this.table).where('id', id).select('first_seen_at'),
     );
     const value = stored[0]?.first_seen_at;
     const first =
-      value === null || value === undefined ? candidate : Math.min(toInt(value), candidate);
+      value === null || value === undefined ? candidate : earliest(toInt(value), candidate);
     this.firstSeen.set(id, first);
     if (this.firstSeen.size > 10_000) {
       this.firstSeen.delete(this.firstSeen.keys().next().value as string);
@@ -278,10 +282,14 @@ export class LucidFleetStore implements FleetStore {
 
   async prune(before: number): Promise<number> {
     await this.init();
-    // A pruned instance that comes back is a new row: re-read what is stored.
-    this.firstSeen.clear();
-    return runAsTelescopeWork(() =>
-      this.db.from(this.table).where('last_seen_at', '<', before).delete(),
+    const removed = toInt(
+      await runAsTelescopeWork(() =>
+        this.db.from(this.table).where('last_seen_at', '<', before).delete(),
+      ),
     );
+    // A pruned instance that comes back is a new row: re-read what is stored. A prune that deleted
+    // nothing (the usual case) keeps the cache, so it costs no re-read per instance.
+    if (removed > 0) this.firstSeen.clear();
+    return removed;
   }
 }
