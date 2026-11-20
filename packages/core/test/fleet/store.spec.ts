@@ -70,6 +70,15 @@ describe.each(Object.keys(kinds))('%s fleet store', (kind) => {
     );
   });
 
+  it('keeps the first seen time (created) on every upsert; last seen (updated) moves', async () => {
+    const store = await make();
+    await store.upsert(record());
+    await store.upsert(record({ firstSeenAt: NOW + 15_000, lastSeenAt: NOW + 15_000 }));
+    const [row] = await store.list();
+    expect(row?.firstSeenAt).toBe(NOW - 50_000);
+    expect(row?.lastSeenAt).toBe(NOW + 15_000);
+  });
+
   it('keeps each instance role (a worker next to the web process)', async () => {
     const store = await make();
     await store.upsert(record());
@@ -121,6 +130,62 @@ describe('lucid fleet store rows written before roles', () => {
     delete data.role;
     await harness.db.from('telescope_instances').update({ data: JSON.stringify(data) });
     expect((await store.list())[0]?.role).toBe('web');
+  });
+});
+
+describe('memory fleet store damaged first seen', () => {
+  it('a non-finite stored first seen time falls back to the heartbeat one', async () => {
+    const store = new MemoryFleetStore();
+    await store.upsert(record({ firstSeenAt: Number.NaN }));
+    await store.upsert(record({ firstSeenAt: NOW + 15_000, lastSeenAt: NOW + 15_000 }));
+    expect((await store.list())[0]?.firstSeenAt).toBe(NOW + 15_000);
+  });
+});
+
+describe('lucid fleet store first seen across processes', () => {
+  it('a restarted receiver (a new store) keeps the stored first seen time', async () => {
+    const harness = await makeHarness();
+    harnesses.push(harness);
+    await new LucidFleetStore(harness.lucid, { autoCreateTable: true }).upsert(record());
+    // A new process: its registry only knows the instance from this heartbeat on.
+    const restarted = new LucidFleetStore(harness.lucid, { autoCreateTable: true });
+    await restarted.upsert(record({ firstSeenAt: NOW + 30_000, lastSeenAt: NOW + 30_000 }));
+    await restarted.upsert(record({ firstSeenAt: NOW + 30_000, lastSeenAt: NOW + 45_000 }));
+    const [row] = await restarted.list();
+    expect(row?.firstSeenAt).toBe(NOW - 50_000);
+    expect(row?.lastSeenAt).toBe(NOW + 45_000);
+  });
+
+  it('a prune that deletes nothing keeps the cached first seen time (no re-read)', async () => {
+    const harness = await makeHarness();
+    harnesses.push(harness);
+    const store = new LucidFleetStore(harness.lucid, { autoCreateTable: true });
+    await store.upsert(record());
+    // Changed behind the store's back: a re-read would pick it up.
+    await harness.db.from('telescope_instances').update({ first_seen_at: NOW - 999_999 });
+    expect(await store.prune(NOW - 100_000)).toBe(0);
+    await store.upsert(record({ firstSeenAt: NOW + 15_000, lastSeenAt: NOW + 15_000 }));
+    expect((await store.list())[0]?.firstSeenAt).toBe(NOW - 50_000);
+  });
+
+  it('a damaged stored first seen time falls back to the heartbeat one', async () => {
+    const harness = await makeHarness();
+    harnesses.push(harness);
+    await new LucidFleetStore(harness.lucid, { autoCreateTable: true }).upsert(record());
+    await harness.db.from('telescope_instances').update({ first_seen_at: 'garbage' });
+    const restarted = new LucidFleetStore(harness.lucid, { autoCreateTable: true });
+    await restarted.upsert(record({ firstSeenAt: NOW + 30_000, lastSeenAt: NOW + 30_000 }));
+    expect((await restarted.list())[0]?.firstSeenAt).toBe(NOW + 30_000);
+  });
+
+  it('a pruned instance that comes back starts a new first seen time', async () => {
+    const harness = await makeHarness();
+    harnesses.push(harness);
+    const store = new LucidFleetStore(harness.lucid, { autoCreateTable: true });
+    await store.upsert(record());
+    expect(await store.prune(NOW + 1)).toBe(1);
+    await store.upsert(record({ firstSeenAt: NOW + 60_000, lastSeenAt: NOW + 60_000 }));
+    expect((await store.list())[0]?.firstSeenAt).toBe(NOW + 60_000);
   });
 });
 

@@ -66,6 +66,15 @@ export interface FleetInstance extends InstanceRecord {
   uptimeMs: number;
   /** Worst check status among this instance's checks (`ok` without checks). */
   health: CheckStatus;
+  /** When the instance's row was created (its first heartbeat), ISO 8601; `null` when unknown. */
+  createdAt: string | null;
+  /** When the instance's row was last written (its last heartbeat), ISO 8601; `null` when unknown. */
+  updatedAt: string | null;
+}
+
+/** Epoch ms as ISO 8601, `null` when it is not a usable time. */
+function isoOf(ms: number): string | null {
+  return Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : null;
 }
 
 export type InstanceCounts = Record<InstanceStatus, number>;
@@ -259,6 +268,8 @@ export function deriveFleet(
       status,
       uptimeMs: Math.max(0, (status === 'gone' ? record.lastSeenAt : now) - record.bootedAt),
       health: worst(record.checks),
+      createdAt: isoOf(record.firstSeenAt),
+      updatedAt: isoOf(record.lastSeenAt),
     };
     const list = byApp.get(record.app) ?? [];
     list.push(instance);

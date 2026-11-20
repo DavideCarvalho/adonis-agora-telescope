@@ -123,7 +123,8 @@ and each one sees the others. With the memory store each replica only sees itsel
 picker or for every app:
 
 - the instance counts by state;
-- each instance: host, role, version, uptime, last heartbeat, health and send buffer;
+- each instance: host, role, version, uptime, last heartbeat, health and send buffer (hover the
+  last heartbeat for when the instance was first and last seen);
 - a role filter (all roles, `web`, `durable:work`, ...) when the fleet runs more than one;
 - the deploy timeline with rollout progress;
 - hosts in a restart loop;
@@ -142,6 +143,11 @@ node ace telescope:fleet:list --app shop --json
 
 The `telescope_get_fleet` tool on [`/mcp/agora`](/docs/telescope/packages/mcp) answers the same,
 for the apps the caller may see.
+
+Each instance in the answer (and in `GET <path>/api/fleet`) carries `createdAt` (its first
+heartbeat) and `updatedAt` (its last heartbeat) as ISO 8601 strings, `null` when unknown, next to
+`firstSeenAt` and `lastSeenAt` in epoch milliseconds. An instance keeps its `createdAt` when the
+control plane restarts.
 
 ## Alerts
 

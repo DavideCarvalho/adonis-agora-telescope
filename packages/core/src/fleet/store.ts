@@ -13,7 +13,10 @@ import { normalizeStack, type StackEntry } from './stack.js';
 
 /** Where the fleet keeps its instances. */
 export interface FleetStore {
-  /** Insert or replace one instance (keyed by app + instance id). */
+  /**
+   * Insert or replace one instance (keyed by app + instance id). A replaced instance keeps the
+   * `firstSeenAt` it was stored with (its creation time), whatever the record says.
+   */
   upsert(record: InstanceRecord): Promise<void>;
   /** Instances seen since `since` (epoch ms), of `apps` (`null`: every app). */
   list(filter?: { apps?: readonly string[] | null; since?: number }): Promise<InstanceRecord[]>;
@@ -23,6 +26,10 @@ export interface FleetStore {
 
 const key = (app: string, instanceId: string) => `${app}\u0000${instanceId}`;
 
+/** The earlier of a stored first-seen time and `candidate`; `candidate` when the stored one is damaged. */
+const earliest = (stored: number, candidate: number) =>
+  Number.isFinite(stored) && stored > 0 ? Math.min(stored, candidate) : candidate;
+
 /** Instances in this process (a standalone app, tests, or a control plane on the memory store). */
 export class MemoryFleetStore implements FleetStore {
   private readonly rows = new Map<string, InstanceRecord>();
@@ -31,8 +38,11 @@ export class MemoryFleetStore implements FleetStore {
 
   async upsert(record: InstanceRecord): Promise<void> {
     const id = key(record.app, record.instanceId);
+    const previous = this.rows.get(id);
     this.rows.delete(id);
-    this.rows.set(id, structuredClone(record));
+    const row = structuredClone(record);
+    if (previous !== undefined) row.firstSeenAt = earliest(previous.firstSeenAt, row.firstSeenAt);
+    this.rows.set(id, row);
     while (this.rows.size > this.maxInstances) {
       // Evict the least recently seen (insertion order = last upsert).
       this.rows.delete(this.rows.keys().next().value as string);
@@ -128,6 +138,11 @@ export class LucidFleetStore implements FleetStore {
   private readonly table: string;
   private readonly tableName: string;
   private ready: Promise<void> | null = null;
+  /**
+   * `first_seen_at` per row id, read once per instance per process: a heartbeat replaces the row,
+   * and a restarted control plane (or another replica) must not move an instance's creation time.
+   */
+  private readonly firstSeen = new Map<string, number>();
 
   constructor(
     private readonly db: LucidDatabaseLike,
@@ -179,6 +194,7 @@ export class LucidFleetStore implements FleetStore {
       ...(record.watchers !== undefined ? { watchers: record.watchers } : {}),
       ...(record.stack !== undefined ? { stack: record.stack } : {}),
     };
+    const firstSeenAt = await this.firstSeenOf(id, record.firstSeenAt);
     const row = {
       id,
       app: record.app,
@@ -187,7 +203,7 @@ export class LucidFleetStore implements FleetStore {
       version: record.version,
       state: record.state,
       booted_at: record.bootedAt,
-      first_seen_at: record.firstSeenAt,
+      first_seen_at: firstSeenAt,
       last_seen_at: record.lastSeenAt,
       data: JSON.stringify(payload),
     };
@@ -202,6 +218,23 @@ export class LucidFleetStore implements FleetStore {
         await this.db.table(this.table).insert(row);
       }
     });
+  }
+
+  /** The stored `first_seen_at` of row `id` (the earlier of it and `candidate`), cached. */
+  private async firstSeenOf(id: string, candidate: number): Promise<number> {
+    const cached = this.firstSeen.get(id);
+    if (cached !== undefined) return earliest(cached, candidate);
+    const stored = await runAsTelescopeWork(() =>
+      this.db.from(this.table).where('id', id).select('first_seen_at'),
+    );
+    const value = stored[0]?.first_seen_at;
+    const first =
+      value === null || value === undefined ? candidate : earliest(toInt(value), candidate);
+    this.firstSeen.set(id, first);
+    if (this.firstSeen.size > 10_000) {
+      this.firstSeen.delete(this.firstSeen.keys().next().value as string);
+    }
+    return first;
   }
 
   async list(
@@ -249,8 +282,14 @@ export class LucidFleetStore implements FleetStore {
 
   async prune(before: number): Promise<number> {
     await this.init();
-    return runAsTelescopeWork(() =>
-      this.db.from(this.table).where('last_seen_at', '<', before).delete(),
+    const removed = toInt(
+      await runAsTelescopeWork(() =>
+        this.db.from(this.table).where('last_seen_at', '<', before).delete(),
+      ),
     );
+    // A pruned instance that comes back is a new row: re-read what is stored. A prune that deleted
+    // nothing (the usual case) keeps the cache, so it costs no re-read per instance.
+    if (removed > 0) this.firstSeen.clear();
+    return removed;
   }
 }

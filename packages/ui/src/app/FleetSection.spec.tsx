@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { NuqsHashAdapter } from '../agora-kit/url-state/nuqs-hash-adapter';
 import type { TelescopeClient } from '../client/telescope-client.js';
 import type { FleetApp, FleetInstance, FleetView } from '../client/types.js';
-import { FleetSection, humanDuration } from './FleetSection.js';
+import { FleetSection, humanDuration, instanceTimes } from './FleetSection.js';
 import { TelescopeQueryProvider } from './query-provider.js';
 import { formatHash, parseHash } from './use-hash-route.js';
 import { TelescopeClientContext } from './use-telescope.js';
@@ -238,6 +238,26 @@ describe('Fleet page', () => {
     expect(screen.queryByText(/3 intervals/)).toBeNull();
     expect(screen.queryByText(/15 seconds/)).toBeNull();
     expect(screen.queryByText(/`/)).toBeNull();
+  });
+
+  it('titles the last seen cell with the full updated and created times', async () => {
+    const createdAt = new Date(NOW - 60 * MIN).toISOString();
+    const updatedAt = new Date(NOW - 4000).toISOString();
+    const full = `Updated ${new Date(updatedAt).toLocaleString()} · Created ${new Date(createdAt).toLocaleString()}`;
+    expect(instanceTimes(instance({ createdAt, updatedAt }))).toBe(full);
+    // An older server sends only the epoch ms.
+    expect(instanceTimes(instance({}))).toBe(full);
+    expect(instanceTimes(instance({ createdAt: null, updatedAt: null }))).toBe(
+      'Updated — · Created —',
+    );
+    renderFleet({
+      enabled: true,
+      notice: null,
+      now: NOW,
+      apps: [{ ...shop, instances: [instance({ createdAt, updatedAt })] }],
+      self: null,
+    });
+    expect((await screen.findByTestId('fleet-last-seen')).getAttribute('title')).toBe(full);
   });
 
   it('has its own route', () => {

@@ -303,6 +303,11 @@ describe('EntryDetail', () => {
     expect(client.getEntry).toHaveBeenCalledWith('e-1');
     expect(screen.getByText('e-1')).toBeTruthy();
     expect(screen.getByText(/view trace/)).toBeTruthy();
+    // The full local date and time, not just the time of day.
+    expect(screen.getByText('Created')).toBeTruthy();
+    expect(
+      screen.getByText(new Date('2026-07-13T10:00:00.000Z').toLocaleString()).getAttribute('title'),
+    ).toBe('2026-07-13T10:00:00.000Z');
   });
 
   it('shows the authenticated user for a request entry', async () => {

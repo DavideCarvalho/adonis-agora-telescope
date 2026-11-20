@@ -108,6 +108,21 @@ describe('instance states', () => {
   });
 });
 
+describe('instance timestamps', () => {
+  it('exposes createdAt (first heartbeat) and updatedAt (last heartbeat) as ISO strings', () => {
+    const [app] = deriveFleet([instance()], NOW);
+    const row = app?.instances[0];
+    expect(row?.createdAt).toBe(new Date(NOW - 60 * MIN).toISOString());
+    expect(row?.updatedAt).toBe(new Date(NOW - 5_000).toISOString());
+  });
+
+  it('null when a stored time is unusable', () => {
+    const [app] = deriveFleet([instance({ firstSeenAt: 0, lastSeenAt: Number.NaN })], NOW);
+    expect(app?.instances[0]?.createdAt).toBeNull();
+    expect(app?.instances[0]?.updatedAt).toBeNull();
+  });
+});
+
 describe('deploys', () => {
   it('is a version change across instances, with rollout progress', () => {
     const [app] = deriveFleet(
