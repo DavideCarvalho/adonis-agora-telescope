@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Badge } from '../agora-kit/ui/badge';
 import { Button } from '../agora-kit/ui/button';
-import { formatDuration, formatTime } from '../client/format.js';
+import { formatDateTime, formatDuration } from '../client/format.js';
 import type {
   DiagnoseOutcome,
   Entry,
@@ -66,9 +66,9 @@ export function EntryDetail({
                 <dd className="tnum m-0">{entry.sequence}</dd>
                 <dt className="text-faint">Origin</dt>
                 <dd className="m-0">{entry.origin}</dd>
-                <dt className="text-faint">Recorded</dt>
+                <dt className="text-faint">Created</dt>
                 <dd className="m-0" title={entry.createdAt}>
-                  {formatTime(entry.createdAt)}
+                  {formatDateTime(entry.createdAt)}
                 </dd>
                 <dt className="text-faint">Trace</dt>
                 <dd className="m-0">

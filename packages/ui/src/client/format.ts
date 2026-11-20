@@ -35,6 +35,14 @@ export function formatTime(iso: string | null | undefined): string {
   return date.toLocaleTimeString();
 }
 
+/** Local date and time from an ISO string (for a detail field or a `title`). `—` on a missing or bad input. */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString();
+}
+
 /** Relative "time ago" from an ISO string: `just now`, `12s ago`, `3m ago`, `2h ago`, `4d ago`. */
 export function formatRelative(iso: string | null | undefined, now: number = Date.now()): string {
   if (!iso) return '';

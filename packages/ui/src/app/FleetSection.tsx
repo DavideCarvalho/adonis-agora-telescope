@@ -4,6 +4,7 @@ import { MetricCard, MetricGrid } from '../agora-kit/blocks/metric-card';
 import { Toolbar } from '../agora-kit/blocks/page-header';
 import { Badge } from '../agora-kit/ui/badge';
 import { Button } from '../agora-kit/ui/button';
+import { formatDateTime } from '../client/format.js';
 import type {
   FleetApp,
   FleetCheckStatus,
@@ -97,6 +98,14 @@ function shortVersion(version: string | null): string {
   return version.length > 12 ? version.slice(0, 12) : version;
 }
 
+/** The instance row's times, full: updated (last heartbeat) and created (first heartbeat). */
+export function instanceTimes(instance: FleetInstance): string {
+  // Older servers send no ISO times: fall back to the epoch ms every server sends.
+  const iso = (value: string | null | undefined, ms: number) =>
+    value !== undefined ? value : Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : null;
+  return `Updated ${formatDateTime(iso(instance.updatedAt, instance.lastSeenAt))} · Created ${formatDateTime(iso(instance.createdAt, instance.firstSeenAt))}`;
+}
+
 function InstanceRow({ instance, now }: { instance: FleetInstance; now: number }) {
   const failing = instance.checks.filter((c) => c.status !== 'ok');
   return (
@@ -118,7 +127,11 @@ function InstanceRow({ instance, now }: { instance: FleetInstance; now: number }
       <TableCell className="tnum text-xs text-muted-foreground">
         {humanDuration(instance.uptimeMs)}
       </TableCell>
-      <TableCell className="tnum text-xs text-muted-foreground">
+      <TableCell
+        className="tnum text-xs text-muted-foreground"
+        title={instanceTimes(instance)}
+        data-testid="fleet-last-seen"
+      >
         {humanDuration(now - instance.lastSeenAt)} ago
       </TableCell>
       <TableCell>

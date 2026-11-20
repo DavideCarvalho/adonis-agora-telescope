@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatCount,
+  formatDateTime,
   formatDuration,
   formatPercent,
   formatRelative,
@@ -67,5 +68,15 @@ describe('truncate', () => {
   it('ellipsizes past the limit', () => {
     expect(truncate('abcdef', 4)).toBe('abc…');
     expect(truncate('abc', 4)).toBe('abc');
+  });
+});
+
+describe('formatDateTime', () => {
+  it('renders the local date and time, or a dash', () => {
+    const iso = '2026-11-15T12:00:00.000Z';
+    expect(formatDateTime(iso)).toBe(new Date(iso).toLocaleString());
+    expect(formatDateTime(null)).toBe('—');
+    expect(formatDateTime(undefined)).toBe('—');
+    expect(formatDateTime('nope')).toBe('—');
   });
 });

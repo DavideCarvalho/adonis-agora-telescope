@@ -943,6 +943,10 @@ export interface FleetInstance {
   status: FleetInstanceStatus;
   uptimeMs: number;
   health: FleetCheckStatus;
+  /** When the instance's row was created (first heartbeat), ISO 8601. Absent from older servers. */
+  createdAt?: string | null;
+  /** When the instance's row was last written (last heartbeat), ISO 8601. Absent from older servers. */
+  updatedAt?: string | null;
 }
 
 export interface FleetDeploy {
