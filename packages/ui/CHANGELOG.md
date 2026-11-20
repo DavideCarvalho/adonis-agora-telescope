@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.31
+
+### Minor Changes
+
+- [#386](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/386) [`05919df`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/05919df4feb01d2d44c9ecdcea7dbfc94ec858a7) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fleet page: hovering an instance's last heartbeat shows when it was last updated and created (full local date and time). Entry detail: the "Recorded" field is now "Created" and shows the full local date and time instead of the time of day only.
+
 ## 3.0.0-rc.30
 
 ### Minor Changes
