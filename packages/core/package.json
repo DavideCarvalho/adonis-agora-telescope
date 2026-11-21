@@ -211,7 +211,7 @@
     "@adonisjs/limiter": "3.0.1",
     "@adonisjs/lock": "2.1.0",
     "@adonisjs/lucid": "22.4.2",
-    "@adonisjs/mail": "10.4.0",
+    "@adonisjs/mail": "10.4.1",
     "@adonisjs/queue": "0.6.2",
     "@adonisjs/session": "8.1.0",
     "@adonisjs/transmit": "3.0.2",
