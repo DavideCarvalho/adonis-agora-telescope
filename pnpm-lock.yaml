@@ -229,7 +229,7 @@ importers:
         version: 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
       '@adonisjs/drive':
         specifier: 4.0.0
-        version: 4.0.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@aws-sdk/client-s3@3.1167.0)
+        version: 4.0.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@aws-sdk/client-s3@3.1171.0)
       '@adonisjs/limiter':
         specifier: 3.0.1
         version: 3.0.1(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
@@ -255,8 +255,8 @@ importers:
         specifier: 1.8.0
         version: 1.8.0
       '@aws-sdk/client-s3':
-        specifier: 3.1167.0
-        version: 3.1167.0
+        specifier: 3.1171.0
+        version: 3.1171.0
       '@boringnode/queue':
         specifier: 0.9.1
         version: 0.9.1(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
@@ -915,8 +915,8 @@ packages:
     resolution: {integrity: sha512-OHlfkNzDFjYnwNPABhwAkDTUi0HPjfsKUHJDR0bSMORpCXNzRpInPCNCIT08xKDhjaPlcLJ+2Av+Sk7hHnuC8A==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-s3@3.1167.0':
-    resolution: {integrity: sha512-HMOyvnlf0+7DFjZjMxGYluL3kbaJMFfslmL7KVda7KFJU/gb0KROGuKhrv2s0abQ0Nryd006yGy0dsxz3BpK+w==}
+  '@aws-sdk/client-s3@3.1171.0':
+    resolution: {integrity: sha512-EIWM2ZuLBYqwM1W1PkNIWrQzFy6Y7WBwVpEDpnCrMtcQyIN3VOXbf0uy+0xG2dbv+PcvxIlEK8A1ohdbyMV72w==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.981.0':
@@ -5316,13 +5316,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@adonisjs/drive@4.0.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@aws-sdk/client-s3@3.1167.0)':
+  '@adonisjs/drive@4.0.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@aws-sdk/client-s3@3.1171.0)':
     dependencies:
       '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
-      flydrive: 2.2.0(@aws-sdk/client-s3@3.1167.0)
+      flydrive: 2.2.0(@aws-sdk/client-s3@3.1171.0)
     optionalDependencies:
       '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
-      '@aws-sdk/client-s3': 3.1167.0
+      '@aws-sdk/client-s3': 3.1171.0
 
   '@adonisjs/env@7.1.0':
     dependencies:
@@ -5661,7 +5661,7 @@ snapshots:
       '@smithy/types': 4.20.0
       tslib: 2.9.1
 
-  '@aws-sdk/client-s3@3.1167.0':
+  '@aws-sdk/client-s3@3.1171.0':
     dependencies:
       '@aws-sdk/checksums': 3.1002.5
       '@aws-sdk/core': 3.981.0
@@ -8238,14 +8238,14 @@ snapshots:
 
   flattie@1.1.1: {}
 
-  flydrive@2.2.0(@aws-sdk/client-s3@3.1167.0):
+  flydrive@2.2.0(@aws-sdk/client-s3@3.1171.0):
     dependencies:
       '@humanwhocodes/retry': 0.4.3
       '@poppinss/utils': 7.1.2
       etag: 1.8.1
       mime-types: 3.0.2
     optionalDependencies:
-      '@aws-sdk/client-s3': 3.1167.0
+      '@aws-sdk/client-s3': 3.1171.0
 
   foreground-child@3.3.1:
     dependencies:
