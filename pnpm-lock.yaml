@@ -258,8 +258,8 @@ importers:
         specifier: 3.1167.0
         version: 3.1167.0
       '@boringnode/queue':
-        specifier: 0.9.1
-        version: 0.9.1(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+        specifier: 0.10.0
+        version: 0.10.0(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       '@duckdb/node-api':
         specifier: 1.5.6-r.2
         version: 1.5.6-r.2
@@ -1122,6 +1122,30 @@ packages:
     resolution: {integrity: sha512-+UL9erFUngnxNEDdXSKCnGQA8D62C/x2vxLF5vc9zaX7T2JolV/bGjpZAvFLzlY2gIffHyw+KsqsEWod5+zV0w==}
     engines: {node: '>=20.6'}
 
+  '@boringnode/queue@0.10.0':
+    resolution: {integrity: sha512-ysbnlzcMY9LTA6vwLLxencFcd6GIoXHUfuPqIpIgiexfiirr4DBmxmk14RIIxHhtXvoduZPjzEQJbpTmmtPPWA==}
+    engines: {node: '>=24.0.0'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.10.0
+      '@opentelemetry/core': ^3.0.0
+      '@opentelemetry/instrumentation': '>=0.300.0 <0.400.0'
+      ioredis: ^5.0.0 || ^6.0.0
+      knex: ^3.0.0
+      kysely: ^0.29.0
+    peerDependenciesMeta:
+      '@opentelemetry/api':
+        optional: true
+      '@opentelemetry/core':
+        optional: true
+      '@opentelemetry/instrumentation':
+        optional: true
+      ioredis:
+        optional: true
+      knex:
+        optional: true
+      kysely:
+        optional: true
+
   '@boringnode/queue@0.6.0':
     resolution: {integrity: sha512-hgd9zKJUgZH8Y6ua2UKS1LJ4/fonVkJJnXRUxgmEyPpsJcle27WJ4KS30LRtTlCzX188pLUlj4CBzGMNyzVlEA==}
     engines: {node: '>=24.0.0'}
@@ -1141,30 +1165,6 @@ packages:
       ioredis:
         optional: true
       knex:
-        optional: true
-
-  '@boringnode/queue@0.9.1':
-    resolution: {integrity: sha512-+uA9+fSRn7WcHZzQryNSFYXVYn4QzLoia0d0lPisbUbtp0evRN1M6G84hOOkc8Thj83AzC8JSOmEYg3Q5HJwPQ==}
-    engines: {node: '>=24.0.0'}
-    peerDependencies:
-      '@opentelemetry/api': ^1.9.0
-      '@opentelemetry/core': ^1.30.0 || ^2.0.0
-      '@opentelemetry/instrumentation': '>=0.200.0 <0.300.0'
-      ioredis: ^5.0.0 || ^6.0.0
-      knex: ^3.0.0
-      kysely: ^0.29.0
-    peerDependenciesMeta:
-      '@opentelemetry/api':
-        optional: true
-      '@opentelemetry/core':
-        optional: true
-      '@opentelemetry/instrumentation':
-        optional: true
-      ioredis:
-        optional: true
-      knex:
-        optional: true
-      kysely:
         optional: true
 
   '@boringnode/route-matcher@0.1.2':
@@ -5918,7 +5918,7 @@ snapshots:
     dependencies:
       '@poppinss/utils': 7.1.2
 
-  '@boringnode/queue@0.6.0(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
+  '@boringnode/queue@0.10.0(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
     dependencies:
       '@lukeed/ms': 2.0.2
       '@poppinss/utils': 7.1.2
@@ -5929,7 +5929,7 @@ snapshots:
       ioredis: 6.0.0(supports-color@10.2.2)
       knex: 3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
 
-  '@boringnode/queue@0.9.1(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
+  '@boringnode/queue@0.6.0(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
     dependencies:
       '@lukeed/ms': 2.0.2
       '@poppinss/utils': 7.1.2
