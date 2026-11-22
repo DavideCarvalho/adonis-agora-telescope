@@ -209,7 +209,7 @@
     "@adonisjs/core": "7.6.0",
     "@adonisjs/drive": "4.0.0",
     "@adonisjs/limiter": "3.0.1",
-    "@adonisjs/lock": "2.1.0",
+    "@adonisjs/lock": "2.1.1",
     "@adonisjs/lucid": "22.4.2",
     "@adonisjs/mail": "10.4.1",
     "@adonisjs/queue": "0.6.2",
