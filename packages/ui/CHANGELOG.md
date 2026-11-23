@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.32
+
+### Patch Changes
+
+- fix(deps): update dependency tailwind-merge to v3.7.1 ([#398](https://github.com/DavideCarvalho/adonis-agora-telescope/issues/398))
+
 ## 3.0.0-rc.31
 
 ### Minor Changes
