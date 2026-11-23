@@ -206,7 +206,7 @@
     "@adonis-agora/authkit-client": "1.0.0-rc.13",
     "@adonisjs/assembler": "8.6.0",
     "@adonisjs/cache": "2.1.0",
-    "@adonisjs/core": "7.6.0",
+    "@adonisjs/core": "7.7.0",
     "@adonisjs/drive": "4.0.0",
     "@adonisjs/limiter": "3.0.1",
     "@adonisjs/lock": "2.1.1",

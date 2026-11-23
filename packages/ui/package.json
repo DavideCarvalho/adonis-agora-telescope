@@ -81,7 +81,7 @@
   },
   "devDependencies": {
     "@adonis-agora/telescope": "workspace:*",
-    "@adonisjs/core": "7.6.0",
+    "@adonisjs/core": "7.7.0",
     "@fontsource/jetbrains-mono": "5.3.0",
     "@fontsource/sora": "5.3.0",
     "@tailwindcss/postcss": "4.3.5",
