@@ -249,8 +249,8 @@ importers:
         specifier: 8.1.0
         version: 8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       '@adonisjs/transmit':
-        specifier: 3.0.2
-        version: 3.0.2(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(ioredis@6.0.0(supports-color@10.2.2))
+        specifier: 3.0.3
+        version: 3.0.3(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(ioredis@6.0.0(supports-color@10.2.2))
       '@anthropic-ai/sdk':
         specifier: 1.8.0
         version: 1.8.0
@@ -811,8 +811,8 @@ packages:
       edge.js:
         optional: true
 
-  '@adonisjs/transmit@3.0.2':
-    resolution: {integrity: sha512-QCQFq8JdHhNCLpdVu56ErAmCridsmvgEU/yQwG4EETajPqKLZX+2l4713Sn/dppqvD2ZO379uCS2NhqdAa2snA==}
+  '@adonisjs/transmit@3.0.3':
+    resolution: {integrity: sha512-GSghnWeYvITMHDaqOkkIJsO8fDIQ252z0yfdt3NwWs/mHmNxTbKUqydHNY88wXALP3imO+GW/AGlg/0OEXwfJw==}
     engines: {node: '>=20.11.1'}
     peerDependencies:
       '@adonisjs/core': ^7.0.0-next
@@ -5560,7 +5560,7 @@ snapshots:
       '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
       '@adonisjs/lucid': 22.4.2(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
 
-  '@adonisjs/transmit@3.0.2(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(ioredis@6.0.0(supports-color@10.2.2))':
+  '@adonisjs/transmit@3.0.3(@adonisjs/core@7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(ioredis@6.0.0(supports-color@10.2.2))':
     dependencies:
       '@adonisjs/core': 7.6.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
       '@boringnode/transmit': 0.4.3(ioredis@6.0.0(supports-color@10.2.2))
