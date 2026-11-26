@@ -1,5 +1,0 @@
----
-'@adonis-agora/telescope': minor
----
-
-`transports.redis()` costs far fewer Redis commands. The control plane waits for new messages with `XREADGROUP ... BLOCK` (new `blockMs`, default 10 s) on a connection of its own, duplicated from the `ioredis` client (or the one an `@adonisjs/redis` connection wraps), and closes it on shutdown; a message is read as soon as it lands. A `client` that cannot be duplicated, or `blockMs: 0`, polls every `pollIntervalMs` as before. Unacknowledged messages are looked at on start, after an error and every `reclaimIntervalMs` (default 30 s) instead of on every empty read. The messages of one read are acknowledged with a single `XACK` and no longer deleted one by one: what every consumer group is done with is trimmed with `XTRIM MINID ~` every `trimIntervalMs` (default 30 s) when there was any. A tenant on the redis transport sends its buffer every 5 s instead of every second (a full batch still goes at once); `tenant.buffer.flushIntervalMs` overrides it. Transports can now declare `bufferDefaults`.

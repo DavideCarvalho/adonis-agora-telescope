@@ -209,15 +209,15 @@ importers:
   packages/core:
     dependencies:
       '@adonis-agora/filter':
-        specifier: ^1.0.0-rc
-        version: 1.0.0-rc.5(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+        specifier: ^1.0.0
+        version: 1.0.0(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       '@adonisjs/otel':
         specifier: ^2.0.0
         version: 2.0.0(691d0b0c3ebb6c2fdf866fb40d2ea96d)
     devDependencies:
       '@adonis-agora/authkit-client':
-        specifier: 1.0.0-rc.14
-        version: 1.0.0-rc.14(474137f071b4e47334c293da3ea6dc21)
+        specifier: 1.0.0
+        version: 1.0.0(474137f071b4e47334c293da3ea6dc21)
       '@adonisjs/assembler':
         specifier: 8.6.0
         version: 8.6.0(typescript@7.0.2)
@@ -339,8 +339,8 @@ importers:
   packages/ui:
     dependencies:
       '@adonis-agora/filter-client':
-        specifier: ^1.0.0-rc.1
-        version: 1.0.0-rc.1(@tanstack/table-core@9.3.1)
+        specifier: ^1.0.0
+        version: 1.0.0(@tanstack/table-core@9.3.1)
       '@base-ui/react':
         specifier: 1.9.0
         version: 1.9.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -444,11 +444,11 @@ importers:
 
 packages:
 
-  '@adonis-agora/authkit-client@1.0.0-rc.14':
-    resolution: {integrity: sha512-TFhY3UHT+V5u8qGfWd2Vo4RvpnnDJpvxb4X7ZGtrk/5FbZKuz1anxzldIv6NDh1mEos347r4qRk/Ivmh3ILyGw==}
+  '@adonis-agora/authkit-client@1.0.0':
+    resolution: {integrity: sha512-I5DUhKGL+zVP0wYEv5kf4xivA29UgILGIGkRY0n1WLA0EK5Wgf+Y/LieJqmPM4LalRlx1BhCyfiJNQRaQY/vPg==}
     engines: {node: '>=24'}
     peerDependencies:
-      '@adonis-agora/resilience': '>=0.1.0 <2.0.0 || >=1.0.0-rc.0 <2.0.0'
+      '@adonis-agora/resilience': '>=0.1.0 <2.0.0'
       '@adonisjs/auth': ^10.1.0
       '@adonisjs/core': ^7.5.0
       '@adonisjs/lucid': ^22.4.2
@@ -459,12 +459,12 @@ packages:
       '@adonisjs/lucid':
         optional: true
 
-  '@adonis-agora/authkit-core@1.0.0-rc.4':
-    resolution: {integrity: sha512-GPnzgw4AivjuG9e3J9KX0VhXNFOANMCcRhAWZSzy4a1XRlUkQ1kp+T4tl2F6av5KgMZORs68tIcsoyAygHgWSQ==}
+  '@adonis-agora/authkit-core@1.0.0':
+    resolution: {integrity: sha512-3HlL8QEXkgcW9PfCJycvxn3QOgleqT4JG3FAn9SVD+u5OdzZ+3LrmPdfUpdZB6tMWAu1HSj2g9FzmlJ0m7cxsg==}
     engines: {node: '>=24'}
 
-  '@adonis-agora/filter-client@1.0.0-rc.1':
-    resolution: {integrity: sha512-aTMnF8aElvXbok/7y9R24xoNG27zjeM1XVhmdiUCMu5L59RzTabmNQXQxfrF6sgjCjjRbYbSzZ2Q4JWi0xntiw==}
+  '@adonis-agora/filter-client@1.0.0':
+    resolution: {integrity: sha512-2g0sgrDT1I0WK2pC71DIO7ZiV956KLpIUICwLgbRNHrzZW3dOZkTQyexbabof9OblPBUxjDcfCmr5adF2gOY3w==}
     engines: {node: '>=24'}
     peerDependencies:
       '@tanstack/table-core': '>=8.0.0'
@@ -472,8 +472,8 @@ packages:
       '@tanstack/table-core':
         optional: true
 
-  '@adonis-agora/filter@1.0.0-rc.5':
-    resolution: {integrity: sha512-vG/5dLmJeVmHHqUQXh/ftoGN3mgNoXWaPdbor0vkD3LudVCTrS6ZQPedoX1yOc6Qq28SI8ZdUNsXzdkmSa5t3A==}
+  '@adonis-agora/filter@1.0.0':
+    resolution: {integrity: sha512-Qxt7A2AnMmKC7u07WzaIIdQZFc8FEyq6tIg7Rd4zYACneB9u2kK4iUKPnNWzZwADoRkUSNtp6qf4oVm+atsX8A==}
     engines: {node: '>=24'}
     peerDependencies:
       '@adonisjs/core': ^7.3.0
@@ -5101,9 +5101,9 @@ packages:
 
 snapshots:
 
-  '@adonis-agora/authkit-client@1.0.0-rc.14(474137f071b4e47334c293da3ea6dc21)':
+  '@adonis-agora/authkit-client@1.0.0(474137f071b4e47334c293da3ea6dc21)':
     dependencies:
-      '@adonis-agora/authkit-core': 1.0.0-rc.4
+      '@adonis-agora/authkit-core': 1.0.0
       '@adonisjs/auth': 10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))
       '@adonisjs/core': 7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
       '@adonisjs/session': 8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
@@ -5111,13 +5111,13 @@ snapshots:
     optionalDependencies:
       '@adonisjs/lucid': 22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
 
-  '@adonis-agora/authkit-core@1.0.0-rc.4': {}
+  '@adonis-agora/authkit-core@1.0.0': {}
 
-  '@adonis-agora/filter-client@1.0.0-rc.1(@tanstack/table-core@9.3.1)':
+  '@adonis-agora/filter-client@1.0.0(@tanstack/table-core@9.3.1)':
     optionalDependencies:
       '@tanstack/table-core': 9.3.1
 
-  '@adonis-agora/filter@1.0.0-rc.5(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
+  '@adonis-agora/filter@1.0.0(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
     dependencies:
       '@adonisjs/core': 7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
     optionalDependencies:

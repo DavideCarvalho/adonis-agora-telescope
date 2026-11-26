@@ -1,5 +1,188 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0
+
+### Major Changes
+
+- [#288](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/288) [`8c71af2`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/8c71af278573efb70730e13805434f527d3cb7af) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - The console has one access option, `telescope_ui.authorize`, shared with every `@adonis-agora` console.
+  
+  **Breaking: token and HTTP Basic access are removed.** `telescope_ui.credentials` (`{ token, basic }`), the `?token=` query string, the Basic prompt, `defaultAuthorize(...)` and the `UiCredentials` type are gone, so `TELESCOPE_UI_TOKEN` / `TELESCOPE_UI_PASSWORD` are no longer read. For token access use the new helper, which reads only `Authorization: Bearer <token>` (timing-safe) and answers `401` otherwise; an empty or missing token throws when the config loads:
+  
+  ```ts
+  import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/ui'
+  
+  export default defineConfig({
+    authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }),
+  })
+  ```
+  
+  **Breaking: the default without `authorize`.** The console is open outside production (`app.inProduction === false`); in production every page and API request gets `403`. In every environment, one warning is logged at boot:
+  `[@adonis-agora/telescope] console has no \`authorize\` configured: it is open outside production and denies every request in production. Set \`authorize\` in config/telescope_ui.ts.`
+  
+  **Breaking: denial bodies.** The API answers `403 { error: 'forbidden' }`, `401 { error: 'unauthenticated' }`, and `401 { error: 'unauthenticated', redirectTo }` for `{ redirectTo }`. Pages keep the access-denied page; a `401` no longer sends a `WWW-Authenticate: Basic` challenge (the `challenge` page-guard option is gone).
+  
+  `authorize` takes three forms:
+  
+  - a function, typed with the real `HttpContext`: `authorize: (ctx) => ctx.auth.user?.isAdmin === true`;
+  - an authorizer class, built through the container so `@inject()` works: `authorize: ConsoleAccess`;
+  - a lazy import of that class: `authorize: () => import('#policies/console_access')` (imported once).
+  
+  It may return `true`/`false`, `{ allowed, reason? }` or `{ redirectTo: '/login' }` (a page navigation is redirected there with `302`). A thrown error is a `403`. `authorizeByToken`, `ConsoleAuthorize`, `ConsoleAuthorizer`, `ConsoleAuthorizerClass` and `ConsoleAuthorizeResult` are exported from `@adonis-agora/telescope/ui`. `authorizeByRoles(...)` keeps working as it is.
+  
+  **Breaking: `dashboardAuth` is removed.** The console has no login of its own: the login page, the `<path>/login` / `<path>/logout` routes, the signed session cookie, the `login` hook (and its "dashboardAuth login hook threw" warning) are gone, with no alias. So are the exports `resolveDashboardAuth`, `performLogin`, `readSession`, `decideDashboardAuth`, `enforceDashboardAuth`, `sanitizeReturnTo`, `renderLoginPage`, `signSessionCookie`, `verifySessionCookie`, `readSessionCookie`, `writeSessionCookie`, `clearSessionCookie`, `SESSION_COOKIE_NAME`, the `DashboardAuthOptions` / `ResolvedDashboardAuth` / `DashboardSession` / `LoginHook` types, `PageGuardOptions.loginHref` and the access-denied page's `session-required` reason. `TELESCOPE_DASHBOARD_SECRET` is no longer read. People sign in through the app; `authorize` can return `{ redirectTo: '/login' }`, and `accessDenied.loginHref` points the access-denied page's "Sign in" button at the app's login.
+  
+  **Breaking: the MCP endpoint uses `authorize`.** `config/telescope_mcp.ts` no longer takes `credentials` (`{ token, basic }`), `?token=` or HTTP Basic, and the `McpCredentials` type is gone. `authorize` takes the same `ConsoleAuthorize` forms as the console; MCP clients use `authorizeByToken({ token: env.get('TELESCOPE_MCP_TOKEN') })`, now also exported from `@adonis-agora/telescope/mcp`. Without `authorize` the endpoint is open outside production and answers `403` in production, with one boot warning in every environment:
+  `[@adonis-agora/telescope] console has no \`authorize\` configured: it is open outside production and denies every request in production. Set \`authorize\` in config/telescope_mcp.ts.`
+  A denial is a JSON response, `403 { error: 'forbidden' }` or `401 { error: 'unauthenticated' }`, instead of a `200` with a JSON-RPC `-32001` error. `resolveConfig` takes `{ inProduction }` as a second argument.
+  
+  See the 1.0 migration guide for before/after.
+  
+  `@adonis-agora/telescope-ui` serves its pages behind the same `authorize`, so the SPA follows the same default and denial handling. When an API call gets a `401`, the SPA follows the `redirectTo` it carries, or reloads the page so the server answers the navigation.
+
+- [#308](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/308) [`8bafa12`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/8bafa126080e4b490265c450b29e6650cff16862) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - List endpoints speak the `@adonis-agora/filter` list format.
+  
+  - `GET <path>/api/entries`: filters are `filter[type]`, `filter[tag]` (one or several), `filter[traceId]` (one or several), `filter[familyHash]`, `filter[createdAt][gt|gte|lt|lte|between]`, plus `search`; `sort` accepts only `-createdAt`; paging is a forward cursor (`after` + `first`, default 50, max 500). The response is `{ data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }`. The flat `type`/`tag`/`traceId` params, `before` (ISO date), `page`, `size` and the old `meta` (`count`, `page`, `size`, `hasMore`, `query`) are gone. An unknown filter field or operator, another sort, a `before` cursor or a malformed cursor answers `400`.
+  - `GET <path>/api/metrics/traces`: cursor paging both ways (`after`/`first`, `before`/`last`), `sort=-lastAt` only, no filters; same cursor envelope. `page`/`size` and `meta.hasMore` are gone.
+  - `GET <path>/api/profiles`: forward cursor (`after` + `first`, default 100) in the cursor envelope; `limit` is gone.
+  - Paged extension tables (`paged: true`): the provider returns the offset envelope `{ data: rows, meta: { total, perPage, currentPage, lastPage, firstPage } }` (`offsetPage` from `@adonis-agora/filter`) instead of `{ rows, total, page, size }`. `PagedTableData` is now `OffsetPage<Record<string, unknown>>`, and `tablePagination` reads it.
+  - `buildQuery` is removed from `@adonis-agora/telescope/ui`; `parseEntryListRequest`, `readEntryPage`, `entryFeedPage`, `parseTraceListRequest`, `EntryFilter`, `NoFilter`, `EntryQueryDraft`, `rejectList` and the cursor encoders are exported instead.
+  - `@adonis-agora/telescope-ui/client`: `EntriesQuery` is `{ type, tag, traceId, search, after, first }` (no `before`, `page`, `size`); `listEntriesPage` and `tracesPage({ after, before, first })` resolve to `CursorPageResponse<T>`; `traces(first)` and `profiles(first)` take the page size; the `Page<T>` type is removed and `CursorPageResponse`, `CursorPageMeta`, `OffsetPage`, `OffsetPageMeta`, `TracesCursor`, `PagedTablePanelData` are exported. `TablePanelData` no longer carries `total`/`page`/`size`.
+
+- [#281](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/281) [`c280462`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/c280462b8bdde40b9025168a98a53f9aee5e8728) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - 1.0: the 0.x leftovers are removed.
+  
+  Breaking changes in `@adonis-agora/telescope` (0.27 → 1.0):
+  
+  - The version line moves from `0.x` to `1.x`. A range such as `^0.27.1` does not match `1.0.0`, so update it to `^1.0.0`.
+  - Node.js 24 or newer is required (`engines.node: ">=24"`).
+  - `storage.memory({ limit })` is removed. Use `storage.memory({ maxEntries })`, which takes the same number. `MemoryStoreConfig` is now the same type as `InMemoryStoreOptions`.
+  - `AiCoverage.legacyAgentLib` is removed from the AI metrics summary (`GET <path>/api/metrics/ai`, `MetricsService.getAi`, `summarizeAiUsage`). It flagged `@adonis-agora/agent` releases older than 0.93.0. `getAi` no longer runs the extra `lib:agent` probe when a window has no `usage.recorded`.
+  
+  Breaking changes in `@adonis-agora/telescope-ui` (2.x → 3.0):
+  
+  - The SPA no longer reads `window.__TELESCOPE_DASHBOARD_BASE__`. It takes the API base from the `telescope-dashboard-config` JSON data block the provider injects, or derives `<mount>/api` from the page URL. To point a hand-embedded client at another base, pass `new TelescopeClient({ baseUrl })`. `resolveApiBase(win, doc)` no longer accepts the global on `win`.
+  - `AiCoverage.legacyAgentLib` is removed from the `/client` types, and the AI screen's "Not measured" notice for agent releases older than 0.93.0 is gone.
+  - The `@adonis-agora/telescope` peer range is now `>=0.11.0 <2.0.0 || >=1.0.0-rc.0 <2.0.0`, so the dashboard installs next to telescope 1.x, release candidates included.
+  
+  See [Migrating to 1.0](https://davidecarvalho.github.io/agora/docs/telescope/reference/migrating-to-1-0).
+
+### Minor Changes
+
+- [#290](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/290) [`671fde5`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/671fde560c2ae7ca8bd54e3c3a07170db576bf77) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Telescope works with `@adonisjs/otel` 2 in both directions, and no longer exports on its own.
+  
+  **OpenTelemetry spans in the trace view.** Add `telescopeSpanProcessor()` from `@adonis-agora/telescope/otel` to `spanProcessors` in `config/otel.ts`. The spans the app's instrumentation records (pg, outgoing http, DNS, events, `@span()` methods) are stored as `span` entries and show in the trace waterfall next to Telescope's own entries. Where a Telescope watcher already records the same operation with more detail (`request`, `query`, `redis`, `events`, and each `fetch` made through `instrumentFetch`), the OpenTelemetry span is skipped, along with the driver spans under it; with that watcher off, the span comes through instead. Telescope's own storage queries run with tracing suppressed, so they never show up as app spans. Sampling, retention, redaction and the overload guard apply, plus a per-trace cap (`maxSpansPerTrace`, default 200).
+  
+  ```ts
+  // config/otel.ts
+  import { defineConfig, destinations } from '@adonisjs/otel'
+  import { telescopeSpanProcessor } from '@adonis-agora/telescope/otel'
+  
+  export default defineConfig({
+    spanProcessors: [telescopeSpanProcessor()],
+    destinations: { collector: destinations.otlp({ endpoint: 'http://localhost:4318' }) },
+  })
+  ```
+  
+  **One trace id.** When an OpenTelemetry SDK is running, every entry recorded inside a span takes that span's trace id, so Telescope entries and the app's spans share one trace.
+  
+  **Breaking: Telescope's own exporter is removed.** The `otel` block's `enabled`, `endpoint`, `tracesPath`, `logsPath`, `headers`, `serviceName` and `timeoutMs`, and the `otel.metrics` endpoint object, are gone with no alias; boot fails with a pointer to the migration guide while any of them is set. When the app runs `@adonisjs/otel`, Telescope sends its entries (spans for timed entries, log records otherwise) and the AI-usage metrics through the app's global providers, so endpoint and headers live in `config/otel.ts` only. Without `@adonisjs/otel` nothing is sent; everything is still recorded locally.
+  
+  `otel` now takes `{ entryTypes?, metrics? }` or `false`. `entryTypes` defaults to the types OpenTelemetry does not already trace (`diagnostic`, `exception`, `client_exception`, `job`, `scheduled_task`, `mail`, `cache`, `profile`). Entries other than diagnostics events are now mapped too (`telescope.<type>`, with `exception.*` attributes on exceptions).
+  
+  **Peers.** `@adonisjs/otel` `^2.0.0` is a new optional peer and `@opentelemetry/api` moves to `^1.10.0`. The `@opentelemetry/sdk-trace`, `sdk-trace-base`, `sdk-logs`, `sdk-metrics`, `resources` and `exporter-*-otlp-http` peers are dropped.
+  
+  The dashboard lists `span` entries as "OTel span".
+
+- [#379](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/379) [`d46b2c7`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/d46b2c75406c9f12af3f3717d405663271699422) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Architecture page: what each app runs on now includes the AdonisJS first-party packages, with no code to write. Drive disks (S3, R2, GCS, the default local disk; the bucket as label), mail transports (Resend, SES, Mailgun…, an SMTP server by its host), cache stores (Redis or database L2 and bus), the lock, limiter, session and queue store in use, and the Transmit Redis transport are read from their configs, through the connection they use. Telescope's own store and Redis ingest stream show up too. `StackUse` accepts `tech: 'lucid'` (a Lucid connection, the default one without `connection`) and a `redis` use without `connection` means the default Redis connection. New logos: ClickHouse, DuckDB, Anthropic, Gemini, OpenAI, Mercado Pago, Asaas, Pagar.me, Brevo, SparkPost, SendGrid, Postmark, DynamoDB, MQTT, Spaces, Vault, KMS.
+
+- [#376](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/376) [`7bd163d`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7bd163d9aa7e0c0e6e300537e7b49da58a285cc6) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Architecture page shows what each app runs on. Each instance sends its stack in the heartbeat: databases and Redis servers from the `database` and `redis` configs, plus what libs declare with `describeStackUse`. No credentials are sent, and each server is identified by a short hash. The page draws the backends as nodes with their logos (PostgreSQL, Redis, S3, Resend…), linked to the apps that use them, and has an Infrastructure layer toggle. The graph is now full width, follows the console theme, and maps calls made to the control plane's internal hosts back to it.
+
+- [#373](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/373) [`7ad31c8`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7ad31c8c8b26f0765d925215817c48cc94d1f449) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Architecture page: a graph of the apps and what links them.
+  - **Apps:** health and instances, from the fleet.
+  - **Calls between apps:** count, failures, avg and p95 latency over 1 h, 6 h or 24 h. Outbound HTTP entries now carry `to:<app>` when service discovery knows the origin.
+  - **Permissions:** what each app may call on another and what each app accepts, read from authkit-server's app-graph slot when it runs in the same process.
+  
+  Each link shows as ok, failing, calls without a grant, or granted but unused. New `GET <path>/api/architecture?window=`.
+
+- [#293](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/293) [`9cddf99`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/9cddf99ed9d7fa1efa85f55af7a9292b8235edac) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console switcher and global search. Telescope joins the shared `'agora.consoles'` registry (title "Telescope", order 20) with no config; when the app runs other Agora consoles, the sidebar brand becomes a menu of the ones the viewer may open (each decided by that console's own `authorize`), and the `⌘K` palette also searches Telescope entries (by id, trace id or text) and every other console the viewer may open. New routes: `GET <path>/api/consoles` and `GET <path>/api/consoles/search?q=`, behind the console `authorize`. While the switcher runs another console's gate, `ctx.agoraProbe` is `true`.
+
+- [#386](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/386) [`05919df`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/05919df4feb01d2d44c9ecdcea7dbfc94ec858a7) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fleet page: hovering an instance's last heartbeat shows when it was last updated and created (full local date and time). Entry detail: the "Recorded" field is now "Created" and shows the full local date and time instead of the time of day only.
+
+- [`1541027`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/15410274a30ea31c0d3d15f34879a6774b5ea7a3) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - The console follows the viewer's capabilities: actions the viewer may not run are disabled with the reason, using the shared console capability rules (write implies read; a `*` counts only as the last segment of a capability). Ships with the federated-console authentication changes.
+
+- [#291](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/291) [`c5ea417`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/c5ea4174f1cadc3a442067f8177e365db4d9c707) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Libraries can plug their pages into Telescope with no app config: push a `TelescopeExtension` into the `'agora.telescope.extensions'` container binding from your provider's `register()` (create the array when absent). Telescope reads it at boot next to `config.extensions`; a configured extension with the same `name` wins.
+  
+  Extensions can also declare `actions`: server-side writes a table column triggers on its row (`column.action`), after a confirmation dialog. Every call runs behind the console's `authorize`, needs `{ confirmed: true }`, and is audited (log line + a `diagnostic` entry tagged `event:extension-action`). Console writes now send shield's `X-XSRF-TOKEN` header when the `XSRF-TOKEN` cookie is present.
+
+- [#383](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/383) [`7399b27`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7399b272b885d547a4b2ef6325079df75d87bd91) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Federated console: a console can show an app that keeps its entries in its own store. List it under `apps.federated` in `config/telescope_ui.ts` with its `store` (and optionally `commands`). Its entries, traces, Pulse, exceptions, Overview and Architecture are read straight from its store, every read bounded to an index and a page or time window. Actions (request replay, queue retry and enqueue) and live views (queues, schedules, health) are sent to the app over its Redis, where one instance runs each; the app opts in with `consoleCommands` in its `config/telescope.ts`. With no app picked, a trace's waterfall includes the spans federated apps recorded. The App picker tags federated apps and shows a notice while one is picked; `GET /api/apps` lists each app's `mode` and `actions`. `storage.lucid({ readOnly: true })` reads a table without creating or writing it.
+
+- [#295](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/295) [`60d460d`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/60d460d9d266f21b6633e4d008fc15edb87b9b46) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Organizations (tenancy). With `tenancy.enabled` in `config/context.ts`, every entry is tagged with the active organization (`tenant:<id>`, one tag per level of a nested tenant, `tenant:*` inside `Context.allTenants()`), and the console, JSON API, live tail, `/telescope/mcp` and the dev MCP tools show each viewer only the organizations its `authorize` grants: its own by default, or `{ allowed: true, tenants: [...] | '*' }`. Counts and groups are computed from those entries only. The console header gains an Organization picker (`?tenant=<id>`), and `authorizeByToken` takes `tenants`. New options: `tenancy: 'inherit' | false | { kinds, tag }` in `config/telescope.ts`; `EntryQuery.anyTags` on every store. Viewers limited to some organizations cannot run actions that reach all of them (CPU capture, queue actions, extension actions, Prometheus).
+
+- [#363](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/363) [`ef2956a`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/ef2956abc15ea2822c77c933a6c2862d6b8debe2) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Overview on a central server: honest "Not measured" notes, and far fewer rows read.
+  
+  - Heartbeats carry the watchers each instance runs. On a control plane `/api/meta` `watchers` is the union of what the apps in view report (narrowed by `?app=`), so "N+1 query hotspots" and "Slowest jobs" stop saying "Not measured" when a tenant does record queries or jobs. When an app in view runs an older version that does not report them, `watchers` is left out and the console claims nothing.
+  - `/api/metrics/pulse` takes `cards=` to compute only some cards. The Overview asks for the cards it shows and draws its throughput chart from the same response, instead of a second whole-window scan through `/api/metrics/timeseries`.
+  - New migration `add_telescope_entries_overview_indexes` (published by `configure`): indexes for the Overview and Pulse reads, built `CONCURRENTLY` on Postgres, plus tighter autovacuum thresholds on the entries table. On a 4.3M-row table a 24-hour Overview read about 0.7 GB of buffers instead of about 9.7 GB (pulse + timeseries). Opt-in: run it once on existing installs.
+
+- [#365](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/365) [`ab377d0`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/ab377d0ceffd26030fa63b64632038265888c7db) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - "Slowest jobs" shows durable workflow steps, and its empty state tells the truth.
+  
+  - Pulse has a new `slowWork` list (with the `slowJobs` card): the slowest background work of the window by p95, with max, count and failures, merging queue jobs (`queue` watcher) and `@adonis-agora/durable` steps, each labelled with its source. Durable steps are read from the timed `durable:step.*` diagnostic entries through a new optional store read, `listDurations`, which selects only `family_hash` and `duration_ms` (an index-only scan with the opt-in overview indexes). `slowJobs` is unchanged.
+  - The Overview's "Slowest jobs" panel lists both. With nothing to list it says "Not measured" only when neither durable nor the `queue` watcher is on, and then names both ways to turn one on; when durable is reporting it says no workflow step finished in the window.
+  - `registerTenantWatchers()`: a control plane can name watchers it runs for its tenants (durable's control-plane watcher adds `durable`), and `/api/meta` counts them on for every app in view.
+
+- [#329](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/329) [`6d59004`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/6d59004bbd100cf266b40ab00bf7e8c90e37d081) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - One console for several apps. Entries tagged `app:<id>` (written by a central Telescope server) get an App dimension next to Organization: console `authorize` can return `apps: '*' | string[]` (also `authorizeByToken({ apps })`), and every read honours it: entries, counts, traces, Pulse, exceptions, the live tail, ⌘K search and the MCP tools on `/mcp/agora`. `GET <path>/api/apps` lists the apps a viewer may pick (labels from `telescope_ui.apps.labels`), every API route accepts `?app=<id>` (combined with `?tenant=`), `node ace telescope:apps:list` and `--app` on every `telescope:*` read. The console header gets an App picker next to the Organization one, hidden when no entry carries an app tag, so a standalone app looks and behaves as before. ⌘K search now also honours the viewer's organizations.
+
+- [#311](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/311) [`c99f564`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/c99f5643a5a7813405fceb067d4dd19ef4fc23a4) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console shell: the Telescope console is rebuilt on the Agora console kit, the shell every `@adonis-agora` console now shares.
+  
+  - Authkit's look with Telescope's magenta accent: Sora for the UI and JetBrains Mono only for data (the console no longer runs in monospace). Fonts are bundled; nothing loads from Google Fonts.
+  - Left sidebar with the console switcher and grouped nav: MONITOR (Overview, Pulse, Exceptions), EXPLORE (Entries, Traces, Screens, AI, Profiles), OPERATIONS (Queues, Schedules), DASHBOARDS (one item per contributed dashboard), WATCHERS (a collapsible list of entry types) and DATA (Exports). A footer shows the signed-in user, the light/dark toggle and sign-out. Below 768px the sidebar becomes a drawer.
+  - Topbar with the page title, the organization picker, the retention posture, the live indicator and ⌘K. ⌘K keeps every page, entry-type and dashboard jump the old command palette had, listed above the cross-console search.
+  - Light mode follows the kit's tokens. The theme key in `localStorage` is now `agora-telescope-theme`.
+  - Every page and data region has its own error boundary with a retry button, shaped skeletons and empty states.
+  
+  Server: the page's data block gains `viewer` and `signOut`, and `search` is sent whenever a console registry exists. The new `dashboard.viewer(ctx)` option sets the user row; without it the console reads `ctx.auth.user` when the request is already authenticated. The new `dashboard.signOut` option takes a POST action path, `{ href }` or `false`; without it the console uses the sign-out an account console announces on the `agora.consoles` registry (`account.signOut`). A POST sign-out carries the request's CSRF token. `TelescopeUiConfig` gains the `dashboard` block type (`TelescopeDashboardOptions`).
+
+- [#344](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/344) [`4467d0b`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/4467d0be2ba302d60a5d34d4bd311adccb3242a8) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Tracing across apps. A new `propagation` block in `config/telescope.ts` makes outgoing `fetch` calls to the listed `targets` carry the W3C `traceparent` / `tracestate` (opt-in `nodeHttp` for `http.request`). Incoming `traceparent` is continued by default, without OpenTelemetry too, and `@adonisjs/queue` jobs carry the trace from dispatch to the worker. When OpenTelemetry runs, telescope leaves propagation to it. Request and job entries now record `spanId` / `parentSpanId`. On the central server, a trace that crossed several apps shows as one waterfall with an app per span, the trace list shows the apps each trace crossed, and a viewer limited to some apps sees only theirs plus "N spans in other apps hidden".
+
+- [#356](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/356) [`9b70510`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/9b705105f3abf3ee78394e6aec0655e660841d1d) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fleet: long-running ace commands show up as instances. A worker (`node ace durable:work`, `queue:work`, any command with `staysAlive`) sends a heartbeat under its command's name as its `role`; web processes report `web`. One-off commands (migrations, `telescope:*`) and tests send nothing. Workers drain on `SIGTERM`/`SIGINT`, run the health checks without mounting probe routes, and send no `fleet.url` (never a discovery target). `fleet.report` now defaults to `['web', 'worker']` (also accepts a command name, or `'console'` for every command) and `fleet.role` overrides the role. The control plane accepts heartbeats with or without a role (older tenants count as `web`). `instances-up` alerts take `role` (default `'web'`, or `'*'`), restart loops are per role, and the Fleet page shows a Role column and a role filter.
+
+- [#340](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/340) [`3909bf2`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/3909bf205a39b45ba5166533b67de874e0585ca9) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - New **Fleet** page (Monitor section, and in ⌘K). For each app it shows instance counts by state (up, starting, draining, gone), every instance (host, version, uptime, last heartbeat, health, send buffer), the deploy timeline with rollout progress, hosts in a restart loop, and each failing health check with how long it has been failing ("Redis: down for 12 min on 3 of 3 instances") plus the exception families recorded since then. The page follows the App picker and refreshes every 15 s. It needs `@adonis-agora/telescope` with the fleet (`GET <path>/api/fleet`). The client gains `fleet()`.
+
+- [#361](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/361) [`c52456d`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/c52456d401b7c002667e4622231e9b24624e588b) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console filters now live in the URL, so a filtered view can be shared, bookmarked and reloaded, and back/forward step through it: Entries (`type`, `q`, `live`, page cursor), Traces (page cursor), a trace's tab, the time window on Pulse, Exceptions, Screens and AI, the Screens kind, the Fleet role, the open queue and profile, and the Exports form. They sit in the hash's query (`#/entries?type=query&q=users`); a value at its default is left out, so existing `#/<page>` links open as before.
+
+### Patch Changes
+
+- [#321](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/321) [`70c1fcb`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/70c1fcbdad8b5ae01cbf6d06a5b063a2cdb7c5af) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console sidebar matches the old authkit admin console exactly (Agora console kit): nav rows are 32px with no gap between them, section labels and the brand/switcher header use authkit's spacing, the footer role shows as sent (no forced uppercase), and the theme toggle sits left-aligned with a 13px icon next to a 26px sign-out button.
+
+- [#318](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/318) [`7782b67`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7782b67fca45f6801d48d1adebe1e0184e1cfc04) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Server: the `agora.consoles` registry accepts the `flags` and `cms` icon keys, so those consoles show their own tile instead of `generic`. Console: the console switcher shows the CMS console with its own orange tile and glyph, and the kit gains a 16px `DocumentIcon`; the collapsible nav section toggle has a test pinning its focus ring (Agora console kit round 3).
+
+- [#316](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/316) [`120c553`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/120c553c2e7c58bd523f87dc2c26a44319c51297) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console footer: the signed-in user's role now shows when no `viewer` hook is set. The structural read of `ctx.auth.user` takes `role`, `roles` (strings, `{ name }` or authz `{ role }` rows) and `globalRoles`, plus the global roles of authkit's per-request identity on `ctx.authkit` (read structurally, 250 ms cap). One role is shown: an admin-like one first, else the first.
+  
+  Console: inline SVG favicon in the console accent, so the browser no longer probes `/favicon.ico` and logs a 404 in the host app.
+  
+  Overview: the "Failed jobs" tile no longer sits on its skeleton when no queue manager is configured (it says "not measured") or when `/queues/live` fails.
+
+- [#343](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/343) [`89b3adb`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/89b3adb2ce33c4a83d7189fbc89e747965297452) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fleet page: no hardcoded heartbeat timings (the server's `fleet.interval`/`goneAfter` may differ), an `unknown` check card stays neutral like its badge, and a deploy with no live instances says so instead of `0/0 live`.
+
+- [#330](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/330) [`f16469d`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/f16469d992c84f908215cbd06507e3bcd1fea34b) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Charts now show a tooltip when you hover or focus them: the throughput sparklines (Overview, Pulse), the exception trends, extension stat sparklines and the AI spend bars (users and platform cost, total and calls per bucket). They are built on the console kit's TanStack Charts components and follow the light/dark theme. The console kit gains charts on TanStack Charts (`agora-kit/charts`: TimeSeriesChart, BarChart, Sparkline, DonutChart) with a themed tooltip on hover and keyboard focus.
+
+- [#369](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/369) [`b032c54`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/b032c54ce63dc22aa32badb8b5e4139d2c9e5c30) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console ⌘K: arrow keys now visibly move the selection. The highlighted item was styled with a bare `data-selected:` (cmdk marks every item `true` or `false`) and with the dialog's own surface color, so moving looked like nothing happened.
+
+- [#372](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/372) [`bbd726f`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/bbd726fd91b7192ce9d657aa00d7df0900c521ca) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console: the entry type filter (Entries, Exports) and the profiler's "route to capture" are now selects with autocomplete. Entry types whose watcher is not running are marked "watcher off"; the route field suggests recently visited pages and still accepts any typed `METHOD pattern`. Adds the kit's `ComboSelect` / `ComboMultiSelect`.
+
+- [#331](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/331) [`4b76919`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/4b769193912bbbe8ada4532010e6ed40ae2a565c) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - ⌘K now navigates: it lists every page of the console's sidebar and every other Agora console you can open ("Go to Workflows", found by "durable" too), matched case- and accent-insensitively, before the console's own commands and the cross-console search hits. ⌘K opens even without a search endpoint, and shows the pages and consoles before anything is typed. Telescope's own page, entry-type and dashboard jumps are gone from ⌘K's command list: they are the sidebar's pages and watchers now, so each appears once.
+
+- [#381](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/381) [`7b751c3`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/7b751c368c4364b8c0ec9aec956ffa3428d2d200) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Going to another console from the switcher or ⌘K keeps the picked app and organization (`?app=`, `?tenant=`). The App and Organization pickers now come from the shared console kit, so they look the same in every console.
+
+- [#382](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/382) [`d512a09`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/d512a09bcfdc2c891612af31f7e0be8c0c1131a0) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - App and Organization pickers: screen readers hear "App: Hub" (not "AppHub"), search matches an option's hint, the highlight stays on a real option when the list shrinks, and focus returns to the button after a pick.
+
+- [#317](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/317) [`ff9896a`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/ff9896a0f2a318bd8fa74522cae2cdd642bd0b43) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Console ⌘K shows its loading state: a spinner in the search box while a request is in flight, skeleton rows until the first answer, earlier hits kept but dimmed during a re-search, "Nothing found" only after an empty answer, and a quiet "didn't answer" line with Retry when the search fails. Synced with the shared console kit (DataTable `rowClassName`/`subRow`, ⌘K console-local `commands`, collapsible nav sections).
+
+- [`e59bbc2`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/e59bbc2ac13927ddbc31d148ce2e9dcb6bbc3aaa) Thanks [@github-actions[bot]](https://github.com/github-actions%5Bbot%5D)! - fix(deps): update dependency tailwind-merge to v3.7.1 ([#398](https://github.com/DavideCarvalho/adonis-agora-telescope/issues/398))
+
+- [#284](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/284) [`6030370`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/60303709e27787e3268905d55141a3dcabfe2e08) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fix arming a CPU capture from the dashboard: `TelescopeClient#armProfile(count, label)` now sends `count` and `label` in the JSON request body, which is where the arm route reads them. Before, they went in the query string and every arm captured one request with no label.
+  
+  The overview no longer requests `<path>/api/queues/live` when `/meta` reports no queue manager, so an app without the `queue-manager` watcher stops logging a 404 on every overview load.
+
 ## 3.0.0-rc.33
 
 ### Minor Changes

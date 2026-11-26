@@ -1,6 +1,6 @@
 {
   "name": "@adonis-agora/telescope",
-  "version": "1.0.0-rc.41",
+  "version": "1.0.0",
   "description": "Laravel Telescope-style headless observability for AdonisJS — records HTTP requests and every Agora diagnostics event as queryable entries, plus opt-in subpaths for per-technology watchers, a web dashboard, AI exception diagnosis, and alerting.",
   "license": "MIT",
   "repository": {
@@ -139,7 +139,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json"
   },
   "dependencies": {
-    "@adonis-agora/filter": "^1.0.0-rc"
+    "@adonis-agora/filter": "^1.0.0"
   },
   "peerDependencies": {
     "@adonisjs/cache": "^2.1.0",
@@ -203,7 +203,7 @@
     }
   },
   "devDependencies": {
-    "@adonis-agora/authkit-client": "1.0.0-rc.14",
+    "@adonis-agora/authkit-client": "1.0.0",
     "@adonisjs/assembler": "8.6.0",
     "@adonisjs/cache": "2.1.0",
     "@adonisjs/core": "7.7.0",
