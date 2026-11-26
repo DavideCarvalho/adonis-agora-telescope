@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 0.28.0
+
+### Minor Changes
+
+- [`93cdcec`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/93cdcec53d793256f34a5fffffe6d6a151d204f5) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Redaction now masks sensitive keys in any spelling. Key names are normalized (lowercased, with `-`, `_`, `.` and spaces removed) and matched against a sensitive-name heuristic, so keys such as `accessToken`, `refreshToken`, `password_confirmation`, `newPassword`, `x-auth-token`, `_csrf`, `sessionId`, `signingKey` or `otp` are no longer stored in clear text. Identifiers such as `cacheKey`, `publicKey` or `inputTokens` are kept. If a key you need is masked by mistake, list it in the new `redact.allow` option (e.g. `redact: { allow: ['authProvider'] }`); an explicit `redact.keys` entry still masks.
+
 ## 0.27.1
 
 ### Patch Changes
