@@ -1,5 +1,11 @@
 # @adonis-agora/telescope-ui
 
+## 3.0.0-rc.33
+
+### Minor Changes
+
+- [`1541027`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/15410274a30ea31c0d3d15f34879a6774b5ea7a3) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - The console follows the viewer's capabilities: actions the viewer may not run are disabled with the reason, using the shared console capability rules (write implies read; a `*` counts only as the last segment of a capability). Ships with the federated-console authentication changes.
+
 ## 3.0.0-rc.32
 
 ### Patch Changes
