@@ -1,28 +1,40 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { HttpContext } from '@adonisjs/core/http';
-import type { UiHttpContext } from './http.js';
 
 /**
- * What a console `authorize` returns. The access contract shared (with identical names and shapes)
- * by every `@adonis-agora` console, so one authorizer satisfies all of them:
- * - `true` / `{ allowed: true }` → allowed.
- * - `false` / `{ allowed: false }` → `403`; `reason: 'unauthenticated'` → `401`.
- * - `{ redirectTo }` → a `302` to that path for a page navigation, a `401` JSON for an API call.
+ * The console access contract every `@adonis-agora` console (config, crypto, durable, telescope,
+ * media, payments, flags, agent, diagnostics, the authkit admin) takes for its `authorize` option.
+ * This file is copied, not shared through a package, and kept byte-identical across the libs apart
+ * from {@link PACKAGE}: TypeScript is structural, so one authorizer class satisfies every console.
  */
+
+/** The only line that differs between the libs' copies. */
+const PACKAGE = '@adonis-agora/telescope';
+
+/** `'read'`: the viewer may look, never change (no write capability reaches a command). */
+export type ConsoleAccess = 'read' | 'write';
+
+/** What an authorizer may answer. */
 export type ConsoleAuthorizeResult =
   | boolean
   | {
       allowed: true;
       /**
-       * With tenancy on: the tenants (organizations) this viewer may see. `'*'` is every tenant,
-       * plus entries recorded with none. Omitted: the viewer's own active tenant.
-       */
-      tenants?: '*' | string[];
-      /**
-       * On a server that collects entries from several apps: the apps this viewer may see (entries
-       * tagged `app:<id>`). `'*'` is every app, plus entries recorded with none. Omitted: every app.
+       * The apps (tenant partitions) this viewer may see and change. `'*'` (or omitted) is every
+       * app `console.apps` allows.
        */
       apps?: '*' | string[];
+      /** The tenants this viewer may see, for consoles that scope by tenant. `'*'`: all. */
+      tenants?: '*' | string[];
+      /**
+       * What this viewer may do, in the capability vocabulary (`<lib>:console:read`,
+       * `<lib>:console:write`, `<lib>:console:*`, or the lib's finer names). Sent with every command
+       * to another app, which checks it again. Omitted: the lib's full console set. Anything but a
+       * list of strings allows nothing.
+       */
+      capabilities?: string[];
+      /** `'read'`: sugar for "no write capabilities", whatever `capabilities` says. */
+      access?: ConsoleAccess;
     }
   | { allowed: false; reason?: 'unauthenticated' | 'forbidden' }
   | { redirectTo: string };
@@ -32,108 +44,146 @@ export interface ConsoleAuthorizer {
   authorize(ctx: HttpContext): ConsoleAuthorizeResult | Promise<ConsoleAuthorizeResult>;
 }
 
-/** A {@link ConsoleAuthorizer} class, constructed through the AdonisJS container. */
-// biome-ignore lint/suspicious/noExplicitAny: a container-built class may take any constructor deps.
+// biome-ignore lint/suspicious/noExplicitAny: the constructor takes whatever the container injects.
 export type ConsoleAuthorizerClass = new (...args: any[]) => ConsoleAuthorizer;
 
-/**
- * The console `authorize` option, in any of its three forms:
- * - an inline function `(ctx) => result`;
- * - a {@link ConsoleAuthorizer} class (built through the container, so `@inject()` works);
- * - a lazy import of a module whose default export is such a class (`() => import('#policies/x')`).
- */
+/** The `authorize` option: an inline function, the authorizer class, or a lazy import of it. */
 export type ConsoleAuthorize =
   | ((ctx: HttpContext) => ConsoleAuthorizeResult | Promise<ConsoleAuthorizeResult>)
   | ConsoleAuthorizerClass
   | (() => Promise<{ default: ConsoleAuthorizerClass }>);
 
-/** The single shape {@link resolveConsoleAuthorize} answers with. */
-export type NormalizedDecision =
-  | { allowed: true; tenants?: '*' | string[]; apps?: '*' | string[] }
-  | { allowed: false; reason: 'unauthenticated' | 'forbidden'; redirectTo?: string };
+/** A {@link ConsoleAuthorizeResult} normalized to the answer the console writes. */
+export type ConsoleAuthorizeDecision =
+  | {
+      allowed: true;
+      apps?: '*' | string[];
+      tenants?: '*' | string[];
+      capabilities?: string[];
+      access?: ConsoleAccess;
+    }
+  | { allowed: false; status: 401; reason: 'unauthenticated' }
+  | { allowed: false; status: 403; reason: 'forbidden'; error?: unknown }
+  | { allowed: false; status: 302; redirectTo: string };
 
-/** Whether `value` is a {@link ConsoleAuthorizer} class (a constructor with `authorize` on its prototype). */
-export function isConsoleAuthorizerClass(value: unknown): value is ConsoleAuthorizerClass {
+const FORBIDDEN = { allowed: false, status: 403, reason: 'forbidden' } as const;
+
+function isAuthorizerClass(value: unknown): value is ConsoleAuthorizerClass {
   return (
     typeof value === 'function' &&
     typeof (value as { prototype?: { authorize?: unknown } }).prototype?.authorize === 'function'
   );
 }
 
-/** Classes discovered behind a lazy import, keyed by the importer, so the import runs once. */
-const lazyClasses = new WeakMap<object, ConsoleAuthorizerClass>();
-
-/** Build `Class` through the request's container resolver and run its `authorize`. */
-async function runClass(Class: ConsoleAuthorizerClass, ctx: unknown): Promise<unknown> {
-  const resolver = (ctx as { containerResolver?: { make(c: unknown): unknown } }).containerResolver;
-  if (resolver === undefined || typeof resolver.make !== 'function') {
-    throw new Error('console authorize: the request has no container resolver to build the class');
-  }
-  const instance = (await resolver.make(Class)) as ConsoleAuthorizer;
-  return instance.authorize(ctx as HttpContext);
+/** A module namespace whose `default` export is an authorizer class: a lazy import resolved. */
+function lazyModuleClass(value: unknown): ConsoleAuthorizerClass | undefined {
+  if (typeof value !== 'object' || value === null || !('default' in value)) return undefined;
+  const candidate = (value as { default: unknown }).default;
+  return isAuthorizerClass(candidate) ? candidate : undefined;
 }
 
-/** Map any `authorize` result onto a {@link NormalizedDecision}. Anything unrecognised denies. */
-export function normalizeConsoleDecision(result: unknown): NormalizedDecision {
-  if (result === true) return { allowed: true };
-  if (result !== null && typeof result === 'object') {
-    const r = result as { allowed?: unknown; reason?: unknown; redirectTo?: unknown };
-    if (typeof r.redirectTo === 'string') {
-      return { allowed: false, reason: 'unauthenticated', redirectTo: r.redirectTo };
-    }
-    if (r.allowed === true) {
-      const decision: { allowed: true; tenants?: '*' | string[]; apps?: '*' | string[] } = {
-        allowed: true,
-      };
-      const tenants = scopeList((result as { tenants?: unknown }).tenants);
-      if (tenants !== undefined) decision.tenants = tenants;
-      const apps = scopeList((result as { apps?: unknown }).apps);
-      if (apps !== undefined) decision.apps = apps;
-      return decision;
-    }
-    if (r.reason === 'unauthenticated') return { allowed: false, reason: 'unauthenticated' };
-  }
-  return { allowed: false, reason: 'forbidden' };
-}
-
-/** A `tenants`/`apps` grant: `'*'`, a list of ids (numbers become strings), or `undefined`. */
-function scopeList(value: unknown): '*' | string[] | undefined {
+/** `'*'`, or the names a list holds; anything else narrows to none (never wider). */
+function names(value: unknown): '*' | string[] {
   if (value === '*') return '*';
-  if (!Array.isArray(value)) return undefined;
-  return value.filter((t) => typeof t === 'string' || typeof t === 'number').map(String);
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value
+        .filter((a) => typeof a === 'string' || typeof a === 'number')
+        .map(String)
+        .filter((a) => a !== ''),
+    ),
+  ];
 }
 
 /**
- * Turn a console `authorize` option (any of the {@link ConsoleAuthorize} forms) into one
- * `(ctx) => Promise<NormalizedDecision>`. A class is built through `ctx.containerResolver`; a lazy
- * import is remembered after its first call; a thrown error is a `403` denial, never an allow.
+ * Normalize an authorizer's answer. Fails closed: only `true` or `{ allowed: true }` passes. Its
+ * `apps` / `tenants`, when not `'*'`, are kept as lists of names (a malformed one allows none);
+ * `capabilities`, when present, as a list of non-empty strings (a malformed one allows nothing);
+ * `access` only as `'read'` or `'write'`. `{ redirectTo }` with a non-empty string is a redirect;
+ * anything else is a denial (`401` for `reason: 'unauthenticated'`, `403` otherwise).
+ */
+export function normalizeConsoleAuthorizeResult(result: unknown): ConsoleAuthorizeDecision {
+  if (result === true) return { allowed: true };
+  if (typeof result !== 'object' || result === null) return FORBIDDEN;
+  const value = result as {
+    allowed?: unknown;
+    reason?: unknown;
+    redirectTo?: unknown;
+    apps?: unknown;
+    tenants?: unknown;
+    capabilities?: unknown;
+    access?: unknown;
+  };
+  if (value.allowed === true) {
+    return {
+      allowed: true,
+      ...(value.apps !== undefined ? { apps: names(value.apps) } : {}),
+      ...(value.tenants !== undefined ? { tenants: names(value.tenants) } : {}),
+      ...(value.capabilities !== undefined
+        ? {
+            capabilities: Array.isArray(value.capabilities)
+              ? value.capabilities.filter((c): c is string => typeof c === 'string' && c !== '')
+              : [],
+          }
+        : {}),
+      ...(value.access === 'read' || value.access === 'write' ? { access: value.access } : {}),
+    };
+  }
+  if (value.allowed === undefined && typeof value.redirectTo === 'string' && value.redirectTo) {
+    return { allowed: false, status: 302, redirectTo: value.redirectTo };
+  }
+  if (value.reason === 'unauthenticated') {
+    return { allowed: false, status: 401, reason: 'unauthenticated' };
+  }
+  return FORBIDDEN;
+}
+
+async function instantiate(
+  Authorizer: ConsoleAuthorizerClass,
+  ctx: HttpContext,
+): Promise<ConsoleAuthorizer> {
+  const resolver = (ctx as { containerResolver?: { make?: unknown } }).containerResolver;
+  if (resolver && typeof resolver.make === 'function') {
+    return (await (resolver.make as (c: ConsoleAuthorizerClass) => unknown)(
+      Authorizer,
+    )) as ConsoleAuthorizer;
+  }
+  return new Authorizer();
+}
+
+/**
+ * Turn an `authorize` option into one guard function.
+ *
+ * - A class is built through the request's container (`ctx.containerResolver.make`), so
+ *   `@inject()` works, and its `authorize(ctx)` is called.
+ * - A function is called with `ctx`. When it resolves to a module whose `default` is an
+ *   authorizer class, it was a lazy import: the class is remembered (the import runs once per
+ *   returned guard) and used as above.
+ * - A thrown error is a `403` denial, carried on `error` so the caller can log it.
  */
 export function resolveConsoleAuthorize(
   authorize: ConsoleAuthorize,
-): (ctx: UiHttpContext | HttpContext) => Promise<NormalizedDecision> {
+): (ctx: HttpContext) => Promise<ConsoleAuthorizeDecision> {
+  let lazyClass: ConsoleAuthorizerClass | undefined;
+
+  const run = async (ctx: HttpContext): Promise<unknown> => {
+    if (lazyClass) return (await instantiate(lazyClass, ctx)).authorize(ctx);
+    if (isAuthorizerClass(authorize)) return (await instantiate(authorize, ctx)).authorize(ctx);
+    const result = await (authorize as (ctx: HttpContext) => unknown)(ctx);
+    const imported = lazyModuleClass(result);
+    if (imported) {
+      lazyClass = imported;
+      return (await instantiate(imported, ctx)).authorize(ctx);
+    }
+    return result;
+  };
+
   return async (ctx) => {
     try {
-      if (isConsoleAuthorizerClass(authorize)) {
-        return normalizeConsoleDecision(await runClass(authorize, ctx));
-      }
-      const remembered = lazyClasses.get(authorize);
-      if (remembered !== undefined) {
-        return normalizeConsoleDecision(await runClass(remembered, ctx));
-      }
-      const result: unknown = await (authorize as (ctx: unknown) => unknown)(ctx);
-      const lazy = (result as { default?: unknown } | null)?.default;
-      if (
-        result !== null &&
-        typeof result === 'object' &&
-        !('allowed' in result) &&
-        isConsoleAuthorizerClass(lazy)
-      ) {
-        lazyClasses.set(authorize, lazy);
-        return normalizeConsoleDecision(await runClass(lazy, ctx));
-      }
-      return normalizeConsoleDecision(result);
-    } catch {
-      return { allowed: false, reason: 'forbidden' };
+      return normalizeConsoleAuthorizeResult(await run(ctx));
+    } catch (error) {
+      return { ...FORBIDDEN, error };
     }
   };
 }
@@ -142,16 +192,11 @@ export function resolveConsoleAuthorize(
 export interface AuthorizeByTokenOptions {
   /** The shared secret callers send as `Authorization: Bearer <token>`. */
   token: string | undefined;
-  /**
-   * With tenancy on: the organizations a token holder may see (`'*'` = all). A token carries no
-   * signed-in organization, so without this it sees none.
-   */
-  tenants?: '*' | string[];
-  /**
-   * On a server that collects entries from several apps: the apps a token holder may see
-   * (`'*'` = all, the default).
-   */
+  /** What a caller with the token may see and do: the same fields as an `authorize` answer. */
   apps?: '*' | string[];
+  tenants?: '*' | string[];
+  capabilities?: string[];
+  access?: ConsoleAccess;
 }
 
 function digest(value: string): Buffer {
@@ -160,10 +205,12 @@ function digest(value: string): Buffer {
 
 /**
  * An `authorize` check for machine access: allows a request whose `Authorization` header is
- * `Bearer <token>`, and answers `{ allowed: false, reason: 'unauthenticated' }` (`401`) otherwise.
+ * `Bearer <token>` (compared in constant time), and answers
+ * `{ allowed: false, reason: 'unauthenticated' }` (`401`) otherwise. Only the header is read.
  *
  * ```ts
  * authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }),
+ * // narrowed: authorizeByToken({ token, apps: ['shop'], access: 'read' })
  * ```
  *
  * Throws at config time when `token` is empty or undefined.
@@ -171,18 +218,76 @@ function digest(value: string): Buffer {
 export function authorizeByToken(options: AuthorizeByTokenOptions): ConsoleAuthorize {
   const token = options?.token;
   if (typeof token !== 'string' || token === '') {
-    throw new Error('authorizeByToken: `token` must be a non-empty string');
+    throw new Error(`[${PACKAGE}] authorizeByToken: \`token\` must be a non-empty string`);
   }
   const expected = digest(token);
-  const allowed: ConsoleAuthorizeResult = {
+  // Normalized once, with the same fail-closed rules as any answer (a malformed list allows none).
+  const { allowed: _allowed, ...grant } = normalizeConsoleAuthorizeResult({
     allowed: true,
-    ...(options.tenants !== undefined ? { tenants: options.tenants } : {}),
     ...(options.apps !== undefined ? { apps: options.apps } : {}),
-  };
+    ...(options.tenants !== undefined ? { tenants: options.tenants } : {}),
+    ...(options.capabilities !== undefined ? { capabilities: options.capabilities } : {}),
+    ...(options.access !== undefined ? { access: options.access } : {}),
+  }) as Extract<ConsoleAuthorizeDecision, { allowed: true }>;
   return (ctx: HttpContext): ConsoleAuthorizeResult => {
     const header = ctx.request.header('authorization');
     const match = typeof header === 'string' ? /^Bearer\s+(.+)$/i.exec(header.trim()) : null;
-    if (match?.[1] && timingSafeEqual(digest(match[1].trim()), expected)) return allowed;
+    if (match?.[1] && timingSafeEqual(digest(match[1]), expected)) {
+      return { allowed: true, ...grant };
+    }
     return { allowed: false, reason: 'unauthenticated' };
+  };
+}
+
+/**
+ * Allows a request when ANY of the given checks allows it, tried in order. Typical: a token for MCP
+ * clients and scripts, or a signed-in admin for the browser.
+ *
+ * ```ts
+ * authorize: anyAuthorize(
+ *   authorizeByToken({ token: env.get('CONSOLE_TOKEN') }),
+ *   (ctx) => ctx.auth.user?.isAdmin ?? false,
+ * ),
+ * ```
+ *
+ * Refused by all: a redirect when one asked for it, else `401` when one wanted a sign-in, else `403`.
+ */
+export function anyAuthorize(
+  ...authorizers: ConsoleAuthorize[]
+): (ctx: HttpContext) => Promise<ConsoleAuthorizeResult> {
+  if (authorizers.length === 0) {
+    throw new Error(`[${PACKAGE}] anyAuthorize: pass at least one authorize`);
+  }
+  const resolved = authorizers.map((authorize) => resolveConsoleAuthorize(authorize));
+  return async (ctx: HttpContext): Promise<ConsoleAuthorizeResult> => {
+    let unauthenticated = false;
+    let redirectTo: string | undefined;
+    let error: unknown;
+    let threw = false;
+    for (const authorize of resolved) {
+      const decision = await authorize(ctx);
+      if (decision.allowed) {
+        // The deciding authorizer's grant, whole: apps, tenants, capabilities and access.
+        const { allowed: _allowed, ...grant } = decision;
+        return { allowed: true, ...grant };
+      }
+      if (decision.status === 302) {
+        redirectTo ??= decision.redirectTo;
+        continue;
+      }
+      if (decision.status === 401) {
+        unauthenticated = true;
+        continue;
+      }
+      if (decision.error !== undefined && !threw) {
+        threw = true;
+        error = decision.error;
+      }
+    }
+    if (redirectTo !== undefined) return { redirectTo };
+    if (unauthenticated) return { allowed: false, reason: 'unauthenticated' };
+    // Rethrow an inner check's error so the console still logs it (a throw is a 403).
+    if (threw) throw error;
+    return { allowed: false, reason: 'forbidden' };
   };
 }

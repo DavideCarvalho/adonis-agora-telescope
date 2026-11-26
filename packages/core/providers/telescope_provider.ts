@@ -29,6 +29,19 @@ import {
 } from '../src/extension/binding.js';
 import { ExtensionRegistry } from '../src/extension/registry.js';
 import type { ExtensionContext } from '../src/extension/types.js';
+import {
+  appUnauthenticatedMessage,
+  authkitUsable,
+  ConsoleAuthConfigError,
+  planAppAuth,
+} from '../src/federation/auto_crypto.js';
+import {
+  appKeyOf as appKeyOfApp,
+  type ConsoleCommandKeys,
+  consoleCommandKeys,
+  consoleKeyId,
+  DEFAULT_CONSOLE_PREFIX,
+} from '../src/federation/console_commands.js';
 import { HealthChecks } from '../src/fleet/checks.js';
 import {
   type ReportingCommand,
@@ -168,6 +181,7 @@ export default class TelescopeProvider {
       resetTelescopeRuntime();
       return;
     }
+    await this.assertConsoleCommandsAuth(config);
 
     setTelescopeRuntime(
       store,
@@ -248,7 +262,16 @@ export default class TelescopeProvider {
       config: config.discovery,
       topology: config.topology,
       onError: (message) => void this.debug(`[@adonis-agora/telescope] discovery: ${message}`),
+      // §12: only a process that serves long-polls the central server. An ace command, the REPL or
+      // the test runner must exit when done; a worker command (staysAlive) starts it below.
+      poll: this.serves(),
     });
+    if (this.discovery !== null && this.environment() === 'console') {
+      const discovery = this.discovery;
+      await this.onAceCommand((command) => {
+        if (command.staysAlive) discovery.poll();
+      });
+    }
   }
 
   /** The app is serving: this instance is ready. */
@@ -270,22 +293,98 @@ export default class TelescopeProvider {
     const commands = config.consoleCommands;
     const store = this.store;
     if (!config.enabled || commands === null || store === null || this.stopConsoleCommands) return;
-    const environment = (this.app as { getEnvironment?(): string }).getEnvironment?.();
-    if (environment !== 'web') return;
+    if (this.environment() !== 'web') return;
     try {
-      const [{ answerConsoleCommands }, { consoleCommandHandler }, { buildConsoleApis }, fed] =
-        await Promise.all([
-          import('../src/federation/console_commands.js'),
-          import('../src/federation/answer.js'),
-          import('../src/ui/console_apis.js'),
-          import('../src/federation/federation.js'),
-        ]);
+      const [
+        { answerConsoleCommands, appKeyOf, consoleCommandKeys, DEFAULT_CONSOLE_PREFIX },
+        { consoleCommandHandler, CONSOLE_COMMAND_VERBS },
+        { buildConsoleApis },
+        fed,
+        siblings,
+      ] = await Promise.all([
+        import('../src/federation/console_commands.js'),
+        import('../src/federation/answer.js'),
+        import('../src/ui/console_apis.js'),
+        import('../src/federation/federation.js'),
+        import('../src/federation/auto_crypto.js'),
+      ]);
+      const container = this.app.container;
       const client = commands.client ?? (await fed.redisConnection(this.app, commands.connection));
       const actions = commands.actions ?? {};
       const logger = await this.app.container
         .make('logger')
         .then((made) => made as unknown as { info(message: string): void })
         .catch(() => null);
+      const prefix = commands.prefix ?? DEFAULT_CONSOLE_PREFIX;
+      const partition = this.consolePartition(config);
+      const appKey = await appKeyOf(this.app);
+      const plan = await this.consoleAuthPlan(config);
+
+      // Automatic crypto: open with this app's own @adonis-agora/crypto, its console key made
+      // sure of (created where this app may; otherwise one line says what to run).
+      let crypto = commands.crypto === false ? undefined : commands.crypto;
+      if (plan.autoCrypto) {
+        const runtime = await siblings.cryptoRuntimeOf(container);
+        if (runtime !== undefined) {
+          const logKey = (note: { level: 'info' | 'warn'; line: string }) =>
+            note.level === 'warn' ? void this.warn(note.line) : logger?.info(note.line);
+          // A crypto tenant: its key checked once at boot (one actionable line when missing or
+          // refused), then each command's own decrypt is the retry, classified the same way.
+          const watch =
+            runtime.service === undefined
+              ? siblings.watchTenantConsoleKey(runtime, logKey)
+              : undefined;
+          const own = siblings.appConsoleCipher(runtime, watch?.decrypt);
+          crypto = { cipher: own.cipher };
+          if (runtime.service !== undefined) {
+            // Crypto embedded here: create the key now (once; a failure is retried on the first
+            // command), so a console can seal before it.
+            void own
+              .ready()
+              .catch((error: unknown) =>
+                this.warn(siblings.keyCreateFailedLine(runtime.partition, error)),
+              );
+          } else {
+            void watch?.atBoot();
+          }
+        }
+      }
+      // authkit's calls between apps: the console's app-call token, bound to this app.
+      const verifyAppCaller = plan.appCall
+        ? siblings.appCallerVerifierOf(await siblings.authkitOf(container))
+        : undefined;
+      const verifyTenant = commands.verifyTenant === false ? undefined : commands.verifyTenant;
+      const fallbackVerifyTenant =
+        plan.fallbackVerifier && config.topology.topology === 'control-plane'
+          ? config.topology.verifyTenant
+          : undefined;
+      let keys: ConsoleCommandKeys | undefined;
+      if (plan.keys && appKey !== undefined) {
+        // Only its short id reaches the boot log; `node ace telescope:console:key` prints the key.
+        keys = consoleCommandKeys(appKey, prefix);
+        // Token mode: publish the public half in authkit's key directory (§2e.B), so consoles find
+        // it without copying it. Background and retried by authkit-client; never fails the boot.
+        // With crypto active, crypto is enough: nothing is published (a console then picks
+        // crypto, §13a) and nothing is said (§13e; the doctor shows it), unless crypto commands
+        // must carry a token too (explicit crypto + verifyTenant, migrating).
+        const tokenRequired =
+          commands.crypto !== undefined &&
+          commands.crypto !== false &&
+          commands.verifyTenant !== undefined &&
+          commands.verifyTenant !== false;
+        if (crypto === undefined || tokenRequired) {
+          const authkit = await siblings.authkitOf(container);
+          if (typeof authkit?.publishAppKey === 'function') {
+            void siblings.publishConsoleKey(authkit, keys.publicKey).catch(() => undefined);
+          } else if (crypto === undefined && commands.secret === undefined) {
+            // Token mode is this app's only way to be reached, and no console can find its key.
+            await this.warn(
+              "[@adonis-agora/telescope] console commands: token mode is this app's only way to be reached, but authkit-client's `service` is not configured, so its key is not in authkit's key directory: configure it, or give each console apps.federated.<app>.commands.publicKey (`node ace telescope:console:key` prints it)",
+            );
+          }
+        }
+      }
+      const refusals = new Set<string>();
       this.stopConsoleCommands = await answerConsoleCommands(
         client,
         (command) =>
@@ -299,18 +398,116 @@ export default class TelescopeProvider {
               audit: () => {},
             }),
             actions,
+            partition,
             log: (line) => logger?.info(line),
           })(command),
         {
-          ...(commands.prefix !== undefined ? { prefix: commands.prefix } : {}),
-          onError: (message) =>
-            void this.debug(`[@adonis-agora/telescope] console command failed: ${message}`),
+          prefix,
+          verbs: Object.keys(CONSOLE_COMMAND_VERBS),
+          ...(commands.secret !== undefined ? { secret: commands.secret } : {}),
+          ...(crypto !== undefined ? { crypto } : {}),
+          ...(verifyTenant !== undefined ? { verifyTenant } : {}),
+          ...(fallbackVerifyTenant !== undefined ? { fallbackVerifyTenant } : {}),
+          ...(verifyAppCaller !== undefined ? { verifyAppCaller } : {}),
+          ...(keys !== undefined ? { keys } : {}),
+          partition,
+          // A refused command is someone on this Redis without the console's credentials, or a
+          // console configured for another mode: worth a warning, never silent.
+          // Never crashes on a bad message: logged once per reason, then dropped.
+          onError: (message) => {
+            if (refusals.has(message)) return;
+            if (refusals.size < 100) refusals.add(message);
+            void this.warn(
+              `[@adonis-agora/telescope] console commands: refused a command (${message})`,
+            );
+          },
         },
+      );
+      const resolved = planAppAuth(commands, {
+        cryptoBound: crypto !== undefined && plan.autoCrypto,
+        authkitBound: verifyAppCaller !== undefined,
+        appKey: appKey !== undefined,
+        appName: partition,
+        controlPlaneVerifier: fallbackVerifyTenant !== undefined,
+        keyId: keys !== undefined ? consoleKeyId(keys.publicKey) : undefined,
+      });
+      const actionsOn = actions.replay === true || actions.queues === true;
+      logger?.info(
+        `[@adonis-agora/telescope] console commands: ${resolved.modes.join(' + ')}; ${
+          actionsOn
+            ? 'actions on'
+            : 'actions off (set consoleCommands.actions.replay or consoleCommands.actions.queues to let the console act)'
+        }`,
       );
     } catch (error) {
       await this.warn(
         `[@adonis-agora/telescope] consoleCommands: not answering other consoles' commands: ${error instanceof Error ? error.message : String(error)}`,
       );
+    }
+  }
+
+  /** Whether this process serves (web, or a host without environments): only it long-polls. */
+  private serves(): boolean {
+    const environment = this.environment();
+    return environment === undefined || environment === 'web';
+  }
+
+  private environment(): string | undefined {
+    return (this.app as { getEnvironment?(): string }).getEnvironment?.();
+  }
+
+  /**
+   * This app's partition, which a classic token's partition must be: `consoleCommands.partition`,
+   * else a tenant's partition, else the app's name (`fleet.app`, `APP_NAME`), else the prefix.
+   */
+  private consolePartition(config: ResolvedTelescopeConfig): string {
+    const commands = config.consoleCommands;
+    const envName = process.env.APP_NAME?.trim();
+    return (
+      commands?.partition ??
+      (config.topology.topology === 'tenant' ? config.topology.tenant.partition : undefined) ??
+      config.fleet.app ??
+      (envName ? envName : undefined) ??
+      commands?.prefix ??
+      'telescope'
+    );
+  }
+
+  /**
+   * Which modes `consoleCommands` resolves, from what is configured and what the siblings actually
+   * provide: crypto by its binding, authkit by a usable app-caller verifier (a binding without
+   * calls between apps configured provides none).
+   */
+  private async consoleAuthPlan(config: ResolvedTelescopeConfig) {
+    const commands = config.consoleCommands ?? {};
+    const container = this.app.container as unknown as { hasBinding?(b: string): boolean };
+    const authkit = await authkitUsable(this.app.container);
+    const appKeyValue = await appKeyOfApp(this.app);
+    return planAppAuth(commands, {
+      keyId:
+        appKeyValue !== undefined
+          ? consoleKeyId(
+              consoleCommandKeys(appKeyValue, commands.prefix ?? DEFAULT_CONSOLE_PREFIX).publicKey,
+            )
+          : undefined,
+      cryptoBound: container.hasBinding?.('agora.crypto') === true,
+      authkitBound: authkit.verifier,
+      appKey: appKeyValue !== undefined,
+      appName: this.consolePartition(config),
+      controlPlaneVerifier: config.topology.topology === 'control-plane',
+    });
+  }
+
+  /**
+   * `consoleCommands` with no way to authenticate fails the web process at boot, where the
+   * channel would start: a console would otherwise wait for answers that never come. Other
+   * processes (ace commands) never start the channel and are left alone.
+   */
+  private async assertConsoleCommandsAuth(config: ResolvedTelescopeConfig): Promise<void> {
+    if (config.consoleCommands === null || this.environment() !== 'web') return;
+    const plan = await this.consoleAuthPlan(config);
+    if (plan.modes.length === 0) {
+      throw new ConsoleAuthConfigError(appUnauthenticatedMessage(plan.notes));
     }
   }
 
@@ -667,6 +864,7 @@ export default class TelescopeProvider {
     if (!config.redact.enabled) return store;
     return new RedactingTelescopeStore(store, {
       keys: config.redact.keys,
+      allow: config.redact.allow,
       perType: config.redact.perType,
     });
   }

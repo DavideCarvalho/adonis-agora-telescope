@@ -13,6 +13,7 @@ import { ArrowLeftIcon } from './icons.js';
 import { cn } from './primitives/cn.js';
 import { AsyncBlock, Panel, SectionTitle, TypeBadge } from './ui.js';
 import { useEntry, useMeta, useTelescopeClient } from './use-telescope.js';
+import { useViewerLacks } from './viewer-capabilities.js';
 
 const CODE_CLASS =
   'm-0 mt-3 max-w-full overflow-x-auto whitespace-pre rounded-lg border border-border bg-sunken/30 p-3.5 font-mono text-xs leading-relaxed text-foreground';
@@ -164,6 +165,7 @@ function DiagnosePanel({ entryId, aiEnabled }: { entryId: string; aiEnabled: boo
   const client = useTelescopeClient();
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<DiagnoseOutcome | null>(null);
+  const lacks = useViewerLacks('telescope:console:write');
 
   if (!aiEnabled) return null;
 
@@ -190,11 +192,23 @@ function DiagnosePanel({ entryId, aiEnabled }: { entryId: string; aiEnabled: boo
           )}
         </h3>
         {result !== null ? (
-          <Button variant="outline" size="micro" onClick={() => run(true)} disabled={pending}>
+          <Button
+            variant="outline"
+            size="micro"
+            onClick={() => run(true)}
+            disabled={pending || lacks !== undefined}
+            title={lacks}
+          >
             {pending ? 'Re-running…' : 'Re-run'}
           </Button>
         ) : (
-          <Button variant="brand" size="micro" onClick={() => run(false)} disabled={pending}>
+          <Button
+            variant="brand"
+            size="micro"
+            onClick={() => run(false)}
+            disabled={pending || lacks !== undefined}
+            title={lacks}
+          >
             {pending ? 'Diagnosing…' : 'Diagnose with AI'}
           </Button>
         )}
@@ -317,7 +331,9 @@ function ReplayPanel({ entryId }: { entryId: string }) {
   const client = useTelescopeClient();
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<ReplayOutcome | null>(null);
-  const unavailable = useAppActionsUnavailable();
+  const appUnavailable = useAppActionsUnavailable();
+  const viewerLacks = useViewerLacks('telescope:console:replay');
+  const unavailable = appUnavailable ?? viewerLacks;
 
   async function run(): Promise<void> {
     setPending(true);

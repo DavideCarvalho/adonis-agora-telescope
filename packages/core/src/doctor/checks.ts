@@ -6,6 +6,10 @@ import {
   installedVersion,
   packageDir,
 } from './agora_doctor.js';
+import {
+  consoleCommandsDoctorCheck,
+  consoleCommandsKeyDoctorCheck,
+} from './console_commands_check.js';
 
 const DOCS = 'https://davidecarvalho.github.io/agora/docs/telescope';
 const PKG = '@adonis-agora/telescope';
@@ -365,4 +369,6 @@ export const telescopeDoctorChecks: AgoraDoctorCheck[] = [
     run: (app) => checkRetention(get(app, 'telescope'), app.inProduction),
   },
   ...topologyDoctorChecks,
+  consoleCommandsDoctorCheck,
+  consoleCommandsKeyDoctorCheck,
 ];

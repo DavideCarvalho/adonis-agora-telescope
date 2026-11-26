@@ -11,7 +11,11 @@ import {
 } from './discovery/config.js';
 import type { TelescopeExtension } from './extension/types.js';
 import type { ConsoleCommandActions } from './federation/answer.js';
-import type { ConsoleRedisClient } from './federation/console_commands.js';
+import type {
+  ChannelSecret,
+  ConsoleCryptoOptions,
+  ConsoleRedisClient,
+} from './federation/console_commands.js';
 import { isCheckInput, type TelescopeCheckInput } from './fleet/checks.js';
 import { type FleetConfig, type ResolvedFleetConfig, resolveFleetConfig } from './fleet/config.js';
 import { PULSE_CARDS, type PulseCardName } from './metrics/pulse.js';
@@ -30,6 +34,7 @@ import {
   resolveTopology,
   type TelescopeTopologyConfig,
 } from './topology/config.js';
+import type { TenantVerifierInput } from './topology/verify.js';
 import {
   type PropagationConfig,
   type ResolvedPropagationConfig,
@@ -75,9 +80,16 @@ export interface RedactConfig {
   /**
    * Extra sensitive key names to mask, merged with the built-in defaults
    * (`authorization`, `cookie`, `password`, `token`, `api_key`, `secret`, …).
-   * Matched case-insensitively at any depth.
+   * Matched at any depth, ignoring case, `-`, `_` and `.`. Beyond this list, any key whose name
+   * looks sensitive is masked too (`accessToken`, `x-auth-token`, `password_confirmation`,
+   * `_csrf`, `sessionId`, `signingKey`, `otp`, `cpf`, …).
    */
   keys?: string[];
+  /**
+   * Keys never masked by name: an escape hatch for a false positive of the sensitive-name
+   * matching (e.g. `['authProvider']`). `keys` still wins.
+   */
+  allow?: string[];
   /**
    * Per-entry-type overrides of the NUMERIC redaction bounds (e.g. a bigger
    * `maxContentBytes` for `exception`/`client_exception`, whose stacks are
@@ -352,6 +364,47 @@ export interface ConsoleCommandsConfig {
   client?: ConsoleRedisClient;
   /** The actions other consoles may run here. Each is off by default. */
   actions?: ConsoleCommandActions;
+  /**
+   * How this app tells a real console from anyone who can publish on its Redis. With
+   * `@adonis-agora/crypto` booted in this app and none of `verifyTenant`, `crypto` and `secret`
+   * set, nothing is needed: commands are sealed with its `console-telescope` key (automatic crypto
+   * mode). Otherwise one of them is required, or the app refuses to boot (web process). Every one
+   * configured is accepted (so consoles can move from one to another). On a control plane the
+   * control plane's own `verifyTenant` is used when this one is unset.
+   *
+   * Token mode (with authkit): `verifyTenant` checks the token each command carries, e.g.
+   * `authkitTenantVerifier({ issuer, resource: 'urn:agora:telescope' })`. The token's `partition`
+   * must be {@link ConsoleCommandsConfig.partition}, and its capabilities cap what the console may do
+   * (`telescope:console:read` for the live views, `telescope:console:queues` for retry and
+   * enqueue, `telescope:console:replay` for replays). Commands arrive sealed to a key derived from
+   * `APP_KEY`; `node ace telescope:console:key` prints its public half for the console's
+   * `commands.publicKey`. Unset, the app checks authkit's app-call tokens when
+   * `@adonis-agora/authkit-client` is here (the token's audience binds it to this app), and on a
+   * control plane the control plane's own `verifyTenant`. `false` turns both off.
+   */
+  verifyTenant?: TenantVerifierInput | false;
+  /**
+   * This app's partition: what a classic (service-tenant) token's `partition` must be. Default
+   * `tenant.partition` on a tenant, else the app's name (`fleet.app`, then `APP_NAME`), else the
+   * `prefix`.
+   */
+  partition?: string;
+  /**
+   * Sealed with `@adonis-agora/crypto` (in the Agora Hub, in a separate crypto app, or embedded in
+   * this one): commands arrive encrypted with a crypto key (`console-telescope` by default) that
+   * this app may `decrypt` and the console may `encrypt`. `cipher` is `() => crypto.client!` on a
+   * tenant of a crypto server, or `() => serviceCipher(crypto.service, '<partition>')` where the
+   * crypto server is embedded. With `verifyTenant` set too, each command must also carry a valid
+   * token; without it, whoever may encrypt with the key is the console. `false` turns the
+   * automatic crypto mode off.
+   */
+  crypto?: ConsoleCryptoOptions | false;
+  /**
+   * Shared-secret mode (no authkit, no crypto): the secret this app and the console share (the
+   * console's `apps.federated.<app>.commands.secret`), at least 16 characters. Every command and
+   * answer carries an HMAC under it.
+   */
+  secret?: ChannelSecret;
 }
 
 /** See {@link TelescopeConfig.health}. */
@@ -503,7 +556,12 @@ export interface ResolvedTelescopeConfig {
   extensions: TelescopeExtension[];
   /** Resolved tenancy (see {@link TelescopeConfig.tenancy}). */
   tenancy: ResolvedTelescopeTenancy;
-  redact: { enabled: boolean; keys: string[]; perType: Record<string, RedactBounds> };
+  redact: {
+    enabled: boolean;
+    keys: string[];
+    allow: string[];
+    perType: Record<string, RedactBounds>;
+  };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
   sampling: SamplingConfig;
   /** Whether liveness probes are persisted. Default `false`. */
@@ -621,6 +679,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     redact: {
       enabled: config.redact?.enabled ?? true,
       keys: config.redact?.keys ?? [],
+      allow: config.redact?.allow ?? [],
       perType: config.redact?.perType ?? {},
     },
     sampling: resolveSampling(config.sampling),

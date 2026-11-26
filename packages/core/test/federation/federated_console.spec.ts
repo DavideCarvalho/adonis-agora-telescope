@@ -108,6 +108,8 @@ function fakeQueueManager() {
   return { manager, retried };
 }
 
+const SECRET = 'a-shared-secret-of-the-shop';
+
 describe('federated console: the Hub shows the shop app from its own store', () => {
   let hubDb: TestHarness;
   let shopDb: TestHarness;
@@ -127,7 +129,13 @@ describe('federated console: the Hub shows the shop app from its own store', () 
     await shopDb.cleanup();
   });
 
-  async function setup(options: { shopActions?: { queues?: boolean; replay?: boolean } } = {}) {
+  async function setup(
+    options: {
+      shopActions?: { queues?: boolean; replay?: boolean };
+      authorize?: () => unknown;
+      queueActions?: boolean;
+    } = {},
+  ) {
     // The shop app: its own store, its own entries, answering console commands.
     const shopStore = new LucidTelescopeStore(shopDb.lucid, { autoCreateTable: true });
     const shopRequest = await shopStore.record({
@@ -163,7 +171,7 @@ describe('federated console: the Hub shows the shop app from its own store', () 
             actions: options.shopActions ?? { queues: true },
             log: (line) => logged.push(line),
           })(command),
-        { prefix: 'shop' },
+        { prefix: 'shop', secret: SECRET },
       ),
     );
 
@@ -188,7 +196,8 @@ describe('federated console: the Hub shows the shop app from its own store', () 
         )[0]?.total,
       );
     const { provider, call } = await bootConsole({
-      authorize: () => true,
+      authorize: options.authorize ?? (() => true),
+      ...(options.queueActions ? { queueActions: { enabled: true } } : {}),
       apps: {
         localLabel: 'Hub',
         federated: {
@@ -196,10 +205,15 @@ describe('federated console: the Hub shows the shop app from its own store', () 
             label: 'Shop',
             // The shop's own table, read with the Hub's connection.
             store: new LucidTelescopeStore(shopDb.lucid),
-            commands: { client: redis.client(), prefix: 'shop' },
+            commands: { client: redis.client(), prefix: 'shop', secret: SECRET },
             timeoutMs: 2_000,
           },
-          ledger: { label: 'Ledger', store: new LucidTelescopeStore(shopDb.lucid) },
+          // Browsed read-only (`commands` is on by default).
+          ledger: {
+            label: 'Ledger',
+            store: new LucidTelescopeStore(shopDb.lucid),
+            commands: false,
+          },
         },
       },
     });
@@ -305,6 +319,61 @@ describe('federated console: the Hub shows the shop app from its own store', () 
     expect(JSON.stringify(replay.body)).toContain('consoleCommands.actions.replay');
 
     expect(await shopRows()).toBe(before);
+  });
+
+  it("sends the viewer's capabilities from authorize: a read-only viewer cannot retry", async () => {
+    const { call, retried } = await setup({
+      authorize: () => ({ allowed: true, capabilities: ['telescope:console:read', 'flags:*'] }),
+    });
+    expect((await call('GET', '/api/queues/live', { app: 'shop' })).status).toBe(200);
+    const retry = await call(
+      'POST',
+      '/api/queues/live/:queue/jobs/:id/retry',
+      { app: 'shop' },
+      { queue: 'emails', id: '42' },
+    );
+    expect(retry.status).toBe(403);
+    expect(JSON.stringify(retry.body)).toContain('telescope:console:queues');
+    expect(retried).toEqual([]);
+  });
+
+  it("the viewer's capabilities apply to the console's own app too (§10.13)", async () => {
+    const retryHere = (call: Awaited<ReturnType<typeof setup>>['call']) =>
+      call('POST', '/api/queues/live/:queue/jobs/:id/retry', {}, { queue: 'emails', id: '7' });
+
+    const reader = await setup({
+      queueActions: true,
+      authorize: () => ({ allowed: true, access: 'read' }),
+    });
+    const refused = await retryHere(reader.call);
+    expect(refused).toMatchObject({
+      status: 403,
+      body: { error: 'The viewer lacks telescope:console:queues.' },
+    });
+    expect(reader.retried).toEqual([]);
+    const meta = await reader.call('GET', '/api/meta');
+    expect(meta.body.data).toMatchObject({ viewer: { capabilities: ['telescope:console:read'] } });
+    const live = await reader.call('GET', '/api/queues/live');
+    expect(JSON.stringify(live.body)).toContain('"mutationsEnabled":false');
+    // Every local mutation: profile arming, extension actions, AI diagnosis.
+    for (const [suffix, params] of [
+      ['/api/profiles/arm', {}],
+      ['/api/exceptions/:id/diagnose', { id: 'x' }],
+    ] as const) {
+      expect(await reader.call('POST', suffix, {}, params)).toMatchObject({
+        status: 403,
+        body: { error: 'The viewer lacks telescope:console:write.' },
+      });
+    }
+    for (const stop of stops.splice(0)) stop();
+
+    // `telescope:console:write` covers the actions.
+    const writer = await setup({
+      queueActions: true,
+      authorize: () => ({ allowed: true, capabilities: ['telescope:console:write'] }),
+    });
+    expect((await retryHere(writer.call)).status).toBe(200);
+    expect(writer.retried).toEqual(['emails/7']);
   });
 
   it('a read-only federated app refuses actions; process-local views are not offered', async () => {

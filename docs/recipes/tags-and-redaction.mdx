@@ -61,13 +61,22 @@ await telescope.list({ tag: 'tenant:acme', type: 'exception' })
 Telescope ships a **central, config-driven redaction scrubber that is on by default**. It is
 wired at the one boundary every watcher records through — the store's `record()` — so *no
 watcher can bypass it*. Before any entry is persisted, its `content` is deep-cloned and every
-sensitive key is masked with `[REDACTED]`, matched **case-insensitively at any depth**:
+sensitive key is masked with `[REDACTED]`, at any depth. Key names are matched in any spelling
+(case, `-`, `_` and `.` are ignored), and not only these exact names:
 
 ```ts
 authorization · cookie · set-cookie · password · passwd · secret · token
 access_token · refresh_token · api-key · api_key · apikey · x-api-key
 client_secret · private_key
 ```
+
+Any key whose name contains `pass(word|phrase|code)`, `secret`, `token`, `auth`, `cookie`,
+`session`, `apikey`, `privatekey`, `credential`, `csrf`/`xsrf`, `cardnumber`/`creditcard` or
+`iban`, any `<something>Key` that is a secret (`signingKey`, `accessKey`, not `cacheKey`,
+`primaryKey`, `publicKey` or a plain `key`), and the words `otp`, `pin`, `pwd`, `cpf`, `ssn`,
+`cvv`/`cvc` is masked too. So `accessToken`, `refreshToken`, `password_confirmation`,
+`newPassword`, `x-auth-token`, `_csrf` and `sessionId` never reach storage, while counts and
+identifiers that only look alike (`inputTokens`, `tokenCount`, `authorName`) are kept.
 
 This covers the leak paths the built-in watchers had: the Lucid query watcher records
 bindings, the mail watcher records from/to/subject/context, and a custom watcher might record
@@ -83,10 +92,14 @@ import { defineConfig } from '@adonis-agora/telescope'
 export default defineConfig({
   redact: {
     enabled: true,            // default; set false to persist content verbatim
-    keys: ['ssn', 'credit_card'], // extra keys, merged with the built-in set
+    keys: ['nickname'],       // extra keys, merged with the built-in set
+    allow: ['authProvider'],  // a false positive of the name matching, kept as is
   },
 })
 ```
+
+`allow` only lifts the name matching: a key in `keys` (or a built-in exact name such as `token`)
+is always masked.
 
 <Callout type="info">
 The clone is also **memory-bounded and cycle-safe**: it caps depth, string length, array

@@ -1,5 +1,6 @@
 import { ListLoader } from '@adonisjs/core/ace';
 import AgoraDoctor from './agora_doctor.js';
+import { TelescopeConsoleKey } from './telescope_console_key.js';
 import TelescopeDoctor from './telescope_doctor.js';
 import {
   TelescopeEntriesClear,
@@ -81,7 +82,7 @@ export const consoleCommands = [
 
 /**
  * The commands barrel for `@adonis-agora/telescope`: `agora:doctor`, `telescope:doctor`,
- * `telescope:server:status` and the
+ * `telescope:server:status`, `telescope:console:key` and the
  * `telescope:<noun>:<verb>` console commands. Registered in an app's `adonisrc` via
  * `rcFile.addCommand('@adonis-agora/telescope/commands')`, which this package's `configure` does.
  */
@@ -89,6 +90,7 @@ const loader = new ListLoader([
   AgoraDoctor,
   TelescopeDoctor,
   TelescopeServerStatus,
+  TelescopeConsoleKey,
   ...consoleCommands,
 ]);
 

@@ -73,6 +73,8 @@ export class DiscoveryClient {
   private stopped = true;
   private controller: AbortController | null = null;
   private loop: Promise<void> | null = null;
+  /** Ends a backoff wait at once (on `stop()`). */
+  private wake: (() => void) | null = null;
   private readonly fetchImpl: typeof fetch;
   private readonly server: ServerUrl;
 
@@ -88,18 +90,28 @@ export class DiscoveryClient {
     this.scope = `${known !== null ? serverPrefix(known) : 'tenant.url'}#${options.partition}`;
   }
 
+  private snapshotLoaded = false;
+
+  /** Load the saved snapshot once (synchronously): names resolve without any request. */
+  loadSnapshot(): void {
+    if (this.snapshotLoaded) return;
+    this.snapshotLoaded = true;
+    const saved = readSnapshot(this.options.snapshotPath, this.scope);
+    if (saved !== null) this.options.directory.update(saved);
+  }
+
   /** Load the snapshot (synchronously, before the first request), then start polling. */
   start(): void {
     if (!this.stopped) return;
     this.stopped = false;
-    const saved = readSnapshot(this.options.snapshotPath, this.scope);
-    if (saved !== null) this.options.directory.update(saved);
+    this.loadSnapshot();
     this.loop = this.run();
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
     this.controller?.abort();
+    this.wake?.();
     await this.loop?.catch(() => {});
     this.loop = null;
   }
@@ -112,6 +124,8 @@ export class DiscoveryClient {
     const controller = new AbortController();
     this.controller = controller;
     const timer = setTimeout(() => controller.abort(), waitMs + 10_000);
+    // Never what keeps the process alive: `stop()` aborts the request itself.
+    timer.unref?.();
     try {
       const prefix = serverPrefix(await this.server.get());
       const token = await runAsTelescopeWork(() => readToken(this.options.token));
@@ -170,7 +184,16 @@ export class DiscoveryClient {
         backoff = 1000;
         continue;
       }
-      await new Promise((resolve) => setTimeout(resolve, backoff).unref?.());
+      // Cleared by `stop()`: a stopped client waits for nothing.
+      await new Promise<void>((resolve) => {
+        const wait = setTimeout(resolve, backoff);
+        wait.unref?.();
+        this.wake = () => {
+          clearTimeout(wait);
+          resolve();
+        };
+      });
+      this.wake = null;
       backoff = Math.min(30_000, backoff * 2);
     }
   }

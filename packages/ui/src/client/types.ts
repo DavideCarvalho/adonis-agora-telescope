@@ -517,6 +517,12 @@ export interface TelescopeMeta {
   watchers?: string[] | null;
   /** The picked app is federated: read from its own store; `actions` says who runs actions. */
   federated?: { app: string; actions: 'app' | 'none' };
+  /**
+   * What the viewer may do (from the console's `authorize`): `telescope:console:read`,
+   * `telescope:console:queues`, `telescope:console:replay`, `telescope:console:write`, wildcards.
+   * Absent on an older server: the server still refuses what the viewer may not do.
+   */
+  viewer?: { capabilities: string[] };
 }
 
 // ── CPU profiling (`GET/POST <base>/profiles*`) ─────────────────────────────

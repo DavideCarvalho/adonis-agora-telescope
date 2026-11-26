@@ -296,7 +296,9 @@ export function resolveConfig(
     authorize:
       config.authorize === undefined
         ? defaultConsoleAuthorize(inProduction)
-        : resolveConsoleAuthorize(config.authorize),
+        : // The shared resolver types its ctx as AdonisJS' HttpContext; the guard hands it the real
+          // one at runtime (cast down to UiHttpContext, like every hook here).
+          (resolveConsoleAuthorize(config.authorize) as unknown as AuthorizeHook),
     authorizeConfigured: config.authorize !== undefined,
     accessDenied: config.accessDenied ?? null,
     replay: {
