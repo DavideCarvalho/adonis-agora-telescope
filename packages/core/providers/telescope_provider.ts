@@ -206,6 +206,7 @@ export default class TelescopeProvider {
     if (!config.redact.enabled) return store;
     return new RedactingTelescopeStore(store, {
       keys: config.redact.keys,
+      allow: config.redact.allow,
       perType: config.redact.perType,
     });
   }

@@ -6,8 +6,10 @@
 // wires it once at the store boundary so NO watcher can leak a secret into storage.
 
 /**
- * The default set of sensitive key names masked by {@link redact}. Matched
- * case-insensitively at any depth. Mirrors the NestJS original 1:1.
+ * The default set of sensitive key names masked by {@link redact}, matched at any depth after
+ * normalization (lowercased, `-`, `_`, `.` and spaces stripped). On top of these, any key that
+ * looks sensitive is masked too (see {@link isSensitiveKeyName}): `accessToken`, `x-auth-token`,
+ * `password_confirmation`, `_csrf`, `sessionId`, `signingKey`, `cpf`, ….
  */
 export const DEFAULT_REDACT_KEYS: readonly string[] = [
   'authorization',
@@ -54,8 +56,14 @@ const SIZE_MARKER = '[Truncated: size]';
 export const DEFAULT_MASK = '[REDACTED]';
 
 export interface RedactOptions {
-  /** Extra keys to mask (merged with {@link DEFAULT_REDACT_KEYS}, case-insensitive). */
+  /** Extra keys to mask (merged with {@link DEFAULT_REDACT_KEYS}, normalized like them). */
   keys?: string[];
+  /**
+   * Keys never masked by name, for a false positive of the built-in sensitive-name matching
+   * (e.g. `['authorName']`). Normalized like `keys`. An explicit `keys` entry or a `paths` match
+   * still masks.
+   */
+  allow?: string[];
   /**
    * Exact dot-paths to mask regardless of key name, e.g. `'body.ssn'`.
    * Unlike `keys` (which match that key at any depth), a path must match the
@@ -135,8 +143,10 @@ export interface RedactBoundedResult {
  * {@link redactBoundedWith}.
  */
 export interface CompiledRedactSpec {
-  /** Lowercased union of default + configured keys, matched at any depth. */
+  /** Normalized union of default + configured keys, matched at any depth. */
   keySet: ReadonlySet<string>;
+  /** Normalized keys never masked by the built-in sensitive-name matching. */
+  allowSet: ReadonlySet<string>;
   /** Exact dot-paths to mask regardless of key name. */
   paths: ReadonlySet<string>;
 }
@@ -147,11 +157,128 @@ export interface CompiledRedactSpec {
  */
 export function compileRedactSpec(options: RedactOptions): CompiledRedactSpec {
   return {
-    keySet: new Set(
-      [...DEFAULT_REDACT_KEYS, ...(options.keys ?? [])].map((key) => key.toLowerCase()),
-    ),
+    keySet: new Set([...DEFAULT_REDACT_KEYS, ...(options.keys ?? [])].map(normalizeKeyName)),
+    allowSet: new Set((options.allow ?? []).map(normalizeKeyName)),
     paths: new Set(options.paths ?? []),
   };
+}
+
+/** A key name as matched: lowercased, with `-`, `_`, `.` and whitespace removed. */
+export function normalizeKeyName(key: string): string {
+  return key.toLowerCase().replace(/[-_.\s]+/g, '');
+}
+
+/** Fragments that make a key sensitive wherever they appear in its normalized name. */
+const SENSITIVE_FRAGMENTS = [
+  'passw',
+  'passphrase',
+  'passcode',
+  'secret',
+  'token',
+  'auth',
+  'cookie',
+  'session',
+  'apikey',
+  'privatekey',
+  'credential',
+  'csrf',
+  'xsrf',
+  'cardnumber',
+  'creditcard',
+  'iban',
+] as const;
+
+/** Whole words (of camelCase / snake_case / kebab-case names) that make a key sensitive. */
+const SENSITIVE_WORDS = new Set(['pass', 'pwd', 'otp', 'totp', 'pin', 'cpf', 'ssn', 'cvv', 'cvc']);
+
+/**
+ * Parts of names that contain a fragment above but are not secrets, removed before matching: LLM
+ * usage counts (`inputTokens`, `tokens`, `tokenCount`) and authors (`authorName`, not
+ * `authorization`).
+ */
+const NOT_SENSITIVE_PARTS = /tokens$|token(?:count|usage|limit|izer|type)$|author(?!iz)/g;
+
+/** `<prefix>key` names that are identifiers, not secrets (`cacheKey`, `primaryKey`, …). */
+const NON_SECRET_KEY_PREFIXES = new Set([
+  '',
+  'cache',
+  'primary',
+  'foreign',
+  'sort',
+  'partition',
+  'routing',
+  'idempotency',
+  'group',
+  'lookup',
+  'object',
+  'translation',
+  'i18n',
+  'message',
+  'event',
+  'job',
+  'queue',
+  'lock',
+  'store',
+  'storage',
+  'redis',
+  'public',
+  'map',
+  'row',
+  'table',
+  'index',
+  'dedupe',
+  'dedup',
+  'unique',
+  'composite',
+  'natural',
+  'surrogate',
+  'bucket',
+  'file',
+  'path',
+  'entity',
+  'model',
+  'relation',
+  'related',
+  'pivot',
+  'list',
+  'item',
+  'node',
+  'cursor',
+  'page',
+  'config',
+  'setting',
+  'hot',
+  'mon',
+  'tur',
+  'don',
+  'hoc',
+  'joc',
+  'whis',
+]);
+
+function words(key: string): string[] {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((word) => word !== '');
+}
+
+/**
+ * Whether a key name looks sensitive on its own: a password, secret, token, auth header, cookie,
+ * session, API/private/signing key, CSRF token, one-time code or personal document number, in
+ * any spelling (`accessToken`, `x-auth-token`, `password_confirmation`, `_csrf`, `newPassword`).
+ * Identifier-like names (`cacheKey`, `inputTokens`, `authorName`) are not.
+ */
+export function isSensitiveKeyName(key: string): boolean {
+  const name = normalizeKeyName(key);
+  if (name === '') return false;
+  if (words(key).some((word) => SENSITIVE_WORDS.has(word))) return true;
+  const rest = name.replace(NOT_SENSITIVE_PARTS, ' ');
+  if (SENSITIVE_FRAGMENTS.some((fragment) => rest.includes(fragment))) return true;
+  // `<something>key`: signing, access, encryption, master, … keys; not identifiers.
+  return name.endsWith('key') && !NON_SECRET_KEY_PREFIXES.has(name.slice(0, -3));
 }
 
 /**
@@ -169,7 +296,8 @@ function maskedKeyLookup(spec: CompiledRedactSpec): (key: string) => boolean {
   const lookup = (key: string): boolean => {
     const cached = decided.get(key);
     if (cached !== undefined) return cached;
-    const masked = spec.keySet.has(key.toLowerCase());
+    const name = normalizeKeyName(key);
+    const masked = spec.keySet.has(name) || (!spec.allowSet.has(name) && isSensitiveKeyName(key));
     if (decided.size < MASKED_KEY_CACHE_LIMIT) decided.set(key, masked);
     return masked;
   };
@@ -233,7 +361,7 @@ export function redactBoundedWith(
     bytesRemaining -= NODE_BYTE_OVERHEAD;
 
     if (typeof node === 'string') {
-      const kept = node.length > maxStringLength ? maxStringLength : node.length;
+      const kept = Math.min(node.length, maxStringLength);
       bytesRemaining -= kept;
       if (node.length > maxStringLength) {
         truncated = true;

@@ -40,9 +40,16 @@ export interface RedactConfig {
   /**
    * Extra sensitive key names to mask, merged with the built-in defaults
    * (`authorization`, `cookie`, `password`, `token`, `api_key`, `secret`, …).
-   * Matched case-insensitively at any depth.
+   * Matched at any depth after normalization (lowercased; `-`, `_`, `.` and spaces stripped).
+   * On top of these, any key that looks sensitive (`accessToken`, `x-auth-token`,
+   * `password_confirmation`, `_csrf`, `sessionId`, `signingKey`, …) is masked too.
    */
   keys?: string[];
+  /**
+   * Keys never masked by the built-in sensitive-name matching, for a false positive
+   * (e.g. `['authProvider']`). Normalized like `keys`. An explicit `keys` entry still masks.
+   */
+  allow?: string[];
   /**
    * Per-entry-type overrides of the NUMERIC redaction bounds (e.g. a bigger
    * `maxContentBytes` for `exception`/`client_exception`, whose stacks are
@@ -444,7 +451,12 @@ export interface ResolvedTelescopeConfig {
   /** Host enrichment hook for request entries, or `null` when unset (default). */
   requestEnrichment: RequestEnrichment | null;
   extensions: TelescopeExtension[];
-  redact: { enabled: boolean; keys: string[]; perType: Record<string, RedactBounds> };
+  redact: {
+    enabled: boolean;
+    keys: string[];
+    allow: string[];
+    perType: Record<string, RedactBounds>;
+  };
   /** Normalized per-type sampling config; empty `{}` means record everything. */
   sampling: SamplingConfig;
   /** Whether liveness probes are persisted. Default `false`. */
@@ -556,6 +568,7 @@ export function resolveConfig(config: TelescopeConfig = {}): ResolvedTelescopeCo
     redact: {
       enabled: config.redact?.enabled ?? true,
       keys: config.redact?.keys ?? [],
+      allow: config.redact?.allow ?? [],
       perType: config.redact?.perType ?? {},
     },
     sampling: resolveSampling(config.sampling),

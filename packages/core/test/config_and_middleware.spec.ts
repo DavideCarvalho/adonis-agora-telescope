@@ -83,9 +83,10 @@ describe('resolveConfig', () => {
   });
 
   it('respects redaction overrides', () => {
-    const c = resolveConfig({ redact: { enabled: false, keys: ['ssn'] } });
+    const c = resolveConfig({ redact: { enabled: false, keys: ['ssn'], allow: ['authProvider'] } });
     expect(c.redact.enabled).toBe(false);
     expect(c.redact.keys).toEqual(['ssn']);
+    expect(c.redact.allow).toEqual(['authProvider']);
   });
 
   it('enables the live stream by default', () => {

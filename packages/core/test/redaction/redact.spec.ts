@@ -57,13 +57,13 @@ describe('redact', () => {
 
   it('masks exact dot-paths regardless of key name', () => {
     const out = redact(
-      { body: { ssn: '123', other: 'x' }, ssn: 'top' },
-      { paths: ['body.ssn'] },
-    ) as { body: { ssn: string; other: string }; ssn: string };
-    expect(out.body.ssn).toBe(DEFAULT_MASK);
+      { body: { nickname: '123', other: 'x' }, nickname: 'top' },
+      { paths: ['body.nickname'] },
+    ) as { body: { nickname: string; other: string }; nickname: string };
+    expect(out.body.nickname).toBe(DEFAULT_MASK);
     expect(out.body.other).toBe('x');
-    // The top-level ssn is NOT a configured path and not a default key.
-    expect(out.ssn).toBe('top');
+    // The top-level nickname is NOT a configured path and not a sensitive name.
+    expect(out.nickname).toBe('top');
   });
 
   it('honours a custom mask string', () => {
@@ -198,5 +198,72 @@ describe('redact binary blobs (large Buffer/TypedArray)', () => {
   it('summarizes a raw ArrayBuffer', () => {
     const result = redactBounded({ raw: new ArrayBuffer(4096) }, {});
     expect((result.value as { raw: string }).raw).toBe('[ArrayBuffer: 4096 bytes]');
+  });
+});
+
+describe('sensitive key names in any spelling', () => {
+  it('masks tokens, passwords, auth headers, CSRF fields and personal numbers', () => {
+    const body = {
+      accessToken: 'a',
+      refreshToken: 'r',
+      password_confirmation: 'p',
+      newPassword: 'n',
+      'x-auth-token': 'x',
+      _csrf: 'c',
+      'X-XSRF-TOKEN': 'x',
+      sessionId: 's',
+      signingKey: 'k',
+      client_secret: 'c',
+      PRIVATE_KEY: 'k',
+      otp: '123456',
+      otpCode: '1',
+      pin: '0000',
+      cpf: '123.456.789-00',
+      customerCPF: '1',
+      cardNumber: '4111',
+      cvv: '123',
+      Passphrase: 'p',
+      pwd: 'p',
+      authorToken: 't',
+    };
+    const masked = redact(body) as Record<string, unknown>;
+    for (const key of Object.keys(body)) expect([key, masked[key]]).toEqual([key, '[REDACTED]']);
+  });
+
+  it('keeps identifiers and counts that only look alike', () => {
+    const content = {
+      key: 'users:1',
+      cacheKey: 'users:1',
+      primaryKey: 'id',
+      publicKey: 'x25519:abc',
+      idempotencyKey: 'abc',
+      inputTokens: 10,
+      outputTokens: 5,
+      cacheReadTokens: 1,
+      tokens: { input: 1, output: 2 },
+      tokenCount: 3,
+      authorName: 'Ada',
+      author: 'Ada',
+      keyPrefixes: ['a'],
+      pinned: true,
+      footprint: 1,
+      passport_country: 'BR',
+      monkey: 'george',
+    };
+    expect(redact(content)).toEqual(content);
+  });
+
+  it('keeps `keys` and `paths` working, and `allow` lifts a false positive', () => {
+    expect(redact({ ssnLast4: '1', authProvider: 'google', ok: 1 }, { keys: ['ok'] })).toEqual({
+      ssnLast4: '[REDACTED]',
+      authProvider: '[REDACTED]',
+      ok: '[REDACTED]',
+    });
+    expect(
+      redact(
+        { authProvider: 'google', token: 't', body: { note: 'n' } },
+        { allow: ['auth_provider', 'token'], paths: ['body.note'] },
+      ),
+    ).toEqual({ authProvider: 'google', token: '[REDACTED]', body: { note: '[REDACTED]' } });
   });
 });
