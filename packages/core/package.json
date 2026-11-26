@@ -203,7 +203,7 @@
     }
   },
   "devDependencies": {
-    "@adonis-agora/authkit-client": "1.0.0-rc.13",
+    "@adonis-agora/authkit-client": "1.0.0-rc.14",
     "@adonisjs/assembler": "8.6.0",
     "@adonisjs/cache": "2.1.0",
     "@adonisjs/core": "7.7.0",
