@@ -44,7 +44,7 @@ export default defineConfig({
 | `requestCapture` | `{ maxBodyBytes?, skipBodyContentTypes?, skipBody? }` | _off_ | Opt-in request BODY capture. See [Request body capture](/docs/telescope/packages/core#request-body-capture). |
 | `ignoreRequestPaths` | `Array<string \| RegExp>`   | `[]`                          | Request paths never recorded as `request` entries. See [Ignoring request paths](/docs/telescope/packages/core#ignoring-request-paths). |
 | `extensions` | `TelescopeExtension[]`           | `[]`                          | [Extensions](/docs/telescope/concepts/extensions) registered at boot. |
-| `redact`     | `{ enabled?, keys?, perType? }`  | `{ enabled: true, keys: [], perType: {} }` | [Sensitive-data redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction) — masks sensitive keys in every entry's content before persistence. `perType` raises the numeric size bounds for one entry type. |
+| `redact`     | `{ enabled?, keys?, allow?, perType? }`  | `{ enabled: true, keys: [], allow: [], perType: {} }` | [Sensitive-data redaction](/docs/telescope/recipes/tags-and-redaction#built-in-redaction) — masks sensitive keys in every entry's content before persistence. `perType` raises the numeric size bounds for one entry type. |
 | `sampling`   | `number \| SamplingConfig`       | _record everything_           | Tail-sampling on the write path (bare keep-rate, or per-type rules keeping errors/slow). |
 | `pulse`      | `{ enabled?, windowMs?, topN?, buckets?, slowRouteMs?, cards? }` | `enabled`, 1h window | The [Pulse](/docs/telescope/packages/pulse) health rollup + its `/api/metrics/pulse` route. |
 | `nPlusOne`   | `{ enabled?, threshold? }`       | `{ enabled: true, threshold: 3 }` | N+1 query-loop detection thresholds (read-only analysis).   |
@@ -67,7 +67,9 @@ export default defineConfig({
 Redaction is **on by default**. Every entry's `content` is scrubbed at the store boundary —
 a built-in set of sensitive keys (`authorization`, `cookie`, `set-cookie`, `password`,
 `token`, `api_key`, `secret`, `client_secret`, `private_key`, …) is masked with `[REDACTED]`,
-case-insensitively, at any depth. Add your own with `redact: { keys: ['ssn'] }`, or disable
+in any spelling (`accessToken`, `x-auth-token`, `password_confirmation`, `_csrf`, …), at any
+depth. Add your own with `redact: { keys: ['nickname'] }`, keep a false positive with
+`redact: { allow: ['authProvider'] }`, or disable
 it with `redact: { enabled: false }`. `perType` overrides only the NUMERIC bounds
 (`maxDepth`, `maxStringLength`, `maxArrayLength`, `maxNodes`, `maxContentBytes`) for one entry
 type — useful to let exception stacks keep a bigger byte budget than high-volume request

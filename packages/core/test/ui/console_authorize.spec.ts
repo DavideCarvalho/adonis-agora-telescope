@@ -6,8 +6,16 @@ import {
   type ConsoleAuthorize,
   type ConsoleAuthorizeResult,
   type ConsoleAuthorizer,
-  resolveConsoleAuthorize,
+  resolveConsoleAuthorize as resolveShared,
 } from '../../src/ui/console_authorize.js';
+import { normalizeConsoleDecision } from '../../src/ui/console_decision.js';
+
+/** The shared resolver, read through telescope's guard decision (what the guard acts on). */
+const resolveConsoleAuthorize = (authorize: ConsoleAuthorize) => {
+  const check = resolveShared(authorize);
+  return async (c: unknown) => normalizeConsoleDecision(await check(c as never));
+};
+
 import { resolveConfig } from '../../src/ui/define_config.js';
 import { enforceGuard, enforcePageGuard } from '../../src/ui/guard.js';
 import { makeRequest, RecordingResponse, type UiHttpContext } from '../../src/ui/http.js';
@@ -87,11 +95,12 @@ describe('resolveConsoleAuthorize', () => {
     const check = resolveConsoleAuthorize(lazy);
     expect(await check(ctx({ 'x-admin': 'yes' }).ctx)).toEqual({ allowed: true });
     expect(await check(ctx().ctx)).toEqual({ allowed: false, reason: 'forbidden' });
-    // A second resolution of the same config (another provider) reuses the memo too.
+    // The import runs once per resolved guard (the shared contract).
+    expect(imports).toBe(1);
     expect(await resolveConsoleAuthorize(lazy)(ctx({ 'x-admin': 'yes' }).ctx)).toEqual({
       allowed: true,
     });
-    expect(imports).toBe(1);
+    expect(imports).toBe(2);
   });
 
   it('treats a throw as a 403 denial, in every form', async () => {
@@ -269,5 +278,33 @@ describe('authorizeByToken', () => {
   it('throws at config time on an empty or undefined token', () => {
     expect(() => authorizeByToken({ token: undefined })).toThrow(/non-empty/);
     expect(() => authorizeByToken({ token: '' })).toThrow(/non-empty/);
+  });
+});
+
+describe('anyAuthorize', () => {
+  it("allows when any check does, keeping the deciding check's narrowing", async () => {
+    const { anyAuthorize } = await import('../../src/ui/console_authorize.js');
+    const check = anyAuthorize(authorizeByToken({ token: 'machine' }), (c) =>
+      c.request.header('x-admin') === 'yes'
+        ? { allowed: true, capabilities: ['telescope:console:read'], access: 'read' }
+        : false,
+    );
+    expect(await check(ctx({ authorization: 'Bearer machine' }).ctx as never)).toEqual({
+      allowed: true,
+    });
+    expect(await check(ctx({ 'x-admin': 'yes' }).ctx as never)).toEqual({
+      allowed: true,
+      capabilities: ['telescope:console:read'],
+      access: 'read',
+    });
+    // Refused by all: a 401 wins over a 403 (the token check wanted a sign-in).
+    expect(await check(ctx().ctx as never)).toEqual({ allowed: false, reason: 'unauthenticated' });
+    expect(() => anyAuthorize()).toThrow(/at least one/);
+  });
+
+  it('a malformed capabilities list allows nothing; an unknown access is dropped', async () => {
+    expect(
+      normalizeConsoleDecision({ allowed: true, capabilities: 'all', access: 'admin' }),
+    ).toEqual({ allowed: true, capabilities: [] });
   });
 });

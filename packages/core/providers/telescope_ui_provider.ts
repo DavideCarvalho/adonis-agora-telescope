@@ -7,6 +7,12 @@ import {
 import { scopedTelescopeTools } from '../src/dev_tools/telescope_tools.js';
 import type { Entry } from '../src/entry.js';
 import {
+  CONSOLE_COMMAND_CAPABILITIES,
+  telescopeConsoleAllows,
+  viewerConsoleCapabilities,
+} from '../src/federation/answer.js';
+import { authkitUsable, keyCreateFailedLine } from '../src/federation/auto_crypto.js';
+import {
   type FederatedApp,
   Federation,
   TraceMergingStore,
@@ -80,6 +86,25 @@ export default class TelescopeUiProvider {
     this.federation = null;
   }
 
+  /**
+   * Automatic crypto mode with crypto embedded in this console: create the `console-telescope` key
+   * in each federated app's partition when missing, at boot (§11). A failure never fails boot: it
+   * is logged and retried on the first command.
+   */
+  private async prepareConsoleKeys(federation: Federation): Promise<void> {
+    for (const app of federation.list()) {
+      try {
+        await app.prepare();
+      } catch (error) {
+        await this.warn(keyCreateFailedLine(app.partition, error));
+      }
+    }
+  }
+
+  private environment(): string | undefined {
+    return (this.app as { getEnvironment?(): string }).getEnvironment?.();
+  }
+
   /** Log a warning through the app logger when one is bound, else the console. Never throws. */
   private async warn(message: string): Promise<void> {
     try {
@@ -87,6 +112,16 @@ export default class TelescopeUiProvider {
       logger.warn(message);
     } catch {
       console.warn(message);
+    }
+  }
+
+  /** Log at info through the app logger when one is bound. Never throws. */
+  private async info(message: string): Promise<void> {
+    try {
+      const logger = (await this.app.container.make('logger')) as { info(msg: string): void };
+      logger.info(message);
+    } catch {
+      // No logger: nothing to say.
     }
   }
 
@@ -184,11 +219,40 @@ export default class TelescopeUiProvider {
     };
 
     // Federated apps: read from their own stores, actions sent to them (`apps.federated`).
-    const federation =
-      config.apps.federated !== undefined && Object.keys(config.apps.federated).length > 0
-        ? new Federation(config.apps.federated, { app: this.app })
-        : null;
+    const web = this.environment() === 'web';
+    const hasFederated =
+      config.apps.federated !== undefined && Object.keys(config.apps.federated).length > 0;
+    const federation = hasFederated
+      ? new Federation(config.apps.federated as NonNullable<typeof config.apps.federated>, {
+          app: this.app,
+          // The web process sends commands: a federated app it cannot authenticate to fails here.
+          strict: web,
+          // What authkit's calls between apps actually provide, not just its binding.
+          warn: (line) => void this.warn(line),
+          info: (line) => void this.info(line),
+          onKeyCreated: (partition) =>
+            void this.info(
+              `[@adonis-agora/telescope] console commands: created the crypto key "console-telescope" in partition ${partition}`,
+            ),
+          ...(await authkitUsable(this.app.container).then((usable) => ({
+            authkitTokens: usable.tokens,
+            authkitDirectory: usable.directory,
+          }))),
+        })
+      : null;
     this.federation = federation;
+    if (web) {
+      for (const app of federation?.list() ?? []) {
+        await this.info(
+          `[@adonis-agora/telescope] console commands to "${app.id}": ${
+            app.authMode === null
+              ? `none (${app.browseOnlyNote ?? 'browse-only, commands: false'})`
+              : app.authMode
+          }`,
+        );
+      }
+      if (federation !== null) await this.prepareConsoleKeys(federation);
+    }
     /** The federated apps this viewer may see, as the trace views and Architecture read them. */
     const federatedSources = (
       appScope: ConsoleAppScope,
@@ -258,6 +322,19 @@ export default class TelescopeUiProvider {
 
     const router = await this.app.container.make('router');
     const guard = config.authorize;
+    /**
+     * Each request's viewer capabilities, from `authorize`: sent with the commands it relays, and
+     * applied to this console's own actions too (every console capability when `authorize` names
+     * none).
+     */
+    const viewerCapabilities = new WeakMap<object, string[]>();
+    const viewerOf = (ctx: object): string[] => viewerCapabilities.get(ctx) ?? [];
+    /** `403` when the viewer lacks `capability` for an action on this console's own app. */
+    const viewerLacks = (ctx: UiHttpContext, capability: string): boolean => {
+      if (telescopeConsoleAllows(viewerOf(ctx), capability)) return false;
+      ctx.response.status(403).send({ error: `The viewer lacks ${capability}.` });
+      return true;
+    };
 
     // The one gate every API route runs: `authorize` writes the 401/403 JSON on denial. It also
     // decides which organizations (tenancy on, `?tenant=` narrows) and which apps (`?app=` narrows)
@@ -265,6 +342,10 @@ export default class TelescopeUiProvider {
     const gate = async (ctx: UiHttpContext) => {
       const decision = await enforceGuardDecision(ctx, guard);
       if (decision === null) return null;
+      viewerCapabilities.set(
+        ctx,
+        viewerConsoleCapabilities(decision.capabilities, decision.access),
+      );
       const qs = ctx.request.qs();
       const scope = consoleTenantScope(decision, coreConfig.tenancy);
       const tenantSelected = selectTenantScope(scope, qs.tenant, coreConfig.tenancy);
@@ -341,7 +422,13 @@ export default class TelescopeUiProvider {
       verb: string,
       args: unknown[],
     ): Promise<unknown> => {
-      const out = await app.run(verb, args, callerOf(ctx).id);
+      const out = await app.run(
+        verb,
+        args,
+        callerOf(ctx).id,
+        // Set by `gate` for every request; absent would mean no `authorize` ran: grant nothing.
+        viewerCapabilities.get(ctx) ?? [],
+      );
       return (ctx.response.status(out.status) as UiResponse)
         .header('content-type', 'application/json')
         .send(out.body);
@@ -423,6 +510,7 @@ export default class TelescopeUiProvider {
         const a = await gate(ctx);
         if (a === null) return;
         if (a.federated) return federatedAction(ctx, a, 'replay', [String(ctx.params.id)]);
+        if (viewerLacks(ctx, CONSOLE_COMMAND_CAPABILITIES.replay)) return;
         return a.api.replayRequest(ctx, String(ctx.params.id), localPortOf(ctx));
       })
       .as('telescope_ui.replay');
@@ -435,6 +523,8 @@ export default class TelescopeUiProvider {
         const a = await gate(ctx);
         if (a === null) return;
         if (a.federated) return notForFederated(ctx, a.federated, 'AI diagnosis');
+        // A diagnosis spends AI tokens and writes a cached result: a change, gated like one.
+        if (viewerLacks(ctx, CONSOLE_COMMAND_CAPABILITIES.write)) return;
         const force = String(ctx.request.qs().force ?? '') === 'true';
         return a.diagnosisApi.diagnose(ctx, String(ctx.params.id), force);
       })
@@ -477,6 +567,7 @@ export default class TelescopeUiProvider {
         if (a === null) return;
         if (a.federated) return notForFederated(ctx, a.federated, 'CPU profiling');
         if (a.selected.restricted) return refuseRestricted(ctx, a);
+        if (viewerLacks(ctx, CONSOLE_COMMAND_CAPABILITIES.write)) return;
         if (!config.cpuProfiling.armEnabled) {
           return ctx.response.status(403).send({
             error:
@@ -504,7 +595,11 @@ export default class TelescopeUiProvider {
         const a = await gate(ctx);
         if (a === null) return;
         if (a.federated) return relay(ctx, a.federated, 'queues.list', []);
-        return a.queueManagerApi.list(ctx, config.queueActions.enabled);
+        return a.queueManagerApi.list(
+          ctx,
+          config.queueActions.enabled &&
+            telescopeConsoleAllows(viewerOf(ctx), CONSOLE_COMMAND_CAPABILITIES.queues),
+        );
       })
       .as('telescope_ui.queues_live');
 
@@ -536,6 +631,7 @@ export default class TelescopeUiProvider {
         }
         if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
+        if (viewerLacks(ctx, CONSOLE_COMMAND_CAPABILITIES.queues)) return;
         return a.queueManagerApi.retry(ctx, String(ctx.params.queue), String(ctx.params.id));
       })
       .as('telescope_ui.queues_live_retry');
@@ -549,6 +645,7 @@ export default class TelescopeUiProvider {
         }
         if (a.selected.restricted) return refuseRestricted(ctx, a);
         if (!config.queueActions.enabled) return queueMutationsDisabled(ctx);
+        if (viewerLacks(ctx, CONSOLE_COMMAND_CAPABILITIES.queues)) return;
         return a.queueManagerApi.enqueue(ctx, String(ctx.params.queue), bodyOf(ctx));
       })
       .as('telescope_ui.queues_live_enqueue');
@@ -701,6 +798,7 @@ export default class TelescopeUiProvider {
           if (a === null) return;
           if (a.federated) return notForFederated(ctx, a.federated, 'Extension actions');
           if (a.selected.restricted) return refuseRestricted(ctx, a);
+          if (viewerLacks(ctx, CONSOLE_COMMAND_CAPABILITIES.write)) return;
           return a.extApi?.action(
             ctx,
             String(ctx.params.ext),
@@ -864,13 +962,19 @@ export default class TelescopeUiProvider {
                 profiling: { enabled: false },
                 queueManager: { enabled: a.federated.actions === 'app' },
                 federated: { app: a.federated.id, actions: a.federated.actions },
+                viewer: { capabilities: viewerOf(ctx) },
               },
             });
         }
         return ctx.response
           .status(200)
           .header('content-type', 'application/json')
-          .send({ data: consoleMeta(a, await controlPlaneWatchers(a.selected.appTags)) });
+          .send({
+            data: {
+              ...consoleMeta(a, await controlPlaneWatchers(a.selected.appTags)),
+              viewer: { capabilities: viewerOf(ctx) },
+            },
+          });
       })
       .as('telescope_ui.meta');
   }

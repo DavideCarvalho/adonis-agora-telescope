@@ -12,6 +12,9 @@ import { InMemoryTelescopeStore } from '../../src/stores/memory.js';
 import { withFederatedApps } from '../../src/ui/app_scope.js';
 import { FakeRedis } from './fake_redis.js';
 
+/** The viewer's capabilities every command carries (the channel refuses a command without). */
+const ALL = { capabilities: ['*'] };
+const SECRET = 'a-shared-secret-of-the-shop';
 const stops: Array<() => void> = [];
 afterEach(() => {
   for (const stop of stops.splice(0)) stop();
@@ -29,13 +32,17 @@ describe('console commands over Redis', () => {
             runs.push(`${instance}:${command.verb}`);
             return { status: 200, body: { data: command.args } };
           },
-          { prefix: 'shop', instanceId: instance },
+          { prefix: 'shop', instanceId: instance, secret: SECRET },
         ),
       );
     }
-    const sender = new ConsoleCommandSender(redis.client(), { app: 'shop', prefix: 'shop' });
+    const sender = new ConsoleCommandSender(redis.client(), {
+      app: 'shop',
+      prefix: 'shop',
+      secret: SECRET,
+    });
     stops.push(() => sender.close());
-    const reply = await sender.send('queues.retry', ['emails', '42'], 'user:1');
+    const reply = await sender.send('queues.retry', ['emails', '42'], 'user:1', ALL);
     expect(reply).toMatchObject({ ok: true, status: 200, body: { data: ['emails', '42'] } });
     await new Promise((resolve) => setImmediate(resolve));
     expect(runs).toHaveLength(1);
@@ -48,7 +55,11 @@ describe('console commands over Redis', () => {
 
   it('fails fast when no instance listens', async () => {
     const redis = new FakeRedis();
-    const sender = new ConsoleCommandSender(redis.client(), { app: 'shop', prefix: 'shop' });
+    const sender = new ConsoleCommandSender(redis.client(), {
+      app: 'shop',
+      prefix: 'shop',
+      secret: SECRET,
+    });
     stops.push(() => sender.close());
     const started = Date.now();
     const error = await sender.send('health', []).catch((err: unknown) => err);
@@ -68,9 +79,12 @@ describe('console commands over Redis', () => {
       app: 'shop',
       prefix: 'shop',
       timeoutMs: 50,
+      secret: SECRET,
     });
     stops.push(() => sender.close());
-    await expect(sender.send('health', [])).rejects.toThrow(/did not answer within 50 ms/);
+    await expect(sender.send('health', [])).rejects.toThrow(
+      /no instance of "shop" answered within 0\.05s — the app may have refused the command \(check its logs, or run `node ace agora:doctor` there\)/,
+    );
   });
 
   it('a handler error comes back as an error reply', async () => {
@@ -81,12 +95,16 @@ describe('console commands over Redis', () => {
         async () => {
           throw new ConsoleCommandError('nope', 'unsupported-request');
         },
-        { prefix: 'shop' },
+        { prefix: 'shop', secret: SECRET },
       ),
     );
-    const sender = new ConsoleCommandSender(redis.client(), { app: 'shop', prefix: 'shop' });
+    const sender = new ConsoleCommandSender(redis.client(), {
+      app: 'shop',
+      prefix: 'shop',
+      secret: SECRET,
+    });
     stops.push(() => sender.close());
-    expect(await sender.send('x', [])).toEqual({
+    expect(await sender.send('x', [], undefined, ALL)).toEqual({
       id: expect.any(String),
       ok: false,
       error: { message: 'nope', code: 'unsupported-request' },
@@ -124,9 +142,10 @@ describe('console commands over Redis', () => {
       app: 'shop',
       prefix: 'shop',
       timeoutMs: 80,
+      secret: SECRET,
     });
     stops.push(() => sender.close());
-    await expect(sender.send('health', [])).rejects.toThrow(/did not answer/);
+    await expect(sender.send('health', [])).rejects.toThrow(/answered within/);
   });
 
   it('close() fails the commands still waiting, at once', async () => {
@@ -134,7 +153,11 @@ describe('console commands over Redis', () => {
     const deaf = redis.client().duplicate();
     await deaf.subscribe(consoleChannels('shop').commands);
     stops.push(() => deaf.disconnect());
-    const sender = new ConsoleCommandSender(redis.client(), { app: 'shop', prefix: 'shop' });
+    const sender = new ConsoleCommandSender(redis.client(), {
+      app: 'shop',
+      prefix: 'shop',
+      secret: SECRET,
+    });
     const waiting = sender.send('health', []);
     await new Promise((resolve) => setTimeout(resolve, 10));
     const started = Date.now();
@@ -154,13 +177,17 @@ describe('console commands over Redis', () => {
             seen.push(prefix);
             return { status: 200, body: prefix };
           },
-          { prefix },
+          { prefix, secret: SECRET },
         ),
       );
     }
-    const sender = new ConsoleCommandSender(redis.client(), { app: 'b', prefix: 'b' });
+    const sender = new ConsoleCommandSender(redis.client(), {
+      app: 'b',
+      prefix: 'b',
+      secret: SECRET,
+    });
     stops.push(() => sender.close());
-    expect(await sender.send('health', [])).toMatchObject({ body: 'b' });
+    expect(await sender.send('health', [], undefined, ALL)).toMatchObject({ body: 'b' });
     expect(seen).toEqual(['b']);
   });
 });
@@ -171,7 +198,11 @@ describe('FederatedApp', () => {
     const store = new InMemoryTelescopeStore();
     const reachable = new FederatedApp(
       'shop',
-      { label: 'Shop', store, commands: { client: redis.client(), prefix: 'shop' } },
+      {
+        label: 'Shop',
+        store,
+        commands: { client: redis.client(), prefix: 'shop', secret: SECRET },
+      },
       { app: null },
     );
     stops.push(() => reachable.close());

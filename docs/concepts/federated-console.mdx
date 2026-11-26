@@ -16,7 +16,9 @@ report there.
   the federated app's store.
 - **Actions** (request replay, queue retry and enqueue) and live views (queues, schedules, health
   checks) are sent to the federated app over its Redis. Exactly one of its instances runs each one.
-- The federated app opts in. Without that, the console can still browse it read-only.
+- The federated app opts in, and only answers a console that proves who it is (see
+  [Authenticating the console](#authenticating-the-console)). Without that, the console can still
+  browse it read-only.
 
 ## Configure the console app
 
@@ -24,6 +26,7 @@ List the other apps under `apps.federated` in the console app's `config/telescop
 names its store, and optionally where its commands go:
 
 ```ts title="config/telescope_ui.ts (the Hub)"
+import env from '#start/env'
 import { storage } from '@adonis-agora/telescope'
 import { defineConfig } from '@adonis-agora/telescope/ui'
 
@@ -35,12 +38,16 @@ export default defineConfig({
       'entre-textos': {
         label: 'Entre Textos',
         store: storage.lucid({ connection: 'pg', schema: 'entretextos' }),
-        commands: { connection: 'main', prefix: 'entretextos' },
+        commands: {
+          connection: 'main',
+          prefix: 'entretextos',
+          secret: env.get('ENTRETEXTOS_CONSOLE_SECRET'),
+        },
       },
       'eduliberta': {
         label: 'EduLiberta',
         store: storage.lucid({ connection: 'pg', schema: 'eduliberta' }),
-        // No `commands`: browsed read-only.
+        commands: false, // browsed read-only
       },
     },
   },
@@ -52,7 +59,9 @@ export default defineConfig({
 | `apps.federated` | The other apps, by a key of 1–64 characters (`A-Z a-z 0-9 _ . -`). The key is what the URL carries: `?app=entre-textos`. |
 | `apps.federated.<key>.label` | The name in the picker. Defaults to the key. |
 | `apps.federated.<key>.store` | That app's store, with the `schema` (and `tableName`) it records into. Use `storage.tiered(...)` with the same tiers if it keeps a cold tier. The console only reads it. |
-| `apps.federated.<key>.commands` | Where actions go: `connection` (a Redis connection of the console app reaching that app's Redis) and the `prefix` that app answers on. Omit it to browse the app read-only. |
+| `apps.federated.<key>.commands` | Where actions go: `connection` (a Redis connection of the console app reaching that app's Redis) and the `prefix` that app answers on. **On by default**, like every Agora console's `actions`: omitted, it is `{}`, the app side's defaults (prefix `telescope`, the console's default Redis connection). Only one app can answer on that channel, so when several entries omit it (or an explicit entry already uses it) they stay browse-only and the boot log says how to enable each. `commands: false` (the equivalent of other consoles' `actions: false`) browses the app read-only. An entry whose commands are on but cannot authenticate refuses to boot. |
+| `apps.federated.<key>.commands.secret` / `.token` + `.publicKey` / `.crypto` | How the console proves itself to that app. Nothing to set when `@adonis-agora/crypto` runs in the console app; otherwise one is required, or the console refuses to boot. See [Authenticating the console](#authenticating-the-console). |
+| `apps.federated.<key>.partition` | That app's `@adonis-agora/crypto` partition (its crypto app name), for the automatic crypto mode. Default the key. |
 | `apps.federated.<key>.timeoutMs` | How long an action waits for the app to answer. Default `15000`. |
 | `apps.federated.<key>.maxWindow` | The longest window a chart or Pulse card reads, e.g. `'24h'`. Default `'24h'`. |
 | `apps.federated.<key>.searchWindow` | How far back a search or tag filter looks when it has no start. Default `'24h'`. |
@@ -75,6 +84,7 @@ The federated app runs Telescope standalone, as usual. To answer the console's a
 `consoleCommands` in its `config/telescope.ts`:
 
 ```ts title="config/telescope.ts (Entre Textos)"
+import env from '#start/env'
 import { defineConfig, storage } from '@adonis-agora/telescope'
 
 export default defineConfig({
@@ -83,6 +93,7 @@ export default defineConfig({
   consoleCommands: {
     connection: 'main',
     prefix: 'entretextos',
+    secret: env.get('ENTRETEXTOS_CONSOLE_SECRET'),
     actions: { replay: true, queues: true },
   },
 })
@@ -94,19 +105,516 @@ export default defineConfig({
 | `consoleCommands.prefix` | The prefix of its channels. The console's `commands.prefix` must match. Default `telescope`. |
 | `consoleCommands.actions.replay` | Let other consoles replay a captured request against this app. Default `false`. |
 | `consoleCommands.actions.queues` | Let other consoles retry and enqueue jobs on this app's queues. Default `false`. |
+| `consoleCommands.secret` / `.verifyTenant` / `.crypto` | How the app tells a real console from anyone on its Redis. Nothing to set when `@adonis-agora/crypto` runs in the app; otherwise one is required, or the app refuses to boot. See [Authenticating the console](#authenticating-the-console). |
+| `consoleCommands.partition` | This app's partition, which a classic (service-tenant) token's `partition` must be. Default `tenant.partition` on a tenant, else the app's name (`fleet.app`, then `APP_NAME`), else the `prefix`. |
 
-With `consoleCommands` set, the web instances of the app listen; reading its live queues,
-schedules and health checks works right away, and each action works once it is listed in
-`actions`. The app logs one line per action, with who took it:
+With `consoleCommands` and one authentication mode set, the web instances of the app listen;
+reading its live queues, schedules and health checks works right away, and each action works once
+it is listed in `actions`. The app logs one line per action, with who took it:
 
 ```
-[@adonis-agora/telescope] federated console: queues.retry emails/42 by user:7
+[@adonis-agora/telescope] federated console: queues.retry emails/42 by user:7 (console hub)
 ```
+
+`by …` is the viewer the console names, and is not checked by the app. `(console …)` appears in
+token mode and names the authkit client the token was verified as.
 
 Both apps must use the same Redis server, and each federated app needs its own `prefix` (the
-console refuses two apps with the same connection and prefix). Anything that can publish on that
-Redis can ask for these actions, and the "by …" in the log line is what the console sent: read it
-as information, not as an audit trail.
+console refuses two apps with the same connection and prefix).
+
+## Authenticating the console
+
+Commands travel over Redis, and Redis is not a trust boundary: whoever can publish on it (another
+app on a shared instance, a leaked password, an SSRF) must not be able to send a command, replay
+one, or forge an answer. So the app answers **nothing** it cannot authenticate, and the console
+sends nothing it cannot authenticate either. Every command is authenticated, the read-only ones
+(live queues, schedules, health) included.
+
+None of authkit, authz or `@adonis-agora/crypto` is required. When they are there, Telescope reuses
+what they already have configured and there is nothing to add; when they are not, a shared secret
+or your own verifier and cipher do the same job (see [Bring your own](#bring-your-own)).
+
+| Setup | Lines in Telescope's config | Grants |
+| --- | --- | --- |
+| Together: the Hub runs `@adonis-agora/crypto` embedded, the apps are its crypto tenants | none | none |
+| `@adonis-agora/crypto` in a separate app | none | the console's crypto client: `crypto:seal:console-*` |
+| authkit (calls between apps) without crypto | none (app-call token + key directory) | console app: `telescope:console:*` on the owning app, in authkit (once; without crypto the token is mandatory and caps every command) |
+| Neither | `secret` on both sides | — |
+
+### Together with `@adonis-agora/crypto`: nothing to configure
+
+`commands` is on by default, so with one federated app on its default prefix (`telescope`) the
+entry needs only its `store`. When `@adonis-agora/crypto` is booted in the console app and in the federated app, and none of
+`secret`, `token`/`verifyTenant` or `crypto` is set, commands are sealed with crypto automatically.
+The examples at the top of this page then need no `secret` line at all:
+
+```ts title="config/telescope_ui.ts (the Hub, crypto embedded)"
+federated: {
+  'entre-textos': {
+    store: storage.lucid({ connection: 'pg', schema: 'entretextos' }),
+    commands: { connection: 'main', prefix: 'entretextos' },
+  },
+},
+```
+
+```ts title="config/telescope.ts (Entre Textos, a crypto tenant of the Hub)"
+consoleCommands: {
+  connection: 'main',
+  prefix: 'entretextos',
+  actions: { replay: true, queues: true },
+},
+```
+
+- **The key** is `console-telescope`, an `aes256-gcm` key in the **owning app's** crypto partition.
+  Where crypto is embedded (the Hub, or an app that runs its own crypto server) it is created at
+  boot when missing. On a crypto tenant, a missing key is not a problem: the crypto server creates
+  it on the console's first command, and the app logs one info line saying so (with the
+  `node ace crypto:keys:create console-telescope --type aes256-gcm --application <partition>`
+  needed only by a crypto server with provisioning off).
+- **The partition:** the console seals for `apps.federated.<key>.partition`, which defaults to the
+  key. It must be the app's crypto partition (its app name on the crypto server).
+- **The grants:** an app always opens its own `console-*` keys, with no grant (a
+  `crypto:decrypt:console-*` grant left from earlier setups is harmless).
+  - the Hub runs crypto embedded: nothing to grant.
+  - crypto runs in a separate app: the console's crypto client gets `crypto:seal:console-*`
+    (encrypt for another app's key, never decrypt). That grant is what stops one app forging
+    commands to another, so it stays explicit. It covers the console keys of every Agora lib.
+- `crypto: false` on either side turns the automatic mode off. Any explicit `secret`, `token` /
+  `verifyTenant` or `crypto` is used as given, and the automatic mode is not added on top.
+
+### A Hub with some apps on crypto and some without
+
+A Hub that runs both `@adonis-agora/crypto` and authkit picks the mode **per app**, at the first
+command (and again every 5 minutes, or after a command gets no answer): when the app publishes a
+key in authkit's key directory, it runs token mode, so the Hub sends an app-call token sealed to
+that key; otherwise it seals with crypto. So a crypto app and an authkit-only app federated from
+the same Hub need no lines in its config. The boot log says so:
+
+```
+[@adonis-agora/telescope] console commands to "eduliberta": auto (authkit key directory if the app publishes one, else crypto (auto, key console-telescope, partition eduliberta))
+```
+
+An app with crypto active does not publish its token key (crypto is enough, and the doctor says
+so), so a mixed Hub always reaches crypto apps by crypto, with no grant, and authkit-only apps by
+token. If the Hub chose token mode from the directory but cannot mint the app-call token (a key an
+older version of the app published, no grant), it sends that command by crypto instead, with the
+warning below. An authkit-only app whose authkit-client has no `service` (so it cannot publish its
+key) warns once at boot. `crypto: false`, `token: false` and any explicit field on the entry still
+decide on their own.
+
+In crypto mode the app-call token is optional, so a token the Hub cannot mint (no grant, an
+`invalid_target`, authkit unreachable) never blocks a command: it is sent with crypto only, one
+warning says how to attach the token (grant the console's service client `telescope:console:*` on
+the app in authkit), and minting is tried again after 5 minutes. In token mode the token is
+required, and the command fails with the same hint.
+
+The app finds its `APP_KEY` the same way in every Agora lib: `config/app.ts`'s `appKey`, else the
+default entry of `config/encryption.ts` (AdonisJS 7), else the `APP_KEY` environment variable.
+
+### Together with authkit (calls between apps): nothing to configure either
+
+When `@adonis-agora/authkit-client` is configured for calls between apps (its `service` and `apps`
+options) and no `token` / `verifyTenant` is set:
+
+- the console attaches an app-call token for the federated app (`aud = urn:agora:app:<partition>`)
+  to every command it seals;
+- the app verifies it with authkit's app-caller verifier. The audience binds the token to this
+  app, so the token's partition (the console app) does not have to match `consoleCommands.partition`;
+  what authkit granted the console app on this app caps every command.
+
+Grant the console app `telescope:console:*` (or narrower, below) on each app it manages, once, in
+the authkit console. With crypto too, each command is sealed with crypto **and** carries the
+token. The token is optional there: a crypto command without one is accepted (the crypto key
+already authenticates the console, so a Hub with no app-call entry for this app keeps working),
+while a token that is sent must pass, and its capabilities then cap the command. The same holds
+for a control plane's own `verifyTenant`. Only an explicit `crypto` with an explicit
+`verifyTenant` makes the token mandatory; without crypto the token is always required.
+
+Without crypto, a token still travels sealed, to the app's `APP_KEY`-derived key. The app
+publishes that key's public half in authkit's **key directory** at boot (purpose
+`console:telescope`, through its authkit service client; never the private half), and the console
+looks it up there (cached), so nothing is copied by hand. An explicit `commands.publicKey` still
+wins. If the app has not published it (no authkit `service` configured there, or no `APP_KEY`),
+a command fails saying so; set `commands.publicKey` (see [token mode](#with-authkit-token-mode)).
+`token: false` on the console and `verifyTenant: false` on the app turn this off.
+
+### What a console may do
+
+Each command carries the viewer's capabilities, and the app refuses a command without them (`403`,
+code `capabilities-required`). The console sends the capabilities its `authorize` returned for the
+viewer (`capabilities`, kept to the telescope console ones; `access: 'read'` keeps only
+`telescope:console:read`), or every console capability when `authorize` returns none. The app
+narrows them with what the token allows (token mode) and its own `actions`. Every verb needs its
+capability:
+
+| Capability | Allows |
+| --- | --- |
+| `telescope:console:read` | the live queues, a job, the live schedules, the health checks |
+| `telescope:console:queues` | retry and enqueue jobs (also needs `actions.queues` on the app) |
+| `telescope:console:replay` | replay a captured request (also needs `actions.replay` on the app) |
+| `telescope:console:write` | everything above: the actions (`queues`, `replay`) and, since write implies read, the live views, like every Agora lib's `<lib>:console:write` |
+
+`telescope:console:*`, `telescope:*` and `*` allow everything; one authkit grant
+`telescope:console:*` is enough. A refusal names who lacks the capability: "The console's token
+lacks …" or "The viewer lacks …".
+
+The viewer's capabilities apply to **the console's own app** too: a viewer `authorize` narrowed
+cannot replay a request (`telescope:console:replay`), retry or enqueue jobs
+(`telescope:console:queues`), arm a CPU capture, run an extension action or ask for an AI diagnosis
+(`telescope:console:write`) here either (`403`, "The viewer lacks …"), and the dashboard disables
+those buttons for them.
+
+Every capability check (the token, the viewer, what the console sends, this console's own actions
+and the dashboard) uses one matcher shared by every Agora lib. A grant allows a capability when it
+is that capability, `*`, `telescope:*` or `telescope:console:*`, `telescope:console:write` (any
+console capability) or `telescope:console:read` (the reads), or a `telescope:` grant whose only `*`
+is its last segment (`telescope:console:*`). Any other `*` grants nothing: in the middle
+(`telescope:*:queues`), inside a segment (`telescope:console:q*`), or in another namespace
+(`*:console:*`). A console whose `authorize` returns no
+`capabilities` keeps full access, as before. An ingest token
+(`telescope:ingest`) allows none, which is why a control plane uses its own `verifyTenant` for
+console tokens when `consoleCommands.verifyTenant` is unset.
+
+### Choosing explicitly
+
+| | With `@adonis-agora/crypto` | With authkit (token) | Neither (shared secret) |
+| --- | --- | --- | --- |
+| Console side | nothing (automatic) or `commands.crypto` | `commands.token` + `commands.publicKey` | `commands.secret` |
+| App side | nothing (automatic) or `consoleCommands.crypto` | `consoleCommands.verifyTenant` (+ `app`) | `consoleCommands.secret` |
+| Commands encrypted with | a crypto key (`console-telescope`) | a key derived from the app's `APP_KEY` | — (HMAC only; the payload is readable on Redis) |
+| Secret to distribute by hand | none | none (the public key is not secret) | one per pair of apps |
+| Who the console is | whoever may `encrypt` (or `seal`) with the key | the token's client | whoever holds the secret |
+| What the console may do | what `actions` and the viewer's capabilities allow | that, capped by the token's capabilities | what `actions` and the viewer's capabilities allow |
+| Key rotation and audit | crypto's (`crypto:keys:rotate`, the crypto audit) | rotate `APP_KEY` (and update `publicKey`) | rotate the secret on both sides |
+| Revoke the console | take `crypto:encrypt` / `crypto:seal` from its client | disable its authkit client | rotate the secret |
+
+Whatever the mode, a command over a minute old is refused, a command replayed inside that minute
+runs only once (its id is claimed), and every answer carries a MAC the console checks, so a forged
+answer is ignored and the console keeps waiting for the real one. The app's own `actions` always
+apply: no mode lets a console replay a request or touch a queue the app did not allow.
+
+Crypto and authkit combine: with an explicit `crypto` on both sides **and** an explicit `token` /
+`verifyTenant`, each command is encrypted with the crypto key and must also carry a valid token,
+whose `partition` and capabilities then decide what the console may do.
+
+### Explicit `@adonis-agora/crypto`
+
+Commands are encrypted with a key of the crypto server, `console-telescope` by default (an
+`aes256-gcm` key in the **owning app's** partition). The console's crypto access holds
+`crypto:encrypt:console-telescope` (or `crypto:seal:console-*`), and the app opens its own key with
+no grant; nobody else can write a command the app will open, and nothing in it (verb, queue, job, viewer) is readable on
+Redis. Crypto keeps, rotates and audits the key: each command is one `encrypt` row (the console)
+and one `decrypt` row (the app). The answer carries a MAC under a one-off secret that travelled
+inside the encrypted command.
+
+`crypto.cipher` is anything with crypto's `encrypt` / `decrypt`. Pass a function:
+`config/telescope.ts` is read before crypto is ready, and the function is called on the first
+command. `crypto.key` names another key.
+
+Create the key once, on the crypto server, in the owning app's partition:
+
+```sh
+node ace crypto:keys:create console-telescope --type aes256-gcm --application entre-textos
+```
+
+#### Crypto in the Agora Hub (the console is the Hub)
+
+The Hub runs the crypto server embedded, so the console encrypts in process, for the app's
+partition. The app is a tenant of the Hub's crypto and decrypts with its own client:
+
+```ts title="config/telescope_ui.ts (the Hub)"
+import crypto from '@adonis-agora/crypto/services/main'
+import { serviceCipher } from '@adonis-agora/crypto'
+
+apps: {
+  federated: {
+    'entre-textos': {
+      store: storage.lucid({ connection: 'pg', schema: 'entretextos' }),
+      commands: {
+        connection: 'main',
+        prefix: 'entretextos',
+        crypto: { cipher: () => serviceCipher(crypto.service, 'entre-textos') },
+      },
+    },
+  },
+},
+```
+
+```ts title="config/telescope.ts (Entre Textos, a tenant of the Hub's crypto)"
+import crypto from '@adonis-agora/crypto/services/main'
+
+consoleCommands: {
+  connection: 'main',
+  prefix: 'entretextos',
+  crypto: { cipher: () => crypto.client! },
+  actions: { replay: true, queues: true },
+},
+```
+
+The app needs no grant to decrypt with its own `console-telescope` key (a
+`crypto:decrypt:console-*` grant is harmless if present).
+
+#### Crypto as a separate app
+
+When the crypto server is its own app, the console and the owning app are both its tenants. The
+app decrypts with its `crypto.client`, as above. The console needs a client **for the app's
+partition**, whose token may encrypt with the key:
+
+```ts title="config/telescope_ui.ts (the console)"
+import env from '#start/env'
+import { createCryptoClient } from '@adonis-agora/crypto-core'
+import { authkitTenantToken } from '@adonis-agora/authkit-client'
+
+const entreTextosCrypto = createCryptoClient({
+  url: env.get('CRYPTO_URL'),
+  partition: 'entre-textos',
+  // A client whose token holds crypto:encrypt:console-telescope for entre-textos (and nothing else).
+  token: authkitTenantToken({
+    issuer: env.get('AUTHKIT_ISSUER'),
+    clientId: env.get('CONSOLE_CRYPTO_CLIENT_ID'),
+    clientSecret: env.get('CONSOLE_CRYPTO_CLIENT_SECRET'),
+    resource: 'urn:agora:crypto',
+  }),
+})
+
+// apps.federated['entre-textos'].commands
+crypto: { cipher: entreTextosCrypto },
+```
+
+The same holds when the crypto server is embedded in the **owning app** and exposed as a control
+plane: the app uses `() => serviceCipher(crypto.service, 'entre-textos')`, the console a client to
+that app's crypto URL. Without authkit, the crypto server's `verifyTenant` can be its
+`sharedSecretVerifier`; the client's `token` is then that shared secret.
+
+### With authkit (token mode)
+
+1. In authkit, create a **service-tenant client** for the console, for the resource
+   `urn:agora:telescope`, with `partition` set to the owning app (`entre-textos`) and the
+   capabilities the console may use there ([the table above](#what-a-console-may-do)). One
+   client per app the console manages. A token that only ingests entries (`telescope:ingest`)
+   allows nothing.
+2. On the app, set `consoleCommands.verifyTenant` to `authkitTenantVerifier({ issuer,
+   resource: 'urn:agora:telescope' })`. `consoleCommands.partition` (the token's partition must
+   match it) defaults to its `tenant.partition` on a tenant, else its app name, else its `prefix`;
+   set it when that is not `entre-textos`. The app needs its `APP_KEY`.
+3. With authkit's `service` configured on the app, it publishes its console key in authkit's key
+   directory at boot and the console finds it there: skip to the next step and leave
+   `commands.publicKey` out. Otherwise print the app's console key on the app (its boot log shows
+   only its short id), and copy it into the console's configuration:
+
+   ```sh
+   node ace telescope:console:key
+   # x25519:3p9q…
+   ```
+
+4. On the console, set `commands.token` to `authkitTenantToken({ issuer, clientId, clientSecret,
+   resource: 'urn:agora:telescope' })` with that client, and `commands.publicKey` to that key:
+
+```ts title="config/telescope_ui.ts (the Hub)"
+import env from '#start/env'
+import { authkitTenantToken } from '@adonis-agora/authkit-client'
+
+// apps.federated['entre-textos']
+commands: {
+  connection: 'main',
+  prefix: 'entretextos',
+  token: authkitTenantToken({
+    issuer: env.get('AUTHKIT_ISSUER'),
+    clientId: env.get('ENTRETEXTOS_CONSOLE_CLIENT_ID'),
+    clientSecret: env.get('ENTRETEXTOS_CONSOLE_CLIENT_SECRET'),
+    resource: 'urn:agora:telescope',
+  }),
+  publicKey: env.get('ENTRETEXTOS_CONSOLE_KEY'),
+},
+```
+
+```ts title="config/telescope.ts (Entre Textos)"
+import env from '#start/env'
+import { authkitTenantVerifier } from '@adonis-agora/authkit-client'
+
+consoleCommands: {
+  connection: 'main',
+  prefix: 'entretextos',
+  partition: 'entre-textos',
+  verifyTenant: authkitTenantVerifier({
+    issuer: env.get('AUTHKIT_ISSUER'),
+    resource: 'urn:agora:telescope',
+  }),
+  actions: { replay: true, queues: true },
+},
+```
+
+What happens on each command:
+
+- The app's console key is derived from its `APP_KEY` and `prefix`, so every instance has the same
+  one. The console takes its public half from its own configuration, never from Redis, so nobody
+  on Redis can make it seal to their key. Telescope's federated store has no place for keys, which
+  is why you copy it by hand; it is not a secret.
+- The console seals the whole command, its token included, to that key. A Redis reader sees an
+  id and ciphertext: no token to lift and replay, no command to alter.
+- The app opens it, refuses it if it is over a minute old, and verifies the token. The token's
+  `partition` must be this app's `consoleCommands.partition`; its capabilities cap what the
+  command may do.
+- The answer carries a MAC under a one-off secret that travelled inside the sealed command.
+- A refused token answers `401`; the console drops its cached token and fetches a new one on the
+  next command.
+
+When the app's `APP_KEY` changes, its console key changes too: update `commands.publicKey` on
+every console. Any `verifyTenant` works here, not only authkit's: `sharedSecretVerifier` (each
+console's token is then a static secret, still sealed on the wire) or your own.
+
+This token mode stays available next to crypto (explicit or automatic) whenever a verifier and an
+`APP_KEY` exist, so consoles can move between the two.
+
+On a **control plane**, `consoleCommands.verifyTenant` defaults to the control plane's own
+`verifyTenant`. The tenants' ingest tokens it accepts carry no `telescope:console:*` capability,
+so they run nothing here; give console clients a console capability. Only an explicit
+`verifyTenant` (or `verifyTenant: false`) turns this fallback, and authkit's app-call verifier,
+off; an explicit `crypto` or `secret` does not.
+
+### Without authkit (shared secret)
+
+Generate one random secret per pair of apps (16 characters at least; `openssl rand -base64 32`
+prints a good one) and set the same value on both sides, as in the examples at the top of this
+page: `commands.secret` on the console, `consoleCommands.secret` on the app.
+
+Every command and every answer carries an HMAC under that secret, bound to the app's `prefix`, and
+a command over a minute old is refused (a replay inside that minute reuses the command's id, which
+runs once). Keep the secret out of the repository, like `APP_KEY`. The payload is readable on
+Redis, and the console is trusted to name the viewer, so treat the secret like an admin credential
+and rotate it (on both sides) when someone who had it leaves.
+
+### Bring your own
+
+Every automatic piece is a default, never a requirement:
+
+- **Your own authentication:** `commands.token: () => Promise<string>` on the console (any IdP,
+  any JWT library, an API key) and `consoleCommands.verifyTenant: ({ token }) => ({ partition,
+  capabilities, clientId }) | null` on the app:
+
+  ```ts title="config/telescope.ts"
+  consoleCommands: {
+    partition: 'entre-textos',
+    verifyTenant: async ({ token }) => {
+      const claims = await verifyMyJwt(token) // yours
+      return claims ? { partition: claims.app, capabilities: claims.scopes } : null
+    },
+  },
+  ```
+
+- **Your own KMS / HSM:** anything with `encrypt({ key, plaintext, aad, context })` and
+  `decrypt({ key, ciphertext, aad, context })` (AWS KMS, Vault transit, an HSM wrapper). When its
+  ciphertext does not look like crypto's (`agora:ct1:<key>:…`), say what it owns:
+
+  ```ts
+  crypto: {
+    cipher: vaultTransitCipher, // yours
+    key: 'console-telescope',
+    owns: (ciphertext) => ciphertext.startsWith('vault:v'),
+  },
+  ```
+
+- **Your own authorization:** the console's `authorize` decides who gets in and, with
+  `capabilities`, what that viewer may do on federated apps. A read-only viewer:
+
+  ```ts title="config/telescope_ui.ts"
+  authorize: (ctx) => {
+    const user = ctx.auth.user
+    if (!user) return { allowed: false, reason: 'unauthenticated' }
+    return user.role === 'admin'
+      ? { allowed: true } // every console capability
+      : { allowed: true, capabilities: ['telescope:console:read'] } // live views, no actions
+  },
+  ```
+
+  `access: 'read'` is the short form of the same (no action, whatever `capabilities` says).
+  `anyAuthorize(...)` combines checks (a token for scripts, a signed-in admin for the browser) and
+  keeps the narrowing of the check that allowed. In token mode the token's capabilities (from your
+  `verifyTenant`) cap that too, and the same narrowing applies to this console's own actions.
+- `crypto: false`, `token: false` (console) and `verifyTenant: false` (app) switch the
+  corresponding automatic detection off.
+
+### Boot errors and the doctor
+
+A misconfiguration fails the web process at boot instead of timing out later:
+
+- an app with `consoleCommands` and no mode that resolves (no crypto, no `secret`, no usable
+  `verifyTenant` with an `APP_KEY`) throws a `ConsoleAuthConfigError`:
+
+  ```
+  [@adonis-agora/telescope] consoleCommands needs authentication: install and boot @adonis-agora/crypto in this app (automatic, key console-telescope), or configure authkit-client's `service` (automatic: the console uses an authkit app-call token; grant it telescope:console:* on this app), or set consoleCommands.secret (shared with the console), or consoleCommands.verifyTenant (your own verifier; needs an APP_KEY). Run `node ace agora:doctor` to see every Agora lib's console auth at once. Docs: …
+  ```
+
+- a console with an `apps.federated` entry whose commands are on and resolve no mode throws one
+  too, suggesting `commands: false` (the equivalent of other Agora consoles' `actions: false`):
+
+  ```
+  [@adonis-agora/telescope] apps.federated["entre-textos"]: commands to this app need authentication: boot @adonis-agora/crypto in this app (automatic), or set apps.federated["entre-textos"].commands.secret, or apps.federated["entre-textos"].commands.token — or commands: false to only browse it. Run `node ace agora:doctor` to see every Agora lib's console auth at once.
+  ```
+
+Ace commands never start the channel and are never failed by this. Each side logs the modes it
+resolved once at boot, through the app's logger; the app's line ends with whether actions are on:
+
+```
+[@adonis-agora/telescope] console commands: crypto (auto, key console-telescope) + token checked when sent (authkit app-call, auto) + token (authkit app-call, auto; sealed to key 3f1c9a0b); actions off (set consoleCommands.actions.replay or consoleCommands.actions.queues to let the console act)
+[@adonis-agora/telescope] console commands to "entre-textos": crypto (auto, key console-telescope, partition entre-textos) + token (authkit app-call, auto)
+```
+
+The labels are the same in every Agora lib: `crypto (auto, key …)` / `crypto (key …)`,
+`token checked when sent (…)`, `token required (…)`, `token (…; sealed to …)` and `secret`. The
+console key never appears in the log, only its short id (and only in token mode); `node ace
+telescope:console:key` prints the key itself. Where crypto is embedded, the console creates its
+keys at boot. A command no instance answers in time fails with:
+
+```
+no instance of "<app>" answered within <n>s — the app may have refused the command (check its logs, or run `node ace agora:doctor` there)
+```
+
+When an automatic mode was switched off or blocked (`crypto: false`, `token: false`, a verifier
+without an `APP_KEY`, a `token` with nothing to seal it), the boot error ends with
+` Note: <what and why>.`
+
+A browse-only app (`commands: false`) gets a line too (`none (browse-only, commands: false)`).
+When the console creates a key it says so once (`console commands: created the crypto key
+"console-telescope" in partition <P>`). A refused or unreadable message (garbage on the channel, a
+forged command) is logged at `warn` as `console commands: refused a command (<reason>)`, once per
+reason, and dropped: it never crashes the app. The reasons are `not JSON`, `no command id`,
+`did not open with this app's key`, `bad signature`, `stale`, `replayed`, `token refused`,
+`capabilities-required` and `mode not accepted here (this app accepts: …; the command came as …)`.
+Only the instance that already ran a command logs `replayed`; another instance losing the claim is
+normal and silent. The app checks a command in a fixed order: the verb, then the
+viewer's capabilities, then the token, then what the token and the viewer allow, then the
+partition and `actions`.
+
+authkit counts only when its calls between apps are configured: a bound `authkit.client` without an
+app-caller verifier (app side) or an app-call token source (console side) adds no mode, so a setup
+that relied on it fails at boot instead of at the first command.
+
+A console key that cannot be created or checked never fails boot. Where crypto is embedded, the
+key is created once, and a failure is retried on the first command; the warning gives the exact
+`node ace crypto:keys:create console-telescope --type aes256-gcm --application <partition>`. A
+crypto tenant checks its key once at boot with a dummy decrypt (which the decrypt-only grant
+allows; it never needs `crypto:keys:read`). A missing key is created when the client may, and
+otherwise logged with the command to run; a refusal or an unreachable server is one warning line.
+After that, each command's own decrypt is the retry.
+`node ace agora:doctor` runs `telescope.console-commands` (the modes on each side, exactly what boot
+does) and the deep `telescope.console-commands-key` (in crypto mode, the key exists and this process
+can use it).
+
+### Moving from one to the other
+
+An app accepts every mode it has configured (`crypto`, `verifyTenant`, `secret`), so it can take
+both the old and the new while its consoles move over; remove the old one once every console has
+switched. Note that `verifyTenant` together with `crypto` makes the token required for crypto
+commands too.
+
+<Callout type="warn">
+**Upgrading:** an app with `consoleCommands` and no mode that resolves refuses to boot (web
+process), and so does a console whose `commands` names no mode. Install `@adonis-agora/crypto` on
+both sides (automatic), or set a shared secret on both sides, then move to a token or crypto when
+convenient. Commands now always carry the viewer's capabilities: update the console and the apps
+together.
+</Callout>
 
 <Callout type="warn">
 Each delivery of an action runs on exactly one instance, but a failed action is not proof that
@@ -151,8 +659,9 @@ apps recorded under the same trace id, each tagged with its app (see
 **Architecture.** Every federated app is a node, with the calls it made in the window, read from its
 own store.
 
-When the app does not answer an action (it is down, or `consoleCommands` is off), the action fails
-with `503` and a message naming the app. Reading its entries keeps working.
+When the app does not answer an action (it is down, `consoleCommands` is off, or the two sides
+share no authentication mode), the action fails with `503` and a message naming the app. A
+refused token fails with `502` and `code: "federated-console-unauthorized"`. Reading its entries keeps working.
 
 ## Who sees which app
 
@@ -188,6 +697,7 @@ The read-only store and the command channel are exported too, for a console of y
 
 ```ts title="app/controllers/shop_telescope_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
+import env from '#start/env'
 import redis from '@adonisjs/redis/services/main'
 import db from '@adonisjs/lucid/services/db'
 import {
@@ -199,7 +709,11 @@ import {
 const shop = new FederatedReadStore(
   new LucidTelescopeStore(db.connection('pg'), { schema: 'shop', readOnly: true }),
 )
-const commands = new ConsoleCommandSender(redis.connection('main'), { app: 'shop', prefix: 'shop' })
+const commands = new ConsoleCommandSender(redis.connection('main'), {
+  app: 'shop',
+  prefix: 'shop',
+  secret: env.get('SHOP_CONSOLE_SECRET'),
+})
 
 export default class ShopTelescopeController {
   async errors({ response }: HttpContext) {

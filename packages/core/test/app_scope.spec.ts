@@ -25,7 +25,8 @@ import {
   selectAppScope,
   viewerStore,
 } from '../src/ui/app_scope.js';
-import { authorizeByToken, normalizeConsoleDecision } from '../src/ui/console_authorize.js';
+import { authorizeByToken } from '../src/ui/console_authorize.js';
+import { normalizeConsoleDecision } from '../src/ui/console_decision.js';
 import { runGuard } from '../src/ui/guard.js';
 import { makeRequest, RecordingResponse } from '../src/ui/http.js';
 
@@ -92,7 +93,11 @@ describe('app scope', () => {
       apps: ['a', '2'],
       tenants: ['x'],
     });
-    expect(normalizeConsoleDecision({ allowed: true, apps: 'nope' })).toEqual({ allowed: true });
+    // A malformed list narrows to none (fail closed), never to every app.
+    expect(normalizeConsoleDecision({ allowed: true, apps: 'nope' })).toEqual({
+      allowed: true,
+      apps: [],
+    });
     const result = await runGuard(
       { request: makeRequest('GET'), response: new RecordingResponse() },
       () => ({ allowed: true, apps: ['a'] }),

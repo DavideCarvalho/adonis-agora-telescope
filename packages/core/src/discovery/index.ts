@@ -27,6 +27,11 @@ export interface RunningDiscovery {
    * `fetch` really goes through it. Throws when it does not (calls by app name would reach DNS).
    */
   ready(): Promise<void>;
+  /**
+   * Start the long poll to the central server (a tenant; a no-op otherwise or when running). Only
+   * a process that serves polls: an ace command that exits must not be kept alive by it.
+   */
+  poll(): void;
   stop(): Promise<void>;
 }
 
@@ -57,6 +62,12 @@ export async function startDiscovery(options: {
   config: ResolvedDiscoveryConfig;
   topology: ResolvedTopology;
   onError?: (message: string) => void;
+  /**
+   * Start the long poll now (default `true`). `false` for a process that may not serve (an ace
+   * command): the saved snapshot still resolves names, and {@link RunningDiscovery.poll} starts it
+   * later (a worker command).
+   */
+  poll?: boolean;
 }): Promise<RunningDiscovery | null> {
   const { config, topology } = options;
   if (!config.enabled) return null;
@@ -75,7 +86,8 @@ export async function startDiscovery(options: {
           ...(options.onError !== undefined ? { onError: options.onError } : {}),
         })
       : null;
-  client?.start();
+  if (options.poll !== false) client?.start();
+  else client?.loadSnapshot();
   const unpublish = publishDirectory(directory);
   const rewriteOptions = {
     passthrough: config.passthrough,
@@ -100,6 +112,9 @@ export async function startDiscovery(options: {
           "[@adonis-agora/telescope] discovery: fetch does not go through telescope's rewrite. Something replaced Node's global dispatcher instead of composing onto it (setGlobalDispatcher(new Agent(...))); calls such as fetch('http://billing/...') would not reach the app. Compose onto the existing dispatcher instead.",
         );
       }
+    },
+    poll() {
+      client?.start();
     },
     async stop() {
       await client?.stop();

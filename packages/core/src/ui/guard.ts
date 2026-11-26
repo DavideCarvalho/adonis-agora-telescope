@@ -3,7 +3,7 @@ import {
   type AccessDeniedOption,
   resolveAccessDeniedPage,
 } from './access_denied_page.js';
-import { normalizeConsoleDecision } from './console_authorize.js';
+import { normalizeConsoleDecision, thrownBy } from './console_decision.js';
 import type { AuthorizeHook, AuthorizeResult } from './define_config.js';
 import type { UiHttpContext } from './http.js';
 
@@ -21,6 +21,10 @@ export interface GuardResult {
   tenants?: '*' | string[];
   /** When allowed: the apps the hook granted (`'*'` = all; absent = all). */
   apps?: '*' | string[];
+  /** When allowed: the viewer's federated-console capabilities (absent = every one). */
+  capabilities?: string[];
+  /** When allowed: `'read'` drops every write capability. */
+  access?: 'read' | 'write';
 }
 
 /**
@@ -52,12 +56,22 @@ export async function runGuard(ctx: UiHttpContext, authorize: AuthorizeHook): Pr
     return { allowed: false, status: 403, message: 'forbidden' };
   }
 
+  // The shared resolver turns a throwing `authorize` into a 403 carrying the error: log it too.
+  const thrown = thrownBy(result);
+  if (thrown !== undefined) {
+    ctx.logger?.warn(
+      { err: thrown },
+      'telescope: the console authorize hook threw; answering 403 (fail closed)',
+    );
+  }
   const decision = normalizeConsoleDecision(result);
   if (decision.allowed) {
     return {
       allowed: true,
       ...(decision.tenants !== undefined ? { tenants: decision.tenants } : {}),
       ...(decision.apps !== undefined ? { apps: decision.apps } : {}),
+      ...(decision.capabilities !== undefined ? { capabilities: decision.capabilities } : {}),
+      ...(decision.access !== undefined ? { access: decision.access } : {}),
     };
   }
   if (decision.redirectTo !== undefined) {

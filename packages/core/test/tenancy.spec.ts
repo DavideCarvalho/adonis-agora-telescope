@@ -13,7 +13,8 @@ import {
   tenancyOn,
 } from '../src/tenancy.js';
 import { TenantScopedStore, TenantTaggingStore } from '../src/tenancy_store.js';
-import { authorizeByToken, normalizeConsoleDecision } from '../src/ui/console_authorize.js';
+import { authorizeByToken } from '../src/ui/console_authorize.js';
+import { normalizeConsoleDecision } from '../src/ui/console_decision.js';
 import { runGuard } from '../src/ui/guard.js';
 import { makeRequest, RecordingResponse } from '../src/ui/http.js';
 import {

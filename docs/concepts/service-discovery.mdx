@@ -46,6 +46,10 @@ Each app keeps the last map in memory and in a file (`discovery.snapshotPath`, b
 `telescope-discovery-<app>.json` in the OS temp directory). Calls keep resolving while the server is unreachable, and after a restart.
 </Callout>
 
+Only a process that serves keeps the map fresh: the web server, and an ace command that stays alive
+(a worker, `staysAlive`). Any other `node ace` command, the REPL and tests read the saved map and
+never open the long poll, so they exit as soon as they are done; shutting down aborts the poll.
+
 A tenant whose `transport` is a broker (queue, BullMQ, Redis, durable) still reads the map over HTTP,
 and its transport has no HTTP address to use. Give it the server's URL, or it resolves only the apps
 you list yourself:

@@ -46,13 +46,15 @@ export {
 } from './app_scope.js';
 export type {
   AuthorizeByTokenOptions,
+  ConsoleAccess,
   ConsoleAuthorize,
+  ConsoleAuthorizeDecision,
   ConsoleAuthorizeResult,
   ConsoleAuthorizer,
   ConsoleAuthorizerClass,
 } from './console_authorize.js';
 // — the console access contract —
-export { authorizeByToken } from './console_authorize.js';
+export { anyAuthorize, authorizeByToken } from './console_authorize.js';
 export type {
   AccessDeniedOption,
   AccessDeniedRenderer,
