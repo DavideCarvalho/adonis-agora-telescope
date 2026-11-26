@@ -403,6 +403,27 @@ describe('EntryDetail — replay', () => {
     fireEvent.click(screen.getByText('Replay request'));
     await waitFor(() => expect(screen.getByText('Request replay is disabled.')).toBeTruthy());
   });
+
+  it('disables replay for a viewer whose capabilities do not reach it', async () => {
+    const replayRequest = vi.fn();
+    const client = fakeClient({
+      replayRequest,
+      meta: vi.fn().mockResolvedValue({
+        entryTypes: [],
+        dashboards: [],
+        viewer: { capabilities: ['telescope:console:read'] },
+      }),
+    });
+    renderWith(client, <EntryDetail id="e-1" onOpenTrace={vi.fn()} onBack={vi.fn()} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByText('Replay request').closest('button') as HTMLButtonElement).disabled,
+      ).toBe(true),
+    );
+    expect(screen.getByText('Replay request').closest('button')?.getAttribute('title')).toContain(
+      'telescope:console:replay',
+    );
+  });
 });
 
 describe('PulseSection', () => {

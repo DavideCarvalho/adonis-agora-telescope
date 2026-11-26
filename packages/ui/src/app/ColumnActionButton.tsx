@@ -3,6 +3,7 @@ import { ActionDialog } from '../agora-kit/blocks/action-dialog';
 import { Button } from '../agora-kit/ui/button';
 import type { ColumnAction, ExtensionActionMeta } from '../client/types.js';
 import { useTelescopeClient } from './use-telescope.js';
+import { useViewerLacks } from './viewer-capabilities.js';
 
 /** Substitute `{key}` placeholders from the row; a missing key yields an empty string. */
 export function fillText(template: string, row: Record<string, unknown>): string {
@@ -69,6 +70,7 @@ export function ColumnActionButton({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lacks = useViewerLacks('telescope:console:write');
 
   if (!actionApplies(action, row)) return <span className="text-muted-foreground">—</span>;
 
@@ -95,6 +97,8 @@ export function ColumnActionButton({
       <Button
         variant={action.destructive ? 'destructive' : 'outline'}
         size="micro"
+        disabled={lacks !== undefined}
+        title={lacks}
         onClick={(e) => {
           e.stopPropagation();
           setError(null);

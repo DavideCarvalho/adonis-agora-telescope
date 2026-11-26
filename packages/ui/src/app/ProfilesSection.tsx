@@ -17,6 +17,7 @@ import {
   useProfiles,
   useScreens,
 } from './use-telescope.js';
+import { useViewerLacks } from './viewer-capabilities.js';
 
 /** Sidebar row for one captured profile. */
 function ProfileRow({
@@ -131,6 +132,7 @@ function ArmControl({ pendingManual }: { pendingManual: number }) {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [arming, setArming] = useState(false);
   const arm = useArmProfile();
+  const lacks = useViewerLacks('telescope:console:write');
   const screens = useScreens(SCREENS_WINDOW_MS, 'page', 100);
   const routeOptions = useMemo(() => screenRouteOptions(screens.data), [screens.data]);
 
@@ -170,7 +172,13 @@ function ArmControl({ pendingManual }: { pendingManual: number }) {
         aria-label="route to capture"
         className="mono w-full sm:w-64"
       />
-      <Button size="sm" variant="brand" disabled={arming} onClick={submit}>
+      <Button
+        size="sm"
+        variant="brand"
+        disabled={arming || lacks !== undefined}
+        title={lacks}
+        onClick={submit}
+      >
         {arming ? 'Arming…' : 'Arm capture'}
       </Button>
       {pendingManual > 0 && <Badge variant="warn">{pendingManual} pending</Badge>}
