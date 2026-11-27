@@ -82,6 +82,7 @@ import { EntryEvents } from '../src/stream/entry_events.js';
 import { StreamingTelescopeStore } from '../src/stream/streaming_store.js';
 import { tenancySlot } from '../src/tenancy.js';
 import { TenantTaggingStore } from '../src/tenancy_store.js';
+import { fillTenantFromAuthkit, MissingTenantError } from '../src/topology/auto_tenant.js';
 import { createIngestHandler } from '../src/topology/ingest.js';
 import { activeRemoteStores, RemoteTelescopeStore } from '../src/topology/remote_store.js';
 import { type IngestRouter, registerIngestRoutes } from '../src/topology/routes.js';
@@ -141,6 +142,8 @@ export default class TelescopeProvider {
   private discovery: RunningDiscovery | null = null;
   private discoveryPublisher: DiscoveryPublisher | null = null;
   private stopDrainOnSignal: (() => void) | null = null;
+  /** Telescope is off in this process: a tenant without url/token/partition outside `web`. */
+  private off = false;
 
   constructor(protected app: ApplicationService) {}
 
@@ -162,7 +165,11 @@ export default class TelescopeProvider {
     // `node ace agora:doctor` reads these after boot. Registered here rather than in `register()`,
     // which AdonisJS does not await; before the `enabled` check so a disabled telescope is checked too.
     await registerDoctorChecks(this.app.container, telescopeDoctorChecks).catch(() => {});
-    const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
+    const raw = this.app.config.get<TelescopeConfig>('telescope', {});
+    // `topology: 'tenant'` without url/token/partition: @adonis-agora/authkit-client supplies them.
+    await fillTenantFromAuthkit(this.app.container, raw);
+    const config = await this.resolveOrSkip(raw);
+    if (config === null) return;
     const local = await this.buildStore(config);
     this.localStore = local;
     await this.registerSchemaCheck(local);
@@ -289,6 +296,7 @@ export default class TelescopeProvider {
    * HTTP server, and an ace command must not claim a command and exit.
    */
   private async startConsoleCommands(): Promise<void> {
+    if (this.off) return;
     const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
     const commands = config.consoleCommands;
     const store = this.store;
@@ -443,6 +451,35 @@ export default class TelescopeProvider {
       await this.warn(
         `[@adonis-agora/telescope] consoleCommands: not answering other consoles' commands: ${error instanceof Error ? error.message : String(error)}`,
       );
+    }
+  }
+
+  /**
+   * `resolveConfig`, except that a tenant missing url/token/partition (and no authkit-client to
+   * supply them) fails only where entries would be sent: the web process, and an ace command that
+   * stays alive (a worker). Other ace commands, the REPL and tests run without telescope and warn.
+   */
+  private async resolveOrSkip(raw: TelescopeConfig): Promise<ResolvedTelescopeConfig | null> {
+    try {
+      return resolveConfig(raw);
+    } catch (error) {
+      if (!(error instanceof MissingTenantError) || this.serves()) throw error;
+      this.off = true;
+      resetTelescopeRuntime();
+      await this.warn(`${error.message} Telescope is off in this process.`);
+      try {
+        const kernel = (await this.app.container.make('ace' as never)) as AceKernelLike | undefined;
+        kernel?.executing?.(async (command, isMain) => {
+          if (!isMain) return;
+          const ctor = (command as { constructor?: AceCommandClassLike }).constructor;
+          const staysAlive =
+            (command as { staysAlive?: unknown }).staysAlive ?? ctor?.options?.staysAlive;
+          if (staysAlive === true) throw error;
+        });
+      } catch {
+        // No ace kernel: nothing stays alive here.
+      }
+      return null;
     }
   }
 

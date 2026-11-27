@@ -1,8 +1,22 @@
 export type {
+  AuthkitTenant,
+  AutoTenantField,
+  TenantFieldSource,
+  TenantProvenance,
+} from './auto_tenant.js';
+export {
+  authkitTenantClient,
+  fillTenantFromAuthkit,
+  MissingTenantError,
+  tenantProvenance,
+} from './auto_tenant.js';
+export type {
   IngestLimits,
   ResolvedBufferOptions,
   ResolvedIngestLimits,
+  ResolvedTenantOptions,
   ResolvedTopology,
+  ResolveTopologyOptions,
   TelescopeTenantOptions,
   TelescopeTopology,
   TelescopeTopologyConfig,

@@ -643,8 +643,9 @@ export interface ResolvedOtelConfig {
  * ```
  */
 export function defineConfig(config: TelescopeConfig): TelescopeConfig {
-  // A misconfigured control plane or tenant fails when the config file loads.
-  resolveTopology(config);
+  // A misconfigured control plane or tenant fails when the config file loads. A tenant's missing
+  // url/token/partition are checked at boot instead: authkit-client may supply them.
+  resolveTopology(config, { deferMissing: true });
   resolveChecks(config.checks);
   resolveHealthRoutes(config.health);
   resolveFleetConfig(config.fleet);

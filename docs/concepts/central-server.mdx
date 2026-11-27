@@ -81,6 +81,41 @@ Keep `bodyparser.json.limit` in `config/bodyparser.ts` at least as large as `max
 
 ## A tenant
 
+With `@adonis-agora/authkit-client` configured in the app (its `service: { name, clientId,
+clientSecret }` and issuer), one line is enough. It needs an authkit-client whose `authkit.client`
+has `tenantOf` (the release after 1.0.0); with 1.0.0 or older, use the explicit form below.
+
+```ts title="config/telescope.ts (an app)"
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({ topology: 'tenant' })
+```
+
+Telescope finds authkit-client's `authkit.client` binding at boot and asks it for resource
+`urn:agora:telescope`: the server's URL is discovered from the issuer, the token is a service
+token of `service` (renewed before it expires and after a `401`), and the partition is
+`service.partition`, else `service.name`. Nothing to install in telescope: it is detected, not
+imported. Anything you set in `tenant` wins, field by field:
+
+```ts title="config/telescope.ts (an app)"
+export default defineConfig({
+  topology: 'tenant',
+  tenant: { local: 'memory' }, // url, token and partition still come from authkit-client
+  stores: { memory: storage.memory({ maxEntries: 500 }) },
+})
+```
+
+`agora:doctor` says where each one came from:
+`tenant url: authkit-client (auto), token: authkit-client (auto), partition: explicit`.
+`tenant: { auto: false }` turns the detection off. Without authkit-client's `service` (or with an
+authkit-client older than `tenantOf`) and without the fields, the web process refuses to boot and
+names what is missing; other ace commands run without telescope and warn, and a worker command
+(`staysAlive`) fails when it starts.
+
+### The explicit form
+
+Bring your own: any IdP, a shared secret, fixed or lazy URLs.
+
 ```ts title="config/telescope.ts (an app)"
 import env from '#start/env'
 import { authkitTenantToken } from '@adonis-agora/authkit-client'
@@ -289,7 +324,7 @@ exit code is `1` when the server refuses the app or has no Telescope store.
 
 <Callout type="info">
 `node ace agora:doctor --deep` runs the same check with the others: `telescope.topology`,
-`telescope.topology-store`, `telescope.ingest-csrf`, `telescope.server-reachable` and
+`telescope.tenant-source`, `telescope.topology-store`, `telescope.ingest-csrf`, `telescope.server-reachable` and
 `telescope.transport`. See
 [Health check](/docs/telescope/reference/health-check).
 </Callout>
