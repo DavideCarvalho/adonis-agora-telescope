@@ -304,6 +304,8 @@ Source: `docs/packages/storages.mdx` (Database schema).
 // Wrong — the facade default export is undefined until app.booted(), which runs
 // AFTER provider boot.
 import db from '@adonisjs/lucid/services/db'
+import { LucidTelescopeStore } from '@adonis-agora/telescope'
+
 const store = new LucidTelescopeStore(db)
 ```
 

@@ -2,7 +2,7 @@ import type { ApplicationService } from '@adonisjs/core/types';
 import { durationToMs } from '../alerts/parse_duration.js';
 import { describeStackUse, STACK_DESCRIPTOR, type StackUse } from '../fleet/stack.js';
 import type { TelescopeStore } from '../store.js';
-import type { LucidDatabaseLike, LucidStoreOptions } from './lucid.js';
+import type { LucidClientLike, LucidStoreOptions } from './lucid.js';
 import type { InMemoryStoreOptions } from './memory.js';
 import type { ParquetColdStore } from './parquet.js';
 import type { DuckDbEngineOptions } from './parquet_duckdb.js';
@@ -184,10 +184,10 @@ function lucidProvider(config: LucidStoreConfig): StoreProvider {
     };
 
     // Bind to a single connection client when named, else the Database facade. Both
-    // satisfy the structural LucidDatabaseLike surface the store consumes.
+    // satisfy the structural LucidClientLike surface the store takes.
     const client = config.connection ? db.connection(config.connection) : db;
     const { connection: _connection, ...storeOptions } = config;
-    return new LucidTelescopeStore(client as unknown as LucidDatabaseLike, storeOptions);
+    return new LucidTelescopeStore(client as LucidClientLike, storeOptions);
   };
 }
 

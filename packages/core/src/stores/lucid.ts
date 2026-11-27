@@ -278,6 +278,20 @@ export interface LucidDatabaseLike {
   connection?(): { dialect?: { name: string } };
 }
 
+/**
+ * What {@link LucidTelescopeStore} takes: the Lucid `Database` (`@adonisjs/lucid/services/db`),
+ * one of its connections or a transaction client, or anything shaped like
+ * {@link LucidDatabaseLike}. Lucid's query builders are typed with overloads and generics no
+ * structural interface matches, so the argument is checked this far and the store reads it
+ * through {@link LucidDatabaseLike}.
+ */
+export interface LucidClientLike {
+  from(table: string): unknown;
+  table(table: string): unknown;
+  // biome-ignore lint/suspicious/noExplicitAny: must accept Lucid's `RawQueryBindings` parameter.
+  rawQuery(sql: string, bindings?: any): unknown;
+}
+
 /** The structural query-builder surface the store leans on (Knex-shaped). */
 export interface LucidQueryBuilderLike {
   where(column: string, value: unknown): this;
@@ -444,12 +458,12 @@ export class LucidTelescopeStore implements TelescopeStore {
   private dropped = 0;
   private warnedDrop = false;
 
-  constructor(
-    private readonly db: LucidDatabaseLike,
-    options: LucidStoreOptions = {},
-  ) {
+  private readonly db: LucidDatabaseLike;
+
+  constructor(db: LucidClientLike, options: LucidStoreOptions = {}) {
+    this.db = db as LucidDatabaseLike;
     this.tableName = options.tableName ?? DEFAULT_TABLE_NAME;
-    this.schema = validateSchema(options.schema, dialectOf(db), 'storage.lucid()');
+    this.schema = validateSchema(options.schema, dialectOf(this.db), 'storage.lucid()');
     this.table = qualifiedName(this.tableName, this.schema);
     this.metaTable = qualifiedName(SCHEMA_META_TABLE_NAME, this.schema);
     this.maxEntries =

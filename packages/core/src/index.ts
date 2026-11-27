@@ -306,6 +306,7 @@ export type {
 export { storage } from './stores/factory.js';
 export type {
   CreateTableOptions,
+  LucidClientLike,
   LucidDatabaseLike,
   LucidInsertBuilderLike,
   LucidQueryBuilderLike,
