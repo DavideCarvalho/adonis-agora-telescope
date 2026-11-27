@@ -82,8 +82,8 @@ Keep `bodyparser.json.limit` in `config/bodyparser.ts` at least as large as `max
 ## A tenant
 
 With `@adonis-agora/authkit-client` configured in the app (its `service: { name, clientId,
-clientSecret }` and issuer), one line is enough. It needs an authkit-client whose `authkit.client`
-has `tenantOf` (the release after 1.0.0); with 1.0.0 or older, use the explicit form below.
+clientSecret }` and issuer), one line is enough. It needs `@adonis-agora/authkit-client` 1.1.0 or
+later (its `authkit.client` has `tenantOf`); with 1.0.x, use the explicit form below.
 
 ```ts title="config/telescope.ts (an app)"
 import { defineConfig } from '@adonis-agora/telescope'
