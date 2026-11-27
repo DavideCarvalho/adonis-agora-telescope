@@ -38,7 +38,7 @@ node ace configure @adonis-agora/telescope   # pick "UI" — registers ui_provid
 
 Register the SPA provider **after** the core providers in `adonisrc.ts`:
 
-```ts no-check
+```ts
 // adonisrc.ts
 providers: [
   // ...
@@ -107,7 +107,7 @@ quiet app still shows) — unless federated apps are listed under `apps.federate
 lists each app's `mode` (`control-plane` | `federated`) and `actions`
 (`here` | `app` | `none`), plus `local` (this console's own entries) and `selected`.
 
-```ts no-check
+```ts
 import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
 
 const client = new TelescopeClient({ baseUrl: '/telescope/api' })
@@ -135,7 +135,7 @@ The six acting methods never reject on an HTTP error — they resolve to
 `{ ok: true, ... } | { ok: false, message }`, because "replay is disabled here" is
 something to render, not an exception to catch.
 
-```ts no-check
+```ts
 const replay = await client.replayRequest(entryId)      // needs ui replay.enabled
 if (!replay.ok) console.warn(replay.message)            // e.g. disabled → render, don't catch
 
@@ -174,7 +174,7 @@ Source: `docs/packages/telescope-ui.mdx` (Acting on an entry, Getting around).
 
 Presentation helpers ship from the same subpath, so custom UIs render identically:
 
-```ts no-check
+```ts
 import {
   ENTRY_TYPES,             // the thirteen built-in entry types
   formatDuration,          // '4.2ms', '1m 3s'
@@ -217,7 +217,7 @@ Source: `docs/packages/telescope-ui.mdx` (warn callout), `docs/packages/ui.mdx` 
 
 ### HIGH Registering the SPA provider before ui_provider
 
-```ts no-check
+```ts
 // Wrong — the console consumes the core UI JSON API; registered first it has no backend.
 providers: [
   () => import('@adonis-agora/telescope-ui/telescope_ui_dashboard_provider'),
@@ -225,7 +225,7 @@ providers: [
 ]
 ```
 
-```ts no-check
+```ts
 // Correct — core first, then the dashboard provider.
 providers: [
   () => import('@adonis-agora/telescope/ui_provider'),
@@ -240,12 +240,12 @@ Source: `docs/packages/telescope-ui.mdx` (Install), `docs/getting-started.mdx` S
 
 ### HIGH Expecting replay/arm/retry buttons to work out of the box
 
-```ts no-check
+```ts
 // Wrong — features enabled but their actions still 403:
 defineConfig({ replay: { enabled: false } })   // default; POST .../replay answers 403
 ```
 
-```ts no-check
+```ts
 // Correct — flip each mutation gate explicitly in config/telescope_ui.ts:
 defineConfig({
   replay: { enabled: true },
@@ -262,7 +262,7 @@ Source: `docs/packages/ui.mdx` (Configuration + Request replay),
 
 ### MEDIUM try/catching the client's acting methods
 
-```ts no-check
+```ts
 // Wrong — these never reject; the catch never fires and errors look like successes.
 try {
   const result = await client.retryJob(queue, id)
@@ -271,10 +271,11 @@ try {
 }
 ```
 
-```ts no-check
+```ts
 // Correct — branch on the discriminated result.
 const result = await client.retryJob(queue, id)
-if (result.ok) toast('Retrying') else toast(result.message)
+if (result.ok) toast('Retrying')
+else toast(result.message)
 ```
 
 Mechanism: `diagnoseException`, `replayRequest`, `armProfile`, `retryJob`,
@@ -284,7 +285,7 @@ Source: `docs/packages/telescope-ui.mdx` (info callout under Acting on an entry)
 
 ### MEDIUM Expecting exported files to contain entry content
 
-```ts no-check
+```ts
 // Wrong — assuming CSV export includes SQL bodies / stacks for offline analysis.
 await client.listEntries({ type: 'query', search: 'users', first: 500 })
 // then expecting `content` in the downloaded file
