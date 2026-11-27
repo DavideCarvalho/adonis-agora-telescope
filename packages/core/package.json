@@ -205,6 +205,7 @@
   "devDependencies": {
     "@adonis-agora/authkit-client": "1.0.0",
     "@adonisjs/assembler": "8.6.0",
+    "@adonisjs/auth": "10.1.1",
     "@adonisjs/cache": "2.1.0",
     "@adonisjs/core": "7.7.0",
     "@adonisjs/drive": "4.0.0",
