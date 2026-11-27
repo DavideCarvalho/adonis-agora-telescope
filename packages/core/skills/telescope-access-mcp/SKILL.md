@@ -22,6 +22,7 @@ sources:
   - "DavideCarvalho/adonis-telescope:docs/packages/mcp.mdx"
   - "DavideCarvalho/adonis-telescope:docs/packages/ui.mdx"
   - "DavideCarvalho/adonis-telescope:docs/reference/cli.mdx"
+  - "DavideCarvalho/adonis-telescope:packages/core/src/ui/index.ts"
 ---
 
 # Dashboard access control & MCP
@@ -265,13 +266,13 @@ the default `403`. Source: `docs/reference/migrating-to-1-0.mdx`.
 
 ### HIGH Keeping the removed standalone `/telescope/mcp` endpoint
 
-```ts
+```ts expect-error=TS2307
 // Wrong — 1.0 removed config/telescope_mcp.ts, the @adonis-agora/telescope/mcp subpath
 // and @adonis-agora/telescope/mcp_provider; this import fails.
 import { defineConfig } from '@adonis-agora/telescope/mcp'
 ```
 
-```ts
+```ts no-check
 // Correct — register the agent hub; the tools are on /mcp/agora behind
 // config/telescope_ui.ts authorize.
 providers: [() => import('@adonis-agora/agent/mcp_provider')]

@@ -22,6 +22,8 @@ sources:
   - "DavideCarvalho/adonis-telescope:docs/concepts/protection.mdx"
   - "DavideCarvalho/adonis-telescope:docs/packages/storages.mdx"
   - "DavideCarvalho/adonis-telescope:docs/recipes/custom-storage.mdx"
+  - "DavideCarvalho/adonis-telescope:docs/recipes/tags-and-redaction.mdx"
+  - "DavideCarvalho/adonis-telescope:packages/core/src/stores/factory.ts"
 ---
 
 # Storage, retention & protection
@@ -161,7 +163,7 @@ the store already holds stores nothing new), and
 honour `anyTags` (OR over tags — entries carrying at least one), the filter a
 tenant-scoped console reads through.
 
-```ts
+```ts no-check
 import {
   currentTraceId, isBatchOrigin, resolveCreatedAt, resolveEntryId,
   type BatchOrigin, type Entry, type EntryQuery,
@@ -240,7 +242,7 @@ Source: `docs/concepts/protection.mdx` (info callout), `docs/packages/storages.m
 
 ### HIGH Custom store skipping traceId/origin resolution
 
-```ts
+```ts no-check
 // Wrong — traceId left undefined and origin unvalidated:
 traceId: input.traceId, origin: input.origin as BatchOrigin,
 ```
@@ -300,7 +302,7 @@ Source: `docs/packages/storages.mdx` (Programmatic API note).
 sampling: { query: 0.1 }
 ```
 
-```ts
+```ts no-check
 // Correct — scrub at the store boundary (always on); sample only for retention cost.
 redact: { keys: ['ssn'] },
 sampling: { query: { rate: 0.1, keepErrors: true } },

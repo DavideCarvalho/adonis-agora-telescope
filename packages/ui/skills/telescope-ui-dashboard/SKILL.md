@@ -19,6 +19,7 @@ sources:
   - "DavideCarvalho/adonis-telescope:docs/packages/telescope-ui.mdx"
   - "DavideCarvalho/adonis-telescope:docs/dashboard/index.mdx"
   - "DavideCarvalho/adonis-telescope:packages/ui/package.json"
+  - "DavideCarvalho/adonis-telescope:packages/ui/src/client/index.ts"
 ---
 
 # The @adonis-agora/telescope-ui console
@@ -37,7 +38,7 @@ node ace configure @adonis-agora/telescope   # pick "UI" — registers ui_provid
 
 Register the SPA provider **after** the core providers in `adonisrc.ts`:
 
-```ts
+```ts no-check
 // adonisrc.ts
 providers: [
   // ...
@@ -63,7 +64,7 @@ The SPA reuses the core `config/telescope_ui.ts` block; an optional nested
 toggles it on/off, re-mounts it elsewhere, and sets the sidebar footer's
 signed-in user and sign-out:
 
-```ts
+```ts no-check
 // config/telescope_ui.ts
 import { defineConfig } from '@adonis-agora/telescope/ui'
 
@@ -106,7 +107,7 @@ quiet app still shows) — unless federated apps are listed under `apps.federate
 lists each app's `mode` (`control-plane` | `federated`) and `actions`
 (`here` | `app` | `none`), plus `local` (this console's own entries) and `selected`.
 
-```ts
+```ts no-check
 import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
 
 const client = new TelescopeClient({ baseUrl: '/telescope/api' })
@@ -134,7 +135,7 @@ The six acting methods never reject on an HTTP error — they resolve to
 `{ ok: true, ... } | { ok: false, message }`, because "replay is disabled here" is
 something to render, not an exception to catch.
 
-```ts
+```ts no-check
 const replay = await client.replayRequest(entryId)      // needs ui replay.enabled
 if (!replay.ok) console.warn(replay.message)            // e.g. disabled → render, don't catch
 
@@ -173,7 +174,7 @@ Source: `docs/packages/telescope-ui.mdx` (Acting on an entry, Getting around).
 
 Presentation helpers ship from the same subpath, so custom UIs render identically:
 
-```ts
+```ts no-check
 import {
   ENTRY_TYPES,             // the thirteen built-in entry types
   formatDuration,          // '4.2ms', '1m 3s'
@@ -181,7 +182,7 @@ import {
   formatRelative,          // '12s ago'
 } from '@adonis-agora/telescope-ui/client'
 
-formatDuration(840)        // '840µs'
+formatDuration(0.84)       // '840µs'
 formatDuration(1240)       // '1.24s'
 formatPercent(0.0473)      // '4.7%'
 formatRelative(iso)        // '12s ago'
@@ -216,7 +217,7 @@ Source: `docs/packages/telescope-ui.mdx` (warn callout), `docs/packages/ui.mdx` 
 
 ### HIGH Registering the SPA provider before ui_provider
 
-```ts
+```ts no-check
 // Wrong — the console consumes the core UI JSON API; registered first it has no backend.
 providers: [
   () => import('@adonis-agora/telescope-ui/telescope_ui_dashboard_provider'),
@@ -224,7 +225,7 @@ providers: [
 ]
 ```
 
-```ts
+```ts no-check
 // Correct — core first, then the dashboard provider.
 providers: [
   () => import('@adonis-agora/telescope/ui_provider'),
@@ -239,12 +240,12 @@ Source: `docs/packages/telescope-ui.mdx` (Install), `docs/getting-started.mdx` S
 
 ### HIGH Expecting replay/arm/retry buttons to work out of the box
 
-```ts
+```ts no-check
 // Wrong — features enabled but their actions still 403:
 defineConfig({ replay: { enabled: false } })   // default; POST .../replay answers 403
 ```
 
-```ts
+```ts no-check
 // Correct — flip each mutation gate explicitly in config/telescope_ui.ts:
 defineConfig({
   replay: { enabled: true },
@@ -261,7 +262,7 @@ Source: `docs/packages/ui.mdx` (Configuration + Request replay),
 
 ### MEDIUM try/catching the client's acting methods
 
-```ts
+```ts no-check
 // Wrong — these never reject; the catch never fires and errors look like successes.
 try {
   const result = await client.retryJob(queue, id)
@@ -270,7 +271,7 @@ try {
 }
 ```
 
-```ts
+```ts no-check
 // Correct — branch on the discriminated result.
 const result = await client.retryJob(queue, id)
 if (result.ok) toast('Retrying') else toast(result.message)
@@ -283,7 +284,7 @@ Source: `docs/packages/telescope-ui.mdx` (info callout under Acting on an entry)
 
 ### MEDIUM Expecting exported files to contain entry content
 
-```ts
+```ts no-check
 // Wrong — assuming CSV export includes SQL bodies / stacks for offline analysis.
 await client.listEntries({ type: 'query', search: 'users', first: 500 })
 // then expecting `content` in the downloaded file

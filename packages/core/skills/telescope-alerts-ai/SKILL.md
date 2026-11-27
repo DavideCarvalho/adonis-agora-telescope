@@ -21,6 +21,7 @@ sources:
   - "DavideCarvalho/adonis-telescope:docs/packages/alerts.mdx"
   - "DavideCarvalho/adonis-telescope:docs/packages/ai.mdx"
   - "DavideCarvalho/adonis-telescope:docs/packages/client-errors.mdx"
+  - "DavideCarvalho/adonis-telescope:docs/recipes/ai-exception-diagnosis.mdx"
   - "DavideCarvalho/adonis-telescope:packages/core/src/alerts/index.ts"
 ---
 
@@ -112,8 +113,8 @@ when `diagnose` resolves `null` — so you can inject it without a null check.
 // app/controllers/diagnose_controller.ts
 import { inject } from '@adonisjs/core'
 import type { HttpContext } from '@adonisjs/core/http'
-import { TelescopeService } from '@adonis-agora/telescope'
-import { TelescopeAiDiagnoser } from '@adonis-agora/telescope/ai'
+import { type Entry, TelescopeService } from '@adonis-agora/telescope'
+import { type ExceptionEntryContent, TelescopeAiDiagnoser } from '@adonis-agora/telescope/ai'
 
 @inject()
 export default class DiagnoseController {
@@ -128,7 +129,8 @@ export default class DiagnoseController {
       return response.notFound({ error: 'Not an exception entry' })
     }
     const related = entry.traceId ? await this.telescope.byTrace(entry.traceId) : []
-    const diagnosis = await this.diagnoser.diagnose(entry, { related })
+    const exception = entry as Entry<ExceptionEntryContent> // find() returns Entry<unknown>
+    const diagnosis = await this.diagnoser.diagnose(exception, { related })
     // → { cause, fix, confidence, model, cached } | null — never throws
     return response.json(diagnosis)
   }
@@ -245,13 +247,13 @@ Source: `docs/packages/ai.mdx` (warn callout), `docs/reference/configuration.mdx
 
 ### MEDIUM Expecting sampled-out exceptions to page
 
-```ts
+```ts no-check
 // Wrong — sampling drops most queries AND some exceptions before any rule sees them.
 sampling: { default: 0.1 },
 rules: [{ type: 'new-exception', window: '1h' }],
 ```
 
-```ts
+```ts no-check
 // Correct — tail-sampling keeps errors/slow regardless of rate.
 sampling: { default: 0.1, exception: { rate: 0.1, keepErrors: true } },
 ```
@@ -262,13 +264,13 @@ Source: `docs/packages/alerts.mdx` (How it hooks in).
 
 ### MEDIUM Short cooldown with every-exception
 
-```ts
+```ts no-check
 // Wrong — a tight loop of the same error re-pages once per cooldown... which is 1 minute.
 rules: [{ type: 'every-exception' }],
 cooldown: '1m',
 ```
 
-```ts
+```ts no-check
 // Correct — tune cooldown to your on-call tolerance; different families still page immediately.
 rules: [{ type: 'every-exception', window: '15m' }],
 cooldown: '10m',
