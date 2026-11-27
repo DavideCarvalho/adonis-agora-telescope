@@ -83,7 +83,8 @@ Keep `bodyparser.json.limit` in `config/bodyparser.ts` at least as large as `max
 
 With `@adonis-agora/authkit-client` configured in the app (its `service: { name, clientId,
 clientSecret }` and issuer), one line is enough. It needs an authkit-client whose `authkit.client`
-has `tenantOf` (the release after 1.0.0); with 1.0.0 or older, use the explicit form below.
+has `tenantOf` (`@adonis-agora/authkit-client` 1.1.0 or later); with an older one, use the explicit
+form below.
 
 ```ts title="config/telescope.ts (an app)"
 import { defineConfig } from '@adonis-agora/telescope'
@@ -151,8 +152,9 @@ Watchers, redaction, sampling and tenancy tags all run in the app, before an ent
 
 ### Finding the server through authkit
 
-Instead of a fixed URL, `url` can ask authkit where the server is (`controlPlaneUrl` ships in
-`@adonis-agora/authkit-client` 1.0.0-rc.12, the `rc` tag):
+With the one-line form above, the URL is already asked of authkit. In the explicit form, `url` can
+do the same with `controlPlaneUrl` from `@adonis-agora/authkit-client`, for example with a client of
+its own instead of authkit-client's `service`:
 
 ```ts title="config/telescope.ts (an app)"
 import { authkitTenantToken, controlPlaneUrl } from '@adonis-agora/authkit-client'
@@ -163,6 +165,9 @@ tenant: {
   token: authkitTenantToken({ /* ... */ }),
 }
 ```
+
+To keep authkit-client's token and partition but send to a fixed address (a private network URL),
+set only that field: `tenant: { url: env.get('TELESCOPE_SERVER_URL') }`.
 
 The URL is looked up when the first batch is sent, then kept. If the server cannot be reached or
 answers 404, it is looked up again and the batch is retried at the new address. Any
@@ -184,7 +189,7 @@ most).
 
 ```ts title="config/telescope.ts (an app)"
 tenant: {
-  url, partition, token,
+  // url, token and partition: authkit-client, or set them as in the explicit form.
   buffer: {
     maxEntries: 10_000,     // kept while the server is down
     batchSize: 200,         // entries per request
@@ -202,7 +207,9 @@ source for a fresh token and retries later.
 ## Authentication
 
 **With authkit** (recommended): declare the resource on the authkit server and create one
-service-tenant client per app. The `partition` is the app name the console shows.
+service-tenant client per app. The `partition` is the app name the console shows. Its id and
+secret are what the app sets in authkit-client's `service` (`clientId`, `clientSecret`) for the
+one-line form, or in `authkitTenantToken(...)` for the explicit one.
 
 ```ts title="config/authkit.ts (authkit server)"
 serviceTenants: {
@@ -269,7 +276,7 @@ same strings in `capabilities`.
 Turn relaying on in the sender's config, and tag each entry with the app it belongs to:
 
 ```ts title="config/telescope.ts (the relaying app)"
-tenant: { url, partition: 'durable', token, relay: true }
+tenant: { relay: true } // url, token and partition from authkit-client, or set them explicitly
 ```
 
 ```ts

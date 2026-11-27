@@ -26,7 +26,7 @@ with its heartbeat (see [Fleet](/docs/telescope/concepts/fleet)), from `APP_URL`
 ```ts title="config/telescope.ts (billing)"
 export default defineConfig({
   topology: 'tenant',
-  tenant: { url: env.get('TELESCOPE_SERVER_URL'), partition: 'billing', token: env.get('TELESCOPE_TOKEN') },
+  // tenant url, token and partition: authkit-client's `service` (here named billing)
   fleet: { url: 'https://billing.internal' }, // default: APP_URL
 })
 ```
