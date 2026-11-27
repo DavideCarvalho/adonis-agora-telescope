@@ -9,7 +9,7 @@ packages/{core,ui}/src. Versions read from packages/*/package.json:
 ## Scope decision
 
 The repo publishes exactly two packages. Everything else is a **subpath of
-`@adonis-agora/telescope`** (watchers, ui, ai, alerts, mcp, cpu_profiling — the
+`@adonis-agora/telescope`** (watchers, ui, ai, alerts, cpu_profiling — the
 first-party AdonisJS convention, like `@adonisjs/auth`'s guards), so skills target
 the two packages with the subpaths folded into five core skills. The AdonisJS
 implementation differs from the NestJS sibling in load-bearing ways that the skills
@@ -38,10 +38,11 @@ Core package — `packages/core/skills/`:
    `every-exception` + stateful `metric-threshold`, channels, `cooldown`,
    `geoLookup`), `config/telescope_ai.ts` + `TelescopeAiDiagnoser` (keyless ⇒
    disabled), `clientErrors` ingestion + the `sendBeacon` reporter.
-5. `telescope-access-mcp` — the `authorize`/`credentials`/`dashboardAuth` guard
-   (401-vs-403, redirect-wins, fail-closed boot), the mutation gates
-   (`replay`, `queueActions`, `cpuProfiling.armEnabled`), and
-   `config/telescope_mcp.ts` (JSON-RPC `-32001`, `tools` allow-list).
+5. `telescope-access-mcp` — the `authorize` guard (`authorizeByToken`,
+   `{ redirectTo }`, 401-vs-403, redirect-wins, `403` in production by default),
+   the mutation gates (`replay`, `queueActions`, `cpuProfiling.armEnabled`),
+   Telescope's MCP tools on the agent's `/mcp/agora`, and the options 1.0
+   removed (`credentials`, `dashboardAuth`, `config/telescope_mcp.ts`).
 
 UI package — `packages/ui/skills/`:
 6. `telescope-ui-dashboard` — `@adonis-agora/telescope-ui/telescope_ui_dashboard_provider`
@@ -59,9 +60,10 @@ UI package — `packages/ui/skills/`:
   is almost always this.
 - `logs` appears in BOTH config files; whichever provider boots first owns the
   logger tap, the other warns and stays inert (its options silently ignored).
-- The default dashboard policy denies production until a `credential` or
-  `authorize` hook permits it; an `authorize` hook REPLACES the credentials gate,
-  while `dashboardAuth` composes WITH `authorize`.
+- Without `authorize` the console is open outside production and answers `403`
+  to every production request; `authorize` is the whole policy (there is no
+  built-in login or credentials gate since 1.0), with `authorizeByToken` for
+  Bearer access and `{ redirectTo }` to send visitors to the app's login.
 - Alerts: only the FIRST rule of each exception type is evaluated; sampled-out
   exceptions never reach a rule; a keyless AI config is disabled, not broken.
 - Storage: the memory driver is per-process and lost on restart; the lucid driver
@@ -71,7 +73,7 @@ UI package — `packages/ui/skills/`:
 
 ## Remaining Gaps (interview substitutes)
 
-- Priority ordering among the optional subpaths (mcp / cpu_profiling /
+- Priority ordering among the optional subpaths (cpu_profiling /
   client-errors) for any future dedicated skills is unknown.
 - No GitHub issue mining was performed this session; failure modes are sourced
   from the unusually detailed docs callouts and source comments rather than from

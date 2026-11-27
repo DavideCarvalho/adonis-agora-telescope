@@ -7,7 +7,8 @@ library: adonis-telescope
 description: >-
   Laravel Telescope-style HEADLESS observability for AdonisJS. One published package
   (@adonis-agora/telescope) whose subpaths ship per-technology watchers, the dashboard
-  JSON API + SSE, Claude AI exception diagnosis, alerts, MCP and CPU profiling; the
+  JSON API + SSE, Claude AI exception diagnosis, alerts and CPU profiling (plus MCP
+  tools on the agent's /mcp/agora hub); the
   React console is a separate pre-built package (@adonis-agora/telescope-ui).
 
 # Versions read from packages/*/package.json at scaffolding time.
@@ -21,7 +22,7 @@ primary_packages:
     dir: packages/core
     role: Headless core + every optional feature as a subpath — telescope_provider,
       TelescopeMiddleware, defineConfig/storage, watchers + watchers_provider,
-      ui + ui_provider, ai, alerts, mcp, cpu_profiling providers, extension SDK.
+      ui + ui_provider, ai, alerts, cpu_profiling providers, extension SDK.
   - name: "@adonis-agora/telescope-ui"
     dir: packages/ui
     role: Pre-built React SPA console served by a thin AdonisJS provider behind the
@@ -108,22 +109,27 @@ domains:
         does not exist at all (not a 404).
 
   - id: access_mcp
-    title: Dashboard access control & the MCP endpoint
+    title: Dashboard access control & Telescope's MCP tools
     package: "@adonis-agora/telescope"
     surface:
-      - "config/telescope_ui.ts: authorize(ctx), credentials { token, basic }, dashboardAuth { secret, ttl, login }"
-      - defaultAuthorize — allow outside production, deny in production
-      - 401 vs 403 semantics; authorize throw => 403 fail-closed
-      - "config/telescope_mcp.ts: path/authorize/credentials/tools"
+      - "config/telescope_ui.ts: authorize (function, ConsoleAuthorizer class or lazy import)"
+      - "authorizeByToken({ token, tenants? }) and anyAuthorize from @adonis-agora/telescope/ui"
+      - default (no authorize) — open outside production, 403 in production with one boot warning
+      - 401 vs 403 semantics; { redirectTo } => 302 for pages, 401 { redirectTo } for API calls;
+        authorize throw => 403 fail-closed
+      - Telescope's MCP tools on the Agora dev endpoint /mcp/agora
+        (@adonis-agora/agent/mcp_provider), gated by the console's authorize
       - replay/cpuProfiling.armEnabled/queueActions mutation gates
     key_facts:
-      - authorize REPLACES the built-in credentials gate (ignored when set);
-        dashboardAuth composes WITH authorize (both must pass).
-      - The authorize hook receives the REAL HttpContext but its declared type is
-        framework-light — narrow ctx to reach auth/session.
-      - MCP has no transport-level 401 — denial rides inside the JSON-RPC envelope
-        as -32001 MCP_UNAUTHORIZED.
-      - dashboardAuth missing secret or login throws at boot (fail closed).
+      - authorize IS the whole policy; the console has no login or credentials of
+        its own (1.0 removed credentials { token, basic }, ?token= and dashboardAuth).
+      - authorizeByToken reads only the Authorization Bearer header and throws at
+        config load when the token is missing.
+      - A redirect the hook writes itself (ctx.response.redirect + return false) wins
+        over the guard's 403 body.
+      - Telescope has no MCP endpoint of its own (1.0 removed config/telescope_mcp.ts,
+        the /mcp subpath and mcp_provider); its tools ride the agent's /mcp/agora and
+        disappear with telescope_ui.enabled false.
 
   - id: ui_dashboard
     title: The React console & programmatic client
@@ -310,22 +316,23 @@ skills:
     domain: access_mcp
     type: core
     packages: ["@adonis-agora/telescope"]
-    covers: [defaultAuthorize, credentials token/basic, authorize hook,
-      dashboardAuth login screen, 401-vs-403 guard, replay/queueActions/armEnabled
-      gates, "config/telescope_mcp.ts", MCP tools]
+    covers: [default policy, authorize hook, authorizeByToken, "{ redirectTo }",
+      401-vs-403 guard, replay/queueActions/armEnabled gates,
+      MCP tools on /mcp/agora, removed 1.0 options]
     failure_modes:
       - mistake: relying on an obscure path instead of the guard in production
-        mechanism: the default policy DENIES production until a credential or
-          authorize hook permits it; renaming path is defense in depth, not auth.
+        mechanism: without authorize the console answers 403 to every production
+          request; renaming path is defense in depth, not auth.
         source: docs/dashboard/auth.mdx (default policy + security notes)
         priority: CRITICAL
         status: active
         skills: ['telescope-access-mcp']
-      - mistake: setting credentials and an authorize hook expecting both to run
-        mechanism: authorize IS the whole policy — the built-in credentials gate is
-          ignored whenever authorize is set.
-        source: docs/dashboard/auth.mdx (Delegate to your app's auth)
-        priority: MEDIUM
+      - mistake: keeping the removed credentials option on telescope_ui
+        mechanism: 1.0 removed credentials { token, basic } and ?token=; the key is a
+          type error and ignored at runtime, so production falls back to the default 403.
+          Set authorize to authorizeByToken({ token }).
+        source: docs/reference/migrating-to-1-0.mdx
+        priority: HIGH
         status: active
       - mistake: reaching for ctx.auth without narrowing the context
         mechanism: the hook's declared parameter is a framework-light slice; auth/
@@ -333,17 +340,19 @@ skills:
         source: docs/dashboard/auth.mdx (narrowing info callout)
         priority: MEDIUM
         status: active
-      - mistake: exposing MCP in production without a token credential
-        mechanism: MCP has no transport-level 401 — denial arrives as JSON-RPC
-          -32001 MCP_UNAUTHORIZED and compliant clients just fail.
-        source: docs/packages/mcp.mdx (guard info callout)
+      - mistake: keeping the removed standalone /telescope/mcp endpoint
+        mechanism: 1.0 removed config/telescope_mcp.ts, the @adonis-agora/telescope/mcp
+          subpath and mcp_provider; the tools only exist on /mcp/agora once
+          @adonis-agora/agent/mcp_provider is registered, behind the console's authorize.
+        source: docs/reference/migrating-to-1-0.mdx; docs/packages/mcp.mdx
         priority: HIGH
         status: active
-      - mistake: configuring dashboardAuth without secret or login
-        mechanism: both are required; the gate fails closed with a boot error rather
-          than shipping an un-mintable session wall.
-        source: docs/dashboard/auth.mdx (Built-in login screen warn)
-        priority: MEDIUM
+      - mistake: keeping the removed dashboardAuth login screen
+        mechanism: 1.0 removed dashboardAuth, its login/logout routes and session
+          cookie; people sign in through the app and authorize returns
+          { redirectTo } for anonymous visitors.
+        source: docs/reference/migrating-to-1-0.mdx
+        priority: HIGH
         status: active
   - name: telescope-ui-dashboard
     slug: telescope-ui-dashboard
@@ -405,7 +414,7 @@ tensions:
     description: The default policy is open outside production and denied inside it,
       so the same config that "just works" locally 401s/403s in prod.
     implication: Agents treat the dev experience as proof of correctness and ship
-      without a credential or authorize hook.
+      without an authorize hook.
   - name: console power vs mutation risk
     skills: ['telescope-ui-dashboard', 'telescope-access-mcp']
     description: Replay, queue retry/enqueue and CPU-arm are genuinely dangerous
@@ -433,7 +442,7 @@ cross_references:
 
 gaps:
   - skill: all
-    question: Priority ranking among the optional subpaths (mcp vs cpu_profiling vs
+    question: Priority ranking among the optional subpaths (cpu_profiling vs
       client-errors) for future dedicated skills.
     context: Fully autonomous run — no maintainer interview; skills cover the two
       published packages with alerts/AI/access folded into core skills.
