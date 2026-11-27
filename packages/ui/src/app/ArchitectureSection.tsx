@@ -601,7 +601,7 @@ function ArchitectureGraph({ view, layers }: { view: ArchitectureView; layers: L
               }
             }}
             onPaneClick={() => setSelection(null)}
-            colorMode={theme}
+            forceColorMode={theme}
           >
             <Background gap={24} size={1} />
             <Controls showInteractive={false} />

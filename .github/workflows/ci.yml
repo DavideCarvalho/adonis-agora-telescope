@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 24.22.2
+          node-version: 24.22.3
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -50,7 +50,7 @@ jobs:
     # transports against a real Redis.
     services:
       redis:
-        image: redis:7-alpine
+        image: redis:8-alpine
         ports:
           - 6379:6379
         options: >-
@@ -59,7 +59,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       postgres:
-        image: postgres:18-alpine
+        image: postgres:19-alpine
         env:
           POSTGRES_PASSWORD: postgres
         ports:
@@ -70,7 +70,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       mysql:
-        image: mysql:8.4
+        image: mysql:26.7
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: app
