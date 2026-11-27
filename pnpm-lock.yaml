@@ -213,11 +213,11 @@ importers:
         version: 1.0.0(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       '@adonisjs/otel':
         specifier: ^2.0.0
-        version: 2.0.0(691d0b0c3ebb6c2fdf866fb40d2ea96d)
+        version: 2.0.0(5f933818844deb489bc1ee35e17d0d26)
     devDependencies:
       '@adonis-agora/authkit-client':
         specifier: 1.0.0
-        version: 1.0.0(474137f071b4e47334c293da3ea6dc21)
+        version: 1.0.0(7f7cd7d1ef6106566d45991476f311ea)
       '@adonisjs/assembler':
         specifier: 8.6.0
         version: 8.6.0(typescript@7.0.2)
@@ -246,8 +246,8 @@ importers:
         specifier: 0.7.0
         version: 0.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@opentelemetry/api@1.10.0)(@opentelemetry/core@3.1.1(@opentelemetry/api@1.10.0))(ioredis@6.0.0(supports-color@10.2.2))(knex@3.3.0(better-sqlite3@13.1.1)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       '@adonisjs/session':
-        specifier: 8.1.0
-        version: 8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+        specifier: 8.4.0
+        version: 8.4.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       '@adonisjs/transmit':
         specifier: 3.0.3
         version: 3.0.3(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(ioredis@6.0.0(supports-color@10.2.2))
@@ -780,14 +780,14 @@ packages:
     resolution: {integrity: sha512-cPp0w5svYUA3M1gdxQBO2Mx5g+SZfPweqKCAxk7C1Os/Qu67JKgWqXqNnl1q0Tzv/l0L19Ms1C7ivzQxeBNajg==}
     engines: {node: '>=24.0.0'}
 
-  '@adonisjs/session@8.1.0':
-    resolution: {integrity: sha512-hTd5m49Ro8XhxVQN0yyCeDOihDhj+mFIVltzeWPXkCxK19JHAtA++TAygxSUEhvcm56IVS43XWNE1lNIOPjMJA==}
+  '@adonisjs/session@8.4.0':
+    resolution: {integrity: sha512-F+nomO3WGymYVbmIDJ3X8rg1ZDDmn9iqv7AEQS5LVfBj1RSdmWLEpNjYl17qoaugo3o9dt4Gu0HLN84xgxQM+g==}
     engines: {node: '>=24.0.0'}
     peerDependencies:
       '@adonisjs/assembler': ^8.0.0-next.26 || ^8.0.0
       '@adonisjs/core': ^7.0.0-next.16 || ^7.0.0
       '@adonisjs/lucid': ^22.0.0-next.0 || ^22.0.0
-      '@adonisjs/redis': ^10.0.0-next.2 || ^10.0.0
+      '@adonisjs/redis': ^10.0.0-next.2 || ^10.0.0 || ^11.0.0
       '@aws-sdk/client-dynamodb': ^3.955.0
       '@aws-sdk/util-dynamodb': ^3.955.0
       '@japa/api-client': ^3.1.0
@@ -5107,12 +5107,12 @@ packages:
 
 snapshots:
 
-  '@adonis-agora/authkit-client@1.0.0(474137f071b4e47334c293da3ea6dc21)':
+  '@adonis-agora/authkit-client@1.0.0(7f7cd7d1ef6106566d45991476f311ea)':
     dependencies:
       '@adonis-agora/authkit-core': 1.0.0
-      '@adonisjs/auth': 10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))
+      '@adonisjs/auth': 10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.4.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))
       '@adonisjs/core': 7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
-      '@adonisjs/session': 8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+      '@adonisjs/session': 8.4.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
       jose: 6.2.18
     optionalDependencies:
       '@adonisjs/lucid': 22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
@@ -5191,7 +5191,7 @@ snapshots:
     transitivePeerDependencies:
       - babel-plugin-macros
 
-  '@adonisjs/auth@10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))':
+  '@adonisjs/auth@10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.4.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))':
     dependencies:
       '@adonisjs/core': 7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
       '@adonisjs/presets': 3.0.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))
@@ -5199,7 +5199,7 @@ snapshots:
     optionalDependencies:
       '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
       '@adonisjs/lucid': 22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)
-      '@adonisjs/session': 8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
+      '@adonisjs/session': 8.4.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))
 
   '@adonisjs/bodyparser@11.0.5(@adonisjs/http-server@9.3.1(@adonisjs/application@9.1.1(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.1.1))(@adonisjs/events@10.2.0(@adonisjs/application@9.1.1(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/config@6.1.0)(@adonisjs/fold@11.1.1))(@adonisjs/fold@11.1.1))(@adonisjs/fold@11.1.1)(@adonisjs/logger@7.1.1)(@boringnode/encryption@1.0.1)(youch@4.1.1))(supports-color@10.2.2)':
     dependencies:
@@ -5503,7 +5503,7 @@ snapshots:
       - moment-timezone
       - rrule
 
-  '@adonisjs/otel@2.0.0(691d0b0c3ebb6c2fdf866fb40d2ea96d)':
+  '@adonisjs/otel@2.0.0(5f933818844deb489bc1ee35e17d0d26)':
     dependencies:
       '@adonisjs/core': 7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
       '@opentelemetry/api': 1.10.0
@@ -5525,7 +5525,7 @@ snapshots:
       import-in-the-middle: 3.6.0
     optionalDependencies:
       '@adonisjs/assembler': 8.6.0(typescript@7.0.2)
-      '@adonisjs/auth': 10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))
+      '@adonisjs/auth': 10.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))(@adonisjs/session@8.4.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2)))
     transitivePeerDependencies:
       - supports-color
 
@@ -5554,7 +5554,7 @@ snapshots:
       '@poppinss/colors': 4.1.6
       string-width: 8.3.0
 
-  '@adonisjs/session@8.1.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
+  '@adonisjs/session@8.4.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(@adonisjs/lucid@22.5.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(@adonisjs/core@7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(better-sqlite3@13.1.1)(luxon@3.7.2)(mysql2@3.24.6(@types/node@26.6.6))(pg@8.23.1)(supports-color@10.2.2))':
     dependencies:
       '@adonisjs/core': 7.7.0(@adonisjs/assembler@8.6.0(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1)
       '@poppinss/macroable': 1.1.2
