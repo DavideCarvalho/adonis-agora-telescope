@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.1.1
+
+### Patch Changes
+
+- [#420](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/420) [`84110db`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/84110db7fbeeea89e24853a9312151a42390c52a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `node ace configure @adonis-agora/telescope --topology=tenant` publishes `config/telescope.ts` in the one-line tenant form (`defineConfig({ topology: 'tenant' })`), with a note that url, token and partition come from `@adonis-agora/authkit-client` and the explicit `tenant` fields commented out. Without the flag, configure is unchanged. The tenant boot error now points at `config/authkit_client.ts` (authkit-client's config file) instead of `config/authkit.ts`.
+
 ## 1.1.0
 
 ### Minor Changes
