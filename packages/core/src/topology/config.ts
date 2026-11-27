@@ -1,3 +1,4 @@
+import { autoFilledTenant, autoTenantFailure, MissingTenantError } from './auto_tenant.js';
 import { isServerUrlInput, type ServerUrlInput } from './server_url.js';
 import { httpTransport } from './transports/http.js';
 import { isTelescopeTransport } from './transports/index.js';
@@ -49,23 +50,39 @@ export interface TenantBufferOptions {
   retry?: { baseMs?: number; maxMs?: number };
 }
 
-/** `tenant` in `config/telescope.ts`: where a tenant sends its entries, and as which app. */
+/**
+ * `tenant` in `config/telescope.ts`: where a tenant sends its entries, and as which app.
+ *
+ * With `@adonis-agora/authkit-client` booted (its `service` configured), `url`, `token` and
+ * `partition` are discovered for resource `urn:agora:telescope` and may all be left out:
+ * `defineConfig({ topology: 'tenant' })` is enough. Anything set here wins, field by field.
+ */
 export interface TelescopeTenantOptions {
   /**
    * The control plane: its origin (`https://telescope.example.com`, the default path is added)
    * or the full prefix (`https://telescope.example.com/_telescope/v1`). The same as
    * `transport: transports.http({ url })`; leave it out when `transport` is set. A function
    * (`controlPlaneUrl({ issuer, resource: 'urn:agora:telescope' })`) is resolved when the first
-   * batch is sent, and looked up again when the server cannot be reached.
+   * batch is sent, and looked up again when the server cannot be reached. Default (with
+   * authkit-client's `service`): discovered from the issuer.
    */
   url?: ServerUrlInput;
-  /** This app's name. The server takes it from the token; this names the app to a shared secret. */
-  partition: string;
+  /**
+   * This app's name. The server takes it from the token; this names the app to a shared secret.
+   * Default (with authkit-client's `service`): its `service.partition`, else `service.name`.
+   */
+  partition?: string;
   /**
    * The token: `authkitTenantToken({ issuer, clientId, clientSecret, resource: 'urn:agora:telescope' })`,
-   * a shared secret, or any `() => Promise<string>`.
+   * a shared secret, or any `() => Promise<string>`. Default (with authkit-client's `service`): a
+   * service token for `urn:agora:telescope`, renewed before it expires and after a 401.
    */
-  token: TenantTokenSource;
+  token?: TenantTokenSource;
+  /**
+   * Take the missing `url`, `token` and `partition` from `@adonis-agora/authkit-client` when it is
+   * booted in this app. Default `true`; `false` turns the detection off (everything explicit).
+   */
+  auto?: boolean;
   /**
    * Also keep every entry in this local store, so the app's own console shows them: a key of
    * `stores`, or `'memory'`. Default none (the app's console is empty; look at the server's).
@@ -92,7 +109,10 @@ export interface TelescopeTopologyConfig {
   verifyTenant?: TenantVerifierInput;
   /** Control plane only: the ingest route's limits. */
   ingest?: IngestLimits;
-  /** Tenant only: the server, the app name and the token. */
+  /**
+   * Tenant only: the server, the app name and the token. Optional with
+   * `@adonis-agora/authkit-client` booted: it supplies whatever is left out.
+   */
   tenant?: TelescopeTenantOptions;
   /**
    * Tenant and control plane: how a tenant's entries reach the control plane, the same driver on
@@ -101,6 +121,21 @@ export interface TelescopeTopologyConfig {
    * HTTP ingest route, so tenants on HTTP and on a broker can share it.
    */
   transport?: TelescopeTransport;
+}
+
+/** A tenant with every field it needs (explicit, or filled by authkit-client). */
+export type ResolvedTenantOptions = TelescopeTenantOptions & {
+  partition: string;
+  token: TenantTokenSource;
+};
+
+/** {@link resolveTopology}'s options. */
+export interface ResolveTopologyOptions {
+  /**
+   * Accept a tenant whose `url`, `token` or `partition` is still missing (authkit-client fills
+   * them at boot): `defineConfig` runs before the container exists.
+   */
+  deferMissing?: boolean;
 }
 
 /** The resolved topology the provider acts on. */
@@ -115,7 +150,7 @@ export type ResolvedTopology =
     }
   | {
       topology: 'tenant';
-      tenant: TelescopeTenantOptions;
+      tenant: ResolvedTenantOptions;
       buffer: ResolvedBufferOptions;
       /** How entries are sent (`transports.http({ url: tenant.url })` when only `url` is set). */
       transport: TelescopeTransport;
@@ -127,7 +162,10 @@ const PREFIX = '[@adonis-agora/telescope]';
  * Validates the topology keys, so a misconfigured server or tenant fails at boot instead of on
  * the first request. Returns the resolved topology.
  */
-export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedTopology {
+export function resolveTopology(
+  config: TelescopeTopologyConfig = {},
+  options: ResolveTopologyOptions = {},
+): ResolvedTopology {
   const raw = config as TelescopeTopologyConfig & { verifyTenant?: unknown; tenant?: unknown };
   const topology = config.topology ?? 'standalone';
   if (topology !== 'standalone' && topology !== 'control-plane' && topology !== 'tenant') {
@@ -177,8 +215,25 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
     };
   }
   if (topology === 'tenant') {
-    const tenant = config.tenant;
-    if (!tenant || typeof tenant !== 'object') throw new Error(`${PREFIX} tenant is required`);
+    if (raw.tenant !== undefined && (raw.tenant === null || typeof raw.tenant !== 'object')) {
+      throw new Error(`${PREFIX} tenant must be an object`);
+    }
+    if (config.tenant?.auto !== undefined && typeof config.tenant.auto !== 'boolean') {
+      throw new Error(`${PREFIX} tenant.auto must be a boolean`);
+    }
+    // authkit-client's fields, filled at boot (field by field; anything explicit wins).
+    const tenant: TelescopeTenantOptions = autoFilledTenant(config) ?? config.tenant ?? {};
+    const missing = (
+      [
+        config.transport === undefined && tenant.url === undefined ? 'url' : null,
+        tenant.token === undefined || tenant.token === null || tenant.token === '' ? 'token' : null,
+        tenant.partition === undefined || tenant.partition === '' ? 'partition' : null,
+      ] as const
+    ).filter((field): field is 'url' | 'token' | 'partition' => field !== null);
+    if (missing.length > 0) {
+      if (options.deferMissing) return { topology: 'standalone' };
+      throw new MissingTenantError(missing, autoTenantFailure(config));
+    }
     if (config.transport !== undefined && tenant.url !== undefined) {
       throw new Error(
         `${PREFIX} set the server in one place: tenant.url is transports.http({ url }); with \`transport\`, drop tenant.url`,
@@ -192,16 +247,11 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
         `${PREFIX} tenant.url must be an absolute http(s) URL, or a function returning one`,
       );
     }
-    if (typeof tenant.partition !== 'string' || tenant.partition === '') {
-      throw new Error(`${PREFIX} tenant.partition is required`);
+    if (typeof tenant.partition !== 'string') {
+      throw new Error(`${PREFIX} tenant.partition must be a string`);
     }
     if (!/^[A-Za-z0-9_.-]{1,64}$/.test(tenant.partition)) {
       throw new Error(`${PREFIX} tenant.partition must be 1-64 of A-Z a-z 0-9 _ . -`);
-    }
-    if (tenant.token === undefined || tenant.token === null || tenant.token === '') {
-      throw new Error(
-        `${PREFIX} tenant.token is required (authkitTenantToken({ issuer, clientId, clientSecret, resource: 'urn:agora:telescope' }) or the shared secret)`,
-      );
     }
     if (tenant.relay !== undefined && typeof tenant.relay !== 'boolean') {
       throw new Error(`${PREFIX} tenant.relay must be a boolean`);
@@ -214,7 +264,7 @@ export function resolveTopology(config: TelescopeTopologyConfig = {}): ResolvedT
     const transport = config.transport ?? httpTransport({ url: tenant.url as ServerUrlInput });
     return {
       topology,
-      tenant,
+      tenant: tenant as ResolvedTenantOptions,
       buffer: resolveBufferOptions({ ...transport.bufferDefaults, ...tenant.buffer }),
       transport,
     };

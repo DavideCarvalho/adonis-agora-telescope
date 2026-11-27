@@ -9,6 +9,7 @@ import {
   QueueControlPlaneChannel,
   RedisControlPlaneChannel,
   RemoteTelescopeStore,
+  resolveConfig,
   resolveTopology,
   sharedSecretVerifier,
   type TelescopeStore,
@@ -648,8 +649,8 @@ describe('transports: config and lazy peers', () => {
       }),
     ).toThrow(/set the server in one place/);
     expect(() =>
-      defineConfig({ topology: 'tenant', tenant: { partition: 'shop', token: 't' } }),
-    ).toThrow(/tenant.url must be an absolute/);
+      resolveConfig({ topology: 'tenant', tenant: { partition: 'shop', token: 't' } }),
+    ).toThrow(/needs tenant\.url\./);
   });
 
   it('a control plane keeps HTTP and also consumes a broker transport', () => {

@@ -1,6 +1,6 @@
 import type { AgoraDoctorResult } from '../doctor/agora_doctor.js';
 import type { TelescopeStore } from '../store.js';
-import { type ResolvedTopology, serverPrefix, type TelescopeTenantOptions } from './config.js';
+import { type ResolvedTenantOptions, type ResolvedTopology, serverPrefix } from './config.js';
 import { ServerUrl, type ServerUrlInput } from './server_url.js';
 import { readToken } from './verify.js';
 import { APP_HEADER } from './wire.js';
@@ -148,7 +148,7 @@ function describeRelay(relay: '*' | string[]): string {
 
 /** Ask the control plane who it takes this app for (and, with `relay`, whether it may relay). */
 export async function whoami(
-  tenant: Pick<TelescopeTenantOptions, 'partition' | 'token' | 'relay'> & {
+  tenant: Pick<ResolvedTenantOptions, 'partition' | 'token' | 'relay'> & {
     url: string | ServerUrl;
   },
   doFetch: typeof fetch = globalThis.fetch,
@@ -236,7 +236,7 @@ type WhoamiAnswer =
 
 async function askWhoami(
   url: string,
-  tenant: Pick<TelescopeTenantOptions, 'partition' | 'token'>,
+  tenant: Pick<ResolvedTenantOptions, 'partition' | 'token'>,
   doFetch: typeof fetch,
 ): Promise<WhoamiAnswer> {
   try {

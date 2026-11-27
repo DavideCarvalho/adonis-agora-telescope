@@ -1,6 +1,7 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import type { AgoraDoctorCheck, AgoraDoctorResult } from '../doctor/agora_doctor.js';
 import { getTelescopeRuntime } from '../registry.js';
+import { describeTenantProvenance, tenantProvenance } from './auto_tenant.js';
 import {
   type ResolvedTopology,
   resolveIngestLimits,
@@ -35,7 +36,7 @@ function read(app: ApplicationService): Read {
     return {
       status: 'error',
       message: error instanceof Error ? error.message : String(error),
-      fix: 'Fix topology, verifyTenant or tenant in config/telescope.ts.',
+      fix: "Fix topology, verifyTenant or tenant in config/telescope.ts (a tenant's url, token and partition can come from @adonis-agora/authkit-client's `service`).",
       docs: DOCS,
     };
   }
@@ -108,6 +109,20 @@ export const topologyDoctorChecks: AgoraDoctorCheck[] = [
       return {
         status: 'ok',
         message: `Receives entries on POST ${topology.ingest.path}/ingest${topology.transport !== null ? ` and from ${topology.transport.describe()}` : ''}.`,
+      };
+    },
+  },
+  {
+    id: 'telescope.tenant-source',
+    lib: 'telescope',
+    title: 'Tenant settings',
+    run: (app) => {
+      const state = read(app);
+      if (isResult(state)) return state;
+      if (state.topology.topology !== 'tenant') return skip('Not a tenant.');
+      return {
+        status: 'ok',
+        message: `${describeTenantProvenance(tenantProvenance(state.config ?? {}))}.`,
       };
     },
   },

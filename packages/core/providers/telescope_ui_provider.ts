@@ -1,5 +1,8 @@
 import type { ApplicationService } from '@adonisjs/core/types';
-import { resolveConfig as resolveTelescopeConfig } from '../src/define_config.js';
+import {
+  resolveConfig as resolveTelescopeConfig,
+  type TelescopeConfig,
+} from '../src/define_config.js';
 import {
   devToolsDecisionOf,
   registerTelescopeDevTools,
@@ -28,6 +31,7 @@ import {
 import type { TelescopeStore } from '../src/store.js';
 import { streamEntries } from '../src/stream/stream_handler.js';
 import { entryInScope, scopedStore, scopeKey } from '../src/tenancy_store.js';
+import { fillTenantFromAuthkit } from '../src/topology/auto_tenant.js';
 import {
   appTag,
   type ConsoleAppScope,
@@ -189,7 +193,9 @@ export default class TelescopeUiProvider {
       return;
     }
 
-    const coreConfig = resolveTelescopeConfig(this.app.config.get('telescope', {}));
+    const rawCoreConfig = this.app.config.get<TelescopeConfig>('telescope', {});
+    await fillTenantFromAuthkit(this.app.container, rawCoreConfig);
+    const coreConfig = resolveTelescopeConfig(rawCoreConfig);
 
     // Every console API over one store: the full store, or a tenant-scoped view of it. The same
     // builder backs the `telescope:*` ace commands.

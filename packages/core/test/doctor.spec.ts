@@ -58,6 +58,7 @@ describe('telescope doctor checks', () => {
       'telescope.otel',
       'telescope.retention',
       'telescope.topology',
+      'telescope.tenant-source',
       'telescope.topology-store',
       'telescope.ingest-csrf',
       'telescope.server-reachable',

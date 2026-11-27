@@ -43,12 +43,16 @@ describe('config', () => {
         tenant: { url: 'http://x', partition: 'a'.repeat(65), token: 't' },
       }),
     ).toThrow(/partition must be 1-64/);
+    // A missing field is checked at boot (authkit-client may supply it), not when the file loads.
     expect(() =>
       defineConfig({ topology: 'tenant', tenant: { url: 'http://x', partition: '', token: 't' } }),
-    ).toThrow(/partition is required/);
+    ).not.toThrow();
     expect(() =>
-      defineConfig({ topology: 'tenant', tenant: { url: 'http://x', partition: 'a', token: '' } }),
-    ).toThrow(/token is required/);
+      resolveConfig({ topology: 'tenant', tenant: { url: 'http://x', partition: '', token: 't' } }),
+    ).toThrow(/needs tenant\.partition\. Configure @adonis-agora\/authkit-client/);
+    expect(() =>
+      resolveConfig({ topology: 'tenant', tenant: { url: 'http://x', partition: 'a', token: '' } }),
+    ).toThrow(/needs tenant\.token\./);
     expect(() => defineConfig({ topology: 'edge' } as never)).toThrow(/topology must be/);
     expect(() => defineConfig({ ingest: { maxEntries: 5 } })).toThrow(
       /`ingest` only applies to topology 'control-plane'/,
