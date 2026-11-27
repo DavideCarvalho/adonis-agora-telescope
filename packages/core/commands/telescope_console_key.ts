@@ -1,6 +1,6 @@
 import { BaseCommand, flags } from '@adonisjs/core/ace';
 import type { CommandOptions } from '@adonisjs/core/types/ace';
-import { resolveConfig, type TelescopeConfig } from '../src/define_config.js';
+import type { TelescopeConfig } from '../src/define_config.js';
 import {
   appKeyOf,
   consoleCommandKeys,
@@ -22,8 +22,11 @@ export class TelescopeConsoleKey extends BaseCommand {
   declare prefix?: string;
 
   override async run(): Promise<void> {
-    const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
-    const prefix = this.prefix ?? config.consoleCommands?.prefix ?? DEFAULT_CONSOLE_PREFIX;
+    // Only the prefix matters here: read it as written, without resolving the topology (a
+    // zero-config tenant's url/token/partition are filled at boot, which this command skips).
+    const commands = this.app.config.get<TelescopeConfig>('telescope', {})?.consoleCommands;
+    const prefix =
+      this.prefix ?? (commands ? commands.prefix : undefined) ?? DEFAULT_CONSOLE_PREFIX;
     const appKey = await appKeyOf(this.app);
     if (appKey === undefined) {
       this.logger.error('No APP_KEY: token mode seals commands to a key derived from it.');

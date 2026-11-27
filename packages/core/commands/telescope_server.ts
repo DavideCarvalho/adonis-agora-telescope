@@ -2,6 +2,7 @@ import { BaseCommand, flags } from '@adonisjs/core/ace';
 import type { CommandOptions } from '@adonisjs/core/types/ace';
 import { resolveConfig, type TelescopeConfig } from '../src/define_config.js';
 import { getTelescopeRuntime } from '../src/registry.js';
+import { fillTenantFromAuthkit, MissingTenantError } from '../src/topology/auto_tenant.js';
 import { telescopeTopologyStatus } from '../src/topology/status.js';
 
 /**
@@ -19,7 +20,18 @@ export class TelescopeServerStatus extends BaseCommand {
   declare json: boolean;
 
   override async run(): Promise<void> {
-    const config = resolveConfig(this.app.config.get<TelescopeConfig>('telescope', {}));
+    const raw = this.app.config.get<TelescopeConfig>('telescope', {});
+    await fillTenantFromAuthkit(this.app.container, raw);
+    let config: ReturnType<typeof resolveConfig>;
+    try {
+      config = resolveConfig(raw);
+    } catch (error) {
+      if (!(error instanceof MissingTenantError)) throw error;
+      // Telescope is off in this process: say why instead of a stack trace.
+      this.logger.error(error.message);
+      this.exitCode = 1;
+      return;
+    }
     const status = await telescopeTopologyStatus(
       config.topology,
       getTelescopeRuntime().store,

@@ -1,4 +1,9 @@
-import { autoFilledTenant, autoTenantFailure, MissingTenantError } from './auto_tenant.js';
+import {
+  autoFilledTenant,
+  autoTenantFailure,
+  MissingTenantError,
+  missingTenantFields,
+} from './auto_tenant.js';
 import { isServerUrlInput, type ServerUrlInput } from './server_url.js';
 import { httpTransport } from './transports/http.js';
 import { isTelescopeTransport } from './transports/index.js';
@@ -223,17 +228,9 @@ export function resolveTopology(
     }
     // authkit-client's fields, filled at boot (field by field; anything explicit wins).
     const tenant: TelescopeTenantOptions = autoFilledTenant(config) ?? config.tenant ?? {};
-    const missing = (
-      [
-        config.transport === undefined && tenant.url === undefined ? 'url' : null,
-        tenant.token === undefined || tenant.token === null || tenant.token === '' ? 'token' : null,
-        tenant.partition === undefined || tenant.partition === '' ? 'partition' : null,
-      ] as const
-    ).filter((field): field is 'url' | 'token' | 'partition' => field !== null);
-    if (missing.length > 0) {
-      if (options.deferMissing) return { topology: 'standalone' };
-      throw new MissingTenantError(missing, autoTenantFailure(config));
-    }
+    const missing = missingTenantFields(config, tenant);
+    const has = (field: 'url' | 'token' | 'partition') => !missing.includes(field);
+    // What is set is validated even while the rest waits for authkit-client (`deferMissing`).
     if (config.transport !== undefined && tenant.url !== undefined) {
       throw new Error(
         `${PREFIX} set the server in one place: tenant.url is transports.http({ url }); with \`transport\`, drop tenant.url`,
@@ -241,17 +238,20 @@ export function resolveTopology(
     }
     if (
       config.transport === undefined &&
+      has('url') &&
       (!isServerUrlInput(tenant.url) || (typeof tenant.url === 'string' && !validUrl(tenant.url)))
     ) {
       throw new Error(
         `${PREFIX} tenant.url must be an absolute http(s) URL, or a function returning one`,
       );
     }
-    if (typeof tenant.partition !== 'string') {
-      throw new Error(`${PREFIX} tenant.partition must be a string`);
-    }
-    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(tenant.partition)) {
-      throw new Error(`${PREFIX} tenant.partition must be 1-64 of A-Z a-z 0-9 _ . -`);
+    if (has('partition')) {
+      if (typeof tenant.partition !== 'string') {
+        throw new Error(`${PREFIX} tenant.partition must be a string`);
+      }
+      if (!/^[A-Za-z0-9_.-]{1,64}$/.test(tenant.partition)) {
+        throw new Error(`${PREFIX} tenant.partition must be 1-64 of A-Z a-z 0-9 _ . -`);
+      }
     }
     if (tenant.relay !== undefined && typeof tenant.relay !== 'boolean') {
       throw new Error(`${PREFIX} tenant.relay must be a boolean`);
@@ -260,6 +260,10 @@ export function resolveTopology(
       throw new Error(
         `${PREFIX} tenant.local must name a store (a key of \`stores\`, or 'memory')`,
       );
+    }
+    if (missing.length > 0) {
+      if (options.deferMissing) return { topology: 'standalone' };
+      throw new MissingTenantError(missing, autoTenantFailure(config));
     }
     const transport = config.transport ?? httpTransport({ url: tenant.url as ServerUrlInput });
     return {

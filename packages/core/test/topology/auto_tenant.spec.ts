@@ -86,6 +86,22 @@ describe('tenant from authkit-client', () => {
   it('defineConfig accepts the one-line tenant (the fields are checked at boot)', () => {
     expect(() => defineConfig({ topology: 'tenant' })).not.toThrow();
     expect(() => resolveTopology({ topology: 'tenant' })).toThrow(MissingTenantError);
+    // What is set is still validated when the file loads.
+    expect(() => defineConfig({ topology: 'tenant', tenant: { partition: 'not ok' } })).toThrow(
+      /partition must be 1-64/,
+    );
+    expect(() => defineConfig({ topology: 'tenant', tenant: { url: 'ftp://x' } })).toThrow(
+      /absolute http/,
+    );
+  });
+
+  it('an async tenantOf works too', async () => {
+    const authkit = fakeAuthkit('billing');
+    const client = { tenantOf: async (resource: string) => authkit.client.tenantOf(resource) };
+    const config = { topology: 'tenant' as const };
+    await fillTenantFromAuthkit(fakeApp({}, { 'authkit.client': client }).app.container, config);
+    const topology = resolveTopology(config);
+    expect(topology.topology === 'tenant' && topology.tenant.partition).toBe('billing');
   });
 
   it('fills url, token and partition from tenantOf(urn:agora:telescope)', async () => {
@@ -172,6 +188,20 @@ describe('tenant from authkit-client', () => {
     );
     expect(activeRemoteStores.size).toBe(0);
     expect(warnings.join('\n')).toContain('needs tenant.url, tenant.token');
+  });
+
+  it('no binding in an ace command: a worker (staysAlive) fails when it starts', async () => {
+    const hooks: Array<(command: unknown, isMain: boolean) => Promise<void> | void> = [];
+    const ace = { executing: (hook: (typeof hooks)[number]) => hooks.push(hook) };
+    await boot({ ...quiet, topology: 'tenant' }, { ace }, 'console');
+    expect(hooks).toHaveLength(1);
+    const hook = hooks[0];
+    await expect(Promise.resolve(hook?.({}, true))).resolves.toBeUndefined();
+    await expect(Promise.resolve(hook?.({ staysAlive: true }, false))).resolves.toBeUndefined();
+    class Worker {
+      static options = { staysAlive: true };
+    }
+    await expect(Promise.resolve(hook?.(new Worker(), true))).rejects.toThrow(MissingTenantError);
   });
 
   it('a binding without tenantOf (older authkit-client) is treated as absent', async () => {

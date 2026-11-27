@@ -22,7 +22,7 @@ export interface AuthkitTenant {
 }
 
 interface AuthkitTenantClient {
-  tenantOf(resource: string): AuthkitTenant;
+  tenantOf(resource: string): AuthkitTenant | Promise<AuthkitTenant>;
 }
 
 /** Where one tenant field came from. */
@@ -55,10 +55,13 @@ const PREFIX = '[@adonis-agora/telescope]';
 const present = (value: unknown) => value !== undefined && value !== null && value !== '';
 
 /** The tenant fields `config` leaves out (`url` is not needed when `transport` is set). */
-export function missingTenantFields(config: TelescopeTopologyConfig): AutoTenantField[] {
-  const tenant = (config.tenant ?? {}) as Partial<TelescopeTenantOptions>;
+export function missingTenantFields(
+  config: TelescopeTopologyConfig,
+  tenant: Partial<TelescopeTenantOptions> = config.tenant ?? {},
+): AutoTenantField[] {
   const missing: AutoTenantField[] = [];
-  if (config.transport === undefined && !present(tenant.url)) missing.push('url');
+  // A url that is set but not usable (`''`, `null`) is reported as such, not as missing.
+  if (config.transport === undefined && tenant.url === undefined) missing.push('url');
   if (!present(tenant.token)) missing.push('token');
   if (!present(tenant.partition)) missing.push('partition');
   return missing;
@@ -130,7 +133,8 @@ async function fill(container: unknown, config: TelescopeTopologyConfig): Promis
   if (client === undefined) return;
   let auto: AuthkitTenant;
   try {
-    auto = client.tenantOf(TELESCOPE_RESOURCE);
+    // Awaited: a `tenantOf` that returns a promise works too, and its rejection is caught here.
+    auto = await client.tenantOf(TELESCOPE_RESOURCE);
   } catch (error) {
     failures.set(config, error instanceof Error ? error.message : String(error));
     return;
