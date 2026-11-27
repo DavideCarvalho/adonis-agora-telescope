@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.1.2
+
+### Patch Changes
+
+- [#431](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/431) [`74ae659`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/74ae659c0473050b2dbc6a63ea7f13e3bb5736e1) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `new LucidTelescopeStore(db)` compiles with a real Lucid `Database`, connection or transaction client, as `docs/packages/storages.mdx` shows: the constructor takes the new exported `LucidClientLike` (Lucid's overloaded query-builder types never matched the structural `LucidDatabaseLike`, which the store still reads it through).
+
 ## 1.1.1
 
 ### Patch Changes
