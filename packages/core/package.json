@@ -212,7 +212,7 @@
     "@adonisjs/lock": "2.1.1",
     "@adonisjs/lucid": "22.5.0",
     "@adonisjs/mail": "10.4.1",
-    "@adonisjs/queue": "0.6.2",
+    "@adonisjs/queue": "0.7.0",
     "@adonisjs/session": "8.1.0",
     "@adonisjs/transmit": "3.0.3",
     "@anthropic-ai/sdk": "1.8.0",
