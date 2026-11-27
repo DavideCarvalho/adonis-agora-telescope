@@ -64,13 +64,51 @@ The SPA reuses the core `config/telescope_ui.ts` block; an optional nested
 toggles it on/off, re-mounts it elsewhere, and sets the sidebar footer's
 signed-in user and sign-out:
 
-```ts no-check
+`authorize` and `viewer` read `ctx.auth`, which `@adonisjs/auth` adds (`node ace add
+@adonisjs/auth`): its middleware sets `ctx.auth` on every request, and `config/auth.ts` types
+`ctx.auth.user` as your `User` model:
+
+```ts
+// start/kernel.ts (excerpt)
+import router from '@adonisjs/core/services/router'
+
+router.use([() => import('@adonisjs/auth/initialize_auth_middleware')])
+```
+
+```ts
+// config/auth.ts
+import { defineConfig } from '@adonisjs/auth'
+import { sessionGuard, sessionUserProvider } from '@adonisjs/auth/session'
+import type { InferAuthenticators } from '@adonisjs/auth/types'
+
+const authConfig = defineConfig({
+  default: 'web',
+  guards: {
+    web: sessionGuard({
+      useRememberMeTokens: false,
+      provider: sessionUserProvider({ model: () => import('#models/user') }),
+    }),
+  },
+})
+
+export default authConfig
+
+declare module '@adonisjs/auth/types' {
+  export interface Authenticators extends InferAuthenticators<typeof authConfig> {}
+}
+```
+
+```ts
 // config/telescope_ui.ts
+import type User from '#models/user'
 import { defineConfig } from '@adonis-agora/telescope/ui'
 
 export default defineConfig({
   path: '/telescope',
-  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
+  authorize: (ctx) => {
+    const user: User | undefined = ctx.auth.user
+    return user?.isAdmin === true
+  },
   dashboard: {
     enabled: true,
     // path: '/__telescope',   // serve the SPA from a different prefix than the API
@@ -242,11 +280,15 @@ Source: `docs/packages/telescope-ui.mdx` (Install), `docs/getting-started.mdx` S
 
 ```ts
 // Wrong — features enabled but their actions still 403:
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
 defineConfig({ replay: { enabled: false } })   // default; POST .../replay answers 403
 ```
 
 ```ts
 // Correct — flip each mutation gate explicitly in config/telescope_ui.ts:
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
 defineConfig({
   replay: { enabled: true },
   cpuProfiling: { armEnabled: true },
