@@ -7,6 +7,12 @@
     "tsBuildInfoFile": null,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/client/**/*.ts", "src/server/**/*.ts", "providers/**/*.ts", "test/**/*.ts"],
+  "include": [
+    "src/telescope_ui_dashboard_provider.ts",
+    "src/client/**/*.ts",
+    "src/server/**/*.ts",
+    "providers/**/*.ts",
+    "test/**/*.ts"
+  ],
   "exclude": ["src/app/**", "dist/**", "node_modules"]
 }
