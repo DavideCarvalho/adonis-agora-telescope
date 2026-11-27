@@ -13,6 +13,19 @@ to the control-plane in the background. `topology` takes the same values as in
 
 An app that sets no `topology` is `standalone`: it keeps its own entries, exactly as before.
 
+## Three ways to run it
+
+- **Standalone** (the default): each app records into its own store and has its own console.
+- **Federated console**: each app stays standalone and keeps its entries in its own store. One
+  app's console shows the others: it reads their stores and sends actions to them as
+  authenticated commands. Nothing is shipped anywhere. See
+  [Federated Console](/docs/telescope/concepts/federated-console).
+- **Hub** (this page): one control-plane stores every app's entries and hosts the console; each
+  app runs `topology: 'tenant'` and sends its entries there. With `@adonis-agora/authkit-client`'s
+  `service` configured, `defineConfig({ topology: 'tenant' })` is the whole app config. See the
+  [Agora Hub guide](https://davidecarvalho.github.io/agora/docs/agora-hub) for running the Hub
+  itself.
+
 ## The control-plane
 
 ```ts title="config/telescope.ts (telescope server)"
