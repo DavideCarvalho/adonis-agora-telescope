@@ -66,14 +66,50 @@ Source: `docs/dashboard/auth.mdx` (Token access).
 
 `authorize` is the whole policy. It receives the request's `HttpContext`, and also
 accepts a `ConsoleAuthorizer` class (built through the container) or a lazy import
-of one (`() => import('#policies/console_access')`).
+of one (`() => import('#policies/console_access')`). `ctx.auth` comes from `@adonisjs/auth`
+(`node ace add @adonisjs/auth`): its middleware sets it on every request, and `config/auth.ts`
+types `ctx.auth.user` as your `User` model:
+
+```ts
+// start/kernel.ts (excerpt)
+import router from '@adonisjs/core/services/router'
+
+router.use([() => import('@adonisjs/auth/initialize_auth_middleware')])
+```
+
+```ts
+// config/auth.ts
+import { defineConfig } from '@adonisjs/auth'
+import { sessionGuard, sessionUserProvider } from '@adonisjs/auth/session'
+import type { InferAuthenticators } from '@adonisjs/auth/types'
+
+const authConfig = defineConfig({
+  default: 'web',
+  guards: {
+    web: sessionGuard({
+      useRememberMeTokens: false,
+      provider: sessionUserProvider({ model: () => import('#models/user') }),
+    }),
+  },
+})
+
+export default authConfig
+
+declare module '@adonisjs/auth/types' {
+  export interface Authenticators extends InferAuthenticators<typeof authConfig> {}
+}
+```
 
 ```ts
 // config/telescope_ui.ts
+import type User from '#models/user'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
 export default defineConfig({
   async authorize(ctx) {
     await ctx.auth.check()
-    return ctx.auth.user?.role === 'admin'
+    const user: User | undefined = ctx.auth.user
+    return user?.role === 'admin'
   },
 })
 ```
@@ -149,6 +185,8 @@ tail answer `404` there, and a federated action is refused (`403`) for a viewer 
 to some organizations — an app-limited viewer holding that app may still act.
 
 ```ts
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
 export default defineConfig({
   replay: { enabled: true },          // POST <path>/api/requests/:id/replay — re-runs a real request!
   cpuProfiling: { armEnabled: true }, // POST <path>/api/profiles/arm
@@ -234,14 +272,22 @@ trusted like a viewer allowed every organization and every app), but keep the `r
 ```ts
 // Wrong — renaming the prefix is not authentication, and without authorize the
 // production console answers 403 to everyone:
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
 defineConfig({ path: '/__telescope' })
 ```
 
 ```ts
 // Correct — make a deliberate choice for production:
+import type User from '#models/user'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
 defineConfig({
   path: '/__telescope',
-  authorize: (ctx) => ctx.auth.user?.isAdmin === true,
+  authorize: (ctx) => {
+    const user: User | undefined = ctx.auth.user
+    return user?.isAdmin === true
+  },
 })
 ```
 
@@ -251,13 +297,19 @@ Source: `docs/dashboard/auth.mdx` (The default policy, Security notes).
 
 ### HIGH Keeping the removed `credentials` option on telescope_ui
 
-```ts
+```ts expect-error=TS2353
 // Wrong — 1.0 removed credentials { token, basic } and ?token= from the console.
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
 defineConfig({ credentials: { token: env.get('TELESCOPE_UI_TOKEN') } })
 ```
 
 ```ts
 // Correct — Bearer header only.
+import env from '#start/env'
+import { authorizeByToken, defineConfig } from '@adonis-agora/telescope/ui'
+
 defineConfig({ authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }) })
 ```
 
@@ -283,15 +335,33 @@ agent's provider there is no MCP endpoint. Source: `docs/reference/migrating-to-
 
 ### HIGH Keeping the removed `dashboardAuth` login screen
 
-```ts
+```ts expect-error=TS2561
 // Wrong — 1.0 removed dashboardAuth, its login/logout routes and session cookie.
-defineConfig({ dashboardAuth: { secret: env.get('TELESCOPE_DASHBOARD_SECRET'), login } })
+import env from '#start/env'
+import User from '#models/user'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+defineConfig({
+  dashboardAuth: {
+    secret: env.get('TELESCOPE_DASHBOARD_SECRET'),
+    async login(email, password) {
+      const user = await User.verifyCredentials(email, password)
+      return user.isAdmin ? { id: String(user.id), name: user.fullName } : null
+    },
+  },
+})
 ```
 
 ```ts
 // Correct — sign in through the app; authorize sends anonymous visitors there.
+import type User from '#models/user'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
 defineConfig({
-  authorize: (ctx) => (ctx.auth.user ? ctx.auth.user.isAdmin === true : { redirectTo: '/login' }),
+  authorize: (ctx) => {
+    const user: User | undefined = ctx.auth.user
+    return user ? user.isAdmin === true : { redirectTo: '/login' }
+  },
 })
 ```
 

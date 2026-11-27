@@ -174,12 +174,17 @@ The six acting methods never reject on an HTTP error — they resolve to
 something to render, not an exception to catch.
 
 ```ts
+import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
+
+const client = new TelescopeClient({ baseUrl: '/telescope/api' })
+declare const entryId: string // the entry the viewer opened
+
 const replay = await client.replayRequest(entryId)      // needs ui replay.enabled
 if (!replay.ok) console.warn(replay.message)            // e.g. disabled → render, don't catch
 
 const diagnosis = await client.diagnoseException(entryId) // needs the AI subpath configured
 const armed = await client.armProfile(3, 'GET /users/:id') // needs cpuProfiling.armEnabled
-const reset = await client.extAction(ext, action, input) // extension column.action, confirmed + authorize
+const reset = await client.extAction('stripe', 'refund', { chargeId: 'ch_123' }) // extension column.action, confirmed + authorize
 
 new EventSource(client.streamUrl())                     // SSE live tail of new entries
 ```
@@ -223,7 +228,7 @@ import {
 formatDuration(0.84)       // '840µs'
 formatDuration(1240)       // '1.24s'
 formatPercent(0.0473)      // '4.7%'
-formatRelative(iso)        // '12s ago'
+formatRelative(new Date(Date.now() - 12_000).toISOString()) // '12s ago'
 ENTRY_TYPES                // ['request','query','exception','client_exception','job',
                            //  'mail','cache','redis','event','log','http-client','diagnostic','span']
 ```
@@ -306,18 +311,24 @@ Source: `docs/packages/ui.mdx` (Configuration + Request replay),
 
 ```ts
 // Wrong — these never reject; the catch never fires and errors look like successes.
+import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
+
+const client = new TelescopeClient({ baseUrl: '/telescope/api' })
 try {
-  const result = await client.retryJob(queue, id)
+  const result = await client.retryJob('emails', '42')
 } catch (e) {
-  showRetryFailed()   // dead code — HTTP failures resolve, not throw
+  console.error('Retry failed')   // dead code — HTTP failures resolve, not throw
 }
 ```
 
 ```ts
 // Correct — branch on the discriminated result.
-const result = await client.retryJob(queue, id)
-if (result.ok) toast('Retrying')
-else toast(result.message)
+import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
+
+const client = new TelescopeClient({ baseUrl: '/telescope/api' })
+const result = await client.retryJob('emails', '42')
+if (result.ok) console.info('Retrying')
+else console.warn(result.message)
 ```
 
 Mechanism: `diagnoseException`, `replayRequest`, `armProfile`, `retryJob`,
@@ -329,6 +340,9 @@ Source: `docs/packages/telescope-ui.mdx` (info callout under Acting on an entry)
 
 ```ts
 // Wrong — assuming CSV export includes SQL bodies / stacks for offline analysis.
+import { TelescopeClient } from '@adonis-agora/telescope-ui/client'
+
+const client = new TelescopeClient({ baseUrl: '/telescope/api' })
 await client.listEntries({ type: 'query', search: 'users', first: 500 })
 // then expecting `content` in the downloaded file
 ```

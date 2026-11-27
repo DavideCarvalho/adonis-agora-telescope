@@ -63,6 +63,7 @@ export default defineConfig({
 Read entries back from anywhere via the container:
 
 ```ts
+import app from '@adonisjs/core/services/app'
 import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
@@ -133,6 +134,8 @@ that run before redaction; a rejected body becomes a marker string like
 
 ```ts
 // config/telescope.ts
+import { defineConfig } from '@adonis-agora/telescope'
+
 export default defineConfig({
   requestCapture: {
     maxBodyBytes: 65_536,
@@ -158,6 +161,8 @@ node ace migration:run   # create_telescope_entries_table, shipped by configure
 ```
 
 ```ts
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
 export default defineConfig({
   store: 'lucid',
   stores: { lucid: storage.lucid() },   // or storage.lucid({ connection: 'pg' })
@@ -177,6 +182,8 @@ line is enough. Telescope detects the `authkit.client` binding (never imports it
 
 ```ts
 // config/telescope.ts (an app)
+import { defineConfig } from '@adonis-agora/telescope'
+
 export default defineConfig({ topology: 'tenant' })
 ```
 
@@ -185,14 +192,21 @@ automatic); `tenant: { auto: false }` turns the detection off. Bring your own (a
 secret, a fixed or lazy URL) with the explicit form:
 
 ```ts
+import env from '#start/env'
 import { authkitTenantToken } from '@adonis-agora/authkit-client'
+import { defineConfig } from '@adonis-agora/telescope'
 
 export default defineConfig({
   topology: 'tenant',
   tenant: {
     url: env.get('TELESCOPE_SERVER_URL'),   // or leave out and set `transport`
     partition: 'shop',
-    token: authkitTenantToken({ issuer, clientId, clientSecret, resource: 'urn:agora:telescope' }),
+    token: authkitTenantToken({
+      issuer: env.get('AUTHKIT_ISSUER'),
+      clientId: env.get('AUTHKIT_CLIENT_ID'),
+      clientSecret: env.get('AUTHKIT_CLIENT_SECRET'),
+      resource: 'urn:agora:telescope',
+    }),
     // token: env.get('TELESCOPE_SHARED_SECRET') or any () => Promise<string>
     local: 'memory',                        // also keep entries for this app's own console
   },
@@ -235,12 +249,18 @@ Source: `docs/packages/ui.mdx` (Install), `docs/packages/telescope-ui.mdx` (warn
 
 ```ts
 // Wrong — agents assume they can read the payload that broke checkout:
-const entry = await telescope.find(id)
+import app from '@adonisjs/core/services/app'
+import { type Entry, type RequestEntryContent, TelescopeService } from '@adonis-agora/telescope'
+
+const telescope = await app.container.make(TelescopeService)
+const [entry] = (await telescope.list({ type: 'request', search: '/checkout', size: 1 })) as Entry<RequestEntryContent>[]
 entry.content.body // undefined — bodies are opt-in
 ```
 
 ```ts
 // Correct — enable requestCapture explicitly (gates run before redaction).
+import { defineConfig } from '@adonis-agora/telescope'
+
 defineConfig({
   requestCapture: { maxBodyBytes: 65_536 },
 })
@@ -286,6 +306,9 @@ export default class InspectorController {
 
 ```ts
 // Correct — constructor injection through @inject().
+import { inject } from '@adonisjs/core'
+import { TelescopeService } from '@adonis-agora/telescope'
+
 @inject()
 export default class InspectorController {
   constructor(private telescope: TelescopeService) {}

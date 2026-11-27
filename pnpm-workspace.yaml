@@ -26,8 +26,12 @@ minimumReleaseAgeExclude:
   - '@adonis-agora/authkit-core@1.0.0-rc.3 || 1.0.0'
 
 # Skill examples are typechecked by `intent validate` from the repo root, so a package they import
-# must resolve from the root node_modules. Hoisting @adonisjs/auth (a devDependency of
-# packages/core) there lets the telescope-ui examples load its `ctx.auth` types against the same
+# must resolve from the root node_modules. Hoisting these devDependencies of packages/core there
+# lets the examples load their types (`ctx.auth`, `@adonisjs/core/services/app`, Lucid's
+# `defineConfig` and `services/db`, authkit-client's `authkitTenantToken`) against the same
 # @adonisjs/core copy the library uses. Install-time only: no published package changes.
 publicHoistPattern:
   - "@adonisjs/auth"
+  - "@adonisjs/core"
+  - "@adonisjs/lucid"
+  - "@adonis-agora/authkit-client"
