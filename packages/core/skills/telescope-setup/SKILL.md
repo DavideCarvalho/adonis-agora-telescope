@@ -223,7 +223,7 @@ Source: `docs/concepts/central-server.mdx`, `packages/core/src/topology/auto_ten
 
 ### HIGH Expecting a dashboard page from the core alone
 
-```ts no-check
+```ts
 // Wrong — nothing mounts a page; http://localhost:3333/telescope answers 404.
 // adonisrc.ts
 providers: [
@@ -232,7 +232,7 @@ providers: [
 ]
 ```
 
-```ts no-check
+```ts
 // Correct — install @adonis-agora/telescope-ui and register its provider AFTER ui_provider.
 providers: [
   () => import('@adonis-agora/telescope/telescope_provider'),
@@ -272,7 +272,7 @@ Source: `docs/packages/core.mdx` (Request body capture).
 
 ### HIGH Hand-rolling the provider without the server-stack middleware
 
-```ts no-check
+```ts
 // Wrong — provider registered but TelescopeMiddleware missing: no requests recorded,
 // no exceptions captured, and nothing warns about it.
 providers: [
