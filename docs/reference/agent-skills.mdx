@@ -1,0 +1,57 @@
+---
+title: AI agent skills
+icon: Bot
+description: The agent skills @adonis-agora/telescope and @adonis-agora/telescope-ui ship for coding agents (Claude Code, Cursor, Copilot, Codex) and how to load them with TanStack Intent.
+---
+
+`@adonis-agora/telescope` and `@adonis-agora/telescope-ui` ship [Agent Skills](https://agentskills.io):
+short `SKILL.md` files that tell a coding agent how to use the library, the patterns to follow and
+the mistakes to avoid. They live inside the npm packages (their `skills/` folder), so they always
+match the version you installed: upgrade the package and the skills come with it.
+
+## Skills in these packages
+
+| Skill | Package | Load it when |
+| --- | --- | --- |
+| `telescope-setup` | `@adonis-agora/telescope` | installing Telescope, wiring the provider and middleware, querying entries with `TelescopeService`, capturing request bodies, or sending entries to a central server (`topology: 'tenant'`) |
+| `telescope-watchers` | `@adonis-agora/telescope` | recording SQL queries, outbound HTTP, cache, Redis, mail, jobs and schedules, or writing a custom watcher correlated to a trace |
+| `telescope-storage-retention` | `@adonis-agora/telescope` | choosing the memory, Lucid or tiered store, pruning a growing table, redacting secrets, sampling noisy entry types, or writing a custom store |
+| `telescope-alerts-ai` | `@adonis-agora/telescope` | alerting on exceptions or metric thresholds (Slack, webhooks, on-call tools), heartbeats and status pages, AI diagnosis of exceptions, or reporting browser errors |
+| `telescope-access-mcp` | `@adonis-agora/telescope` | locking down the dashboard, gating replay and queue actions, authenticating federated console commands, or exposing Telescope to an agent over `/mcp/agora` |
+| `telescope-ui-dashboard` | `@adonis-agora/telescope-ui` | mounting the console, fixing a `/telescope` 404, or reading Telescope data from your own UI with `TelescopeClient` |
+
+## Load them with TanStack Intent
+
+[TanStack Intent](https://github.com/TanStack/intent) finds the skills in your installed packages
+and tells your agent when to load them.
+
+```bash
+npm i -D @tanstack/intent    # pnpm add -D @tanstack/intent
+npx intent install
+```
+
+The first `intent install` runs in a terminal: it asks which packages' skills to allow (saved as
+`intent.skills` in your `package.json`) and writes a short skill-loading block into `AGENTS.md`
+(or into the `CLAUDE.md`, `.cursorrules` or `.github/copilot-instructions.md` that already carries
+it). To allow every Agora library without the prompt, for example in CI, add this to
+`package.json` first:
+
+```json
+{
+  "intent": { "skills": ["@adonis-agora/*"] }
+}
+```
+
+Then your agent, or you, can list and load them:
+
+```bash
+npx intent list
+npx intent load @adonis-agora/telescope#telescope-setup
+```
+
+`npx intent hooks install` adds hooks that remind Claude Code, Codex and Copilot to load a matching
+skill before editing. Without Intent, point your agent at
+`node_modules/@adonis-agora/telescope/skills/<skill>/SKILL.md` (or
+`node_modules/@adonis-agora/telescope-ui/skills/<skill>/SKILL.md`).
+
+See [AI agent skills](/docs/agent-skills) for every Agora library that ships skills.

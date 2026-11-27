@@ -158,6 +158,62 @@ export default defineConfig({
 Source: `docs/packages/ui.mdx` (Configuration, Request replay),
 `docs/packages/cpu-profiling.mdx` (arming callout).
 
+### Pattern 5 — authenticate federated console commands
+
+Commands from a console to a federated app travel over Redis, so the app answers nothing it
+cannot authenticate (reads included) and the console sends nothing unauthenticated. Modes, any of
+which resolve automatically when nothing is set explicitly:
+
+- **crypto** — automatic when `@adonis-agora/crypto` is booted: commands are sealed with the
+  `console-telescope` key in the owning app's partition (`apps.federated.<key>.partition`,
+  default the key). Hub with crypto embedded: no grant; crypto in a separate app: the console's
+  crypto client gets `crypto:seal:console-*`.
+- **authkit app-call token** — automatic with authkit-client's `service`: the console attaches an
+  app-call token, the app verifies it. Grant the console app `telescope:console:*` on the owning
+  app in authkit (without crypto the token is required and caps every command).
+- **shared secret** — `consoleCommands.secret` on the app = `commands.secret` on the console entry
+  (16+ chars). Bring your own: `commands.token` + `consoleCommands.verifyTenant`, or an own
+  cipher under `crypto`.
+  `crypto: false` / `token: false` / `verifyTenant: false` switch the automatic modes off.
+
+```ts
+// config/telescope.ts (the owning app) — together with crypto/authkit, no auth line needed
+import { defineConfig } from '@adonis-agora/telescope'
+
+export default defineConfig({
+  consoleCommands: {
+    prefix: 'shop',
+    actions: { replay: true, queues: true },   // each defaults to false: actions 403 until opted in
+    // secret: env.get('SHOP_CONSOLE_SECRET'), // only without crypto and authkit
+  },
+})
+```
+
+```ts
+// config/telescope_ui.ts (the console) — telescope keeps `commands.*` on the entry
+import { storage } from '@adonis-agora/telescope'
+import { defineConfig } from '@adonis-agora/telescope/ui'
+
+export default defineConfig({
+  apps: {
+    federated: {
+      shop: {
+        store: storage.lucid({ connection: 'shop' }),
+        commands: { prefix: 'shop' },          // commands: false = browse-only
+      },
+    },
+  },
+})
+```
+
+On the console, an entry's `commands` is on by default (omitted = the default channel, for one
+entry only); `commands: false` browses read-only. Every command carries the viewer's
+`capabilities` (`telescope:console:read` / `:queues` / `:replay`, `:write` and `:*` cover them);
+one without is refused `403` `capabilities-required`. A side with commands on and no mode that
+resolves refuses to boot (web process only); `node ace agora:doctor` shows each side's mode.
+
+Source: `docs/concepts/federated-console.mdx` (Authenticating the console).
+
 ## From the terminal
 
 Every console screen and action is also a `node ace telescope:<noun>:<verb>` command

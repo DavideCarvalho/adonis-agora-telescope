@@ -164,6 +164,45 @@ export default defineConfig({
 
 Source: `docs/getting-started.mdx` (Step 4).
 
+### Pattern 5 — send entries to a central server (tenant topology)
+
+With `@adonis-agora/authkit-client` >= 1.1.0 booted and its `service` configured
+(`service: { name, clientId, clientSecret, partition? }` in `config/authkit_client.ts`), one
+line is enough. Telescope detects the `authkit.client` binding (never imports it) and asks
+`tenantOf('urn:agora:telescope')` for `tenant.url` (discovered from the issuer), `tenant.token`
+(a service token, renewed before expiry and after a 401) and `tenant.partition`
+(`service.partition`, else `service.name`):
+
+```ts
+// config/telescope.ts (an app)
+export default defineConfig({ topology: 'tenant' })
+```
+
+Anything set in `tenant` wins, field by field (`tenant: { local: 'memory' }` keeps the rest
+automatic); `tenant: { auto: false }` turns the detection off. Bring your own (any IdP, a shared
+secret, a fixed or lazy URL) with the explicit form:
+
+```ts
+import { authkitTenantToken } from '@adonis-agora/authkit-client'
+
+export default defineConfig({
+  topology: 'tenant',
+  tenant: {
+    url: env.get('TELESCOPE_SERVER_URL'),   // or leave out and set `transport`
+    partition: 'shop',
+    token: authkitTenantToken({ issuer, clientId, clientSecret, resource: 'urn:agora:telescope' }),
+    // token: env.get('TELESCOPE_SHARED_SECRET') or any () => Promise<string>
+    local: 'memory',                        // also keep entries for this app's own console
+  },
+})
+```
+
+Without authkit-client's `service` (or an authkit-client without `tenantOf`) and without the
+fields, the web process refuses to boot naming the missing `tenant.*` fields. `node ace
+agora:doctor` shows where each came from (`authkit-client (auto)` or `explicit`).
+
+Source: `docs/concepts/central-server.mdx`, `packages/core/src/topology/auto_tenant.ts`.
+
 ## Common mistakes
 
 ### HIGH Expecting a dashboard page from the core alone

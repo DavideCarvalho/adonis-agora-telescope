@@ -161,6 +161,11 @@ diagnosis, extension data/actions, the Prometheus scrape and the live tail answe
 `federated: { app, actions }` (its `queueManager.enabled` mirrors whether the app
 answers commands).
 
+Those commands are authenticated (automatic with `@adonis-agora/crypto` or authkit-client's
+`service`, else a shared `secret` on both sides); an entry's `commands` is on by default and
+`commands: false` browses the app read-only. A side that cannot authenticate refuses to boot.
+See the `telescope-access-mcp` skill (federated console commands).
+
 Source: `docs/packages/telescope-ui.mdx` (Acting on an entry, Getting around).
 
 ### Pattern 4 — format numbers exactly like the console
