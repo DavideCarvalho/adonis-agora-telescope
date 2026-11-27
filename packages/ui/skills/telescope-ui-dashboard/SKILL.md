@@ -13,7 +13,7 @@ license: MIT
 metadata:
   type: core
   library: "@adonis-agora/telescope-ui"
-  library_version: "1.0.2"
+  library_version: "3.0.0"
   framework: adonisjs
 sources:
   - "DavideCarvalho/adonis-telescope:docs/packages/telescope-ui.mdx"

@@ -13,7 +13,7 @@ license: MIT
 metadata:
   type: core
   library: "@adonis-agora/telescope"
-  library_version: "0.8.4"
+  library_version: "1.1.1"
   framework: adonisjs
 sources:
   - "DavideCarvalho/adonis-telescope:docs/concepts/capture.mdx"

@@ -15,7 +15,7 @@ license: MIT
 metadata:
   type: core
   library: "@adonis-agora/telescope"
-  library_version: "1.0.0"
+  library_version: "1.1.1"
   framework: adonisjs
 sources:
   - "DavideCarvalho/adonis-telescope:docs/dashboard/auth.mdx"
