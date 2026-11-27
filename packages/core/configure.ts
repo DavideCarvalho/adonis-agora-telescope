@@ -47,7 +47,8 @@ type FeatureName = (typeof FEATURES)[number]['name'];
  * 2. registers {@link TelescopeMiddleware} on the `server` middleware stack;
  * 3. publishes `config/telescope.ts` and the `lucid` store migration (so switching
  *    `store: 'lucid'` only needs `node ace migration:run`; the `memory` default
- *    ignores it);
+ *    ignores it). With `--topology=tenant`, `config/telescope.ts` is the one-line tenant
+ *    form instead (url, token and partition come from `@adonis-agora/authkit-client`);
  * 4. offers the optional features (watchers / ui / ai / alerts) — each is a subpath
  *    of this same package. The selected ones get their provider registered in
  *    `adonisrc.ts` (`@adonis-agora/telescope/<feature>_provider`) and their config stub
@@ -67,7 +68,14 @@ export async function configure(command: Configure) {
     { path: '@adonis-agora/telescope/telescope_middleware' },
   ]);
 
-  await codemods.makeUsingStub(stubsRoot, 'config/telescope.stub', {});
+  // `--topology=tenant`: an app that sends its entries to a central telescope server, in the
+  // one-line form (url, token and partition come from @adonis-agora/authkit-client).
+  const tenant = command.parsedFlags?.topology === 'tenant';
+  await codemods.makeUsingStub(
+    stubsRoot,
+    tenant ? 'config/telescope_tenant.stub' : 'config/telescope.stub',
+    {},
+  );
   await codemods.makeUsingStub(
     stubsRoot,
     'database/migrations/create_telescope_entries_table.stub',

@@ -1,0 +1,18 @@
+{{{
+  exports({ to: app.configPath('telescope.ts') })
+}}}
+// import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope'
+
+/**
+ * Configuration for '@adonis-agora/telescope' in a tenant app: every entry is sent to the central
+ * telescope server (see the "Central server" docs).
+ *
+ * url, token and partition come from @adonis-agora/authkit-client (\`service\` in
+ * config/authkit_client.ts). To set them yourself (each field you set wins), uncomment the env
+ * import above and the tenant line below.
+ */
+export default defineConfig({
+  // tenant: { url: env.get('TELESCOPE_SERVER_URL'), token: env.get('TELESCOPE_TOKEN'), partition: env.get('TELESCOPE_PARTITION') },
+  topology: 'tenant',
+})

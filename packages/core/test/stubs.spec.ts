@@ -36,6 +36,7 @@ function findStubs(root: string): string[] {
 /** The stubs `configure.ts` publishes, relative to the stubs root. */
 const PUBLISHED_STUBS = [
   'config/telescope.stub',
+  'config/telescope_tenant.stub',
   'config/telescope_watchers.stub',
   'config/telescope_ui.stub',
   'config/telescope_ai.stub',

@@ -70,7 +70,7 @@ export function missingTenantFields(
 /** The boot error when tenant fields are missing and authkit-client cannot supply them. */
 export function missingTenantMessage(missing: AutoTenantField[], cause?: string): string {
   const fields = missing.map((field) => `tenant.${field}`).join(', ');
-  return `${PREFIX} topology 'tenant' needs ${fields}. Configure @adonis-agora/authkit-client's \`service\` (config/authkit.ts: service: { name, clientId, clientSecret }) so they are discovered from the issuer, or pass tenant: { url, token, partition } in config/telescope.ts.${cause ? ` (authkit-client: ${cause})` : ''}`;
+  return `${PREFIX} topology 'tenant' needs ${fields}. Configure @adonis-agora/authkit-client's \`service\` (config/authkit_client.ts: service: { name, clientId, clientSecret }) so they are discovered from the issuer, or pass tenant: { url, token, partition } in config/telescope.ts.${cause ? ` (authkit-client: ${cause})` : ''}`;
 }
 
 /** A tenant without `url`, `token` or `partition`, and no authkit-client to supply them. */
