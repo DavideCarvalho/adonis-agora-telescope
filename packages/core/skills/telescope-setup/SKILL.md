@@ -20,6 +20,8 @@ sources:
   - "DavideCarvalho/adonis-telescope:docs/getting-started.mdx"
   - "DavideCarvalho/adonis-telescope:docs/packages/core.mdx"
   - "DavideCarvalho/adonis-telescope:docs/reference/configuration.mdx"
+  - "DavideCarvalho/adonis-telescope:packages/core/src/define_config.ts"
+  - "DavideCarvalho/adonis-telescope:packages/core/src/service.ts"
 ---
 
 # Setting up @adonis-agora/telescope
@@ -108,7 +110,7 @@ Queue workers, ace commands and `app/exceptions/handler.ts` are not wrapped by t
 middleware. `recordException` reads the live store with nothing injected, is a no-op
 when Telescope is off, and never throws.
 
-```ts
+```ts no-check
 // app/exceptions/handler.ts
 import { recordException } from '@adonis-agora/telescope'
 
@@ -207,7 +209,7 @@ Source: `docs/concepts/central-server.mdx`, `packages/core/src/topology/auto_ten
 
 ### HIGH Expecting a dashboard page from the core alone
 
-```ts
+```ts no-check
 // Wrong — nothing mounts a page; http://localhost:3333/telescope answers 404.
 // adonisrc.ts
 providers: [
@@ -216,7 +218,7 @@ providers: [
 ]
 ```
 
-```ts
+```ts no-check
 // Correct — install @adonis-agora/telescope-ui and register its provider AFTER ui_provider.
 providers: [
   () => import('@adonis-agora/telescope/telescope_provider'),
@@ -250,7 +252,7 @@ Source: `docs/packages/core.mdx` (Request body capture).
 
 ### HIGH Hand-rolling the provider without the server-stack middleware
 
-```ts
+```ts no-check
 // Wrong — provider registered but TelescopeMiddleware missing: no requests recorded,
 // no exceptions captured, and nothing warns about it.
 providers: [
@@ -271,11 +273,14 @@ Source: `docs/reference/configuration.mdx` (Providers table), `docs/getting-star
 
 ### MEDIUM Resolving TelescopeService via this.app inside a controller
 
-```ts
+```ts expect-error=TS2339
 // Wrong — a controller has no `app`; this does not compile.
-constructor(private app: ApplicationService) {}
-async index() {
-  const telescope = await this.app.container.make(TelescopeService)
+import { TelescopeService } from '@adonis-agora/telescope'
+
+export default class InspectorController {
+  async index() {
+    const telescope = await this.app.container.make(TelescopeService)
+  }
 }
 ```
 

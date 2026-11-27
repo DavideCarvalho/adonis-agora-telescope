@@ -19,6 +19,7 @@ sources:
   - "DavideCarvalho/adonis-telescope:docs/concepts/capture.mdx"
   - "DavideCarvalho/adonis-telescope:docs/packages/watchers.mdx"
   - "DavideCarvalho/adonis-telescope:docs/recipes/custom-watcher.mdx"
+  - "DavideCarvalho/adonis-telescope:docs/recipes/request-context.mdx"
   - "DavideCarvalho/adonis-telescope:packages/core/src/watchers/index.ts"
 ---
 
@@ -233,7 +234,7 @@ Source: `docs/packages/watchers.mdx` (Query watcher warn callout),
 
 ### HIGH Enabling the logs watcher in both config files
 
-```ts
+```ts no-check
 // Wrong — 'logs' in config/telescope.ts AND config/telescope_watchers.ts.
 // config/telescope.ts
 export default defineConfig({ watchers: ['request', 'diagnostics', 'logs'], logs: { minLevel: 'warn' } })
@@ -241,7 +242,7 @@ export default defineConfig({ watchers: ['request', 'diagnostics', 'logs'], logs
 export default defineConfig({ watchers: ['query', 'logs'] })
 ```
 
-```ts
+```ts no-check
 // Correct — enable it in exactly one place.
 export default defineConfig({ watchers: ['request', 'diagnostics', 'logs'], logs: { minLevel: 'warn' } })
 export default defineConfig({ watchers: ['query'] })
@@ -261,7 +262,7 @@ emitter.on('queue:processed', (d) => {
 })
 ```
 
-```ts
+```ts no-check
 // Correct — validate defensively, build plain content lazily, let safeRecord guard the store.
 private handle(data: unknown): void {
   if (!isQueueEvent(data)) return
@@ -276,7 +277,7 @@ Source: `docs/concepts/capture.mdx` (warn callout), `docs/recipes/custom-watcher
 
 ### MEDIUM Non-idempotent start/leaky stop in a custom watcher
 
-```ts
+```ts no-check
 // Wrong — double-subscribe duplicates every entry; a leaked subscription keeps
 // recording after shutdown.
 start(emitter: EmitterLike): void {
@@ -285,7 +286,7 @@ start(emitter: EmitterLike): void {
 stop(): void {}
 ```
 
-```ts
+```ts no-check
 // Correct — keep the unsubscribe fn; guard re-entry; release in stop().
 start(emitter: EmitterLike): void {
   if (this.unsubscribe) return
