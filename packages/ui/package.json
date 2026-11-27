@@ -25,7 +25,7 @@
     "agora",
     "tanstack-intent"
   ],
-  "author": "Davi Carvalho <davi@goflip.ai>",
+  "author": "Davi Carvalho <davi_carvalho96@hotmail.com>",
   "type": "module",
   "main": "./dist/providers/telescope_ui_dashboard_provider.js",
   "types": "./dist/providers/telescope_ui_dashboard_provider.d.ts",
