@@ -44,7 +44,7 @@ export default defineConfig({
     fetch: proxiedFetch,
     timeoutMs: 5000,
   }),
-  tenant: { partition: 'shop', token: env.get('TELESCOPE_TOKEN') },
+  // token and partition: authkit-client's `service`, else tenant: { partition, token }
 })
 ```
 
@@ -58,7 +58,7 @@ The control-plane needs nothing for HTTP: its ingest route takes the batches.
 export default defineConfig({
   topology: 'tenant',
   transport: transports.queue({ connection: 'redis' }),
-  tenant: { partition: 'shop', token: env.get('TELESCOPE_TOKEN') },
+  // token and partition: authkit-client's `service`, else tenant: { partition, token }
 })
 ```
 
@@ -141,7 +141,7 @@ a key of its `transports` (default: its `transport`).
 export default defineConfig({
   topology: 'tenant',
   transport: transports.durable({ transport: 'queue' }),
-  tenant: { partition: 'shop', token: env.get('TELESCOPE_TOKEN') },
+  // token and partition: authkit-client's `service`, else tenant: { partition, token }
 })
 ```
 
