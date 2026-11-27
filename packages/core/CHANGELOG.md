@@ -1,5 +1,11 @@
 # @adonis-agora/telescope
 
+## 1.1.0
+
+### Minor Changes
+
+- [#413](https://github.com/DavideCarvalho/adonis-agora-telescope/pull/413) [`c0b52f3`](https://github.com/DavideCarvalho/adonis-agora-telescope/commit/c0b52f32938ffaffbbf8f37bec1ba0d3d89c18e6) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `topology: 'tenant'` needs no `tenant` block when `@adonis-agora/authkit-client` is configured with a `service`: the control plane URL, the service token and the partition come from its `authkit.client` binding (`tenantOf('urn:agora:telescope')`), detected structurally. Anything set in `tenant` wins field by field; `tenant: { auto: false }` turns the detection off. Without the binding and the fields, the web process refuses to boot naming both fixes, and `agora:doctor` shows where each field came from (`telescope.tenant-source`). Needs an authkit-client release that has `tenantOf` (after 1.0.0); older ones are treated as absent.
+
 ## 1.0.0
 
 ### Major Changes
