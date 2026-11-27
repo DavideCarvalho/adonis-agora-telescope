@@ -53,6 +53,9 @@
     "skills"
   ],
   "sideEffects": false,
+  "publishConfig": {
+    "tag": "v0"
+  },
   "scripts": {
     "build": "vite build && tsc -p tsconfig.server.json",
     "prepack": "pnpm run build",
