@@ -168,13 +168,15 @@ which resolve automatically when nothing is set explicitly:
   `console-telescope` key in the owning app's partition (`apps.federated.<key>.partition`,
   default the key). Hub with crypto embedded: no grant; crypto in a separate app: the console's
   crypto client gets `crypto:seal:console-*`.
-- **authkit app-call token** — automatic with authkit-client's `service`: the console attaches an
-  app-call token, the app verifies it. Grant the console app `telescope:console:*` on the owning
-  app in authkit (without crypto the token is required and caps every command).
+- **authkit app-call token** — automatic with authkit-client configured for calls between apps
+  (its `service` and `apps` options): the console attaches an app-call token, the app verifies
+  it. Grant the console app `telescope:console:*` on the owning app in authkit (without crypto
+  the token is required and caps every command).
 - **shared secret** — `consoleCommands.secret` on the app = `commands.secret` on the console entry
   (16+ chars). Bring your own: `commands.token` + `consoleCommands.verifyTenant`, or an own
   cipher under `crypto`.
-  `crypto: false` / `token: false` / `verifyTenant: false` switch the automatic modes off.
+  `crypto: false` (either side), `commands.token: false` (console) and
+  `consoleCommands.verifyTenant: false` (app) switch the automatic modes off.
 
 ```ts
 // config/telescope.ts (the owning app) — together with crypto/authkit, no auth line needed

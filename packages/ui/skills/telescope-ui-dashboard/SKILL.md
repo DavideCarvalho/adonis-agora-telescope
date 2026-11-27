@@ -163,7 +163,8 @@ answers commands).
 
 Those commands are authenticated (automatic with `@adonis-agora/crypto` or authkit-client's
 `service`, else a shared `secret` on both sides); an entry's `commands` is on by default and
-`commands: false` browses the app read-only. A side that cannot authenticate refuses to boot.
+`commands: false` browses the app read-only. A side that cannot authenticate refuses to boot
+(web process only; ace commands are not affected).
 See the `telescope-access-mcp` skill (federated console commands).
 
 Source: `docs/packages/telescope-ui.mdx` (Acting on an entry, Getting around).
