@@ -67,6 +67,8 @@ execution of the same statement rolls into one family for `topFamilies()`.
 
 ```ts
 // config/telescope_watchers.ts
+import { defineConfig } from '@adonis-agora/telescope/watchers'
+
 export default defineConfig({
   watchers: ['query'],
   // Bindings carry PII/secrets: redacted to [REDACTED] placeholders unless you opt in.
@@ -90,14 +92,20 @@ report, but `debug: true` in your DB config guarantees it:
 
 ```ts
 // config/database.ts
-export const databaseConfig = defineConfig({
+import { defineConfig } from '@adonisjs/lucid'
+
+const dbConfig = defineConfig({
+  connection: 'pg',
   connections: {
     pg: {
+      client: 'pg',
       connection: { host: '127.0.0.1', database: 'app', user: 'postgres', password: 'secret' },
       debug: true,   // guarantee db:query flows even before any other listener attaches
     },
   },
 })
+
+export default dbConfig
 ```
 
 Source: `docs/packages/watchers.mdx` (Query watcher callouts),
@@ -116,15 +124,17 @@ import {
   scheduleTask,
   registerSchedule,
 } from '@adonis-agora/telescope/watchers'
+import db from '@adonisjs/lucid/services/db'
 
 // Timing span — times fn, records completed/failed, re-throws on error.
 const total = await profile('checkout', async (span) => {
+  const items = await db.from('cart_items').where('cart_id', 42)
   span.mark('cart-loaded')
-  return await charge(cart)
+  return items.reduce((sum, item) => sum + item.price * item.quantity, 0)
 })
 
 // Scheduled run — wraps the closure you actually schedule.
-await scheduleTask('prune-sessions', () => sessions.pruneExpired(), {
+await scheduleTask('prune-sessions', () => db.from('sessions').where('expires_at', '<', new Date()).delete(), {
   schedule: '0 * * * *',
   kind: 'cron',
 })
@@ -217,6 +227,8 @@ Source: `docs/recipes/tags-and-redaction.mdx`, `docs/recipes/request-context.mdx
 
 ```ts
 // Wrong — the watcher is listed, yet zero queries appear.
+import { defineConfig } from '@adonis-agora/telescope/watchers'
+
 export default defineConfig({ watchers: ['query'] })
 // config/database.ts has no debug flag and no other db:query listener exists.
 ```
@@ -257,8 +269,12 @@ Source: `docs/reference/configuration.mdx` ('logs' warn callout).
 ```ts
 // Wrong — content building runs on the HOST thread; one circular payload breaks
 // the very operation being observed.
+import { EntryType } from '@adonis-agora/telescope'
+import { type EmitterLike, safeRecord } from '@adonis-agora/telescope/watchers'
+
+declare const emitter: EmitterLike // start(emitter)'s argument
 emitter.on('queue:processed', (d) => {
-  safeRecord({ type: EntryType.Job, content: JSON.parse(JSON.stringify(d.raw)) }, 'QueueWatcher')
+  safeRecord({ type: EntryType.Job, content: JSON.parse(JSON.stringify(d)) }, 'QueueWatcher')
 })
 ```
 
@@ -306,6 +322,8 @@ Source: `docs/recipes/custom-watcher.mdx` (warn callout).
 
 ```ts
 // Wrong — assuming pnpm installed the engines because the watcher names are valid.
+import { defineConfig } from '@adonis-agora/telescope/watchers'
+
 export default defineConfig({ watchers: ['queue', 'redis'] })
 // package.json has no @adonisjs/queue / @adonisjs/redis entry.
 ```

@@ -72,9 +72,11 @@ Every set field of `EntryQuery` is an AND predicate; results are always
 newest-first.
 
 ```ts
+import app from '@adonisjs/core/services/app'
 import { TelescopeService } from '@adonis-agora/telescope'
 
 const telescope = await app.container.make(TelescopeService)
+const oneHourAgo = new Date(Date.now() - 60 * 60_000)
 await telescope.list({ type: 'query', search: 'users', size: 50 })
 await telescope.list({ tag: 'status:500', after: oneHourAgo })
 await telescope.list({ familyHash: 'billing:invoice-paid' })
@@ -92,6 +94,8 @@ cycle-safe.
 
 ```ts
 // config/telescope.ts
+import { defineConfig } from '@adonis-agora/telescope'
+
 export default defineConfig({
   redact: {
     enabled: true,
@@ -114,6 +118,8 @@ Source: `docs/reference/configuration.mdx` (redact callout),
 rules keep everything that looks like an error or is slow, no matter the rate.
 
 ```ts
+import { defineConfig } from '@adonis-agora/telescope'
+
 export default defineConfig({
   sampling: {
     default: 1,                                   // keep everything by default
@@ -136,6 +142,7 @@ ingestion point honours it immediately.
 
 ```ts
 import { setTelescopePaused } from '@adonis-agora/telescope'
+import { importEverything } from '#services/catalog_import'
 
 setTelescopePaused(true)
 try {
@@ -206,11 +213,15 @@ Source: `docs/recipes/custom-storage.mdx`.
 ```ts
 // Wrong — per-process ring buffer, lost on every restart/deploy; in a cluster each
 // worker shows a different slice of reality.
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
 defineConfig({ store: 'memory', stores: { memory: storage.memory({ maxEntries: 1000 }) } })
 ```
 
 ```ts
 // Correct — durable, cross-query storage via the built-in Lucid driver.
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
 defineConfig({ store: 'lucid', stores: { lucid: storage.lucid() } })
 ```
 
@@ -223,11 +234,15 @@ Source: `docs/concepts/storage.mdx` (memory driver warn).
 
 ```ts
 // Wrong — a persistent SQL table with no time-based bound grows forever.
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
 defineConfig({ store: 'lucid', stores: { lucid: storage.lucid() } })
 ```
 
 ```ts
 // Correct — supply a prune block; that is what arms the background pruner.
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
 defineConfig({
   store: 'lucid',
   stores: { lucid: storage.lucid() },
@@ -249,6 +264,9 @@ traceId: input.traceId, origin: input.origin as BatchOrigin,
 
 ```ts
 // Correct — explicit null respected, omitted reads context, junk falls back:
+import { type BatchOrigin, currentTraceId, isBatchOrigin, type RecordInput } from '@adonis-agora/telescope'
+
+declare const input: RecordInput // record()'s argument
 const traceId = input.traceId !== undefined ? input.traceId : currentTraceId()
 const origin: BatchOrigin = isBatchOrigin(input.origin) ? input.origin : 'manual'
 ```
@@ -263,12 +281,16 @@ Source: `docs/recipes/custom-storage.mdx` (load-bearing lines).
 // Wrong — a connection with searchPath sends SET search_path on the session; behind
 // PgBouncer in transaction mode it leaks to other clients' connections.
 // config/database.ts: telescope: { client: 'pg', searchPath: ['telescope'], ... }
-lucid: storage.lucid({ connection: 'telescope' })
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
+defineConfig({ stores: { lucid: storage.lucid({ connection: 'telescope' }) } })
 ```
 
 ```ts
 // Correct — the store names the schema in every statement, on any connection.
-lucid: storage.lucid({ connection: 'pg', schema: 'telescope' })
+import { defineConfig, storage } from '@adonis-agora/telescope'
+
+defineConfig({ stores: { lucid: storage.lucid({ connection: 'pg', schema: 'telescope' }) } })
 ```
 
 Mechanism: `schema` qualifies every query (`"telescope"."telescope_entries"`) and,
@@ -287,8 +309,17 @@ const store = new LucidTelescopeStore(db)
 
 ```ts
 // Correct — resolve the binding from the container during boot.
-const db = await app.container.make('lucid.db')
-const store = new LucidTelescopeStore(db, { tableName: 'telescope_entries' })
+import type { ApplicationService } from '@adonisjs/core/types'
+import { LucidTelescopeStore } from '@adonis-agora/telescope'
+
+export default class TelescopeStoreProvider {
+  constructor(protected app: ApplicationService) {}
+
+  async boot() {
+    const db = await this.app.container.make('lucid.db')
+    const store = new LucidTelescopeStore(db, { tableName: 'telescope_entries' })
+  }
+}
 ```
 
 Mechanism: provider boot precedes `app.booted()`; resolving lazily through the
@@ -316,11 +347,19 @@ Source: `docs/packages/advanced.mdx` (sampling warn callout).
 
 ```ts
 // Wrong — assuming keepLast caps the WHOLE table at N rows.
+import type { TelescopeStore } from '@adonis-agora/telescope'
+
+declare const store: TelescopeStore // the configured store
+const cutoff = new Date(Date.now() - 24 * 60 * 60_000)
 await store.prune(cutoff, 500)   // expected: table trimmed to newest 500 overall
 ```
 
 ```ts
 // Correct — keepLast retains the newest N of the matched-and-doomed set:
+import type { TelescopeStore } from '@adonis-agora/telescope'
+
+declare const store: TelescopeStore // the configured store
+const cutoff = new Date(Date.now() - 24 * 60 * 60_000)
 const deleted = await store.prune(cutoff, 500) // deletes older-than-cutoff EXCEPT its newest 500
 ```
 

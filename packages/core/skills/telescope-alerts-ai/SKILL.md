@@ -153,7 +153,17 @@ import env from '#start/env'
 export default defineConfig({
   channels: [
     slackChannel(env.get('TELESCOPE_SLACK_WEBHOOK'), { username: 'Telescope' }),
-    customChannel(async (alert) => { await pagerduty.trigger(alert) }, 'pagerduty'),
+    customChannel(async (alert) => {
+      await fetch('https://events.pagerduty.com/v2/enqueue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          routing_key: env.get('PAGERDUTY_ROUTING_KEY'),
+          event_action: 'trigger',
+          payload: { summary: `${alert.rule.type}: ${alert.value}`, source: alert.instanceId, severity: 'error' },
+        }),
+      })
+    }, 'pagerduty'),
   ],
   rules: [{ type: 'new-exception', window: '1h' }],
 })
@@ -172,6 +182,8 @@ redaction/sampling/prune pipeline as server exceptions.
 
 ```ts
 // config/telescope.ts
+import { defineConfig } from '@adonis-agora/telescope'
+
 export default defineConfig({
   clientErrors: {
     enabled: true,
@@ -231,12 +243,17 @@ Source: `docs/packages/alerts.mdx` (When rules do and don't run).
 
 ```ts
 // Wrong — keyless install looks configured but silently does nothing:
+import { defineConfig } from '@adonis-agora/telescope/ai'
+
 export default defineConfig({ model: 'claude-opus-4-8' })   // no apiKey, no client
-const diagnosis = await diagnoser.diagnose(entry)           // always null
+// → TelescopeAiDiagnoser.diagnose(entry) always resolves null
 ```
 
 ```ts
 // Correct — source the key from validated env; check isConfigured() when unsure.
+import env from '#start/env'
+import { defineConfig } from '@adonis-agora/telescope/ai'
+
 export default defineConfig({ apiKey: env.get('ANTHROPIC_API_KEY') })
 ```
 
