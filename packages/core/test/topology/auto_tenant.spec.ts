@@ -176,7 +176,7 @@ describe('tenant from authkit-client', () => {
 
   it('no binding: the web process refuses to boot and names both fixes', async () => {
     await expect(boot({ ...quiet, topology: 'tenant' }, {}, 'web')).rejects.toThrow(
-      "[@adonis-agora/telescope] topology 'tenant' needs tenant.url, tenant.token, tenant.partition. Configure @adonis-agora/authkit-client's `service` (config/authkit.ts: service: { name, clientId, clientSecret }) so they are discovered from the issuer, or pass tenant: { url, token, partition } in config/telescope.ts.",
+      "[@adonis-agora/telescope] topology 'tenant' needs tenant.url, tenant.token, tenant.partition. Configure @adonis-agora/authkit-client's `service` (config/authkit_client.ts: service: { name, clientId, clientSecret }) so they are discovered from the issuer, or pass tenant: { url, token, partition } in config/telescope.ts.",
     );
   });
 

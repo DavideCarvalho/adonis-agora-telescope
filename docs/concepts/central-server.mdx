@@ -105,6 +105,9 @@ import { defineConfig } from '@adonis-agora/telescope'
 export default defineConfig({ topology: 'tenant' })
 ```
 
+`node ace configure @adonis-agora/telescope --topology=tenant` publishes this form as
+`config/telescope.ts`, with the explicit `tenant` fields commented out.
+
 Telescope finds authkit-client's `authkit.client` binding at boot and asks it for resource
 `urn:agora:telescope`: the server's URL is discovered from the issuer, the token is a service
 token of `service` (renewed before it expires and after a `401`), and the partition is

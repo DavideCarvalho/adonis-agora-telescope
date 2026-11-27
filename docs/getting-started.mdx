@@ -69,6 +69,10 @@ node ace configure @adonis-agora/telescope
    whole HTTP pipeline and observes the final response status);
 3. publish `config/telescope.ts`.
 
+In an app that sends its entries to a [central server](/docs/telescope/concepts/central-server),
+run `node ace configure @adonis-agora/telescope --topology=tenant`: `config/telescope.ts` is then
+the one-line `defineConfig({ topology: 'tenant' })` form.
+
 </Step>
 
 </Steps>

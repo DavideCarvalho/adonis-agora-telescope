@@ -30,7 +30,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AppFactory } from '@adonisjs/core/factories/app';
 
@@ -51,6 +51,8 @@ const distStubsRoot = join(pkgRoot, 'dist/stubs');
  */
 const STUBS = [
   { stub: 'config/telescope.stub' },
+  // `--topology=tenant` writes this one to config/telescope.ts instead of the stub above.
+  { stub: 'config/telescope_tenant.stub' },
   { stub: 'config/telescope_watchers.stub' },
   { stub: 'config/telescope_ui.stub' },
   { stub: 'config/telescope_ai.stub' },
@@ -224,6 +226,9 @@ try {
       '  ANTHROPIC_API_KEY: Env.schema.string.optional(),',
       '  TELESCOPE_SLACK_WEBHOOK: Env.schema.string(),',
       '  TELESCOPE_ALERT_WEBHOOK: Env.schema.string(),',
+      '  TELESCOPE_SERVER_URL: Env.schema.string(),',
+      '  TELESCOPE_TOKEN: Env.schema.string(),',
+      '  TELESCOPE_PARTITION: Env.schema.string(),',
       '})',
       '',
     ].join('\n'),
@@ -252,8 +257,16 @@ try {
     ].join('\n'),
   );
 
+  const written = new Set();
   for (const spec of await renderAll(appRoot)) {
-    // The destination the ENGINE resolved, so the file lands exactly where `configure` puts it.
+    // The destination the ENGINE resolved, so the file lands exactly where `configure` puts it. Two
+    // stubs can share one (`config/telescope_tenant.stub` is the --topology=tenant
+    // `config/telescope.ts`): the later one is compiled beside it under its stub's name rather than
+    // overwriting the first.
+    if (written.has(spec.destination)) {
+      spec.destination = join(spec.destination, '..', `${basename(spec.stub, '.stub')}.ts`);
+    }
+    written.add(spec.destination);
     mkdirSync(join(spec.destination, '..'), { recursive: true });
     writeFileSync(spec.destination, spec.contents);
 
